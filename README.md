@@ -44,6 +44,7 @@ Extensão Chrome que caça respostas para questões educacionais usando IA.
 - Renomeado para AnswerHunter
 - Suporte específico para portal da Estácio
 - Extração melhorada com data-testid
+- Novo visual estilo Passei Direto (Checkpointer)
 
 ### v1.1.0
 - Adicionada busca automática no Google
