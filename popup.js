@@ -1,4 +1,4 @@
-// Configuração das APIs
+﻿// ConfiguraÃ§Ã£o das APIs
 const GROQ_API_KEY = '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';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const SERPER_API_KEY = 'feffb9d9843cbe91d25ea499ae460068d5518f45';
@@ -6,6 +6,8 @@ const SERPER_API_URL = 'https://google.serper.dev/search';
 
 // Global Data
 let refinedData = [];
+let lastGroqCallAt = 0;
+const MIN_GROQ_INTERVAL_MS = 2500;
 
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -19,10 +21,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // refinedData is now global
 
 
-  // === EXTRAIR DA PÁGINA ATUAL ===
+  // === EXTRAIR DA PÃGINA ATUAL ===
   if (extractBtn) {
     extractBtn.addEventListener('click', async () => {
-      showStatus('loading', 'Extraindo conteúdo...');
+      showStatus('loading', 'Extraindo conteÃºdo...');
       extractBtn.disabled = true;
 
       try {
@@ -39,22 +41,24 @@ document.addEventListener('DOMContentLoaded', () => {
           if (extractedData.length > 0) {
             showStatus('loading', 'Refinando com IA...');
 
-            const refined = await Promise.all(
-              extractedData.map(item => refineWithGroq(item))
-            );
+            const refined = [];
+            for (const item of extractedData) {
+              const result = await refineWithGroq(item);
+              refined.push(result);
+            }
 
             refinedData = refined.filter(item => item !== null);
 
             if (refinedData.length > 0) {
               displayResults(refinedData);
-              showStatus('success', `${refinedData.length} questão(ões) encontrada(s)!`);
+              showStatus('success', `${refinedData.length} questÃ£o(Ãµes) encontrada(s)!`);
               if (copyBtn) copyBtn.disabled = false;
             } else {
-              showStatus('error', 'Nenhuma questão válida encontrada');
+              showStatus('error', 'Nenhuma questÃ£o vÃ¡lida encontrada');
               displayResults([]);
             }
           } else {
-            showStatus('error', 'Nenhuma pergunta extraída. Tente selecionar o texto.');
+            showStatus('error', 'Nenhuma pergunta extraÃ­da. Tente selecionar o texto.');
             displayResults([]);
           }
         }
@@ -76,13 +80,33 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-        // Extrair pergunta (Prioridade: Seleção -> Brainly -> Estácio -> Genérico)
+        // Extrair pergunta de TODOS os frames (incluindo iframes)
         const results = await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
+          target: { tabId: tab.id, allFrames: true },
           function: extractQuestionOnly
         });
 
-        const question = results?.[0]?.result;
+        // Pegar o melhor resultado de todos os frames
+        let question = '';
+        let bestScore = 0;
+        
+        for (const frameResult of results || []) {
+          const text = frameResult?.result || '';
+          if (text.length > question.length) {
+            // Pontuar para escolher o melhor
+            let score = text.length;
+            if (text.includes('?')) score += 500;
+            if (/Atividade|Questão|Exercício/i.test(text)) score += 300;
+            if (/\b[A-E]\b/g.test(text)) score += 200;
+            
+            if (score > bestScore) {
+              bestScore = score;
+              question = text;
+            }
+          }
+        }
+        
+        console.log('AnswerHunter: Melhor questão encontrada:', question?.substring(0, 100));
 
         if (!question || question.length < 5) {
           showStatus('error', 'Selecione o texto da pergunta e tente novamente.');
@@ -108,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showStatus('success', `${answers.length} resposta(s) encontrada(s)!`);
           if (copyBtn) copyBtn.disabled = false;
         } else {
-          showStatus('error', 'IA não encontrou a resposta nos resultados.');
+          showStatus('error', 'IA nÃ£o encontrou a resposta nos resultados.');
         }
 
       } catch (error) {
@@ -121,19 +145,59 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // === BUSCAR COM SERPER ===
+  // Sites educacionais de perguntas e respostas
+  const EDUCATION_SITES = [
+    'brainly.com.br', 'brainly.com',
+    'passeidireto.com',
+    'respondeai.com.br',
+    'studocu.com',
+    'chegg.com',
+    'quizlet.com'
+  ];
+
+  function cleanQueryForSearch(query) {
+    let clean = query
+      // Remover prefixos de questão
+      .replace(/^(?:Questão|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '')
+      // Remover alternativas A, B, C, D, E e seus textos
+      .replace(/\s*[A-E]\s+[A-Za-zÀ-ú\s]+(?=\s*[A-E]\s+|$)/g, '')
+      // Remover alternativas isoladas
+      .replace(/\s+[A-E]\s+/g, ' ')
+      // Remover "Responda", "O que você achou", etc
+      .replace(/\s*(Responda|O que você achou|Relatar problema|Voltar|Avançar|Menu)[\s\S]*/gi, '')
+      // Limpar espaços
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Se ficou muito curto, pegar até a interrogação
+    if (clean.length < 30 && query.includes('?')) {
+      const questionEnd = query.indexOf('?');
+      clean = query.substring(0, questionEnd + 1).replace(/^(?:Questão|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '').trim();
+    }
+    
+    // Limitar tamanho para busca eficiente
+    return clean.substring(0, 200);
+  }
+
   async function searchWithSerper(query) {
-    // Limita tamanho e remove quebras excessivas
-    const cleanQuery = query.replace(/\s+/g, ' ').substring(0, 300);
+    const cleanQuery = cleanQueryForSearch(query);
+    
+    console.log(`AnswerHunter: Query original: "${query.substring(0, 100)}..."`);
+    console.log(`AnswerHunter: Query limpa: "${cleanQuery}"`);
+
+    // Primeiro: buscar com filtro de sites educacionais
+    const siteFilter = EDUCATION_SITES.map(s => `site:${s}`).join(' OR ');
 
     try {
-      const response = await fetch(SERPER_API_URL, {
+      console.log(`AnswerHunter: Buscando com filtro de sites...`);
+      let response = await fetch(SERPER_API_URL, {
         method: 'POST',
         headers: {
           'X-API-KEY': SERPER_API_KEY,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          q: cleanQuery + ' site:brainly.com.br OR site:passeidireto.com OR site:respondeai.com.br',
+          q: cleanQuery + ' ' + siteFilter,
           gl: 'br',
           hl: 'pt-br',
           num: 5
@@ -142,10 +206,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!response.ok) throw new Error(`API Google: ${response.status}`);
 
-      const data = await response.json();
+      let data = await response.json();
+      console.log('AnswerHunter: Resultados com filtro:', data.organic?.length || 0);
+      
+      // Se não encontrou com filtro, buscar sem filtro
+      if (!data.organic || data.organic.length === 0) {
+        console.log('AnswerHunter: Buscando SEM filtro de sites...');
+        response = await fetch(SERPER_API_URL, {
+          method: 'POST',
+          headers: {
+            'X-API-KEY': SERPER_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            q: cleanQuery,
+            gl: 'br',
+            hl: 'pt-br',
+            num: 5
+          })
+        });
+        
+        if (response.ok) {
+          data = await response.json();
+          console.log('AnswerHunter: Resultados sem filtro:', data.organic?.length || 0);
+        }
+      }
+      
       return data.organic || [];
     } catch (e) {
-      console.error(e);
+      console.error('AnswerHunter: Erro na busca:', e);
       return [];
     }
   }
@@ -154,9 +243,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // === EXTRAIR RESPOSTAS DOS RESULTADOS DE BUSCA ===
   async function extractAnswersFromSearch(originalQuestion, searchResults) {
     const answers = [];
+    console.log(`AnswerHunter: Debug - Analisando ${searchResults.length} resultados da busca.`);
 
-    for (const result of searchResults.slice(0, 3)) {
+    // Processar apenas o primeiro resultado mais relevante para evitar rate limit
+    const topResults = searchResults.slice(0, 1);
+    for (const result of topResults) {
       try {
+        console.log(`AnswerHunter: Debug - Processando resultado: ${result.title}`);
         // Usar o snippet do Google como fonte de resposta
         const snippet = result.snippet || '';
         const title = result.title || '';
@@ -169,10 +262,22 @@ document.addEventListener('DOMContentLoaded', () => {
           });
 
           if (refined) {
+            console.log('AnswerHunter: Debug - Resposta encontrada:', refined);
             refined.source = result.link;
             answers.push(refined);
-            break; // Pegar só a primeira resposta válida
+            break; // Pegar sÃ³ a primeira resposta vÃ¡lida
+          } else {
+            // Fallback: retornar snippet como resposta quando a IA nÃ£o estiver disponÃ­vel
+            console.log('AnswerHunter: Debug - IA indisponÃ­vel. Usando snippet como resposta.');
+            answers.push({
+              question: originalQuestion,
+              answer: `${title}. ${snippet}`,
+              source: result.link
+            });
+            break;
           }
+        } else {
+          console.log('AnswerHunter: Debug - Snippet muito curto, ignorando.');
         }
       } catch (e) {
         console.error('Erro ao processar resultado:', e);
@@ -183,56 +288,63 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // === REFINAR COM GROQ ===
-  async function refineWithGroq(item) {
-    const prompt = `Você é um especialista em extrair respostas de questões educacionais de sites como Brainly e Passei Direto.
+  async function refineWithGroq(item, retryCount = 0) {
+    const now = Date.now();
+    if (now - lastGroqCallAt < MIN_GROQ_INTERVAL_MS) {
+      console.log('AnswerHunter: Aguardando cooldown do Groq.');
+      await new Promise(resolve => setTimeout(resolve, MIN_GROQ_INTERVAL_MS));
+    }
+    lastGroqCallAt = Date.now();
 
-CONTEÚDO BRUTO EXTRAÍDO DO SITE:
+    const prompt = `VocÃª Ã© um especialista em extrair respostas de questÃµes educacionais de sites como Brainly e Passei Direto.
 
-=== ÁREA DA PERGUNTA ===
+CONTEÃšDO BRUTO EXTRAÃDO DO SITE:
+
+=== ÃREA DA PERGUNTA ===
 ${item.question}
 
-=== ÁREA DA RESPOSTA ===
+=== ÃREA DA RESPOSTA ===
 ${item.answer}
 
-INSTRUÇÕES CRÍTICAS:
+INSTRUÃ‡Ã•ES CRÃTICAS:
 
-1. DETECTE O TIPO DE QUESTÃO:
-   - Múltipla escolha tradicional (A, B, C, D, E)
-   - Asserções (I, II, III com análise de quais estão corretas)
+1. DETECTE O TIPO DE QUESTÃƒO:
+   - MÃºltipla escolha tradicional (A, B, C, D, E)
+   - AsserÃ§Ãµes (I, II, III com anÃ¡lise de quais estÃ£o corretas)
    - Verdadeiro/Falso
-   - Questão aberta
+   - QuestÃ£o aberta
 
 2. ENCONTRE A RESPOSTA CORRETA:
-   - Procure por indicações como "Gab", "Gabarito", "Resposta correta", "alternativa correta é"
-   - Procure frases como "I e II estão corretas", "apenas I está correta", etc.
-   - A resposta geralmente está na área de resposta, NÃO na pergunta
+   - Procure por indicaÃ§Ãµes como "Gab", "Gabarito", "Resposta correta", "alternativa correta Ã©"
+   - Procure frases como "I e II estÃ£o corretas", "apenas I estÃ¡ correta", etc.
+   - A resposta geralmente estÃ¡ na Ã¡rea de resposta, NÃƒO na pergunta
 
 3. IGNORE COMPLETAMENTE:
    - Textos promocionais (Assine, Plus, Premium, desbloqueie)
-   - Metadata de usuários (especialista, votos, útil, respostas)
+   - Metadata de usuÃ¡rios (especialista, votos, Ãºtil, respostas)
    - Outras perguntas que aparecem no site
-   - Se for APENAS conteúdo promocional, responda: INVALIDO
+   - Se for APENAS conteÃºdo promocional, responda: INVALIDO
 
-4. FORMATO DE SAÍDA:
+4. FORMATO DE SAÃDA:
 
-Para questões de ASSERÇÕES (I, II, III):
-PERGUNTA: [enunciado com as asserções]
-RESPOSTA: [ex: "I e II estão corretas" ou "Apenas a asserção I é verdadeira"]
+Para questÃµes de ASSERÃ‡Ã•ES (I, II, III):
+PERGUNTA: [enunciado com as asserÃ§Ãµes]
+RESPOSTA: [ex: "I e II estÃ£o corretas" ou "Apenas a asserÃ§Ã£o I Ã© verdadeira"]
 
-Para MÚLTIPLA ESCOLHA (A, B, C, D, E):
+Para MÃšLTIPLA ESCOLHA (A, B, C, D, E):
 PERGUNTA: [enunciado]
-A) [opção A]
-B) [opção B]
-C) [opção C]
-D) [opção D]
-E) [opção E se houver]
+A) [opÃ§Ã£o A]
+B) [opÃ§Ã£o B]
+C) [opÃ§Ã£o C]
+D) [opÃ§Ã£o D]
+E) [opÃ§Ã£o E se houver]
 RESPOSTA: Alternativa [LETRA]: [texto da alternativa]
 
-Para questão ABERTA:
+Para questÃ£o ABERTA:
 PERGUNTA: [pergunta]
 RESPOSTA: [resposta direta]
 
-IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resposta.`;
+IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma resposta.`;
 
     try {
       const response = await fetch(GROQ_API_URL, {
@@ -246,7 +358,7 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
           messages: [
             {
               role: 'system',
-              content: 'Você extrai respostas de sites educacionais como Brainly. Identifique o tipo de questão (múltipla escolha, asserções I/II/III, ou aberta). Procure por indicações de gabarito como "Gab", "I e II estão corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteúdo promocional, responda INVALIDO.'
+              content: 'VocÃª extrai respostas de sites educacionais como Brainly. Identifique o tipo de questÃ£o (mÃºltipla escolha, asserÃ§Ãµes I/II/III, ou aberta). Procure por indicaÃ§Ãµes de gabarito como "Gab", "I e II estÃ£o corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteÃºdo promocional, responda INVALIDO.'
             },
             {
               role: 'user',
@@ -258,6 +370,11 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
         })
       });
 
+      if (response.status === 429) {
+      console.log('AnswerHunter: Rate Limit (429). Pulando Groq e usando fallback.');
+        return null;
+      }
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -265,7 +382,10 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
       const data = await response.json();
       const content = data.choices[0]?.message?.content?.trim() || '';
 
+      console.log('AnswerHunter: Debug - Resposta RAW da IA:', content);
+
       if (content === 'INVALIDO' || content.includes('INVALIDO')) {
+        console.log('AnswerHunter: Debug - IA marcou como INVALIDO');
         return null;
       }
 
@@ -345,6 +465,17 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
     });
   });
 
+  // === CLEAR BINDER ===
+  const clearBtn = document.getElementById('clearBinderBtn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (window.binderManager) window.binderManager.clearAll();
+    });
+  }
+
+  // Init binder to ensure data is loaded for checks
+  if (window.binderManager) window.binderManager.init();
+
   // === DISPLAY ===
   function displayResults(data) {
     if (!resultsDiv) return;
@@ -353,18 +484,24 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
       return;
     }
 
-    resultsDiv.innerHTML = data.map((item, index) => `
+    resultsDiv.innerHTML = data.map((item, index) => {
+      const isSaved = window.binderManager && window.binderManager.isSaved(item.question);
+      const savedClass = isSaved ? 'saved filled' : '';
+      const iconText = isSaved ? 'bookmark' : 'bookmark_border';
+
+      return `
             <div class="qa-item">
                <div class="qa-actions" style="position: absolute; top: 10px; right: 10px;">
-                   <button class="action-btn save-btn material-symbols-rounded" data-index="${index}" title="Salvar">bookmark_border</button>
+                   <button class="action-btn save-btn material-symbols-rounded ${savedClass}" data-index="${index}" title="Salvar">${iconText}</button>
                </div>
                <div class="question">${escapeHtml(item.question)}</div>
                <div class="answer">${escapeHtml(item.answer)}</div>
                ${item.source ? `<div class="source"><a href="${item.source}" target="_blank">Fonte</a></div>` : ''}
             </div>
-        `).join('');
+        `;
+    }).join('');
 
-    // Event Delegation para o botão Salvar
+    // Event Delegation para o botÃ£o Salvar
     resultsDiv.onclick = (e) => {
       const btn = e.target.closest('.save-btn');
       if (btn) {
@@ -380,7 +517,7 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
 });
 
 // ==========================================
-// === FUNÇÕES INJETADAS (CONTENTSCRIPT) ===
+// === FUNÃ‡Ã•ES INJETADAS (CONTENTSCRIPT) ===
 // ==========================================
 
 // 1. Extrair Pergunta e Resposta (Completo/Robusto)
@@ -522,139 +659,140 @@ function extractQAContent() {
 
 // === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
 function extractQuestionOnly() {
-  console.log('AnswerHunter: Iniciando extração (v2 robusta)...');
+  console.log('AnswerHunter: Iniciando extração (v12 - filtro de questão)...');
 
-  // === MÉTODO ESPECÍFICO PARA ESTÁCIO (Via data-testid) ===
-  // Detectar se é o portal da Estácio
-  const isEstacio = document.querySelector('[data-testid="wrapper-Practice"]') ||
-    document.querySelector('[data-testid^="question-"]') ||
-    window.location.hostname.includes('estacio');
-
-  if (isEstacio) {
-    // Pegar todos os containers de questão
-    const questionContainers = document.querySelectorAll('[data-testid^="question-"]');
-    let targetContainer = null;
-
-    // LÓGICA DE DETECÇÃO DA QUESTÃO VISÍVEL (VIEWPORT)
-    if (questionContainers.length > 0) {
-      let maxVisibility = 0;
-
-      questionContainers.forEach(container => {
-        const rect = container.getBoundingClientRect();
-
-        // Calcular sobreposição com a janela visível
-        const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
-        const visibleWidth = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
-
-        // Se o elemento está visível
-        if (visibleHeight > 0 && visibleWidth > 0) {
-          const area = visibleHeight * visibleWidth;
-
-          // Prioriza o elemento que ocupa mais espaço na tela
-          if (area > maxVisibility) {
-            maxVisibility = area;
-            targetContainer = container;
+  function getFullPageText() {
+    // Tentar pegar texto de iframes primeiro
+    const iframes = document.querySelectorAll('iframe');
+    for (const iframe of iframes) {
+      try {
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+        if (iframeDoc && iframeDoc.body) {
+          const text = iframeDoc.body.innerText || '';
+          if (text.length > 100) {
+            console.log('AnswerHunter: Texto do iframe:', text.length, 'chars');
+            return text;
           }
         }
-      });
+      } catch (e) {
+        // Cross-origin bloqueado
+      }
+    }
+    
+    // Fallback: texto do body principal
+    return document.body ? (document.body.innerText || '') : '';
+  }
 
-      // Se nenhum estiver visível (ex: todos fora da tela), pega o primeiro
-      if (!targetContainer) {
-        targetContainer = questionContainers[0];
+  function extractQuestionBlock(fullText) {
+    // Padrão 1: "Atividade X" seguido de texto até "Responda" ou fim das alternativas
+    const activityMatch = fullText.match(/(?:Atividade|Questão|Exercício|Pergunta)\s*\d+\s*\n([^]*?)(?:\nResponda|\nO que você achou|\nRelatar problema|\nVoltar\s*\nAvançar|$)/i);
+    
+    if (activityMatch) {
+      let questionBlock = activityMatch[0];
+      
+      // Limpar o final
+      questionBlock = questionBlock
+        .replace(/\nResponda[\s\S]*$/i, '')
+        .replace(/\nO que você achou[\s\S]*$/i, '')
+        .replace(/\nRelatar problema[\s\S]*$/i, '')
+        .replace(/\nVoltar[\s\S]*$/i, '')
+        .trim();
+      
+      if (questionBlock.length > 50) {
+        console.log('AnswerHunter: Extraído via padrão Atividade/Questão');
+        return questionBlock;
       }
     }
 
-    if (targetContainer) {
-      console.log('AnswerHunter: Container encontrado:', targetContainer.getAttribute('data-testid'));
-
-      // 1. Extrair Enunciado
-      // Estratégia: Pegar o data-testid="question-typography" que NÃO está dentro de uma alternativa
-      const allTypography = targetContainer.querySelectorAll('[data-testid="question-typography"]');
-      let enunciado = '';
-
-      for (const el of allTypography) {
-        // Verificar se esse elemento ou seus pais são um botão de alternativa
-        if (!el.closest('button[data-testid^="alternative-"]')) {
-          // É parte do enunciado
-          enunciado += ' ' + (el.textContent || '').trim();
+    // Padrão 2: Bloco que contém ? e alternativas A, B, C, D, E
+    const lines = fullText.split('\n');
+    let capturing = false;
+    let questionLines = [];
+    let hasQuestion = false;
+    let hasAlternatives = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Começar a capturar quando encontrar "Atividade X" ou similar
+      if (/^(Atividade|Questão|Exercício|Pergunta)\s*\d+$/i.test(line)) {
+        capturing = true;
+        questionLines = [line];
+        hasQuestion = false;
+        hasAlternatives = 0;
+        continue;
+      }
+      
+      if (capturing) {
+        // Parar se encontrar marcadores de fim
+        if (/^(Responda|O que você achou|Relatar problema|Voltar|Menu)$/i.test(line)) {
+          break;
+        }
+        
+        questionLines.push(line);
+        
+        if (line.includes('?')) hasQuestion = true;
+        if (/^[A-E]$/.test(line)) hasAlternatives++;
+        
+        // Se já tem pergunta e 5 alternativas, parar
+        if (hasQuestion && hasAlternatives >= 5) {
+          break;
         }
       }
-      enunciado = enunciado.trim();
-      console.log('AnswerHunter: Enunciado extraído:', enunciado.substring(0, 50));
+    }
+    
+    if (questionLines.length > 3 && hasQuestion) {
+      console.log('AnswerHunter: Extraído via análise linha a linha');
+      return questionLines.join('\n').trim();
+    }
 
-      // 2. Extrair Alternativas
-      const alternativas = [];
-      const altButtons = targetContainer.querySelectorAll('button[data-testid^="alternative-"]');
+    // Padrão 3: Qualquer texto entre "Atividade X" e alternativas
+    const simpleMatch = fullText.match(/(?:Atividade|Questão)\s*\d+\s*([^]*?)\s*(?:\n[A-E]\n[^]+\n[A-E]\n)/i);
+    if (simpleMatch) {
+      console.log('AnswerHunter: Extraído via regex simples');
+      return simpleMatch[0].trim();
+    }
 
-      altButtons.forEach(btn => {
-        const letraEl = btn.querySelector('[data-testid="circle-letter"]');
-        const textoEl = btn.querySelector('[data-testid="question-typography"]');
+    return '';
+  }
 
-        if (letraEl && textoEl) {
-          const letra = letraEl.innerText.replace(/[\n\r]/g, '').trim();
-          const texto = textoEl.innerText.replace(/[\n\r]/g, ' ').trim();
-          alternativas.push(`${letra}) ${texto}`);
-        }
-      });
+  // Pegar o texto completo
+  const fullText = getFullPageText();
+  console.log('AnswerHunter: Texto total:', fullText.length, 'chars');
+  
+  // Extrair apenas o bloco da questão
+  const questionBlock = extractQuestionBlock(fullText);
+  
+  if (questionBlock && questionBlock.length > 50) {
+    const cleaned = questionBlock.replace(/\s+/g, ' ').trim().substring(0, 3500);
+    console.log('AnswerHunter: Questão extraída:', cleaned.substring(0, 150) + '...');
+    return cleaned;
+  }
 
-      let questaoCompleta = enunciado;
-      if (alternativas.length > 0) {
-        questaoCompleta += '\n\n' + alternativas.join('\n');
-      }
-
-      if (questaoCompleta.length > 20) {
-        return questaoCompleta.substring(0, 2500);
-      }
+  // Último fallback: primeiro bloco com ?
+  console.log('AnswerHunter: Fallback - buscando bloco com ?');
+  const blocks = fullText.split(/\n{2,}/);
+  for (const block of blocks) {
+    if (block.includes('?') && block.length > 30 && block.length < 2000) {
+      // Ignorar blocos que parecem menu
+      if (/progresso|concluídos|acessar|disciplina/i.test(block)) continue;
+      
+      console.log('AnswerHunter: Usando bloco com ?');
+      return block.replace(/\s+/g, ' ').trim().substring(0, 3500);
     }
   }
 
-  // === MÉTODO GENÉRICO DE BACKUP ===
-  // Se falhar o método específico, tenta pegar texto visível com heurísticas
-  console.log('AnswerHunter: Tentando método genérico...');
-
-  // Lista de seletores comuns em sites de questões
-  const genericSelectors = [
-    // Estácio (caso mude data-testid)
-    '.questao-texto', '.enunciado',
-    // Gran Cursos, QConcursos, etc
-    '.q-question-text', '.js-question-text',
-    '.text-content', '.statement',
-    // Genérico
-    'div[class*="texto"]', 'div[class*="enunciado"]'
-  ];
-
-  for (const sel of genericSelectors) {
-    const el = document.querySelector(sel);
-    if (el && el.innerText.length > 50) {
-      return el.innerText.trim().substring(0, 2000);
-    }
-  }
-
-  // Fallback final: Texto selecionado pelo usuário (se houver)
-  const selection = window.getSelection().toString().trim();
-  if (selection.length > 20) {
-    console.log('AnswerHunter: Usando texto selecionado pelo usuário.');
-    return selection;
-  }
-
-  // Fallback bruto: Regex no body
-  const bodyText = document.body.innerText;
-  const match = bodyText.match(/(?:Questão|Pergunta)\s*\d+[:\s\n]*([^]*?)(?:Alternativa|a\)|A\))/i);
-  if (match && match[1] && match[1].length > 50) {
-    return match[1].trim().substring(0, 1000);
-  }
-
+  console.log('AnswerHunter: Nada encontrado.');
   return '';
 }
-
 // ==========================================
 // === BINDER MANAGER (Real) ===
 // ==========================================
 
 
 window.binderManager = {
-  data: [], // Estrutura em árvore
-  currentFolderId: 'root', // Pasta atual visível
+  data: [], // Estrutura em Ã¡rvore
+  currentFolderId: 'root', // Pasta atual visÃ­vel
   draggedItem: null, // Item sendo arrastado
 
   init() {
@@ -711,7 +849,7 @@ window.binderManager = {
   },
 
   moveItem(itemId, targetFolderId) {
-    // Helper para remover item de qualquer lugar na árvore
+    // Helper para remover item de qualquer lugar na Ã¡rvore
     const removeFromTree = (nodes, id) => {
       for (let i = 0; i < nodes.length; i++) {
         if (nodes[i].id === id) {
@@ -725,7 +863,7 @@ window.binderManager = {
       return null;
     };
 
-    // Previne mover uma pasta para dentro dela mesma (básico)
+    // Previne mover uma pasta para dentro dela mesma (bÃ¡sico)
     if (itemId === targetFolderId) return;
 
     const itemNode = removeFromTree(this.data, itemId);
@@ -736,7 +874,7 @@ window.binderManager = {
         this.save();
         this.render();
       } else {
-        // Se falhar (ex: target não existe), recarrega para restaurar
+        // Se falhar (ex: target nÃ£o existe), recarrega para restaurar
         this.init();
       }
     }
@@ -745,6 +883,81 @@ window.binderManager = {
   navigateTo(id) {
     this.currentFolderId = id;
     this.render();
+  },
+
+  deleteNode(id) {
+    if (!confirm('Deseja realmente excluir este item?')) return;
+
+    const removeFromTree = (nodes, id) => {
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].id === id) {
+          nodes.splice(i, 1);
+          return true;
+        }
+        if (nodes[i].children) {
+          if (removeFromTree(nodes[i].children, id)) return true;
+        }
+      }
+      return false;
+    };
+
+    if (removeFromTree(this.data, id)) {
+      this.save();
+      this.render();
+      // Atualizar Ã­cones de salvo na busca se necessÃ¡rio
+      const activeTab = document.querySelector('.tab-btn.active');
+      if (activeTab && activeTab.dataset.tab === 'search') {
+        // Re-render search results handled poorly but ok for now
+      }
+    }
+  },
+
+  clearAll() {
+    if (confirm('Tem certeza que deseja apagar TODO o fichÃ¡rio? Esta aÃ§Ã£o Ã© irreversÃ­vel.')) {
+      this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
+      this.currentFolderId = 'root';
+      this.save();
+      this.render();
+      // Atualizar UI de busca
+      document.querySelectorAll('.save-btn').forEach(btn => {
+        btn.classList.remove('saved', 'filled');
+        btn.textContent = 'bookmark_border';
+      });
+    }
+  },
+
+  isSaved(questionText) {
+    const search = (nodes) => {
+      for (const node of nodes) {
+        if (node.type === 'question' && node.content && node.content.question === questionText) return true;
+        if (node.children) {
+          if (search(node.children)) return true;
+        }
+      }
+      return false;
+    };
+    return search(this.data);
+  },
+
+  removeByContent(questionText) {
+    const removeFromTree = (nodes) => {
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].type === 'question' && nodes[i].content && nodes[i].content.question === questionText) {
+          nodes.splice(i, 1);
+          return true;
+        }
+        if (nodes[i].children) {
+          if (removeFromTree(nodes[i].children)) return true;
+        }
+      }
+      return false;
+    };
+    if (removeFromTree(this.data)) {
+      this.save();
+      this.render();
+      return true;
+    }
+    return false;
   },
 
   render() {
@@ -767,14 +980,56 @@ window.binderManager = {
     folder.children.forEach(item => {
       if (item.type === 'folder') {
         html += `<div class="folder-item drop-zone" draggable="true" data-id="${item.id}" data-type="folder">
-                    <span class="material-symbols-rounded">folder</span> ${item.title}
+                    <div style="display:flex;align-items:center;gap:8px;pointer-events:none">
+                       <span class="material-symbols-rounded">folder</span> ${item.title}
+                    </div>
+                    <button class="action-btn delete-btn" data-id="${item.id}" title="Excluir"><span class="material-symbols-rounded" style="font-size:18px">delete</span></button>
                 </div>`;
       } else {
+        const questionPreview = item.content.question.length > 50 
+          ? item.content.question.substring(0, 50) + '...' 
+          : item.content.question;
+        const savedDate = item.createdAt ? new Date(item.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) : '';
+        
         html += `<div class="qa-item expandable" draggable="true" data-id="${item.id}" data-type="question">
-                    <div class="summary-view">${item.content.question.substring(0, 60)}...</div>
+                    <div class="summary-view">
+                        <div class="summary-icon">
+                            <span class="material-symbols-rounded">quiz</span>
+                        </div>
+                        <div class="summary-content">
+                            <div class="summary-title">${questionPreview}</div>
+                            <div class="summary-meta">
+                                <span class="material-symbols-rounded">schedule</span>
+                                ${savedDate || 'Salvo'}
+                            </div>
+                        </div>
+                        <span class="material-symbols-rounded expand-indicator">expand_more</span>
+                    </div>
                     <div class="full-view" style="display:none">
-                       <p>${item.content.question}</p>
-                       <p>${item.content.answer}</p>
+                        <div class="full-question">
+                            <div class="full-question-label">
+                                <span class="material-symbols-rounded" style="font-size:14px">help_outline</span>
+                                Questão
+                            </div>
+                            <div class="full-question-text">${item.content.question}</div>
+                        </div>
+                        <div class="full-answer">
+                            <div class="full-answer-label">
+                                <span class="material-symbols-rounded" style="font-size:14px">check_circle</span>
+                                Resposta Correta
+                            </div>
+                            <div class="full-answer-text">${item.content.answer}</div>
+                        </div>
+                        <div class="full-actions">
+                            <button class="action-btn copy-single-btn" data-id="${item.id}" title="Copiar">
+                                <span class="material-symbols-rounded" style="font-size:16px">content_copy</span>
+                                Copiar
+                            </button>
+                            <button class="action-btn delete-btn" data-id="${item.id}" title="Excluir">
+                                <span class="material-symbols-rounded" style="font-size:16px">delete</span>
+                                Excluir
+                            </button>
+                        </div>
                     </div>
                 </div>`;
       }
@@ -789,6 +1044,9 @@ window.binderManager = {
 
     const btnBack = document.getElementById('btnBackRoot');
     if (btnBack) btnBack.onclick = () => this.navigateTo('root');
+
+    const btnClearAll = document.getElementById('clearBinderBtn');
+    if (btnClearAll) btnClearAll.onclick = () => this.clearAll();
 
     // Drag & Drop Listeners
     const items = container.querySelectorAll('[draggable="true"]');
@@ -810,7 +1068,7 @@ window.binderManager = {
     const folders = container.querySelectorAll('.folder-item');
     folders.forEach(el => {
       el.addEventListener('dragover', (e) => {
-        e.preventDefault(); // Necessário para permitir o drop
+        e.preventDefault(); // NecessÃ¡rio para permitir o drop
         e.dataTransfer.dropEffect = 'move';
         el.classList.add('drag-over');
       });
@@ -829,10 +1087,45 @@ window.binderManager = {
       });
     });
 
-    // Delegation for Click (Navigation & Expand)
+    // Delegation for Click (Navigation, Expand, Delete, Copy)
     const contentDiv = container.querySelector('.binder-content');
     if (contentDiv) {
       contentDiv.onclick = (e) => {
+        // Click Delete
+        const delBtn = e.target.closest('.delete-btn');
+        if (delBtn) {
+          e.stopPropagation();
+          this.deleteNode(delBtn.dataset.id);
+          return;
+        }
+
+        // Click Copy
+        const copyBtn = e.target.closest('.copy-single-btn');
+        if (copyBtn) {
+          e.stopPropagation();
+          const itemId = copyBtn.dataset.id;
+          const item = this.findNode(itemId);
+          if (item && item.content) {
+            const text = `Questão: ${item.content.question}\n\nResposta: ${item.content.answer}`;
+            navigator.clipboard.writeText(text).then(() => {
+              // Feedback visual
+              const icon = copyBtn.querySelector('.material-symbols-rounded');
+              const originalText = icon.nextSibling.textContent;
+              icon.textContent = 'check';
+              icon.nextSibling.textContent = ' Copiado!';
+              copyBtn.style.background = '#27AE60';
+              copyBtn.style.color = '#FFF';
+              setTimeout(() => {
+                icon.textContent = 'content_copy';
+                icon.nextSibling.textContent = originalText;
+                copyBtn.style.background = '';
+                copyBtn.style.color = '';
+              }, 1500);
+            });
+          }
+          return;
+        }
+
         // Click Folder (Navegação)
         const folderItem = e.target.closest('.folder-item');
         if (folderItem) {
@@ -861,11 +1154,21 @@ window.saveItem = function (btn) {
   const item = refinedData[index];
 
   if (item && window.binderManager) {
-    window.binderManager.addItem(item.question, item.answer, item.source);
-
-    // Feedback Visual
-    btn.textContent = 'bookmark';
-    btn.classList.add('saved', 'filled');
-    btn.onclick = null; // Previne duplo clique
+    if (btn.classList.contains('saved')) {
+      // Desmarcar (Remover)
+      if (window.binderManager.removeByContent(item.question)) {
+        btn.textContent = 'bookmark_border';
+        btn.classList.remove('saved', 'filled');
+      }
+    } else {
+      // Salvar (Adicionar)
+      window.binderManager.addItem(item.question, item.answer, item.source);
+      // Feedback Visual
+      btn.textContent = 'bookmark';
+      btn.classList.add('saved', 'filled');
+    }
   }
 };
+
+
+

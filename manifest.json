@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "AnswerHunter",
-    "version": "1.2.0",
+    "version": "1.2.3",
     "description": "Caçador de respostas - Encontra respostas para questões educacionais com IA",
     "permissions": [
         "activeTab",
@@ -11,27 +11,27 @@
     "host_permissions": [
         "https://api.groq.com/*",
         "https://google.serper.dev/*",
-        "https://*.brainly.com.br/*",
-        "https://*.passeidireto.com/*"
+        "<all_urls>"
     ],
     "action": {
         "default_popup": "popup.html",
         "default_icon": {
-            "16": "icons/icon16.png",
-            "48": "icons/icon48.png",
-            "128": "icons/icon128.png"
+            "16": "icons/app_icon_16.png",
+            "48": "icons/app_icon_48.png",
+            "128": "icons/app_icon_128.png"
         }
     },
     "icons": {
-        "16": "icons/icon16.png",
-        "48": "icons/icon48.png",
-        "128": "icons/icon128.png"
+        "16": "icons/app_icon_16.png",
+        "48": "icons/app_icon_48.png",
+        "128": "icons/app_icon_128.png"
     },
     "content_scripts": [
         {
             "matches": [
                 "<all_urls>"
             ],
+            "all_frames": true,
             "js": [
                 "content.js"
             ],
