@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // === EXTRAIR DA PÃGINA ATUAL ===
   if (extractBtn) {
     extractBtn.addEventListener('click', async () => {
-      showStatus('loading', 'Extraindo conteÃºdo...');
+      showStatus('loading', 'Extraindo conteúdo...');
       extractBtn.disabled = true;
 
       try {
@@ -51,10 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (refinedData.length > 0) {
               displayResults(refinedData);
-              showStatus('success', `${refinedData.length} questÃ£o(Ãµes) encontrada(s)!`);
+              showStatus('success', `${refinedData.length} questão(ões) encontrada(s)!`);
               if (copyBtn) copyBtn.disabled = false;
             } else {
-              showStatus('error', 'Nenhuma questÃ£o vÃ¡lida encontrada');
+              showStatus('error', 'Nenhuma questão válida encontrada');
               displayResults([]);
             }
           } else {
