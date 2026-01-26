@@ -15,31 +15,51 @@
       <p class="subtitle">Caçador de respostas educacionais</p>
     </header>
 
-    <div class="controls">
-      <div class="btn-group">
-        <button id="searchBtn" class="btn-search">
-          <span class="icon">🔎</span>
-          Buscar Resposta
-        </button>
-        <button id="extractBtn" class="btn-primary">
-          <span class="icon">📄</span>
-          Extrair Página
-        </button>
-      </div>
-      <button id="copyBtn" class="btn-secondary" disabled>
-        <span class="icon">📋</span>
-        Copiar Resposta
-      </button>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="search">🔍 Buscar</button>
+      <button class="tab-btn" data-tab="binder">📁 Fichário</button>
     </div>
 
-    <div id="status" class="status"></div>
+    <!-- VISÃO DE BUSCA -->
+    <div id="view-search" class="view-section active">
+      <div class="controls">
+        <div class="btn-group">
+          <button id="searchBtn" class="btn-search">
+            <span class="icon">🔎</span>
+            Buscar
+          </button>
+          <button id="extractBtn" class="btn-primary">
+            <span class="icon">📄</span>
+            Extrair
+          </button>
+        </div>
+        <button id="copyBtn" class="btn-secondary" disabled>
+          <span class="icon">📋</span>
+          Copiar Tudo
+        </button>
+      </div>
 
-    <div id="results" class="results">
-      <div class="placeholder">
-        <span class="emoji">📚</span>
-        <p><b>Extrair Página:</b> Extrai Q&A visível na página atual<br>
-          <b>Buscar Resposta:</b> Busca a pergunta no Google
-        </p>
+      <div id="status" class="status"></div>
+
+      <div id="results" class="results">
+        <div class="placeholder">
+          <span class="emoji">📚</span>
+          <p>Encontre respostas e salve em seu fichário!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISÃO DE FICHÁRIO -->
+    <div id="view-binder" class="view-section">
+      <div class="binder-header">
+        <h2>Meus Estudos</h2>
+        <button id="clearBinderBtn" class="btn-text">Limpar tudo</button>
+      </div>
+      <div id="binder-list" class="results">
+        <div class="placeholder">
+          <span class="emoji">📂</span>
+          <p>Seu fichário está vazio.<br>Salve questões para estudar depois.</p>
+        </div>
       </div>
     </div>
 

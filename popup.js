@@ -316,6 +316,92 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
     statusDiv.textContent = message;
   }
 
+  // === ABAS DE NAVEGAÇÃO ===
+  const tabs = document.querySelectorAll('.tab-btn');
+  const sections = document.querySelectorAll('.view-section');
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      // Ativar aba
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      // Mostrar seção
+      const target = tab.getAttribute('data-tab');
+      sections.forEach(s => {
+        s.classList.remove('active');
+        if (s.id === `view-${target}`) s.classList.add('active');
+      });
+
+      // Se abriu fichário, carregar dados
+      if (target === 'binder') {
+        loadBinder();
+      }
+    });
+  });
+
+  // === FICHÁRIO: CARREGAR ===
+  function loadBinder() {
+    chrome.storage.local.get(['savedQuestions'], (result) => {
+      const saved = result.savedQuestions || [];
+      const binderList = document.getElementById('binder-list');
+
+      if (saved.length === 0) {
+        binderList.innerHTML = `
+          <div class="placeholder">
+            <span class="emoji">📂</span>
+            <p>Seu fichário está vazio.<br>Salve questões para estudar depois.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Renderizar itens salvos (ordem inversa: mais recentes primeiro)
+      binderList.innerHTML = saved.reverse().map((item, index) => `
+        <div class="qa-item">
+          <div class="qa-actions">
+            <button class="action-btn delete-btn" data-id="${item.id}" title="Remover do Fichário">🗑️</button>
+          </div>
+          <div class="question">${escapeHtml(item.question).replace(/\n/g, '<br>')}</div>
+          <div class="answer">${escapeHtml(item.answer)}</div>
+          ${item.source ? `<div class="source">🔗 <a href="${item.source}" target="_blank">Fonte</a></div>` : ''}
+        </div>
+      `).join('');
+
+      // Adicionar eventos de delete
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = e.currentTarget.getAttribute('data-id');
+          removeFromBinder(id);
+        });
+      });
+    });
+  }
+
+  // === FICHÁRIO: REMOVER ITEM ===
+  function removeFromBinder(id) {
+    chrome.storage.local.get(['savedQuestions'], (result) => {
+      let saved = result.savedQuestions || [];
+      saved = saved.filter(q => q.id !== id);
+      chrome.storage.local.set({ savedQuestions: saved }, () => {
+        loadBinder(); // Recarregar lista
+
+        // Atualizar listagem da busca se estiver visível (remover estrela cheia)
+        const starBtn = document.querySelector(`.save-btn[data-id="${id}"]`);
+        if (starBtn) starBtn.classList.remove('saved');
+      });
+    });
+  }
+
+  // === FICHÁRIO: LIMPAR TUDO ===
+  document.getElementById('clearBinderBtn').addEventListener('click', () => {
+    if (confirm('Tem certeza que deseja apagar todo o seu fichário?')) {
+      chrome.storage.local.set({ savedQuestions: [] }, () => {
+        loadBinder();
+      });
+    }
+  });
+
   function displayResults(data) {
     if (data.length === 0) {
       resultsDiv.innerHTML = `
@@ -327,13 +413,70 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
       return;
     }
 
-    resultsDiv.innerHTML = data.map(item => `
+    // Gerar ID único para cada questão para controle de salvamento
+    data.forEach(item => {
+      if (!item.id) item.id = md5(item.question); // Simple hash or timestamp based ID
+    });
+
+    resultsDiv.innerHTML = data.map(item => {
+      const itemId = item.id || Date.now().toString(36) + Math.random().toString(36).substr(2);
+      item.id = itemId; // Garantir que item tenha ID
+
+      return `
       <div class="qa-item">
+        <div class="qa-actions">
+           <button class="action-btn save-btn" data-id="${itemId}" title="Salvar no Fichário">☆</button>
+        </div>
         <div class="question">${escapeHtml(item.question).replace(/\n/g, '<br>')}</div>
         <div class="answer">${escapeHtml(item.answer)}</div>
         ${item.source ? `<div class="source">🔗 <a href="${item.source}" target="_blank">Fonte</a></div>` : ''}
       </div>
-    `).join('');
+    `}).join('');
+
+    // Adicionar eventos de salvar
+    document.querySelectorAll('.save-btn').forEach((btn, index) => {
+      const item = data[index];
+      // Verificar se já está salvo
+      checkIfSaved(item.id, btn);
+
+      btn.addEventListener('click', () => {
+        toggleSave(item, btn);
+      });
+    });
+  }
+
+  function checkIfSaved(id, btn) {
+    chrome.storage.local.get(['savedQuestions'], (result) => {
+      const saved = result.savedQuestions || [];
+      if (saved.some(q => q.id === id)) {
+        btn.classList.add('saved');
+        btn.textContent = '⭐';
+      } else {
+        btn.classList.remove('saved');
+        btn.textContent = '☆';
+      }
+    });
+  }
+
+  function toggleSave(item, btn) {
+    chrome.storage.local.get(['savedQuestions'], (result) => {
+      let saved = result.savedQuestions || [];
+      const index = saved.findIndex(q => q.id === item.id);
+
+      if (index !== -1) {
+        // Já salvo, remover
+        saved.splice(index, 1);
+        btn.classList.remove('saved');
+        btn.textContent = '☆';
+      } else {
+        // Não salvo, adicionar
+        saved.push(item);
+        btn.classList.add('saved');
+        btn.textContent = '⭐';
+      }
+
+      chrome.storage.local.set({ savedQuestions: saved });
+    });
   }
 
   function escapeHtml(text) {
@@ -342,6 +485,16 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
     return div.innerHTML;
   }
 });
+
+// Utilitário simples de Hash para ID (se precisar)
+function md5(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
 
 // === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
 function extractQuestionOnly() {
@@ -354,14 +507,37 @@ function extractQuestionOnly() {
     window.location.hostname.includes('estacio');
 
   if (isEstacio) {
-    // Tenta encontrar o container da questão ativa/visível
-    // Geralmente é o primeiro que aparece ou o que não está oculto
+    // Pegar todos os containers de questão
     const questionContainers = document.querySelectorAll('[data-testid^="question-"]');
     let targetContainer = null;
 
-    // Se tiver mais de uma, tenta pegar a visível (heurística simples: a primeira geralmente é a ativa no modo de revisão ou prova)
+    // LÓGICA DE DETECÇÃO DA QUESTÃO VISÍVEL (VIEWPORT)
     if (questionContainers.length > 0) {
-      targetContainer = questionContainers[0];
+      let maxVisibility = 0;
+
+      questionContainers.forEach(container => {
+        const rect = container.getBoundingClientRect();
+
+        // Calcular sobreposição com a janela visível
+        const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+        const visibleWidth = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
+
+        // Se o elemento está visível
+        if (visibleHeight > 0 && visibleWidth > 0) {
+          const area = visibleHeight * visibleWidth;
+
+          // Prioriza o elemento que ocupa mais espaço na tela
+          if (area > maxVisibility) {
+            maxVisibility = area;
+            targetContainer = container;
+          }
+        }
+      });
+
+      // Se nenhum estiver visível (ex: todos fora da tela), pega o primeiro
+      if (!targetContainer) {
+        targetContainer = questionContainers[0];
+      }
     }
 
     if (targetContainer) {
