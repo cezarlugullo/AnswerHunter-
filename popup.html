@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AnswerHunter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <div class="container">
+    <header>
+      <h1>🎯 AnswerHunter</h1>
+      <p class="subtitle">Caçador de respostas educacionais</p>
+    </header>
+
+    <div class="controls">
+      <button id="extractBtn" class="btn-primary">
+        <span class="icon">🔍</span>
+        Extrair Página
+      </button>
+      <button id="searchBtn" class="btn-search">
+        <span class="icon">🌐</span>
+        Buscar Resposta
+      </button>
+      <button id="copyBtn" class="btn-secondary" disabled>
+        <span class="icon">📋</span>
+        Copiar
+      </button>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div id="results" class="results">
+      <div class="placeholder">
+        <span class="emoji">📚</span>
+        <p><b>Extrair Página:</b> Extrai Q&A visível na página atual<br>
+          <b>Buscar Resposta:</b> Busca a pergunta no Google
+        </p>
+      </div>
+    </div>
+
+    <footer>
+      <p>🤖 Respostas refinadas automaticamente com IA</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>
