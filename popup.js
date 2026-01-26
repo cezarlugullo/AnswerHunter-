@@ -74,6 +74,13 @@ document.addEventListener('DOMContentLoaded', () => {
   // === EXTRAIR MÚLTIPLAS QUESTÕES ===
   const extractMultipleBtn = document.getElementById('extractMultipleBtn');
   const searchMultipleBtn = document.getElementById('searchMultipleBtn');
+  const autoSearchBtn = document.getElementById('autoSearchBtn');
+  
+  // Estado do auto search
+  let autoSearchActive = false;
+  let allQuestionsForAuto = [];
+  let currentVisibleQuestionIndex = -1;
+  let searchedQuestions = new Set();
   
   if (extractMultipleBtn) {
     extractMultipleBtn.addEventListener('click', async () => {
@@ -128,7 +135,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (searchMultipleBtn) {
     searchMultipleBtn.addEventListener('click', async () => {
-      showStatus('loading', 'Extraindo questões...');
+      if (autoSearchActive) {
+        // Desativar
+        autoSearchActive = false;
+        searchMultipleBtn.classList.remove('active');
+        showStatus('success', 'Busca automática desativada');
+        
+        // Enviar mensagem para desativar observer na página
+        try {
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          chrome.tabs.sendMessage(tab.id, { action: 'stopAutoSearch' });
+        } catch (e) {}
+        
+        return;
+      }
+
+      // Ativar busca automática
+      showStatus('loading', 'Extraindo questões da página...');
       searchMultipleBtn.disabled = true;
 
       try {
@@ -147,40 +170,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (questionsData.length === 0) {
           showStatus('error', 'Nenhuma questão encontrada na página');
+          searchMultipleBtn.disabled = false;
           return;
         }
 
-        showStatus('loading', `Buscando respostas para ${questionsData.length} questões...`);
-
-        const allAnswers = [];
-        let processed = 0;
-
-        for (const item of questionsData) {
-          showStatus('loading', `Processando questão ${processed + 1}/${questionsData.length}...`);
-
-          try {
-            const searchResults = await searchWithSerper(item.question);
-            if (searchResults && searchResults.length > 0) {
-              const answers = await extractAnswersFromSearch(item.question, searchResults);
-              allAnswers.push(...answers);
-            }
-          } catch (e) {
-            console.error('Erro ao buscar questão:', e);
-          }
-
-          processed++;
-          // Pequeno delay para não sobrecarregar a API
-          await new Promise(resolve => setTimeout(resolve, 500));
+        allQuestionsForAuto = questionsData;
+        searchedQuestions.clear();
+        currentVisibleQuestionIndex = -1;
+        autoSearchActive = true;
+        
+        searchMultipleBtn.classList.add('active');
+        showStatus('success', `${questionsData.length} questão(ões) detectada(s). Role para buscar automaticamente!`);
+        
+        // Iniciar observer na página
+        try {
+          await chrome.tabs.sendMessage(tab.id, { 
+            action: 'startAutoSearch',
+            questions: questionsData.map(q => q.question)
+          });
+        } catch (e) {
+          console.error('Erro ao enviar mensagem:', e);
         }
 
-        if (allAnswers.length > 0) {
-          refinedData = allAnswers;
-          displayResults(refinedData);
-          showStatus('success', `${allAnswers.length} resposta(s) encontrada(s)!`);
-          if (copyBtn) copyBtn.disabled = false;
-        } else {
-          showStatus('error', 'Nenhuma resposta encontrada');
-        }
       } catch (error) {
         console.error('Erro:', error);
         showStatus('error', 'Erro: ' + error.message);
@@ -189,6 +200,53 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // === AUTO SEARCH HANDLER ===
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'visibleQuestionChanged') {
+      const questionIndex = request.questionIndex;
+      
+      if (questionIndex >= 0 && questionIndex < allQuestionsForAuto.length) {
+        currentVisibleQuestionIndex = questionIndex;
+        
+        // Se não foi buscada ainda, buscar agora
+        if (!searchedQuestions.has(questionIndex)) {
+          searchedQuestions.add(questionIndex);
+          
+          const question = allQuestionsForAuto[questionIndex].question;
+          console.log(`AnswerHunter: Buscando questão ${questionIndex + 1}...`);
+          
+          // Buscar de forma assíncrona
+          (async () => {
+            try {
+              showStatus('loading', `Buscando resposta (${questionIndex + 1}/${allQuestionsForAuto.length})...`);
+              
+              const searchResults = await searchWithSerper(question);
+              if (searchResults && searchResults.length > 0) {
+                const answers = await extractAnswersFromSearch(question, searchResults);
+                
+                if (answers.length > 0) {
+                  refinedData = [answers[0]];
+                  displayResults(refinedData);
+                  showStatus('success', `Resposta encontrada (${questionIndex + 1}/${allQuestionsForAuto.length})`);
+                  if (copyBtn) copyBtn.disabled = false;
+                } else {
+                  showStatus('error', `Nenhuma resposta encontrada (${questionIndex + 1}/${allQuestionsForAuto.length})`);
+                }
+              } else {
+                showStatus('error', `Nenhum resultado no Google (${questionIndex + 1}/${allQuestionsForAuto.length})`);
+              }
+            } catch (e) {
+              console.error('Erro na busca automática:', e);
+              showStatus('error', `Erro ao buscar (${questionIndex + 1}/${allQuestionsForAuto.length})`);
+            }
+          })();
+        }
+      }
+      
+      sendResponse({ success: true });
+    }
+  });
 
   // === BUSCAR NO GOOGLE ===
   if (searchBtn) {
@@ -583,32 +641,6 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
       if (tab.dataset.tab === 'binder' && window.binderManager) window.binderManager.init();
     });
   });
-
-  // === SETTINGS - ANTI-COPY TOGGLE ===
-  const antiCopyToggle = document.getElementById('antiCopyToggle');
-  if (antiCopyToggle) {
-    // Carregar estado salvo
-    chrome.storage.local.get('antiCopyEnabled', (result) => {
-      const enabled = result.antiCopyEnabled !== false; // Padrão: true
-      antiCopyToggle.checked = enabled;
-    });
-
-    antiCopyToggle.addEventListener('change', async () => {
-      const enabled = antiCopyToggle.checked;
-      
-      // Salvar preferência
-      chrome.storage.local.set({ antiCopyEnabled: enabled });
-      
-      // Enviar mensagem para content script
-      try {
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        chrome.tabs.sendMessage(tab.id, { action: 'toggleAntiCopy', enabled });
-        console.log('AnswerHunter: Proteção anti-cópia', enabled ? 'ativada' : 'desativada');
-      } catch (e) {
-        console.log('AnswerHunter: Não foi possível enviar mensagem para a aba');
-      }
-    });
-  }
 
   // === CLEAR BINDER ===
   const clearBtn = document.getElementById('clearBinderBtn');
