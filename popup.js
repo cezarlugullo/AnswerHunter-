@@ -345,116 +345,103 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
 
 // === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
 function extractQuestionOnly() {
+  console.log('AnswerHunter: Iniciando extração (v2 robusta)...');
 
-  // === MÉTODO ESPECÍFICO PARA ESTÁCIO ===
+  // === MÉTODO ESPECÍFICO PARA ESTÁCIO (Via data-testid) ===
   // Detectar se é o portal da Estácio
   const isEstacio = document.querySelector('[data-testid="wrapper-Practice"]') ||
     document.querySelector('[data-testid^="question-"]') ||
     window.location.hostname.includes('estacio');
 
   if (isEstacio) {
-    // Pegar a PRIMEIRA questão disponível
-    const questionContainer = document.querySelector('[data-testid^="question-"]');
+    // Tenta encontrar o container da questão ativa/visível
+    // Geralmente é o primeiro que aparece ou o que não está oculto
+    const questionContainers = document.querySelectorAll('[data-testid^="question-"]');
+    let targetContainer = null;
 
-    if (questionContainer) {
-      // Extrair o enunciado (texto principal da questão)
-      const enunciadoEl = questionContainer.querySelector('.css-1cwyvh6 [data-testid="question-typography"]');
+    // Se tiver mais de uma, tenta pegar a visível (heurística simples: a primeira geralmente é a ativa no modo de revisão ou prova)
+    if (questionContainers.length > 0) {
+      targetContainer = questionContainers[0];
+    }
+
+    if (targetContainer) {
+      console.log('AnswerHunter: Container encontrado:', targetContainer.getAttribute('data-testid'));
+
+      // 1. Extrair Enunciado
+      // Estratégia: Pegar o data-testid="question-typography" que NÃO está dentro de uma alternativa
+      const allTypography = targetContainer.querySelectorAll('[data-testid="question-typography"]');
       let enunciado = '';
 
-      if (enunciadoEl) {
-        enunciado = (enunciadoEl.textContent || '').replace(/\s+/g, ' ').trim();
+      for (const el of allTypography) {
+        // Verificar se esse elemento ou seus pais são um botão de alternativa
+        if (!el.closest('button[data-testid^="alternative-"]')) {
+          // É parte do enunciado
+          enunciado += ' ' + (el.textContent || '').trim();
+        }
       }
+      enunciado = enunciado.trim();
+      console.log('AnswerHunter: Enunciado extraído:', enunciado.substring(0, 50));
 
-      // Extrair as alternativas
+      // 2. Extrair Alternativas
       const alternativas = [];
-      const altButtons = questionContainer.querySelectorAll('button[data-testid^="alternative-"]');
+      const altButtons = targetContainer.querySelectorAll('button[data-testid^="alternative-"]');
 
       altButtons.forEach(btn => {
         const letraEl = btn.querySelector('[data-testid="circle-letter"]');
         const textoEl = btn.querySelector('[data-testid="question-typography"]');
 
         if (letraEl && textoEl) {
-          const letra = (letraEl.textContent || '').trim();
-          const texto = (textoEl.textContent || '').trim();
+          const letra = letraEl.innerText.replace(/[\n\r]/g, '').trim();
+          const texto = textoEl.innerText.replace(/[\n\r]/g, ' ').trim();
           alternativas.push(`${letra}) ${texto}`);
         }
       });
 
-      // Montar a questão completa
       let questaoCompleta = enunciado;
       if (alternativas.length > 0) {
-        questaoCompleta += ' ' + alternativas.join(' ');
+        questaoCompleta += '\n\n' + alternativas.join('\n');
       }
 
-      if (questaoCompleta.length > 50) {
-        return questaoCompleta.substring(0, 1000);
+      if (questaoCompleta.length > 20) {
+        return questaoCompleta.substring(0, 2500);
       }
     }
   }
 
-  // === MÉTODO GENÉRICO PARA OUTROS SITES ===
-  const platformSelectors = [
-    '[data-testid="question-typography"]',
-    '[class*="enunciado"]',
-    '[class*="questao"]',
-    '[class*="question"]',
-    '[class*="pergunta"]',
-    'main p',
-    'article p',
-    '.content p'
+  // === MÉTODO GENÉRICO DE BACKUP ===
+  // Se falhar o método específico, tenta pegar texto visível com heurísticas
+  console.log('AnswerHunter: Tentando método genérico...');
+
+  // Lista de seletores comuns em sites de questões
+  const genericSelectors = [
+    // Estácio (caso mude data-testid)
+    '.questao-texto', '.enunciado',
+    // Gran Cursos, QConcursos, etc
+    '.q-question-text', '.js-question-text',
+    '.text-content', '.statement',
+    // Genérico
+    'div[class*="texto"]', 'div[class*="enunciado"]'
   ];
 
-  let questionParts = [];
-
-  for (const selector of platformSelectors) {
-    try {
-      const els = document.querySelectorAll(selector);
-      els.forEach(el => {
-        let text = (el.textContent || el.innerText || '').replace(/\s+/g, ' ').trim();
-
-        if (text.length > 30 && text.length < 3000) {
-          const isQuestion = text.includes('?') ||
-            text.includes('alternativa') ||
-            text.includes('assinale') ||
-            text.includes('marque') ||
-            text.includes('correto') ||
-            text.includes('analise') ||
-            text.includes('considere') ||
-            text.includes('asserção');
-
-          const isUI = text.includes('Sair') ||
-            text.includes('Login') ||
-            text.includes('Menu') ||
-            text.includes('revisão') ||
-            text.length < 50;
-
-          if (isQuestion && !isUI) {
-            questionParts.push(text);
-          }
-        }
-      });
-    } catch (e) {
-      // Ignorar erros
+  for (const sel of genericSelectors) {
+    const el = document.querySelector(sel);
+    if (el && el.innerText.length > 50) {
+      return el.innerText.trim().substring(0, 2000);
     }
   }
 
-  if (questionParts.length > 0) {
-    questionParts.sort((a, b) => b.length - a.length);
-    return questionParts[0].substring(0, 800);
+  // Fallback final: Texto selecionado pelo usuário (se houver)
+  const selection = window.getSelection().toString().trim();
+  if (selection.length > 20) {
+    console.log('AnswerHunter: Usando texto selecionado pelo usuário.');
+    return selection;
   }
 
-  // Fallback: pegar todo o texto
-  const bodyText = document.body.textContent || '';
-  const patterns = [
-    /(?:Questão|Pergunta|Enunciado)[:\s]*([^]*?)(?:A\)|a\)|Alternativa)/i,
-    /[^.!?]*\?[^.!?]*/g
-  ];
-
-  for (const pattern of patterns) {
-    const matches = bodyText.match(pattern);
-    if (matches && matches[0] && matches[0].length > 50) {
-      return matches[0].replace(/\s+/g, ' ').trim().substring(0, 800);
-    }
+  // Fallback bruto: Regex no body
+  const bodyText = document.body.innerText;
+  const match = bodyText.match(/(?:Questão|Pergunta)\s*\d+[:\s\n]*([^]*?)(?:Alternativa|a\)|A\))/i);
+  if (match && match[1] && match[1].length > 50) {
+    return match[1].trim().substring(0, 1000);
   }
 
   return '';
