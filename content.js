@@ -1,11 +1,13 @@
 // Content script - executa em todas as páginas
-// Adiciona funcionalidade de highlight nas respostas encontradas
+// Busca automática de questões conforme o usuário rola
 
 (function () {
     'use strict';
 
-    // Aplicar proteção anti-cópia no carregamento
-    applyAntiCopyProtection();
+    // Estado do auto search
+    let autoSearchActive = false;
+    let questionsToTrack = [];
+    let questionElements = [];
 
     // Listener para mensagens do popup
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -17,98 +19,104 @@
             startPickQuestion(sendResponse);
             return true;
         }
-        if (request.action === 'toggleAntiCopy') {
-            toggleAntiCopyProtection(request.enabled);
+        if (request.action === 'startAutoSearch') {
+            startAutoSearch(request.questions);
+            sendResponse({ success: true });
+        }
+        if (request.action === 'stopAutoSearch') {
+            stopAutoSearch();
             sendResponse({ success: true });
         }
         return true;
     });
 
-    // === PROTEÇÃO ANTI-CÓPIA ===
-    function applyAntiCopyProtection() {
-        // Criar style tag com proteções CSS
-        const style = document.createElement('style');
-        style.id = 'answer-hunter-anti-copy-style';
-        style.textContent = `
-            /* Proteção contra seleção e cópia */
-            body.ah-protected * {
-                -webkit-user-select: none !important;
-                -moz-user-select: none !important;
-                -ms-user-select: none !important;
-                user-select: none !important;
-            }
+    // === AUTO SEARCH - DETECTAR QUESTÃO VISÍVEL ===
+    function startAutoSearch(questions) {
+        questionsToTrack = questions;
+        autoSearchActive = true;
+        questionElements = [];
+
+        console.log('AnswerHunter: Auto search iniciado. Rastreando', questions.length, 'questões');
+
+        // Encontrar elementos de questão na página
+        const pageText = document.body.innerText || '';
+        
+        // Procurar por elementos que contenham as primeiras palavras de cada questão
+        questions.forEach((question, index) => {
+            // Buscar por padrão numérico (Questão 1, 2, 3, etc) ou apenas o text
+            const firstWords = question.substring(0, 30);
             
-            /* Excluir elementos interativos */
-            body.ah-protected input,
-            body.ah-protected textarea,
-            body.ah-protected button,
-            body.ah-protected a,
-            body.ah-protected [contenteditable="true"] {
-                -webkit-user-select: auto !important;
-                -moz-user-select: auto !important;
-                -ms-user-select: auto !important;
-                user-select: auto !important;
-                cursor: auto;
+            const allElements = document.querySelectorAll('*');
+            for (const el of allElements) {
+                if (el.innerText && el.innerText.includes(firstWords) && !el.querySelector('script')) {
+                    questionElements.push({
+                        index,
+                        element: el,
+                        text: question
+                    });
+                    break;
+                }
             }
-            
-            /* Bloquear drag and drop */
-            body.ah-protected {
-                -webkit-user-drag: none !important;
-            }
-            
-            /* Cursor de não seleção */
-            body.ah-protected {
-                cursor: default;
-            }
-        `;
-        
-        if (!document.getElementById('answer-hunter-anti-copy-style')) {
-            document.head.appendChild(style);
-        }
-        
-        // Aplicar proteção por padrão
-        document.body.classList.add('ah-protected');
-        
-        // Bloquear eventos de cópia
-        document.addEventListener('copy', (e) => {
-            if (document.body.classList.contains('ah-protected')) {
-                e.preventDefault();
-                console.warn('AnswerHunter: Cópia bloqueada por proteção');
-            }
-        }, true);
-        
-        // Bloquear eventos de seleção
-        document.addEventListener('selectstart', (e) => {
-            if (document.body.classList.contains('ah-protected') && 
-                !['input', 'textarea'].includes(e.target.tagName.toLowerCase())) {
-                e.preventDefault();
-            }
-        }, true);
-        
-        // Bloquear drag and drop
-        document.addEventListener('dragstart', (e) => {
-            if (document.body.classList.contains('ah-protected')) {
-                e.preventDefault();
-            }
-        }, true);
-        
-        // Bloquear context menu (clique direito) para evitar inspect
-        document.addEventListener('contextmenu', (e) => {
-            if (document.body.classList.contains('ah-protected')) {
-                e.preventDefault();
-                return false;
-            }
-        }, true);
+        });
+
+        console.log('AnswerHunter: Encontrados', questionElements.length, 'elementos de questão');
+
+        // Iniciar observer de scroll
+        observeVisibleQuestions();
     }
 
-    function toggleAntiCopyProtection(enabled) {
-        if (enabled) {
-            document.body.classList.add('ah-protected');
-            console.log('AnswerHunter: Proteção anti-cópia ativada');
-        } else {
-            document.body.classList.remove('ah-protected');
-            console.log('AnswerHunter: Proteção anti-cópia desativada');
-        }
+    function stopAutoSearch() {
+        autoSearchActive = false;
+        questionsToTrack = [];
+        questionElements = [];
+        console.log('AnswerHunter: Auto search parado');
+    }
+
+    function observeVisibleQuestions() {
+        const handleScroll = () => {
+            if (!autoSearchActive) return;
+
+            // Encontrar qual questão está mais visível na tela
+            let mostVisibleIndex = -1;
+            let maxVisibility = 0;
+
+            questionElements.forEach(qEl => {
+                const rect = qEl.element.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                
+                // Calcular quanto da questão está visível
+                const topVisible = Math.max(0, rect.top);
+                const bottomVisible = Math.min(viewportHeight, rect.bottom);
+                const visibleHeight = Math.max(0, bottomVisible - topVisible);
+                const visibility = visibleHeight / (rect.height || 1);
+
+                // Se a questão ocupa pelo menos 30% da tela, considerar como visível
+                if (visibility > maxVisibility && visibility > 0.3) {
+                    maxVisibility = visibility;
+                    mostVisibleIndex = qEl.index;
+                }
+            });
+
+            // Se encontrou uma questão visível, notificar o popup
+            if (mostVisibleIndex >= 0) {
+                console.log('AnswerHunter: Questão visível:', mostVisibleIndex);
+                
+                chrome.runtime.sendMessage({
+                    action: 'visibleQuestionChanged',
+                    questionIndex: mostVisibleIndex
+                }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        console.log('AnswerHunter: Popup não respondeu');
+                    }
+                });
+            }
+        };
+
+        // Listener de scroll
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        
+        // Também verificar quando a página carrega
+        handleScroll();
     }
 
     function highlightAnswers() {

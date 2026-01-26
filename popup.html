@@ -20,8 +20,6 @@
       <button class="tab-btn active" data-tab="search"><span class="material-symbols-rounded">search</span>
         Buscar</button>
       <button class="tab-btn" data-tab="binder"><span class="material-symbols-rounded">folder</span> Fichário</button>
-      <button class="tab-btn" data-tab="settings"><span class="material-symbols-rounded">settings</span>
-        Configurações</button>
     </div>
 
     <!-- VISÃO DE BUSCA -->
@@ -42,9 +40,9 @@
             <span class="material-symbols-rounded">list_alt</span>
             Múltiplas
           </button>
-          <button id="searchMultipleBtn" class="btn-search" style="flex: 1;">
-            <span class="material-symbols-rounded">travel_explore</span>
-            Buscar Tudo
+          <button id="autoSearchBtn" class="btn-search" style="flex: 1;" title="Busca automática ao rolar">
+            <span class="material-symbols-rounded">my_location</span>
+            Auto
           </button>
         </div>
         <button id="copyBtn" class="btn-secondary" disabled>
@@ -73,25 +71,6 @@
         <div class="placeholder">
           <span class="material-symbols-rounded">folder_open</span>
           <p>Seu fichário está vazio.<br>Salve questões para estudar depois.</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- VISÃO DE CONFIGURAÇÕES -->
-    <div id="view-settings" class="view-section">
-      <div class="settings-container">
-        <div class="setting-item">
-          <div class="setting-header">
-            <span class="material-symbols-rounded">shield</span>
-            <div class="setting-text">
-              <h3>Proteção Anti-Cópia</h3>
-              <p>Bloqueia cópia de texto na página educacional</p>
-            </div>
-          </div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="antiCopyToggle" checked>
-            <span class="toggle-slider"></span>
-          </label>
         </div>
       </div>
     </div>
