@@ -22,7 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // === EXTRAIR DA PÁGINA ATUAL ===
   if (extractBtn) {
     extractBtn.addEventListener('click', async () => {
-      showStatus('loading', '🔄 Extraindo conteúdo...');
+      showStatus('loading', 'Extraindo conteúdo...');
       extractBtn.disabled = true;
 
       try {
@@ -37,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const extractedData = results[0].result;
 
           if (extractedData.length > 0) {
-            showStatus('loading', '🤖 Refinando com IA...');
+            showStatus('loading', 'Refinando com IA...');
 
             const refined = await Promise.all(
               extractedData.map(item => refineWithGroq(item))
@@ -47,20 +47,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (refinedData.length > 0) {
               displayResults(refinedData);
-              showStatus('success', `✅ ${refinedData.length} questão(ões) encontrada(s)!`);
+              showStatus('success', `${refinedData.length} questão(ões) encontrada(s)!`);
               if (copyBtn) copyBtn.disabled = false;
             } else {
-              showStatus('error', '⚠️ Nenhuma questão válida encontrada');
+              showStatus('error', 'Nenhuma questão válida encontrada');
               displayResults([]);
             }
           } else {
-            showStatus('error', '⚠️ Nenhuma pergunta extraída. Tente selecionar o texto.');
+            showStatus('error', 'Nenhuma pergunta extraída. Tente selecionar o texto.');
             displayResults([]);
           }
         }
       } catch (error) {
         console.error('Erro:', error);
-        showStatus('error', '❌ Erro: ' + error.message);
+        showStatus('error', 'Erro: ' + error.message);
       } finally {
         extractBtn.disabled = false;
       }
@@ -70,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // === BUSCAR NO GOOGLE ===
   if (searchBtn) {
     searchBtn.addEventListener('click', async () => {
-      showStatus('loading', '🔄 Obtendo pergunta...');
+      showStatus('loading', 'Obtendo pergunta...');
       searchBtn.disabled = true;
 
       try {
@@ -85,35 +85,35 @@ document.addEventListener('DOMContentLoaded', () => {
         const question = results?.[0]?.result;
 
         if (!question || question.length < 5) {
-          showStatus('error', '⚠️ Selecione o texto da pergunta e tente novamente.');
+          showStatus('error', 'Selecione o texto da pergunta e tente novamente.');
           return;
         }
 
-        showStatus('loading', '🌐 Buscando no Google...');
+        showStatus('loading', 'Buscando no Google...');
 
         const searchResults = await searchWithSerper(question);
 
         if (!searchResults || searchResults.length === 0) {
-          showStatus('error', '⚠️ Nenhum resultado encontrado no Google.');
+          showStatus('error', 'Nenhum resultado encontrado no Google.');
           return;
         }
 
-        showStatus('loading', `📥 Analisando ${searchResults.length} resultados...`);
+        showStatus('loading', `Analisando ${searchResults.length} resultados...`);
 
         const answers = await extractAnswersFromSearch(question, searchResults);
 
         if (answers.length > 0) {
           refinedData = answers;
           displayResults(refinedData);
-          showStatus('success', `✅ ${answers.length} resposta(s) encontrada(s)!`);
+          showStatus('success', `${answers.length} resposta(s) encontrada(s)!`);
           if (copyBtn) copyBtn.disabled = false;
         } else {
-          showStatus('error', '⚠️ IA não encontrou a resposta nos resultados.');
+          showStatus('error', 'IA não encontrou a resposta nos resultados.');
         }
 
       } catch (error) {
         console.error('Erro na busca:', error);
-        showStatus('error', '❌ Erro: ' + error.message);
+        showStatus('error', 'Erro: ' + error.message);
       } finally {
         searchBtn.disabled = false;
       }
@@ -309,7 +309,7 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
     copyBtn.addEventListener('click', () => {
       if (refinedData.length === 0) return;
       const text = refinedData.map((item, i) =>
-        `📝 Q${i + 1}: ${item.question}\n✅ R: ${item.answer}\n🔗 ${item.source || ''}`
+        `Q${i + 1}: ${item.question}\nR: ${item.answer}\nLink: ${item.source || ''}`
       ).join('\n\n');
       navigator.clipboard.writeText(text);
       showStatus('success', 'Copiado!');
@@ -323,10 +323,12 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
 
     let icon = 'info';
     if (type === 'success') icon = 'check_circle';
-    if (type === 'error') icon = 'warning';
-    if (type === 'loading') icon = 'hourglass_top';
+    if (type === 'error') icon = 'error';
+    if (type === 'loading') icon = 'progress_activity';
 
-    statusDiv.innerHTML = `<span class="material-symbols-rounded" style="vertical-align:middle;margin-right:4px">${icon}</span> ${message}`;
+    const spinClass = type === 'loading' ? 'spin-loading' : '';
+
+    statusDiv.innerHTML = `<span class="material-symbols-rounded ${spinClass}" style="vertical-align:middle;margin-right:4px">${icon}</span> ${message}`;
   }
 
   // === TABS & BINDER ===
@@ -753,9 +755,9 @@ window.binderManager = {
 
     // Toolbar
     let html = `<div class="binder-toolbar">
-            <span class="crumb-current">📂 ${folder.title}</span>
+            <span class="crumb-current"><span class="material-symbols-rounded" style="font-size:18px">folder_open</span> ${folder.title}</span>
             <div class="toolbar-actions">
-               ${folder.id !== 'root' ? `<button id="btnBackRoot" class="btn-text">⬅ Voltar</button>` : ''}
+               ${folder.id !== 'root' ? `<button id="btnBackRoot" class="btn-text"><span class="material-symbols-rounded" style="font-size:16px">arrow_back</span> Voltar</button>` : ''}
                <button id="newFolderBtnBinder" class="btn-text">+ Pasta</button>
             </div>
         </div>`;
@@ -772,7 +774,7 @@ window.binderManager = {
                     <div class="summary-view">${item.content.question.substring(0, 60)}...</div>
                     <div class="full-view" style="display:none">
                        <p>${item.content.question}</p>
-                       <p>✅ ${item.content.answer}</p>
+                       <p>${item.content.answer}</p>
                     </div>
                 </div>`;
       }
