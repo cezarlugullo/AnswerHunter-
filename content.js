@@ -1,13 +1,8 @@
 // Content script - executa em todas as páginas
-// Busca automática de questões conforme o usuário rola
+// Adiciona funcionalidade de highlight nas respostas encontradas
 
 (function () {
     'use strict';
-
-    // Estado do auto search
-    let autoSearchActive = false;
-    let questionsToTrack = [];
-    let questionElements = [];
 
     // Listener para mensagens do popup
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -19,105 +14,8 @@
             startPickQuestion(sendResponse);
             return true;
         }
-        if (request.action === 'startAutoSearch') {
-            startAutoSearch(request.questions);
-            sendResponse({ success: true });
-        }
-        if (request.action === 'stopAutoSearch') {
-            stopAutoSearch();
-            sendResponse({ success: true });
-        }
         return true;
     });
-
-    // === AUTO SEARCH - DETECTAR QUESTÃO VISÍVEL ===
-    function startAutoSearch(questions) {
-        questionsToTrack = questions;
-        autoSearchActive = true;
-        questionElements = [];
-
-        console.log('AnswerHunter: Auto search iniciado. Rastreando', questions.length, 'questões');
-
-        // Encontrar elementos de questão na página
-        const pageText = document.body.innerText || '';
-        
-        // Procurar por elementos que contenham as primeiras palavras de cada questão
-        questions.forEach((question, index) => {
-            // Buscar por padrão numérico (Questão 1, 2, 3, etc) ou apenas o text
-            const firstWords = question.substring(0, 30);
-            
-            const allElements = document.querySelectorAll('*');
-            for (const el of allElements) {
-                if (el.innerText && el.innerText.includes(firstWords) && !el.querySelector('script')) {
-                    questionElements.push({
-                        index,
-                        element: el,
-                        text: question
-                    });
-                    break;
-                }
-            }
-        });
-
-        console.log('AnswerHunter: Encontrados', questionElements.length, 'elementos de questão');
-
-        // Iniciar observer de scroll
-        observeVisibleQuestions();
-    }
-
-    function stopAutoSearch() {
-        autoSearchActive = false;
-        questionsToTrack = [];
-        questionElements = [];
-        console.log('AnswerHunter: Auto search parado');
-    }
-
-    function observeVisibleQuestions() {
-        const handleScroll = () => {
-            if (!autoSearchActive) return;
-
-            // Encontrar qual questão está mais visível na tela
-            let mostVisibleIndex = -1;
-            let maxVisibility = 0;
-
-            questionElements.forEach(qEl => {
-                const rect = qEl.element.getBoundingClientRect();
-                const viewportHeight = window.innerHeight;
-                
-                // Calcular quanto da questão está visível
-                const topVisible = Math.max(0, rect.top);
-                const bottomVisible = Math.min(viewportHeight, rect.bottom);
-                const visibleHeight = Math.max(0, bottomVisible - topVisible);
-                const visibility = visibleHeight / (rect.height || 1);
-
-                // Se a questão ocupa pelo menos 30% da tela, considerar como visível
-                if (visibility > maxVisibility && visibility > 0.3) {
-                    maxVisibility = visibility;
-                    mostVisibleIndex = qEl.index;
-                }
-            });
-
-            // Se encontrou uma questão visível, notificar o popup
-            if (mostVisibleIndex >= 0) {
-                console.log('AnswerHunter: Questão visível:', mostVisibleIndex);
-                
-                chrome.runtime.sendMessage({
-                    action: 'visibleQuestionChanged',
-                    questionIndex: mostVisibleIndex
-                }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        console.log('AnswerHunter: Popup não respondeu');
-                    }
-                });
-            }
-        };
-
-        // Listener de scroll
-        window.addEventListener('scroll', handleScroll, { passive: true });
-        
-        // Também verificar quando a página carrega
-        handleScroll();
-    }
 
     function highlightAnswers() {
         // Remove highlights anteriores
