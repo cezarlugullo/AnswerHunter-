@@ -11,13 +11,15 @@
 <body>
   <div class="container">
     <header>
-      <h1>🎯 AnswerHunter</h1>
+      <h1><span class="material-symbols-rounded" style="font-size: 28px; color: #FF6B00;">track_changes</span>
+        AnswerHunter</h1>
       <p class="subtitle">Caçador de respostas educacionais</p>
     </header>
 
     <div class="tabs">
-      <button class="tab-btn active" data-tab="search">🔍 Buscar</button>
-      <button class="tab-btn" data-tab="binder">📁 Fichário</button>
+      <button class="tab-btn active" data-tab="search"><span class="material-symbols-rounded">search</span>
+        Buscar</button>
+      <button class="tab-btn" data-tab="binder"><span class="material-symbols-rounded">folder</span> Fichário</button>
     </div>
 
     <!-- VISÃO DE BUSCA -->
@@ -25,16 +27,16 @@
       <div class="controls">
         <div class="btn-group">
           <button id="searchBtn" class="btn-search">
-            <span class="icon">🔎</span>
+            <span class="material-symbols-rounded">search</span>
             Buscar
           </button>
           <button id="extractBtn" class="btn-primary">
-            <span class="icon">📄</span>
+            <span class="material-symbols-rounded">description</span>
             Extrair
           </button>
         </div>
         <button id="copyBtn" class="btn-secondary" disabled>
-          <span class="icon">📋</span>
+          <span class="material-symbols-rounded">content_copy</span>
           Copiar Tudo
         </button>
       </div>
@@ -43,7 +45,7 @@
 
       <div id="results" class="results">
         <div class="placeholder">
-          <span class="emoji">📚</span>
+          <span class="material-symbols-rounded">library_books</span>
           <p>Encontre respostas e salve em seu fichário!</p>
         </div>
       </div>
@@ -57,14 +59,15 @@
       </div>
       <div id="binder-list" class="results">
         <div class="placeholder">
-          <span class="emoji">📂</span>
+          <span class="material-symbols-rounded">folder_open</span>
           <p>Seu fichário está vazio.<br>Salve questões para estudar depois.</p>
         </div>
       </div>
     </div>
 
     <footer>
-      <p>🤖 Respostas refinadas automaticamente com IA</p>
+      <p><span class="material-symbols-rounded" style="font-size: 16px;">smart_toy</span> Respostas refinadas
+        automaticamente com IA</p>
     </footer>
   </div>
 

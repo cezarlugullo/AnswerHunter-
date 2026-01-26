@@ -1,15 +1,17 @@
-# Arquivos temporários
-*.log
-*.tmp
-
-# Sistema
+# Arquivos de sistema e temporários
 .DS_Store
 Thumbs.db
-desktop.ini
+*.log
+*.tmp
+*.bak
 
-# IDE
+# Editor config
 .vscode/
 .idea/
 
-# Node (se usar no futuro)
+# Dependências (se houver no futuro)
 node_modules/
+
+# Build artifacts
+dist/
+build/

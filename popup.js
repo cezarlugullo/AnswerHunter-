@@ -4,141 +4,153 @@ const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const SERPER_API_KEY = 'feffb9d9843cbe91d25ea499ae460068d5518f45';
 const SERPER_API_URL = 'https://google.serper.dev/search';
 
+// Global Data
+let refinedData = [];
+
+
 document.addEventListener('DOMContentLoaded', () => {
+  // Elementos da UI
   const extractBtn = document.getElementById('extractBtn');
   const searchBtn = document.getElementById('searchBtn');
   const copyBtn = document.getElementById('copyBtn');
   const statusDiv = document.getElementById('status');
   const resultsDiv = document.getElementById('results');
+  // Global variables
+  // refinedData is now global
 
-  let refinedData = [];
 
   // === EXTRAIR DA PÁGINA ATUAL ===
-  extractBtn.addEventListener('click', async () => {
-    showStatus('loading', '🔄 Extraindo conteúdo da página...');
-    extractBtn.disabled = true;
+  if (extractBtn) {
+    extractBtn.addEventListener('click', async () => {
+      showStatus('loading', '🔄 Extraindo conteúdo...');
+      extractBtn.disabled = true;
 
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: extractQAContent
-      });
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          function: extractQAContent
+        });
 
-      if (results && results[0] && results[0].result) {
-        const extractedData = results[0].result;
+        if (results && results[0] && results[0].result) {
+          const extractedData = results[0].result;
 
-        if (extractedData.length > 0) {
-          showStatus('loading', '🤖 Refinando com IA...');
+          if (extractedData.length > 0) {
+            showStatus('loading', '🤖 Refinando com IA...');
 
-          const refined = await Promise.all(
-            extractedData.map(item => refineWithGroq(item))
-          );
+            const refined = await Promise.all(
+              extractedData.map(item => refineWithGroq(item))
+            );
 
-          refinedData = refined.filter(item => item !== null);
+            refinedData = refined.filter(item => item !== null);
 
-          if (refinedData.length > 0) {
-            displayResults(refinedData);
-            showStatus('success', `✅ ${refinedData.length} questão(ões) encontrada(s)!`);
-            copyBtn.disabled = false;
+            if (refinedData.length > 0) {
+              displayResults(refinedData);
+              showStatus('success', `✅ ${refinedData.length} questão(ões) encontrada(s)!`);
+              if (copyBtn) copyBtn.disabled = false;
+            } else {
+              showStatus('error', '⚠️ Nenhuma questão válida encontrada');
+              displayResults([]);
+            }
           } else {
-            showStatus('error', '⚠️ Nenhuma questão válida encontrada');
+            showStatus('error', '⚠️ Nenhuma pergunta extraída. Tente selecionar o texto.');
             displayResults([]);
           }
-        } else {
-          showStatus('error', '⚠️ Nenhuma pergunta/resposta encontrada nesta página');
-          displayResults([]);
         }
+      } catch (error) {
+        console.error('Erro:', error);
+        showStatus('error', '❌ Erro: ' + error.message);
+      } finally {
+        extractBtn.disabled = false;
       }
-    } catch (error) {
-      console.error('Erro:', error);
-      showStatus('error', '❌ Erro ao extrair conteúdo.');
-    } finally {
-      extractBtn.disabled = false;
-    }
-  });
+    });
+  }
 
   // === BUSCAR NO GOOGLE ===
-  searchBtn.addEventListener('click', async () => {
-    showStatus('loading', '🔄 Extraindo pergunta da página...');
-    searchBtn.disabled = true;
+  if (searchBtn) {
+    searchBtn.addEventListener('click', async () => {
+      showStatus('loading', '🔄 Obtendo pergunta...');
+      searchBtn.disabled = true;
 
-    try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      // Primeiro, extrair a pergunta da página atual
-      const results = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        function: extractQuestionOnly
-      });
+        // Extrair pergunta (Prioridade: Seleção -> Brainly -> Estácio -> Genérico)
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          function: extractQuestionOnly
+        });
 
-      const question = results?.[0]?.result;
+        const question = results?.[0]?.result;
 
-      if (!question || question.length < 20) {
-        showStatus('error', '⚠️ Não foi possível extrair a pergunta desta página');
-        return;
+        if (!question || question.length < 5) {
+          showStatus('error', '⚠️ Selecione o texto da pergunta e tente novamente.');
+          return;
+        }
+
+        showStatus('loading', '🌐 Buscando no Google...');
+
+        const searchResults = await searchWithSerper(question);
+
+        if (!searchResults || searchResults.length === 0) {
+          showStatus('error', '⚠️ Nenhum resultado encontrado no Google.');
+          return;
+        }
+
+        showStatus('loading', `📥 Analisando ${searchResults.length} resultados...`);
+
+        const answers = await extractAnswersFromSearch(question, searchResults);
+
+        if (answers.length > 0) {
+          refinedData = answers;
+          displayResults(refinedData);
+          showStatus('success', `✅ ${answers.length} resposta(s) encontrada(s)!`);
+          if (copyBtn) copyBtn.disabled = false;
+        } else {
+          showStatus('error', '⚠️ IA não encontrou a resposta nos resultados.');
+        }
+
+      } catch (error) {
+        console.error('Erro na busca:', error);
+        showStatus('error', '❌ Erro: ' + error.message);
+      } finally {
+        searchBtn.disabled = false;
       }
-
-      showStatus('loading', '🌐 Buscando no Google...');
-
-      // Buscar no Google via Serper
-      const searchResults = await searchWithSerper(question);
-
-      if (!searchResults || searchResults.length === 0) {
-        showStatus('error', '⚠️ Nenhum resultado encontrado');
-        return;
-      }
-
-      showStatus('loading', `📥 Analisando ${searchResults.length} resultado(s)...`);
-
-      // Tentar extrair resposta dos resultados
-      const answers = await extractAnswersFromSearch(question, searchResults);
-
-      if (answers.length > 0) {
-        refinedData = answers;
-        displayResults(refinedData);
-        showStatus('success', `✅ Encontrada(s) ${answers.length} resposta(s)!`);
-        copyBtn.disabled = false;
-      } else {
-        showStatus('error', '⚠️ Não foi possível extrair respostas dos resultados');
-      }
-
-    } catch (error) {
-      console.error('Erro na busca:', error);
-      showStatus('error', '❌ Erro ao buscar resposta.');
-    } finally {
-      searchBtn.disabled = false;
-    }
-  });
+    });
+  }
 
   // === BUSCAR COM SERPER ===
   async function searchWithSerper(query) {
-    // Limitar a query para evitar erros
-    const cleanQuery = query.substring(0, 200);
+    // Limita tamanho e remove quebras excessivas
+    const cleanQuery = query.replace(/\s+/g, ' ').substring(0, 300);
 
-    const response = await fetch(SERPER_API_URL, {
-      method: 'POST',
-      headers: {
-        'X-API-KEY': SERPER_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        q: cleanQuery + ' site:brainly.com.br OR site:passeidireto.com OR site:respondeai.com.br',
-        gl: 'br',
-        hl: 'pt-br',
-        num: 5
-      })
-    });
+    try {
+      const response = await fetch(SERPER_API_URL, {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': SERPER_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          q: cleanQuery + ' site:brainly.com.br OR site:passeidireto.com OR site:respondeai.com.br',
+          gl: 'br',
+          hl: 'pt-br',
+          num: 5
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(`Serper HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`API Google: ${response.status}`);
+
+      const data = await response.json();
+      return data.organic || [];
+    } catch (e) {
+      console.error(e);
+      return [];
     }
-
-    const data = await response.json();
-    return data.organic || [];
   }
 
+  // === EXTRACTION LOGIC ===
   // === EXTRAIR RESPOSTAS DOS RESULTADOS DE BUSCA ===
   async function extractAnswersFromSearch(originalQuestion, searchResults) {
     const answers = [];
@@ -201,7 +213,7 @@ INSTRUÇÕES CRÍTICAS:
    - Outras perguntas que aparecem no site
    - Se for APENAS conteúdo promocional, responda: INVALIDO
 
-FORMATO DE SAÍDA:
+4. FORMATO DE SAÍDA:
 
 Para questões de ASSERÇÕES (I, II, III):
 PERGUNTA: [enunciado com as asserções]
@@ -293,337 +305,83 @@ IMPORTANTE: Extraia a resposta que está INDICADA NO SITE, não invente uma resp
   }
 
   // === COPIAR ===
-  copyBtn.addEventListener('click', () => {
-    if (refinedData.length === 0) return;
-
-    const text = refinedData.map((item, index) => {
-      let result = `📝 QUESTÃO ${index + 1}:\n${item.question}\n\n✅ ${item.answer}\n`;
-      if (item.source) {
-        result += `🔗 Fonte: ${item.source}\n`;
-      }
-      return result;
-    }).join('\n' + '─'.repeat(40) + '\n\n');
-
-    navigator.clipboard.writeText(text).then(() => {
-      showStatus('success', '📋 Copiado para a área de transferência!');
-    }).catch(() => {
-      showStatus('error', '❌ Erro ao copiar');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', () => {
+      if (refinedData.length === 0) return;
+      const text = refinedData.map((item, i) =>
+        `📝 Q${i + 1}: ${item.question}\n✅ R: ${item.answer}\n🔗 ${item.source || ''}`
+      ).join('\n\n');
+      navigator.clipboard.writeText(text);
+      showStatus('success', 'Copiado!');
     });
-  });
-
-  function showStatus(type, message) {
-    statusDiv.className = `status ${type}`;
-    statusDiv.textContent = message;
   }
 
-  // === ABAS DE NAVEGAÇÃO ===
+  // === UTILS ===
+  function showStatus(type, message) {
+    if (!statusDiv) return;
+    statusDiv.className = `status ${type}`;
+
+    let icon = 'info';
+    if (type === 'success') icon = 'check_circle';
+    if (type === 'error') icon = 'warning';
+    if (type === 'loading') icon = 'hourglass_top';
+
+    statusDiv.innerHTML = `<span class="material-symbols-rounded" style="vertical-align:middle;margin-right:4px">${icon}</span> ${message}`;
+  }
+
+  // === TABS & BINDER ===
   const tabs = document.querySelectorAll('.tab-btn');
   const sections = document.querySelectorAll('.view-section');
 
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
-      // Ativar aba
       tabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
-
-      // Mostrar seção
-      const target = tab.getAttribute('data-tab');
-      sections.forEach(s => {
-        s.classList.remove('active');
-        if (s.id === `view-${target}`) s.classList.add('active');
-      });
-
-      // Se abriu fichário, carregar dados
-      if (target === 'binder') {
-        loadBinder();
-      }
+      sections.forEach(s => s.classList.remove('active'));
+      document.getElementById(`view-${tab.dataset.tab}`).classList.add('active');
+      if (tab.dataset.tab === 'binder' && window.binderManager) window.binderManager.init();
     });
   });
 
-  // === FICHÁRIO: CARREGAR ===
-  function loadBinder() {
-    chrome.storage.local.get(['savedQuestions'], (result) => {
-      const saved = result.savedQuestions || [];
-      const binderList = document.getElementById('binder-list');
-
-      if (saved.length === 0) {
-        binderList.innerHTML = `
-          <div class="placeholder">
-            <span class="emoji">📂</span>
-            <p>Seu fichário está vazio.<br>Salve questões para estudar depois.</p>
-          </div>
-        `;
-        return;
-      }
-
-      // Renderizar itens salvos (ordem inversa: mais recentes primeiro)
-      binderList.innerHTML = saved.reverse().map((item, index) => `
-        <div class="qa-item">
-          <div class="qa-actions">
-            <button class="action-btn delete-btn" data-id="${item.id}" title="Remover do Fichário">🗑️</button>
-          </div>
-          <div class="question">${escapeHtml(item.question).replace(/\n/g, '<br>')}</div>
-          <div class="answer">${escapeHtml(item.answer)}</div>
-          ${item.source ? `<div class="source">🔗 <a href="${item.source}" target="_blank">Fonte</a></div>` : ''}
-        </div>
-      `).join('');
-
-      // Adicionar eventos de delete
-      document.querySelectorAll('.delete-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const id = e.currentTarget.getAttribute('data-id');
-          removeFromBinder(id);
-        });
-      });
-    });
-  }
-
-  // === FICHÁRIO: REMOVER ITEM ===
-  function removeFromBinder(id) {
-    chrome.storage.local.get(['savedQuestions'], (result) => {
-      let saved = result.savedQuestions || [];
-      saved = saved.filter(q => q.id !== id);
-      chrome.storage.local.set({ savedQuestions: saved }, () => {
-        loadBinder(); // Recarregar lista
-
-        // Atualizar listagem da busca se estiver visível (remover estrela cheia)
-        const starBtn = document.querySelector(`.save-btn[data-id="${id}"]`);
-        if (starBtn) starBtn.classList.remove('saved');
-      });
-    });
-  }
-
-  // === FICHÁRIO: LIMPAR TUDO ===
-  document.getElementById('clearBinderBtn').addEventListener('click', () => {
-    if (confirm('Tem certeza que deseja apagar todo o seu fichário?')) {
-      chrome.storage.local.set({ savedQuestions: [] }, () => {
-        loadBinder();
-      });
-    }
-  });
-
+  // === DISPLAY ===
   function displayResults(data) {
+    if (!resultsDiv) return;
     if (data.length === 0) {
-      resultsDiv.innerHTML = `
-        <div class="no-results">
-          <span class="emoji">🔍</span>
-          <p>Nenhuma questão válida encontrada.</p>
-        </div>
-      `;
+      resultsDiv.innerHTML = '<div class="placeholder"><p>Nada encontrado.</p></div>';
       return;
     }
 
-    // Gerar ID único para cada questão para controle de salvamento
-    data.forEach(item => {
-      if (!item.id) item.id = md5(item.question); // Simple hash or timestamp based ID
-    });
+    resultsDiv.innerHTML = data.map((item, index) => `
+            <div class="qa-item">
+               <div class="qa-actions" style="position: absolute; top: 10px; right: 10px;">
+                   <button class="action-btn save-btn material-symbols-rounded" data-index="${index}" title="Salvar">bookmark_border</button>
+               </div>
+               <div class="question">${escapeHtml(item.question)}</div>
+               <div class="answer">${escapeHtml(item.answer)}</div>
+               ${item.source ? `<div class="source"><a href="${item.source}" target="_blank">Fonte</a></div>` : ''}
+            </div>
+        `).join('');
 
-    resultsDiv.innerHTML = data.map(item => {
-      const itemId = item.id || Date.now().toString(36) + Math.random().toString(36).substr(2);
-      item.id = itemId; // Garantir que item tenha ID
-
-      return `
-      <div class="qa-item">
-        <div class="qa-actions">
-           <button class="action-btn save-btn" data-id="${itemId}" title="Salvar no Fichário">☆</button>
-        </div>
-        <div class="question">${escapeHtml(item.question).replace(/\n/g, '<br>')}</div>
-        <div class="answer">${escapeHtml(item.answer)}</div>
-        ${item.source ? `<div class="source">🔗 <a href="${item.source}" target="_blank">Fonte</a></div>` : ''}
-      </div>
-    `}).join('');
-
-    // Adicionar eventos de salvar
-    document.querySelectorAll('.save-btn').forEach((btn, index) => {
-      const item = data[index];
-      // Verificar se já está salvo
-      checkIfSaved(item.id, btn);
-
-      btn.addEventListener('click', () => {
-        toggleSave(item, btn);
-      });
-    });
-  }
-
-  function checkIfSaved(id, btn) {
-    chrome.storage.local.get(['savedQuestions'], (result) => {
-      const saved = result.savedQuestions || [];
-      if (saved.some(q => q.id === id)) {
-        btn.classList.add('saved');
-        btn.textContent = '⭐';
-      } else {
-        btn.classList.remove('saved');
-        btn.textContent = '☆';
+    // Event Delegation para o botão Salvar
+    resultsDiv.onclick = (e) => {
+      const btn = e.target.closest('.save-btn');
+      if (btn) {
+        saveItem(btn);
       }
-    });
-  }
-
-  function toggleSave(item, btn) {
-    chrome.storage.local.get(['savedQuestions'], (result) => {
-      let saved = result.savedQuestions || [];
-      const index = saved.findIndex(q => q.id === item.id);
-
-      if (index !== -1) {
-        // Já salvo, remover
-        saved.splice(index, 1);
-        btn.classList.remove('saved');
-        btn.textContent = '☆';
-      } else {
-        // Não salvo, adicionar
-        saved.push(item);
-        btn.classList.add('saved');
-        btn.textContent = '⭐';
-      }
-
-      chrome.storage.local.set({ savedQuestions: saved });
-    });
+    };
   }
 
   function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    if (!text) return '';
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 });
 
-// Utilitário simples de Hash para ID (se precisar)
-function md5(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash).toString(36);
-}
+// ==========================================
+// === FUNÇÕES INJETADAS (CONTENTSCRIPT) ===
+// ==========================================
 
-// === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
-function extractQuestionOnly() {
-  console.log('AnswerHunter: Iniciando extração (v2 robusta)...');
-
-  // === MÉTODO ESPECÍFICO PARA ESTÁCIO (Via data-testid) ===
-  // Detectar se é o portal da Estácio
-  const isEstacio = document.querySelector('[data-testid="wrapper-Practice"]') ||
-    document.querySelector('[data-testid^="question-"]') ||
-    window.location.hostname.includes('estacio');
-
-  if (isEstacio) {
-    // Pegar todos os containers de questão
-    const questionContainers = document.querySelectorAll('[data-testid^="question-"]');
-    let targetContainer = null;
-
-    // LÓGICA DE DETECÇÃO DA QUESTÃO VISÍVEL (VIEWPORT)
-    if (questionContainers.length > 0) {
-      let maxVisibility = 0;
-
-      questionContainers.forEach(container => {
-        const rect = container.getBoundingClientRect();
-
-        // Calcular sobreposição com a janela visível
-        const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
-        const visibleWidth = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
-
-        // Se o elemento está visível
-        if (visibleHeight > 0 && visibleWidth > 0) {
-          const area = visibleHeight * visibleWidth;
-
-          // Prioriza o elemento que ocupa mais espaço na tela
-          if (area > maxVisibility) {
-            maxVisibility = area;
-            targetContainer = container;
-          }
-        }
-      });
-
-      // Se nenhum estiver visível (ex: todos fora da tela), pega o primeiro
-      if (!targetContainer) {
-        targetContainer = questionContainers[0];
-      }
-    }
-
-    if (targetContainer) {
-      console.log('AnswerHunter: Container encontrado:', targetContainer.getAttribute('data-testid'));
-
-      // 1. Extrair Enunciado
-      // Estratégia: Pegar o data-testid="question-typography" que NÃO está dentro de uma alternativa
-      const allTypography = targetContainer.querySelectorAll('[data-testid="question-typography"]');
-      let enunciado = '';
-
-      for (const el of allTypography) {
-        // Verificar se esse elemento ou seus pais são um botão de alternativa
-        if (!el.closest('button[data-testid^="alternative-"]')) {
-          // É parte do enunciado
-          enunciado += ' ' + (el.textContent || '').trim();
-        }
-      }
-      enunciado = enunciado.trim();
-      console.log('AnswerHunter: Enunciado extraído:', enunciado.substring(0, 50));
-
-      // 2. Extrair Alternativas
-      const alternativas = [];
-      const altButtons = targetContainer.querySelectorAll('button[data-testid^="alternative-"]');
-
-      altButtons.forEach(btn => {
-        const letraEl = btn.querySelector('[data-testid="circle-letter"]');
-        const textoEl = btn.querySelector('[data-testid="question-typography"]');
-
-        if (letraEl && textoEl) {
-          const letra = letraEl.innerText.replace(/[\n\r]/g, '').trim();
-          const texto = textoEl.innerText.replace(/[\n\r]/g, ' ').trim();
-          alternativas.push(`${letra}) ${texto}`);
-        }
-      });
-
-      let questaoCompleta = enunciado;
-      if (alternativas.length > 0) {
-        questaoCompleta += '\n\n' + alternativas.join('\n');
-      }
-
-      if (questaoCompleta.length > 20) {
-        return questaoCompleta.substring(0, 2500);
-      }
-    }
-  }
-
-  // === MÉTODO GENÉRICO DE BACKUP ===
-  // Se falhar o método específico, tenta pegar texto visível com heurísticas
-  console.log('AnswerHunter: Tentando método genérico...');
-
-  // Lista de seletores comuns em sites de questões
-  const genericSelectors = [
-    // Estácio (caso mude data-testid)
-    '.questao-texto', '.enunciado',
-    // Gran Cursos, QConcursos, etc
-    '.q-question-text', '.js-question-text',
-    '.text-content', '.statement',
-    // Genérico
-    'div[class*="texto"]', 'div[class*="enunciado"]'
-  ];
-
-  for (const sel of genericSelectors) {
-    const el = document.querySelector(sel);
-    if (el && el.innerText.length > 50) {
-      return el.innerText.trim().substring(0, 2000);
-    }
-  }
-
-  // Fallback final: Texto selecionado pelo usuário (se houver)
-  const selection = window.getSelection().toString().trim();
-  if (selection.length > 20) {
-    console.log('AnswerHunter: Usando texto selecionado pelo usuário.');
-    return selection;
-  }
-
-  // Fallback bruto: Regex no body
-  const bodyText = document.body.innerText;
-  const match = bodyText.match(/(?:Questão|Pergunta)\s*\d+[:\s\n]*([^]*?)(?:Alternativa|a\)|A\))/i);
-  if (match && match[1] && match[1].length > 50) {
-    return match[1].trim().substring(0, 1000);
-  }
-
-  return '';
-}
-
-// === FUNÇÃO PARA EXTRAIR Q&A COMPLETO ===
+// 1. Extrair Pergunta e Resposta (Completo/Robusto)
 function extractQAContent() {
   const results = [];
 
@@ -759,3 +517,353 @@ function extractQAContent() {
 
   return uniqueResults.slice(0, 10);
 }
+
+// === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
+function extractQuestionOnly() {
+  console.log('AnswerHunter: Iniciando extração (v2 robusta)...');
+
+  // === MÉTODO ESPECÍFICO PARA ESTÁCIO (Via data-testid) ===
+  // Detectar se é o portal da Estácio
+  const isEstacio = document.querySelector('[data-testid="wrapper-Practice"]') ||
+    document.querySelector('[data-testid^="question-"]') ||
+    window.location.hostname.includes('estacio');
+
+  if (isEstacio) {
+    // Pegar todos os containers de questão
+    const questionContainers = document.querySelectorAll('[data-testid^="question-"]');
+    let targetContainer = null;
+
+    // LÓGICA DE DETECÇÃO DA QUESTÃO VISÍVEL (VIEWPORT)
+    if (questionContainers.length > 0) {
+      let maxVisibility = 0;
+
+      questionContainers.forEach(container => {
+        const rect = container.getBoundingClientRect();
+
+        // Calcular sobreposição com a janela visível
+        const visibleHeight = Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0);
+        const visibleWidth = Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0);
+
+        // Se o elemento está visível
+        if (visibleHeight > 0 && visibleWidth > 0) {
+          const area = visibleHeight * visibleWidth;
+
+          // Prioriza o elemento que ocupa mais espaço na tela
+          if (area > maxVisibility) {
+            maxVisibility = area;
+            targetContainer = container;
+          }
+        }
+      });
+
+      // Se nenhum estiver visível (ex: todos fora da tela), pega o primeiro
+      if (!targetContainer) {
+        targetContainer = questionContainers[0];
+      }
+    }
+
+    if (targetContainer) {
+      console.log('AnswerHunter: Container encontrado:', targetContainer.getAttribute('data-testid'));
+
+      // 1. Extrair Enunciado
+      // Estratégia: Pegar o data-testid="question-typography" que NÃO está dentro de uma alternativa
+      const allTypography = targetContainer.querySelectorAll('[data-testid="question-typography"]');
+      let enunciado = '';
+
+      for (const el of allTypography) {
+        // Verificar se esse elemento ou seus pais são um botão de alternativa
+        if (!el.closest('button[data-testid^="alternative-"]')) {
+          // É parte do enunciado
+          enunciado += ' ' + (el.textContent || '').trim();
+        }
+      }
+      enunciado = enunciado.trim();
+      console.log('AnswerHunter: Enunciado extraído:', enunciado.substring(0, 50));
+
+      // 2. Extrair Alternativas
+      const alternativas = [];
+      const altButtons = targetContainer.querySelectorAll('button[data-testid^="alternative-"]');
+
+      altButtons.forEach(btn => {
+        const letraEl = btn.querySelector('[data-testid="circle-letter"]');
+        const textoEl = btn.querySelector('[data-testid="question-typography"]');
+
+        if (letraEl && textoEl) {
+          const letra = letraEl.innerText.replace(/[\n\r]/g, '').trim();
+          const texto = textoEl.innerText.replace(/[\n\r]/g, ' ').trim();
+          alternativas.push(`${letra}) ${texto}`);
+        }
+      });
+
+      let questaoCompleta = enunciado;
+      if (alternativas.length > 0) {
+        questaoCompleta += '\n\n' + alternativas.join('\n');
+      }
+
+      if (questaoCompleta.length > 20) {
+        return questaoCompleta.substring(0, 2500);
+      }
+    }
+  }
+
+  // === MÉTODO GENÉRICO DE BACKUP ===
+  // Se falhar o método específico, tenta pegar texto visível com heurísticas
+  console.log('AnswerHunter: Tentando método genérico...');
+
+  // Lista de seletores comuns em sites de questões
+  const genericSelectors = [
+    // Estácio (caso mude data-testid)
+    '.questao-texto', '.enunciado',
+    // Gran Cursos, QConcursos, etc
+    '.q-question-text', '.js-question-text',
+    '.text-content', '.statement',
+    // Genérico
+    'div[class*="texto"]', 'div[class*="enunciado"]'
+  ];
+
+  for (const sel of genericSelectors) {
+    const el = document.querySelector(sel);
+    if (el && el.innerText.length > 50) {
+      return el.innerText.trim().substring(0, 2000);
+    }
+  }
+
+  // Fallback final: Texto selecionado pelo usuário (se houver)
+  const selection = window.getSelection().toString().trim();
+  if (selection.length > 20) {
+    console.log('AnswerHunter: Usando texto selecionado pelo usuário.');
+    return selection;
+  }
+
+  // Fallback bruto: Regex no body
+  const bodyText = document.body.innerText;
+  const match = bodyText.match(/(?:Questão|Pergunta)\s*\d+[:\s\n]*([^]*?)(?:Alternativa|a\)|A\))/i);
+  if (match && match[1] && match[1].length > 50) {
+    return match[1].trim().substring(0, 1000);
+  }
+
+  return '';
+}
+
+// ==========================================
+// === BINDER MANAGER (Real) ===
+// ==========================================
+
+
+window.binderManager = {
+  data: [], // Estrutura em árvore
+  currentFolderId: 'root', // Pasta atual visível
+  draggedItem: null, // Item sendo arrastado
+
+  init() {
+    chrome.storage.local.get(['binderStructure'], (result) => {
+      if (result.binderStructure) {
+        this.data = result.binderStructure;
+        this.render();
+      } else {
+        this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
+        this.save();
+        this.render();
+      }
+    });
+  },
+
+  save() {
+    chrome.storage.local.set({ binderStructure: this.data });
+  },
+
+  findNode(id, nodes = this.data) {
+    for (const node of nodes) {
+      if (node.id === id) return node;
+      if (node.type === 'folder' && node.children) {
+        const found = this.findNode(id, node.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  },
+
+  createFolder() {
+    const name = prompt("Nome da nova pasta:");
+    if (name) {
+      const current = this.findNode(this.currentFolderId);
+      if (current) {
+        current.children.push({ id: 'f' + Date.now(), type: 'folder', title: name, children: [], createdAt: Date.now() });
+        this.save(); this.render();
+      }
+    }
+  },
+
+  addItem(question, answer, source) {
+    const current = this.findNode(this.currentFolderId);
+    if (current) {
+      current.children.push({
+        id: 'q' + Date.now(),
+        type: 'question',
+        content: { question, answer, source },
+        createdAt: Date.now()
+      });
+      this.save();
+      this.render();
+    }
+  },
+
+  moveItem(itemId, targetFolderId) {
+    // Helper para remover item de qualquer lugar na árvore
+    const removeFromTree = (nodes, id) => {
+      for (let i = 0; i < nodes.length; i++) {
+        if (nodes[i].id === id) {
+          return nodes.splice(i, 1)[0];
+        }
+        if (nodes[i].children) {
+          const found = removeFromTree(nodes[i].children, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    // Previne mover uma pasta para dentro dela mesma (básico)
+    if (itemId === targetFolderId) return;
+
+    const itemNode = removeFromTree(this.data, itemId);
+    if (itemNode) {
+      const targetFolder = this.findNode(targetFolderId);
+      if (targetFolder) {
+        targetFolder.children.push(itemNode);
+        this.save();
+        this.render();
+      } else {
+        // Se falhar (ex: target não existe), recarrega para restaurar
+        this.init();
+      }
+    }
+  },
+
+  navigateTo(id) {
+    this.currentFolderId = id;
+    this.render();
+  },
+
+  render() {
+    const container = document.getElementById('binder-list');
+    if (!container) return;
+
+    const folder = this.findNode(this.currentFolderId) || this.data[0];
+
+    // Toolbar
+    let html = `<div class="binder-toolbar">
+            <span class="crumb-current">📂 ${folder.title}</span>
+            <div class="toolbar-actions">
+               ${folder.id !== 'root' ? `<button id="btnBackRoot" class="btn-text">⬅ Voltar</button>` : ''}
+               <button id="newFolderBtnBinder" class="btn-text">+ Pasta</button>
+            </div>
+        </div>`;
+
+    html += `<div class="binder-content">`;
+
+    folder.children.forEach(item => {
+      if (item.type === 'folder') {
+        html += `<div class="folder-item drop-zone" draggable="true" data-id="${item.id}" data-type="folder">
+                    <span class="material-symbols-rounded">folder</span> ${item.title}
+                </div>`;
+      } else {
+        html += `<div class="qa-item expandable" draggable="true" data-id="${item.id}" data-type="question">
+                    <div class="summary-view">${item.content.question.substring(0, 60)}...</div>
+                    <div class="full-view" style="display:none">
+                       <p>${item.content.question}</p>
+                       <p>✅ ${item.content.answer}</p>
+                    </div>
+                </div>`;
+      }
+    });
+
+    html += `</div>`;
+    container.innerHTML = html;
+
+    // Listeners UI
+    const btnNew = document.getElementById('newFolderBtnBinder');
+    if (btnNew) btnNew.onclick = () => this.createFolder();
+
+    const btnBack = document.getElementById('btnBackRoot');
+    if (btnBack) btnBack.onclick = () => this.navigateTo('root');
+
+    // Drag & Drop Listeners
+    const items = container.querySelectorAll('[draggable="true"]');
+    items.forEach(el => {
+      el.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', el.dataset.id);
+        e.dataTransfer.effectAllowed = 'move';
+        el.classList.add('dragging');
+        this.draggedItem = el.dataset.id;
+      });
+      el.addEventListener('dragend', () => {
+        el.classList.remove('dragging');
+        this.draggedItem = null;
+        // Limpar destaques
+        container.querySelectorAll('.drag-over').forEach(d => d.classList.remove('drag-over'));
+      });
+    });
+
+    const folders = container.querySelectorAll('.folder-item');
+    folders.forEach(el => {
+      el.addEventListener('dragover', (e) => {
+        e.preventDefault(); // Necessário para permitir o drop
+        e.dataTransfer.dropEffect = 'move';
+        el.classList.add('drag-over');
+      });
+      el.addEventListener('dragleave', () => {
+        el.classList.remove('drag-over');
+      });
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        el.classList.remove('drag-over');
+        const itemId = e.dataTransfer.getData('text/plain');
+        const targetId = el.dataset.id;
+
+        if (itemId && targetId && itemId !== targetId) {
+          this.moveItem(itemId, targetId);
+        }
+      });
+    });
+
+    // Delegation for Click (Navigation & Expand)
+    const contentDiv = container.querySelector('.binder-content');
+    if (contentDiv) {
+      contentDiv.onclick = (e) => {
+        // Click Folder (Navegação)
+        const folderItem = e.target.closest('.folder-item');
+        if (folderItem) {
+          const fid = folderItem.dataset.id;
+          this.navigateTo(fid);
+          return;
+        }
+
+        // Expand Item
+        const expandItem = e.target.closest('.qa-item.expandable');
+        if (expandItem) {
+          expandItem.classList.toggle('expanded');
+          const fullView = expandItem.querySelector('.full-view');
+          if (fullView) {
+            fullView.style.display = fullView.style.display === 'none' ? 'block' : 'none';
+          }
+        }
+      };
+    }
+  }
+};
+
+// Helpers para Save/Delete
+window.saveItem = function (btn) {
+  const index = btn.dataset.index;
+  const item = refinedData[index];
+
+  if (item && window.binderManager) {
+    window.binderManager.addItem(item.question, item.answer, item.source);
+
+    // Feedback Visual
+    btn.textContent = 'bookmark';
+    btn.classList.add('saved', 'filled');
+    btn.onclick = null; // Previne duplo clique
+  }
+};

@@ -1,4 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
+
+/* CONFIGURAÇÃO MATERIAL SYMBOLS */
+.material-symbols-rounded {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+  font-size: 20px;
+  vertical-align: middle;
+  transition: all 0.2s ease;
+}
+
+.material-symbols-rounded.filled {
+  font-variation-settings: 'FILL' 1;
+}
 
 * {
   margin: 0;
@@ -69,6 +86,10 @@ header h1 {
   border-radius: 8px;
   transition: all 0.2s ease;
   box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .tab-btn.active {
@@ -186,24 +207,27 @@ button:disabled {
   text-align: center;
   display: none;
   animation: fadeIn 0.3s ease;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .status.loading {
-  display: block;
+  display: flex;
   background-color: #E3F2FD;
   color: #1565C0;
   border: 1px solid #BBDEFB;
 }
 
 .status.success {
-  display: block;
+  display: flex;
   background-color: #E8F5E9;
   color: #2E7D32;
   border: 1px solid #C8E6C9;
 }
 
 .status.error {
-  display: block;
+  display: flex;
   background-color: #FFEBEE;
   color: #C62828;
   border: 1px solid #FFCDD2;
@@ -215,9 +239,11 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-height: 400px;
+  max-height: 480px;
+  /* Aumentei um pouco */
   overflow-y: auto;
   padding-right: 4px;
+  min-height: 200px;
 }
 
 .results::-webkit-scrollbar {
@@ -237,6 +263,12 @@ button:disabled {
   border-left: 4px solid #FF6B00;
   transition: transform 0.2s ease;
   position: relative;
+  cursor: grab;
+  /* Para drag and drop */
+}
+
+.qa-item:active {
+  cursor: grabbing;
 }
 
 .qa-item:hover {
@@ -250,7 +282,7 @@ button:disabled {
   margin-bottom: 12px;
   font-size: 0.95rem;
   line-height: 1.5;
-  padding-right: 24px;
+  padding-right: 32px;
   /* Espaço para botão salvar */
 }
 
@@ -288,6 +320,10 @@ button:disabled {
   font-size: 0.75rem;
   color: #888888;
   text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
 .source a {
@@ -353,13 +389,15 @@ button:disabled {
   background-color: #FFFFFF;
   border-radius: 12px;
   border: 1px dashed #E0E0E0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
 
-.placeholder .emoji {
-  font-size: 2.5rem;
-  margin-bottom: 12px;
-  display: block;
-  opacity: 0.8;
+.placeholder .material-symbols-rounded {
+  font-size: 48px;
+  color: #DDDDDD;
 }
 
 .placeholder p {
@@ -373,11 +411,18 @@ footer {
   text-align: center;
   padding-top: 15px;
   border-top: 1px solid #EEEEEE;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 footer p {
   font-size: 0.75rem;
   color: #AAAAAA;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 @keyframes fadeIn {
@@ -390,4 +435,163 @@ footer p {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Breadcrumbs (Barra de Navegação) */
+.binder-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  border: 1px solid #eee;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.btn-crumb {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  color: #FF6B00;
+  cursor: pointer;
+  font-weight: 600;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-crumb:hover {
+  background: #FFF8F2;
+  text-decoration: underline;
+}
+
+.crumb-sep {
+  color: #ccc;
+  font-size: 12px;
+}
+
+.crumb-current {
+  font-weight: 500;
+  color: #666;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Lista de Pastas */
+.binder-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  border-left: 4px solid #FFD700;
+  /* Dourado para pastas */
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.folder-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+  border-color: #FFD700;
+}
+
+.folder-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.folder-icon {
+  color: #FFD700;
+  display: flex;
+  align-items: center;
+}
+
+.folder-name {
+  font-weight: 600;
+  color: #333;
+}
+
+/* Drag and Drop Visuals */
+.drop-zone {
+  transition: all 0.2s ease;
+}
+
+.drop-zone.drag-over {
+  background-color: #FFF8E1 !important;
+  /* Amarelo claro */
+  border: 2px dashed #FFD700 !important;
+  transform: scale(1.02);
+}
+
+.placeholder.drag-over {
+  background-color: #f0f7ff;
+  border-color: #2196F3;
+}
+
+/* Ajustes no item de questão quando dentro de pasta */
+.qa-item .answer-preview {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #777;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* === EXPANDABLE ITEMS === */
+.qa-item.expandable {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.qa-item.expandable:hover {
+  background-color: #FAFAFA;
+}
+
+.qa-item.expandable .summary-view {
+  pointer-events: none;
+  /* Deixa o clique passar para o pai */
+}
+
+.full-view {
+  animation: fadeIn 0.3s ease;
+}
+
+.full-view .question.full {
+  font-size: 1rem;
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+  color: #222;
 }
