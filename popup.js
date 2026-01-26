@@ -71,6 +71,125 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // === EXTRAIR MÚLTIPLAS QUESTÕES ===
+  const extractMultipleBtn = document.getElementById('extractMultipleBtn');
+  const searchMultipleBtn = document.getElementById('searchMultipleBtn');
+  
+  if (extractMultipleBtn) {
+    extractMultipleBtn.addEventListener('click', async () => {
+      showStatus('loading', 'Extraindo questões...');
+      extractMultipleBtn.disabled = true;
+
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          function: extractMultipleQuestionsNumerated
+        });
+
+        const questionsData = [];
+        for (const frameResult of results || []) {
+          const items = frameResult?.result || [];
+          questionsData.push(...items);
+        }
+
+        if (questionsData.length > 0) {
+          showStatus('loading', `Refinando ${questionsData.length} questões...`);
+
+          const refined = [];
+          for (const item of questionsData) {
+            const result = await refineWithGroq(item);
+            refined.push(result);
+          }
+
+          refinedData = refined.filter(item => item !== null);
+
+          if (refinedData.length > 0) {
+            displayResults(refinedData);
+            showStatus('success', `${refinedData.length} questão(ões) extraída(s)!`);
+            if (copyBtn) copyBtn.disabled = false;
+          } else {
+            showStatus('error', 'Nenhuma questão válida encontrada');
+            displayResults([]);
+          }
+        } else {
+          showStatus('error', 'Nenhuma questão numerada encontrada na página');
+          displayResults([]);
+        }
+      } catch (error) {
+        console.error('Erro:', error);
+        showStatus('error', 'Erro: ' + error.message);
+      } finally {
+        extractMultipleBtn.disabled = false;
+      }
+    });
+  }
+
+  if (searchMultipleBtn) {
+    searchMultipleBtn.addEventListener('click', async () => {
+      showStatus('loading', 'Extraindo questões...');
+      searchMultipleBtn.disabled = true;
+
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          function: extractMultipleQuestionsNumerated
+        });
+
+        const questionsData = [];
+        for (const frameResult of results || []) {
+          const items = frameResult?.result || [];
+          questionsData.push(...items);
+        }
+
+        if (questionsData.length === 0) {
+          showStatus('error', 'Nenhuma questão encontrada na página');
+          return;
+        }
+
+        showStatus('loading', `Buscando respostas para ${questionsData.length} questões...`);
+
+        const allAnswers = [];
+        let processed = 0;
+
+        for (const item of questionsData) {
+          showStatus('loading', `Processando questão ${processed + 1}/${questionsData.length}...`);
+
+          try {
+            const searchResults = await searchWithSerper(item.question);
+            if (searchResults && searchResults.length > 0) {
+              const answers = await extractAnswersFromSearch(item.question, searchResults);
+              allAnswers.push(...answers);
+            }
+          } catch (e) {
+            console.error('Erro ao buscar questão:', e);
+          }
+
+          processed++;
+          // Pequeno delay para não sobrecarregar a API
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        if (allAnswers.length > 0) {
+          refinedData = allAnswers;
+          displayResults(refinedData);
+          showStatus('success', `${allAnswers.length} resposta(s) encontrada(s)!`);
+          if (copyBtn) copyBtn.disabled = false;
+        } else {
+          showStatus('error', 'Nenhuma resposta encontrada');
+        }
+      } catch (error) {
+        console.error('Erro:', error);
+        showStatus('error', 'Erro: ' + error.message);
+      } finally {
+        searchMultipleBtn.disabled = false;
+      }
+    });
+  }
+
   // === BUSCAR NO GOOGLE ===
   if (searchBtn) {
     searchBtn.addEventListener('click', async () => {
@@ -465,6 +584,32 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
     });
   });
 
+  // === SETTINGS - ANTI-COPY TOGGLE ===
+  const antiCopyToggle = document.getElementById('antiCopyToggle');
+  if (antiCopyToggle) {
+    // Carregar estado salvo
+    chrome.storage.local.get('antiCopyEnabled', (result) => {
+      const enabled = result.antiCopyEnabled !== false; // Padrão: true
+      antiCopyToggle.checked = enabled;
+    });
+
+    antiCopyToggle.addEventListener('change', async () => {
+      const enabled = antiCopyToggle.checked;
+      
+      // Salvar preferência
+      chrome.storage.local.set({ antiCopyEnabled: enabled });
+      
+      // Enviar mensagem para content script
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        chrome.tabs.sendMessage(tab.id, { action: 'toggleAntiCopy', enabled });
+        console.log('AnswerHunter: Proteção anti-cópia', enabled ? 'ativada' : 'desativada');
+      } catch (e) {
+        console.log('AnswerHunter: Não foi possível enviar mensagem para a aba');
+      }
+    });
+  }
+
   // === CLEAR BINDER ===
   const clearBtn = document.getElementById('clearBinderBtn');
   if (clearBtn) {
@@ -655,6 +800,45 @@ function extractQAContent() {
   }
 
   return uniqueResults.slice(0, 10);
+}
+
+// === EXTRAIR MÚLTIPLAS QUESTÕES NUMERADAS (ESTÁCIO E SIMILARES) ===
+function extractMultipleQuestionsNumerated() {
+  const results = [];
+  
+  // Buscar container principal com questões
+  const containers = document.querySelectorAll(
+    '[class*="question"], [class*="pergunta"], [class*="exercicio"], ' +
+    '[class*="atividade"], article, .card, .item'
+  );
+
+  containers.forEach(container => {
+    // Padrão: Número seguido de conteúdo + alternativas A-E
+    const text = container.innerText || '';
+    
+    // Extrair questões numeradas (ex: "1 Qual é...", "2 Como...")
+    const questionMatches = text.match(/^\s*(\d+)\s+(.+?)(?=\n\s*[AE]\s+|\n\s*\d+\s+|$)/gim);
+    
+    if (questionMatches) {
+      questionMatches.forEach(match => {
+        const questionText = match.trim();
+        
+        // Tentar extrair alternativas e resposta correta
+        const altSection = text.substring(text.indexOf(match));
+        const altsMatch = altSection.match(/[AE]\s+(.+?)(?=\n\s*[A-E]\s+|\n\s*\d+\s+|Resposta|$)/gis);
+        
+        if (questionText.length > 15) {
+          results.push({
+            question: questionText,
+            alternatives: altsMatch || [],
+            foundIn: 'multiple-questions'
+          });
+        }
+      });
+    }
+  });
+
+  return results;
 }
 
 // === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
