@@ -19,7 +19,7 @@ body {
   padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 /* === HEADER === */
@@ -45,6 +45,47 @@ header h1 {
   font-size: 0.875rem;
   color: #666666;
   font-weight: 500;
+}
+
+/* === TABS === */
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: #EAECEF;
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: #666666;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  box-shadow: none;
+}
+
+.tab-btn.active {
+  background: #FFFFFF;
+  color: #FF6B00;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.view-section {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.view-section.active {
+  display: flex;
+  animation: fadeIn 0.3s ease;
 }
 
 /* === CONTROLS === */
@@ -81,7 +122,7 @@ button:disabled {
   box-shadow: none;
 }
 
-/* Botão Principal (Buscar) */
+/* Botões Principais */
 .btn-search {
   background-color: #FF6B00;
   color: #FFFFFF;
@@ -94,7 +135,6 @@ button:disabled {
   box-shadow: 0 4px 8px rgba(255, 107, 0, 0.2);
 }
 
-/* Botão Secundário (Extrair) */
 .btn-primary {
   background-color: #FFFFFF;
   color: #4A4A4A;
@@ -108,7 +148,6 @@ button:disabled {
   color: #333333;
 }
 
-/* Botão Terciário (Copiar) */
 .btn-secondary {
   background-color: #FFFFFF;
   color: #666666;
@@ -122,6 +161,20 @@ button:disabled {
   border-color: #FF6B00;
   color: #FF6B00;
   background-color: #FFF8F2;
+}
+
+.btn-text {
+  padding: 4px 8px;
+  background: transparent;
+  color: #888;
+  font-size: 0.8rem;
+  box-shadow: none;
+  font-weight: 500;
+}
+
+.btn-text:hover {
+  text-decoration: underline;
+  color: #FF6B00;
 }
 
 /* === STATUS === */
@@ -181,9 +234,9 @@ button:disabled {
   border-radius: 10px;
   padding: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  /* Sombra suave profissional */
   border-left: 4px solid #FF6B00;
   transition: transform 0.2s ease;
+  position: relative;
 }
 
 .qa-item:hover {
@@ -197,6 +250,8 @@ button:disabled {
   margin-bottom: 12px;
   font-size: 0.95rem;
   line-height: 1.5;
+  padding-right: 24px;
+  /* Espaço para botão salvar */
 }
 
 .question::before {
@@ -241,8 +296,53 @@ button:disabled {
   font-weight: 500;
 }
 
-.source a:hover {
-  text-decoration: underline;
+/* Botões de ação no card (Salvar/Excluir) */
+.qa-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 4px;
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #AAA;
+  border-radius: 50%;
+  box-shadow: none;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover {
+  background: #F0F0F0;
+  color: #FF6B00;
+}
+
+.action-btn.saved {
+  color: #FFD700;
+  /* Dourado */
+}
+
+/* === BINDER (FICHÁRIO) === */
+.binder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #EEE;
+}
+
+.binder-header h2 {
+  font-size: 1rem;
+  color: #444;
 }
 
 /* === PLACEHOLDER === */
@@ -265,12 +365,6 @@ button:disabled {
 .placeholder p {
   font-size: 0.9rem;
   line-height: 1.5;
-}
-
-.no-results {
-  text-align: center;
-  padding: 20px;
-  color: #F39C12;
 }
 
 /* === FOOTER === */

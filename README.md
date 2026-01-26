@@ -12,13 +12,21 @@ Extensão Chrome que caça respostas para questões educacionais usando IA.
 
 ## 📥 Instalação
 
-### Primeira vez:
+### 📺 Tutorial Visual
+**Parte 1: Baixando e Extraindo**
+![Instalação Parte 1](gif/passo-a-passo-1.gif)
+
+**Parte 2: Carregando no Chrome**
+![Instalação Parte 2](gif/passo-a-passo-2.gif)
+
+### Passo a Passo em Texto:
 1. Baixe este repositório (Code → Download ZIP)
 2. Extraia para uma pasta no seu computador
-3. Abra `chrome://extensions/` no Chrome
-4. Ative o **Modo do desenvolvedor** (canto superior direito)
-5. Clique em **Carregar sem compactação**
-6. Selecione a pasta extraída
+3. **IMPORTANTE:** Entre na pasta extraída até ver o arquivo `manifest.json`
+4. Abra `chrome://extensions/` no Chrome
+5. Ative o **Modo do desenvolvedor** (canto superior direito)
+6. Clique em **Carregar sem compactação**
+7. Selecione a pasta correta
 
 ### Atualizações:
 1. Execute o arquivo `atualizar.bat`
