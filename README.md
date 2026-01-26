@@ -28,9 +28,12 @@ Extensão Chrome que caça respostas para questões educacionais usando IA.
 6. Clique em **Carregar sem compactação**
 7. Selecione a pasta correta
 
-### Atualizações:
+### 🔄 Atualizações Automáticas
+![Atualizando a Extensão](gif/atualizando%20com%20.bat.gif)
+
 1. Execute o arquivo `atualizar.bat`
 2. Recarregue a extensão em `chrome://extensions/`
+   *(Se der erro, execute `configurar.bat` primeiro)*
 
 ## 🚀 Como Usar
 
