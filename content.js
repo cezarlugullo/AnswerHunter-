@@ -4,6 +4,9 @@
 (function () {
     'use strict';
 
+    // Aplicar proteção anti-cópia no carregamento
+    applyAntiCopyProtection();
+
     // Listener para mensagens do popup
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'highlight') {
@@ -14,8 +17,99 @@
             startPickQuestion(sendResponse);
             return true;
         }
+        if (request.action === 'toggleAntiCopy') {
+            toggleAntiCopyProtection(request.enabled);
+            sendResponse({ success: true });
+        }
         return true;
     });
+
+    // === PROTEÇÃO ANTI-CÓPIA ===
+    function applyAntiCopyProtection() {
+        // Criar style tag com proteções CSS
+        const style = document.createElement('style');
+        style.id = 'answer-hunter-anti-copy-style';
+        style.textContent = `
+            /* Proteção contra seleção e cópia */
+            body.ah-protected * {
+                -webkit-user-select: none !important;
+                -moz-user-select: none !important;
+                -ms-user-select: none !important;
+                user-select: none !important;
+            }
+            
+            /* Excluir elementos interativos */
+            body.ah-protected input,
+            body.ah-protected textarea,
+            body.ah-protected button,
+            body.ah-protected a,
+            body.ah-protected [contenteditable="true"] {
+                -webkit-user-select: auto !important;
+                -moz-user-select: auto !important;
+                -ms-user-select: auto !important;
+                user-select: auto !important;
+                cursor: auto;
+            }
+            
+            /* Bloquear drag and drop */
+            body.ah-protected {
+                -webkit-user-drag: none !important;
+            }
+            
+            /* Cursor de não seleção */
+            body.ah-protected {
+                cursor: default;
+            }
+        `;
+        
+        if (!document.getElementById('answer-hunter-anti-copy-style')) {
+            document.head.appendChild(style);
+        }
+        
+        // Aplicar proteção por padrão
+        document.body.classList.add('ah-protected');
+        
+        // Bloquear eventos de cópia
+        document.addEventListener('copy', (e) => {
+            if (document.body.classList.contains('ah-protected')) {
+                e.preventDefault();
+                console.warn('AnswerHunter: Cópia bloqueada por proteção');
+            }
+        }, true);
+        
+        // Bloquear eventos de seleção
+        document.addEventListener('selectstart', (e) => {
+            if (document.body.classList.contains('ah-protected') && 
+                !['input', 'textarea'].includes(e.target.tagName.toLowerCase())) {
+                e.preventDefault();
+            }
+        }, true);
+        
+        // Bloquear drag and drop
+        document.addEventListener('dragstart', (e) => {
+            if (document.body.classList.contains('ah-protected')) {
+                e.preventDefault();
+            }
+        }, true);
+        
+        // Bloquear context menu (clique direito) para evitar inspect
+        document.addEventListener('contextmenu', (e) => {
+            if (document.body.classList.contains('ah-protected')) {
+                e.preventDefault();
+                return false;
+            }
+        }, true);
+    }
+
+    function toggleAntiCopyProtection(enabled) {
+        if (enabled) {
+            document.body.classList.add('ah-protected');
+            console.log('AnswerHunter: Proteção anti-cópia ativada');
+        } else {
+            document.body.classList.remove('ah-protected');
+            console.log('AnswerHunter: Proteção anti-cópia desativada');
+        }
+    }
 
     function highlightAnswers() {
         // Remove highlights anteriores
