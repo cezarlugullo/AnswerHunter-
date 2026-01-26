@@ -152,31 +152,45 @@ document.addEventListener('DOMContentLoaded', () => {
     'respondeai.com.br',
     'studocu.com',
     'chegg.com',
-    'quizlet.com'
+    'quizlet.com',
+    'trabalhosfeitos.com',
+    'todamateria.com.br',
+    'brasilescola.uol.com.br',
+    'mundoeducacao.uol.com.br',
+    'infoescola.com',
+    'khanacademy.org'
   ];
 
   function cleanQueryForSearch(query) {
     let clean = query
       // Remover prefixos de questão
       .replace(/^(?:Questão|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '')
-      // Remover alternativas A, B, C, D, E e seus textos
-      .replace(/\s*[A-E]\s+[A-Za-zÀ-ú\s]+(?=\s*[A-E]\s+|$)/g, '')
-      // Remover alternativas isoladas
-      .replace(/\s+[A-E]\s+/g, ' ')
+      // Remover marcadores de revisão
+      .replace(/Marcar para revisão/gi, '')
       // Remover "Responda", "O que você achou", etc
-      .replace(/\s*(Responda|O que você achou|Relatar problema|Voltar|Avançar|Menu)[\s\S]*/gi, '')
+      .replace(/\s*(Responda|O que você achou|Relatar problema|Voltar|Avançar|Menu|Finalizar)[\s\S]*/gi, '')
       // Limpar espaços
       .replace(/\s+/g, ' ')
       .trim();
     
-    // Se ficou muito curto, pegar até a interrogação
-    if (clean.length < 30 && query.includes('?')) {
-      const questionEnd = query.indexOf('?');
-      clean = query.substring(0, questionEnd + 1).replace(/^(?:Questão|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '').trim();
+    // Tentar extrair apenas a pergunta (até a interrogação)
+    if (clean.includes('?')) {
+      const questionEnd = clean.indexOf('?');
+      const questionText = clean.substring(0, questionEnd + 1).trim();
+      // Se a pergunta tem tamanho razoável, usar só ela
+      if (questionText.length >= 30) {
+        clean = questionText;
+      }
     }
     
+    // Remover alternativas A, B, C, D, E se ainda existirem
+    clean = clean
+      .replace(/\s+[A-E]\s+[A-Za-zÀ-ú][^?]*$/g, '') // Alternativas no final
+      .replace(/\s+[A-E]\s*$/g, '') // Letra solta no final
+      .trim();
+    
     // Limitar tamanho para busca eficiente
-    return clean.substring(0, 200);
+    return clean.substring(0, 250);
   }
 
   async function searchWithSerper(query) {
@@ -185,12 +199,40 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log(`AnswerHunter: Query original: "${query.substring(0, 100)}..."`);
     console.log(`AnswerHunter: Query limpa: "${cleanQuery}"`);
 
-    // Primeiro: buscar com filtro de sites educacionais
-    const siteFilter = EDUCATION_SITES.map(s => `site:${s}`).join(' OR ');
+    // Sites principais para busca educacional
+    const TOP_SITES = ['brainly.com.br', 'passeidireto.com', 'studocu.com'];
+    const siteFilter = TOP_SITES.map(s => `site:${s}`).join(' OR ');
 
     try {
-      console.log(`AnswerHunter: Buscando com filtro de sites...`);
+      // Primeiro: buscar SEM filtro (mais resultados)
+      console.log(`AnswerHunter: Buscando resposta...`);
       let response = await fetch(SERPER_API_URL, {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': SERPER_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          q: cleanQuery + ' resposta correta',
+          gl: 'br',
+          hl: 'pt-br',
+          num: 8
+        })
+      });
+
+      if (!response.ok) throw new Error(`API Google: ${response.status}`);
+
+      let data = await response.json();
+      console.log('AnswerHunter: Resultados encontrados:', data.organic?.length || 0);
+      
+      // Se encontrou resultados, retornar
+      if (data.organic && data.organic.length > 0) {
+        return data.organic;
+      }
+      
+      // Se não encontrou, tentar com filtro de sites educacionais
+      console.log('AnswerHunter: Tentando com sites educacionais...');
+      response = await fetch(SERPER_API_URL, {
         method: 'POST',
         headers: {
           'X-API-KEY': SERPER_API_KEY,
@@ -203,33 +245,10 @@ document.addEventListener('DOMContentLoaded', () => {
           num: 5
         })
       });
-
-      if (!response.ok) throw new Error(`API Google: ${response.status}`);
-
-      let data = await response.json();
-      console.log('AnswerHunter: Resultados com filtro:', data.organic?.length || 0);
       
-      // Se não encontrou com filtro, buscar sem filtro
-      if (!data.organic || data.organic.length === 0) {
-        console.log('AnswerHunter: Buscando SEM filtro de sites...');
-        response = await fetch(SERPER_API_URL, {
-          method: 'POST',
-          headers: {
-            'X-API-KEY': SERPER_API_KEY,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            q: cleanQuery,
-            gl: 'br',
-            hl: 'pt-br',
-            num: 5
-          })
-        });
-        
-        if (response.ok) {
-          data = await response.json();
-          console.log('AnswerHunter: Resultados sem filtro:', data.organic?.length || 0);
-        }
+      if (response.ok) {
+        data = await response.json();
+        console.log('AnswerHunter: Resultados com filtro:', data.organic?.length || 0);
       }
       
       return data.organic || [];
@@ -711,7 +730,7 @@ function extractQuestionOnly() {
   function findQuestionContainers() {
     const containers = [];
     
-    // Seletores comuns para containers de questões
+    // Seletores comuns para containers de questões (mais abrangente)
     const selectors = [
       // Containers genéricos de questão
       '[class*="question"]',
@@ -720,6 +739,7 @@ function extractQuestionOnly() {
       '[class*="exercicio"]',
       '[class*="item-prova"]',
       '[class*="enunciado"]',
+      '[class*="pergunta"]',
       // IDs comuns
       '[id*="question"]',
       '[id*="questao"]',
@@ -730,12 +750,24 @@ function extractQuestionOnly() {
       '.question-content',
       '.activity-item',
       '.exercise-container',
+      '[class*="exercise"]',
+      '[class*="quiz"]',
+      '[class*="test"]',
+      '[class*="prova"]',
       // Elementos com numeração
       '[class*="q-"]',
+      '[class*="item-"]',
       // Containers genéricos que podem ter questões
       'article',
       'section',
-      '.card'
+      '.card',
+      '[class*="card"]',
+      '[class*="panel"]',
+      '[class*="box"]',
+      // Divs genéricos maiores
+      'main > div',
+      '.container > div',
+      '.content > div'
     ];
     
     for (const selector of selectors) {
@@ -743,9 +775,14 @@ function extractQuestionOnly() {
         const elements = document.querySelectorAll(selector);
         elements.forEach(el => {
           const text = getTextContent(el);
-          // Verificar se parece uma questão (tem ? ou alternativas)
-          if (text.length > 50 && (text.includes('?') || /\b[A-E]\b/.test(text))) {
-            containers.push(el);
+          // Verificar se parece uma questão (tem ? ou alternativas A-E)
+          const hasQuestion = text.includes('?');
+          const hasAlternatives = (text.match(/\b[A-E]\b/g) || []).length >= 3;
+          if (text.length > 50 && text.length < 5000 && (hasQuestion || hasAlternatives)) {
+            // Evitar duplicatas
+            if (!containers.some(c => c === el || c.contains(el) || el.contains(c))) {
+              containers.push(el);
+            }
           }
         });
       } catch (e) {}
@@ -753,19 +790,32 @@ function extractQuestionOnly() {
     
     // Se não encontrou containers específicos, buscar por padrão de texto
     if (containers.length === 0) {
-      // Buscar todos os elementos que contêm "Atividade X" ou numeração
+      console.log('AnswerHunter: Buscando containers por padrão de texto...');
+      // Buscar todos os elementos que contêm texto de questão
       const allElements = document.querySelectorAll('div, section, article, li, p');
       allElements.forEach(el => {
         const text = getTextContent(el);
-        if (/^(Atividade|Questão|Exercício|Pergunta)\s*\d+/im.test(text) && text.length > 100) {
-          // Verificar se não é apenas um label
-          if (!el.querySelector('[class*="question"], [class*="questao"]')) {
+        // Verificar se tem padrão de questão
+        const hasQuestionPattern = /\?/.test(text) && (text.match(/\b[A-E]\b/g) || []).length >= 2;
+        const hasActivityPattern = /^(Atividade|Questão|Exercício|Pergunta)\s*\d+/im.test(text);
+        
+        if ((hasQuestionPattern || hasActivityPattern) && text.length > 100 && text.length < 5000) {
+          // Verificar se não é apenas um label pequeno
+          if (!containers.some(c => c === el || c.contains(el) || el.contains(c))) {
             containers.push(el);
           }
         }
       });
     }
     
+    // Ordenar por tamanho (preferir containers menores e mais específicos)
+    containers.sort((a, b) => {
+      const textA = getTextContent(a).length;
+      const textB = getTextContent(b).length;
+      return textA - textB;
+    });
+    
+    console.log('AnswerHunter: Containers após filtro:', containers.length);
     return containers;
   }
 
