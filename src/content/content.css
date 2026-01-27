@@ -1,0 +1,13 @@
+/* Estilos para highlight de respostas na página */
+.qa-extractor-highlight {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.15) 0%, rgba(0, 217, 255, 0.15) 100%) !important;
+    border-left: 4px solid #00ff88 !important;
+    padding-left: 10px !important;
+    border-radius: 4px !important;
+    transition: all 0.3s ease !important;
+}
+
+.qa-extractor-highlight:hover {
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.25) 0%, rgba(0, 217, 255, 0.25) 100%) !important;
+    box-shadow: 0 2px 10px rgba(0, 255, 136, 0.3) !important;
+}
