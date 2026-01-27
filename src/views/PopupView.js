@@ -58,7 +58,7 @@ export const PopupView = {
         });
 
         this.elements.sections.forEach(s => {
-            if (s.id === `${tabName}-view`) s.classList.add('active');
+            if (s.id === `view-${tabName}`) s.classList.add('active');
             else s.classList.remove('active');
         });
     },

@@ -78,7 +78,7 @@ export const PopupController = {
 
             if (foundAny) {
                 this.view.showStatus('success', 'Respostas encontradas!');
-                this.view.toggleViewSection('results-view');
+                this.view.toggleViewSection('view-search');
             } else {
                 this.view.showStatus('error', 'Não foi possível encontrar respostas conclusivas.');
             }
@@ -132,7 +132,7 @@ export const PopupController = {
             if (finalResults && finalResults.length > 0) {
                 this.view.appendResults(finalResults);
                 this.view.showStatus('success', 'Busca concluída!');
-                this.view.toggleViewSection('results-view');
+                this.view.toggleViewSection('view-search');
             } else {
                 this.view.showStatus('error', 'Nenhuma resposta encontrada para: ' + query.substring(0, 30) + '...');
             }
