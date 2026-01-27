@@ -1,4 +1,4 @@
-import { ExtractionService } from '../services/ExtractionService.js';
+﻿import { ExtractionService } from '../services/ExtractionService.js';
 import { SearchService } from '../services/SearchService.js';
 import { ApiService } from '../services/ApiService.js';
 import { BinderController } from './BinderController.js';
@@ -13,12 +13,14 @@ export const PopupController = {
         BinderController.init(view);
         this.setupEventListeners();
         await StorageModel.init();
+        await this.restoreLastResults();
     },
 
     setupEventListeners() {
         this.view.elements.extractBtn?.addEventListener('click', () => this.handleExtract());
         this.view.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
         this.view.elements.copyBtn?.addEventListener('click', () => this.handleCopyAll());
+        this.view.elements.clearBinderBtn?.addEventListener('click', () => BinderController.handleClearAll());
 
         this.view.elements.tabs.forEach(tab => {
             tab.addEventListener('click', () => {
@@ -36,6 +38,7 @@ export const PopupController = {
     async handleExtract() {
         this.view.showStatus('loading', 'Extraindo conteúdo...');
         this.view.setButtonDisabled('extractBtn', true);
+        this.view.setButtonDisabled('copyBtn', true);
 
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -60,9 +63,15 @@ export const PopupController = {
             const refinedData = await SearchService.processExtractedItems(extractedItems);
 
             if (refinedData.length > 0) {
-                this.view.appendResults(refinedData);
+                const withSaved = refinedData.map(item => ({
+                    ...item,
+                    saved: StorageModel.isSaved(item.question)
+                }));
+                this.view.appendResults(withSaved);
+                await this.saveLastResults(refinedData);
                 this.view.showStatus('success', `${refinedData.length} questão(ões) encontrada(s)!`);
                 this.view.toggleViewSection('view-search');
+                this.view.setButtonDisabled('copyBtn', false);
             } else {
                 this.view.showStatus('error', 'Nenhuma questão válida encontrada após refinamento.');
             }
@@ -78,6 +87,7 @@ export const PopupController = {
     async handleSearch() {
         this.view.showStatus('loading', 'Obtendo pergunta...');
         this.view.setButtonDisabled('searchBtn', true);
+        this.view.setButtonDisabled('copyBtn', true);
         this.view.clearResults();
 
         try {
@@ -85,7 +95,7 @@ export const PopupController = {
 
             // 1. Tentar extrair pergunta (todos os frames)
             // No legado usava allFrames: true, vamos manter
-            const results = await chrome.scripting.executeScript({
+            const extractionResults = await chrome.scripting.executeScript({
                 target: { tabId: tab.id, allFrames: true },
                 function: ExtractionService.extractQuestionOnlyScript
             });
@@ -94,7 +104,7 @@ export const PopupController = {
             let bestQuestion = '';
             let bestLength = 0;
 
-            for (const frameResult of results || []) {
+            for (const frameResult of extractionResults || []) {
                 const text = frameResult?.result || '';
                 if (text.length > bestLength) {
                     bestLength = text.length;
@@ -123,15 +133,55 @@ export const PopupController = {
 
             this.view.showStatus('loading', 'Buscando no Google...');
 
-            // Buscar e Refinar
-            const finalResults = await SearchService.searchAndRefine(bestQuestion);
+            const searchResults = await SearchService.searchOnly(bestQuestion);
+            if (!searchResults || searchResults.length === 0) {
+                this.view.showStatus('loading', 'Nenhuma fonte encontrada. Consultando IA...');
+                const aiResults = await SearchService.answerFromAi(bestQuestion);
+                if (aiResults && aiResults.length > 0) {
+                    const withSaved = aiResults.map(item => ({
+                        ...item,
+                        saved: StorageModel.isSaved(item.question)
+                    }));
+                    this.view.appendResults(withSaved);
+                    await this.saveLastResults(aiResults);
+                    this.view.showStatus('success', `${aiResults.length} resposta(s) encontrada(s)!`);
+                    this.view.toggleViewSection('view-search');
+                    this.view.setButtonDisabled('copyBtn', false);
+                } else {
+                    this.view.showStatus('error', 'Não foi possível obter uma resposta.');
+                }
+                return;
+            }
+
+            this.view.showStatus('loading', `Encontrado ${searchResults.length} resultados. Analisando com IA...`);
+            const finalResults = await SearchService.refineFromResults(bestQuestion, searchResults);
 
             if (finalResults && finalResults.length > 0) {
-                this.view.appendResults(finalResults);
+                const withSaved = finalResults.map(item => ({
+                    ...item,
+                    saved: StorageModel.isSaved(item.question)
+                }));
+                this.view.appendResults(withSaved);
+                await this.saveLastResults(finalResults);
                 this.view.showStatus('success', `${finalResults.length} resposta(s) encontrada(s)!`);
                 this.view.toggleViewSection('view-search');
+                this.view.setButtonDisabled('copyBtn', false);
             } else {
-                this.view.showStatus('error', 'IA não encontrou a resposta nos resultados.');
+                this.view.showStatus('loading', 'Sem resposta nas fontes. Consultando IA...');
+                const aiResults = await SearchService.answerFromAi(bestQuestion);
+                if (aiResults && aiResults.length > 0) {
+                    const withSaved = aiResults.map(item => ({
+                        ...item,
+                        saved: StorageModel.isSaved(item.question)
+                    }));
+                    this.view.appendResults(withSaved);
+                    await this.saveLastResults(aiResults);
+                    this.view.showStatus('success', `${aiResults.length} resposta(s) encontrada(s)!`);
+                    this.view.toggleViewSection('view-search');
+                    this.view.setButtonDisabled('copyBtn', false);
+                } else {
+                    this.view.showStatus('error', 'Não foi possível obter uma resposta.');
+                }
             }
 
         } catch (error) {
@@ -150,7 +200,45 @@ export const PopupController = {
         }
     },
 
+    async saveLastResults(results) {
+        try {
+            await chrome.storage.local.set({ lastSearchResults: results });
+        } catch (error) {
+            console.warn('PopupController: falha ao salvar últimos resultados', error);
+        }
+    },
+
+    async restoreLastResults() {
+        try {
+            const data = await chrome.storage.local.get(['lastSearchResults']);
+            const cached = data?.lastSearchResults;
+            if (!Array.isArray(cached) || cached.length === 0) return;
+
+            const withSaved = cached.map(item => ({
+                ...item,
+                saved: StorageModel.isSaved(item.question)
+            }));
+            this.view.appendResults(withSaved);
+            this.view.toggleViewSection('view-search');
+            this.view.setButtonDisabled('copyBtn', false);
+        } catch (error) {
+            console.warn('PopupController: falha ao restaurar últimos resultados', error);
+        }
+    },
+
     async handleResultClick(e) {
+        const toggleBtn = e.target.closest('.sources-toggle');
+        if (toggleBtn) {
+            const box = toggleBtn.closest('.sources-box');
+            const list = box?.querySelector('.sources-list');
+            if (box && list) {
+                const isExpanded = box.classList.toggle('expanded');
+                list.hidden = !isExpanded;
+                toggleBtn.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+            }
+            return;
+        }
+
         const saveBtn = e.target.closest('.save-btn');
         if (saveBtn) {
             const dataContent = saveBtn.dataset.content;

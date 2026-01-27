@@ -1,4 +1,4 @@
-import { SettingsModel } from '../models/SettingsModel.js';
+﻿import { SettingsModel } from '../models/SettingsModel.js';
 
 /**
  * ApiService.js
@@ -27,13 +27,31 @@ export const ApiService = {
      * Wrapper para fetch com headers comuns
      */
     async _fetch(url, options) {
-        try {
-            const response = await fetch(url, options);
-            if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
-            return await response.json();
-        } catch (error) {
-            console.error(`ApiService Fetch Error (${url}):`, error);
-            throw error;
+        const maxRetries = 2;
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            try {
+                const response = await fetch(url, options);
+                if (response.ok) {
+                    return await response.json();
+                }
+
+                if (response.status === 429 && attempt < maxRetries) {
+                    const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
+                    const backoffMs = Math.max(800 * (attempt + 1), retryAfter * 1000);
+                    await new Promise(resolve => setTimeout(resolve, backoffMs));
+                    continue;
+                }
+
+                throw new Error(`HTTP Error ${response.status}`);
+            } catch (error) {
+                if (attempt < maxRetries) {
+                    const jitter = 200 + Math.random() * 300;
+                    await new Promise(resolve => setTimeout(resolve, jitter));
+                    continue;
+                }
+                console.error(`ApiService Fetch Error (${url}):`, error);
+                throw error;
+            }
         }
     },
 
@@ -43,7 +61,7 @@ export const ApiService = {
     async validateQuestion(questionText) {
         if (!questionText) return false;
         await this._waitForRateLimit();
-        const { groqApiUrl, groqApiKey, groqModel } = await this._getSettings();
+        const { groqApiUrl, groqApiKey, groqModelFast } = await this._getSettings();
 
         const prompt = `Voce deve validar se o texto abaixo e UMA questao limpa e coerente.\n\nRegras:\n- Deve ser uma pergunta/questao de prova ou exercicio.\n- Pode ter alternativas (A, B, C, D, E).\n- NAO pode conter menus, botoes, avisos, instrucoes de site, ou texto sem relacao.\n- Se estiver poluida, misturando outra questao, ou sem sentido, responda INVALIDO.\n\nTexto:\n${questionText}\n\nResponda apenas: OK ou INVALIDO.`;
 
@@ -55,7 +73,7 @@ export const ApiService = {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: groqModel,
+                    model: groqModelFast,
                     messages: [
                         { role: 'system', content: 'Responda apenas OK ou INVALIDO.' },
                         { role: 'user', content: prompt }
@@ -157,7 +175,7 @@ export const ApiService = {
      */
     async verifyQuestionMatch(originalQuestion, sourceContent) {
         await this._waitForRateLimit();
-        const { groqApiUrl, groqApiKey, groqModel } = await this._getSettings();
+        const { groqApiUrl, groqApiKey, groqModelFast } = await this._getSettings();
 
         const prompt = `Voce deve verificar se o conteudo da FONTE corresponde a mesma questao do CLIENTE.
 
@@ -185,7 +203,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: groqModel,
+                    model: groqModelFast,
                     messages: [
                         { role: 'system', content: 'Voce verifica se duas questoes sao sobre o mesmo assunto. Responda apenas CORRESPONDE ou NAO_CORRESPONDE.' },
                         { role: 'user', content: prompt }
@@ -266,7 +284,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
      */
     async extractOptionsFromSource(sourceContent) {
         await this._waitForRateLimit();
-        const { groqApiUrl, groqApiKey, groqModel } = await this._getSettings();
+        const { groqApiUrl, groqApiKey, groqModelFast } = await this._getSettings();
 
         const prompt = `Voce deve extrair APENAS as alternativas (opcoes A, B, C, D, E) do texto abaixo.
 
@@ -294,7 +312,7 @@ E) [texto da alternativa E se houver]`;
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: groqModel,
+                    model: groqModelFast,
                     messages: [
                         { role: 'system', content: 'Voce extrai apenas alternativas de questoes. Responda APENAS com as alternativas no formato A) B) C) D) E) ou SEM_OPCOES.' },
                         { role: 'user', content: prompt }
@@ -318,7 +336,7 @@ E) [texto da alternativa E se houver]`;
      */
     async extractAnswerFromSource(originalQuestion, sourceContent) {
         await this._waitForRateLimit();
-        const { groqApiUrl, groqApiKey, groqModel } = await this._getSettings();
+        const { groqApiUrl, groqApiKey, groqModelAnswer } = await this._getSettings();
 
         const prompt = `Voce deve identificar APENAS a RESPOSTA CORRETA para a questao abaixo, baseado no conteudo da fonte.
 
@@ -347,7 +365,7 @@ FORMATO DE SAIDA:
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: groqModel,
+                    model: groqModelAnswer,
                     messages: [
                         { role: 'system', content: 'Voce identifica a resposta correta de questoes. Procure por indicacoes de gabarito. Responda APENAS a resposta encontrada, nunca invente.' },
                         { role: 'user', content: prompt }
@@ -405,5 +423,42 @@ FORMATO DE SAIDA:
             question: finalQuestion.trim(),
             answer: answer.trim()
         };
+    }
+
+    ,
+    /**
+     * Fallback: gerar resposta diretamente pela IA quando não houver fontes
+     */
+    async generateAnswerFromQuestion(questionText) {
+        if (!questionText) return null;
+        await this._waitForRateLimit();
+        const { groqApiUrl, groqApiKey, groqModelFallback } = await this._getSettings();
+
+        const prompt = `Responda a questão abaixo de forma direta e objetiva.\n\nQUESTÃO:\n${questionText}\n\nREGRAS:\n- Se for múltipla escolha, responda com a alternativa correta (letra e texto, se possível).\n- Se for aberta, responda em 1 a 3 frases.\n- Não invente citações.`;
+
+        try {
+            const data = await this._fetch(groqApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${groqApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: groqModelFallback,
+                    messages: [
+                        { role: 'system', content: 'Você é um assistente que responde questões com objetividade.' },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.2,
+                    max_tokens: 300
+                })
+            });
+
+            const content = data.choices?.[0]?.message?.content?.trim() || '';
+            return content || null;
+        } catch (error) {
+            console.error('Erro ao gerar resposta direta:', error);
+            return null;
+        }
     }
 };

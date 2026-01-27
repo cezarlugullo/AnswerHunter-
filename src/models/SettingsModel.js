@@ -7,8 +7,10 @@ export const SettingsModel = {
     defaults: {
         groqApiKey: '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',
         groqApiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-        // Usando Groq Compound como solicitado pelo usuário
-        groqModel: 'groq/compound',
+        // Modelos por função (rápido vs preciso)
+        groqModelFast: 'llama-3.1-8b-instant',
+        groqModelAnswer: 'llama-3.3-70b-versatile',
+        groqModelFallback: 'llama-3.3-70b-versatile',
         serperApiKey: 'feffb9d9843cbe91d25ea499ae460068d5518f45',
         serperApiUrl: 'https://google.serper.dev/search',
         minGroqIntervalMs: 900 // Cooldown ajustado
