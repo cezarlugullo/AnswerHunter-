@@ -7,7 +7,7 @@ const SERPER_API_URL = 'https://google.serper.dev/search';
 // Global Data
 let refinedData = [];
 let lastGroqCallAt = 0;
-const MIN_GROQ_INTERVAL_MS = 2500;
+const MIN_GROQ_INTERVAL_MS = 900;
 async function validateQuestionWithGroq(questionText) {
   const now = Date.now();
   if (now - lastGroqCallAt < MIN_GROQ_INTERVAL_MS) {
@@ -61,6 +61,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const resultsDiv = document.getElementById('results');
   // Global variables
   // refinedData is now global
+
+  function isLikelyQuestion(text) {
+    if (!text) return false;
+    const clean = text.replace(/\s+/g, ' ').trim();
+    if (clean.length < 30) return false;
+    const hasQuestionMark = clean.includes('?');
+    const hasKeywords = /Quest(?:a|ã)o|Pergunta|Exerc[ií]cio|Enunciado|Atividade/i.test(clean);
+    const hasOptions = /(?:^|\s)[A-E]\s*[\)\.\-:]/i.test(clean);
+    const looksLikeMenu = /menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|voltar|avançar|finalizar|marcar para revis[aã]o/i.test(clean);
+    return (hasQuestionMark || hasKeywords || hasOptions) && !looksLikeMenu;
+  }
 
 
   // === EXTRAIR DA PéGINA ATUAL ===
@@ -155,11 +166,15 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
-        showStatus('loading', 'Validando pergunta com IA...');
-        const isValid = await validateQuestionWithGroq(question);
-        if (!isValid) {
-          showStatus('error', 'Pergunta inválida ou poluída. Tente rolar até a questão correta.');
-          return;
+        if (isLikelyQuestion(question)) {
+          console.log('AnswerHunter: Validacao heuristica OK (sem IA).');
+        } else {
+          showStatus('loading', 'Validando pergunta com IA...');
+          const isValid = await validateQuestionWithGroq(question);
+          if (!isValid) {
+            showStatus('error', 'Pergunta inválida ou poluída. Tente rolar até a questão correta.');
+            return;
+          }
         }
 
         showStatus('loading', 'Buscando no Google...');
@@ -425,6 +440,60 @@ async function extractAnswersFromSearch(originalQuestion, searchResults) {
 // === REFINAR COM GROQ - 3 PROMPTS SEPARADOS ===
 
 // Prompt 1: Extrair apenas as OPCOES do conteudo das fontes
+function extractOptionsLocally(sourceContent) {
+    if (!sourceContent) return null;
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const normalized = sourceContent.replace(/\r\n/g, '\n');
+
+    const byLines = () => {
+        const lines = normalized.split(/\n+/).map(line => line.trim()).filter(Boolean);
+        const options = [];
+        const altStartRe = /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+        let current = null;
+
+        for (const line of lines) {
+            const m = line.match(altStartRe);
+            if (m) {
+                if (current) options.push(current);
+                current = { letter: m[1].toUpperCase(), body: clean(m[2]) };
+            } else if (current) {
+                current.body = clean(`${current.body} ${line}`);
+            }
+        }
+        if (current) options.push(current);
+        return options.length >= 2 ? options : null;
+    };
+
+    const byInline = () => {
+        const options = [];
+        const inlinePattern = /(^|[\s])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:\s)[A-E]\s*[\)\.\-:]|$)/gi;
+        let m;
+        while ((m = inlinePattern.exec(normalized)) !== null) {
+            const letter = m[2].toUpperCase();
+            const body = clean(m[3]);
+            if (body) options.push({ letter, body });
+        }
+        return options.length >= 2 ? options : null;
+    };
+
+    const byPlain = () => {
+        const options = [];
+        const plainAltPattern = /(?:^|[.!?]\s+)([A-E])\s+([A-ZÀ-Ú][^]*?)(?=(?:[.!?]\s+)[A-E]\s+[A-ZÀ-Ú]|$)/g;
+        let m;
+        while ((m = plainAltPattern.exec(normalized)) !== null) {
+            const letter = m[1].toUpperCase();
+            const body = clean(m[2].replace(/\s+[.!?]\s*$/, ''));
+            if (body) options.push({ letter, body });
+        }
+        return options.length >= 2 ? options : null;
+    };
+
+    const found = byLines() || byInline() || byPlain();
+    if (!found) return null;
+
+    return found.map(o => `${o.letter}) ${o.body}`).join('\n');
+}
+
 async function extractOptionsFromSource(sourceContent) {
     const now = Date.now();
     if (now - lastGroqCallAt < MIN_GROQ_INTERVAL_MS) {
@@ -546,15 +615,25 @@ async function refineWithGroq(item, retryCount = 0) {
     const originalQuestion = item.question;
     console.log('AnswerHunter: Enunciado original preservado:', originalQuestion?.substring(0, 100));
 
-    // PROMPT 2: Extrair opcoes das fontes (se necessario)
+    const hasOptionsInOriginal = /[A-E]\s*[\)\.]\s*\S+/i.test(originalQuestion);
+
+    // PROMPT 2 (otimizado): tentar extrair opcoes localmente antes de usar IA
     let options = null;
-    if (item.answer && item.answer.length > 30) {
-        options = await extractOptionsFromSource(item.answer);
-        console.log('AnswerHunter: Opcoes extraidas:', options ? 'Sim' : 'Nao');
+    let optionsPromise = null;
+    if (!hasOptionsInOriginal && item.answer && item.answer.length > 30) {
+        options = extractOptionsLocally(item.answer);
+        if (!options) {
+            optionsPromise = extractOptionsFromSource(item.answer);
+        }
     }
 
     // PROMPT 3: Identificar a resposta correta
-    const answer = await extractAnswerFromSource(originalQuestion, item.answer);
+    const answerPromise = extractAnswerFromSource(originalQuestion, item.answer);
+    const [answer, optionsFromGroq] = await Promise.all([
+        answerPromise,
+        optionsPromise ? optionsPromise : Promise.resolve(null)
+    ]);
+    if (!options && optionsFromGroq) options = optionsFromGroq;
     console.log('AnswerHunter: Resposta identificada:', answer ? 'Sim' : 'Nao');
 
     if (!answer) {
@@ -567,7 +646,6 @@ async function refineWithGroq(item, retryCount = 0) {
     let finalQuestion = originalQuestion;
 
     // Se nao temos opcoes no enunciado original mas encontramos nas fontes, adicionamos
-    const hasOptionsInOriginal = /[A-E]\s*[\)\.]\s*\S+/i.test(originalQuestion);
     if (!hasOptionsInOriginal && options) {
         finalQuestion = originalQuestion + '\n' + options;
     }
@@ -691,6 +769,7 @@ async function refineWithGroq(item, retryCount = 0) {
                <div class="answer-header">
                   <span class="material-symbols-rounded answer-icon">check_circle</span>
                   <span class="header-title">RESPOSTA CORRETA</span>
+                  <span class="answer-badge">Verificada</span>
                </div>
                <div class="answer">${escapeHtml(item.answer)}</div>
                ${item.source ? `<div class="source"><a href="${item.source}" target="_blank"><span class="material-symbols-rounded" style="font-size: 14px;">link</span> Ver fonte</a></div>` : ''}
@@ -801,6 +880,10 @@ async function refineWithGroq(item, retryCount = 0) {
 
     return `<div class="question-enunciado">${escapeHtml(clean(normalized))}</div>`;
   }
+
+  // Expor helpers para renderizacao no fichario
+  window.escapeHtml = escapeHtml;
+  window.formatQuestionText = formatQuestionText;
 });
 
 // ==========================================
@@ -1489,12 +1572,13 @@ window.binderManager = {
                                 <span class="material-symbols-rounded" style="font-size:14px">help_outline</span>
                                 Questão
                             </div>
-                            <div class="full-question-text">${item.content.question}</div>
+                        <div class="full-question-text">${window.formatQuestionText ? window.formatQuestionText(item.content.question) : (window.escapeHtml ? window.escapeHtml(item.content.question) : (item.content.question || ''))}</div>
                         </div>
                         <div class="full-answer">
                             <div class="full-answer-label">
                                 <span class="material-symbols-rounded" style="font-size:14px">check_circle</span>
                                 Resposta Correta
+                                <span class="full-answer-badge">Verificada</span>
                             </div>
                             <div class="full-answer-text">${item.content.answer}</div>
                         </div>
