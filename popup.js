@@ -25,7 +25,7 @@ async function validateQuestionWithGroq(questionText) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
+        model: 'groq/compound',
         messages: [
           { role: 'system', content: 'Responda apenas OK ou INVALIDO.' },
           { role: 'user', content: prompt }
@@ -309,160 +309,276 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // === EXTRACTION LOGIC ===
   // === EXTRAIR RESPOSTAS DOS RESULTADOS DE BUSCA ===
-  async function extractAnswersFromSearch(originalQuestion, searchResults) {
-    const answers = [];
-    console.log(`AnswerHunter: Debug - Analisando ${searchResults.length} resultados da busca.`);
-
-    // Processar apenas o primeiro resultado mais relevante para evitar rate limit
-    const topResults = searchResults.slice(0, 1);
-    for (const result of topResults) {
-      try {
-        console.log(`AnswerHunter: Debug - Processando resultado: ${result.title}`);
-        // Usar o snippet do Google como fonte de resposta
-        const snippet = result.snippet || '';
-        const title = result.title || '';
-
-        if (snippet.length > 30) {
-          // Usar Groq para analisar o snippet
-          const refined = await refineWithGroq({
-            question: originalQuestion,
-            answer: `${title}. ${snippet}`
-          });
-
-          if (refined) {
-            console.log('AnswerHunter: Debug - Resposta encontrada:', refined);
-            refined.source = result.link;
-            answers.push(refined);
-            break; // Pegar só a primeira resposta vé¡lida
-          } else {
-            // Fallback: retornar snippet como resposta quando a IA não estiver disponé­vel
-            console.log('AnswerHunter: Debug - IA indisponé­vel. Usando snippet como resposta.');
-            answers.push({
-              question: originalQuestion,
-              answer: `${title}. ${snippet}`,
-              source: result.link
-            });
-            break;
-          }
-        } else {
-          console.log('AnswerHunter: Debug - Snippet muito curto, ignorando.');
-        }
-      } catch (e) {
-        console.error('Erro ao processar resultado:', e);
-      }
-    }
-
-    return answers;
-  }
-
-  // === REFINAR COM GROQ ===
-  async function refineWithGroq(item, retryCount = 0) {
+// === VERIFICAR CORRESPONDENCIA ENTRE QUESTAO E FONTE ===
+async function verifyQuestionMatch(originalQuestion, sourceContent) {
     const now = Date.now();
     if (now - lastGroqCallAt < MIN_GROQ_INTERVAL_MS) {
-      console.log('AnswerHunter: Aguardando cooldown do Groq.');
-      await new Promise(resolve => setTimeout(resolve, MIN_GROQ_INTERVAL_MS));
+        await new Promise(resolve => setTimeout(resolve, MIN_GROQ_INTERVAL_MS));
     }
     lastGroqCallAt = Date.now();
 
-    const prompt = `Você é© um especialista em extrair respostas de questões educacionais de sites como Brainly e Passei Direto.
+    const prompt = `Voce deve verificar se o conteudo da FONTE corresponde a mesma questao do CLIENTE.
 
-CONTEéšDO BRUTO EXTRAéDO DO SITE:
+=== QUESTAO DO CLIENTE ===
+${originalQuestion.substring(0, 500)}
 
-=== éREA DA PERGUNTA ===
-${item.question}
+=== CONTEUDO DA FONTE ===
+${sourceContent.substring(0, 500)}
 
-=== éREA DA RESPOSTA ===
-${item.answer}
+REGRAS:
+- Compare o TEMA/ASSUNTO das duas questoes
+- Se forem sobre o MESMO assunto, responda: CORRESPONDE
+- Se forem sobre assuntos DIFERENTES, responda: NAO_CORRESPONDE
+- Exemplos de NAO correspondencia:
+  * Cliente pergunta sobre ergonomia, fonte fala sobre regioes geograficas
+  * Cliente pergunta sobre biologia, fonte fala sobre matematica
 
-INSTRUé‡é•ES CRéTICAS:
-
-1. DETECTE O TIPO DE QUestáƒO:
-   - Múltipla escolha tradicional (A, B, C, D, E)
-   - Asserções (I, II, III com ané¡lise de quais estão corretas)
-   - Verdadeiro/Falso
-   - Questão aberta
-
-2. ENCONTRE A RESPOSTA CORRETA:
-   - Procure por indicações como "Gab", "Gabarito", "Resposta correta", "alternativa correta é©"
-   - Procure frases como "I e II estão corretas", "apenas I está¡ correta", etc.
-   - A resposta geralmente está¡ na é¡rea de resposta, não na pergunta
-
-3. IGNORE COMPLETAMENTE:
-   - Textos promocionais (Assine, Plus, Premium, desbloqueie)
-   - Metadata de usué¡rios (especialista, votos, útil, respostas)
-   - Outras perguntas que aparecem no site
-   - Se for APENAS conteúdo promocional, responda: INVALIDO
-
-4. FORMATO DE SAéDA:
-
-Para questões de ASSERé‡é•ES (I, II, III):
-PERGUNTA: [enunciado com as Asserções]
-RESPOSTA: [ex: "I e II estão corretas" ou "Apenas a asserção I é© verdadeira"]
-
-Para MéšLTIPLA ESCOLHA (A, B, C, D, E):
-PERGUNTA: [enunciado]
-A) [opçéo A]
-B) [opçéo B]
-C) [opçéo C]
-D) [opçéo D]
-E) [opçéo E se houver]
-RESPOSTA: Alternativa [LETRA]: [texto da alternativa]
-
-Para questão ABERTA:
-PERGUNTA: [pergunta]
-RESPOSTA: [resposta direta]
-
-IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, não invente uma resposta.`;
+Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
 
     try {
-      const response = await fetch(GROQ_API_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GROQ_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            {
-              role: 'system',
-              content: 'Você extrai respostas de sites educacionais como Brainly. Identifique o tipo de questão (múltipla escolha, asserções I/II/III, ou aberta). Procure por indicações de gabarito como "Gab", "I e II estão corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteúdo promocional, responda INVALIDO.'
+        const response = await fetch(GROQ_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
             },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 800
-        })
-      });
+            body: JSON.stringify({
+                model: 'groq/compound',
+                messages: [
+                    { role: 'system', content: 'Voce verifica se duas questoes sao sobre o mesmo assunto. Responda apenas CORRESPONDE ou NAO_CORRESPONDE.' },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0.1,
+                max_tokens: 20
+            })
+        });
 
-      if (response.status === 429) {
-      console.log('AnswerHunter: Rate Limit (429). Pulando Groq e usando fallback.');
-        return null;
-      }
+        if (!response.ok) return true; // Em caso de erro, assume que corresponde
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content?.trim().toUpperCase() || '';
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content?.trim() || '';
-
-      console.log('AnswerHunter: Debug - Resposta RAW da IA:', content);
-
-      if (content === 'INVALIDO' || content.includes('INVALIDO')) {
-        console.log('AnswerHunter: Debug - IA marcou como INVALIDO');
-        return null;
-      }
-
-      return parseAIResponse(content);
+        console.log('AnswerHunter: Verificacao de correspondencia:', content);
+        return content.includes('CORRESPONDE') && !content.includes('NAO_CORRESPONDE');
     } catch (error) {
-      console.error('Erro Groq:', error);
-      return null;
+        console.error('Erro ao verificar correspondencia:', error);
+        return true; // Em caso de erro, assume que corresponde
     }
-  }
+}
+
+// === EXTRACTION LOGIC ===
+// === EXTRAIR RESPOSTAS DOS RESULTADOS DE BUSCA ===
+async function extractAnswersFromSearch(originalQuestion, searchResults) {
+    const answers = [];
+    console.log(`AnswerHunter: Debug - Analisando ${searchResults.length} resultados da busca.`);
+
+    // Processar multiplos resultados ate encontrar um que corresponda
+    const topResults = searchResults.slice(0, 5); // Aumentar para 5 resultados
+
+    for (const result of topResults) {
+        try {
+            console.log(`AnswerHunter: Debug - Processando resultado: ${result.title}`);
+            const snippet = result.snippet || '';
+            const title = result.title || '';
+            const fullContent = `${title}. ${snippet}`;
+
+            if (snippet.length < 30) {
+                console.log('AnswerHunter: Debug - Snippet muito curto, ignorando.');
+                continue;
+            }
+
+            // NOVA VERIFICACAO: Checar se a fonte corresponde a mesma questao
+            const isMatch = await verifyQuestionMatch(originalQuestion, fullContent);
+
+            if (!isMatch) {
+                console.log('AnswerHunter: Debug - Fonte NAO corresponde a questao. Tentando proximo resultado...');
+                continue; // Pular para o proximo resultado
+            }
+
+            console.log('AnswerHunter: Debug - Fonte CORRESPONDE a questao!');
+
+            // Usar Groq para analisar o snippet
+            const refined = await refineWithGroq({
+                question: originalQuestion,
+                answer: fullContent
+            });
+
+            if (refined) {
+                console.log('AnswerHunter: Debug - Resposta encontrada:', refined);
+                refined.source = result.link;
+                answers.push(refined);
+                break; // Pegar so a primeira resposta valida
+            }
+        } catch (e) {
+            console.error('Erro ao processar resultado:', e);
+        }
+    }
+
+    // Se nenhum resultado correspondeu, avisar o usuario
+    if (answers.length === 0) {
+        console.log('AnswerHunter: Nenhum resultado correspondente encontrado.');
+    }
+
+    return answers;
+}
+
+
+// === REFINAR COM GROQ - 3 PROMPTS SEPARADOS ===
+
+// Prompt 1: Extrair apenas as OPCOES do conteudo das fontes
+async function extractOptionsFromSource(sourceContent) {
+    const now = Date.now();
+    if (now - lastGroqCallAt < MIN_GROQ_INTERVAL_MS) {
+        await new Promise(resolve => setTimeout(resolve, MIN_GROQ_INTERVAL_MS));
+    }
+    lastGroqCallAt = Date.now();
+
+    const prompt = `Voce deve extrair APENAS as alternativas (opcoes A, B, C, D, E) do texto abaixo.
+
+TEXTO DA FONTE:
+${sourceContent}
+
+REGRAS:
+- Extraia APENAS as alternativas no formato: A) texto, B) texto, etc.
+- Se nao houver alternativas claras, responda: SEM_OPCOES
+- NAO invente alternativas
+- NAO inclua o enunciado da pergunta
+
+FORMATO DE SAIDA (apenas as alternativas):
+A) [texto da alternativa A]
+B) [texto da alternativa B]
+C) [texto da alternativa C]
+D) [texto da alternativa D]
+E) [texto da alternativa E se houver]`;
+
+    try {
+        const response = await fetch(GROQ_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'groq/compound',
+                messages: [
+                    { role: 'system', content: 'Voce extrai apenas alternativas de questoes. Responda APENAS com as alternativas no formato A) B) C) D) E) ou SEM_OPCOES.' },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0.1,
+                max_tokens: 500
+            })
+        });
+
+        if (!response.ok) return null;
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content?.trim() || '';
+
+        if (content.includes('SEM_OPCOES')) return null;
+        return content;
+    } catch (error) {
+        console.error('Erro ao extrair opcoes:', error);
+        return null;
+    }
+}
+
+// Prompt 2: Identificar a RESPOSTA CORRETA do conteudo das fontes
+async function extractAnswerFromSource(originalQuestion, sourceContent) {
+    const now = Date.now();
+    if (now - lastGroqCallAt < MIN_GROQ_INTERVAL_MS) {
+        await new Promise(resolve => setTimeout(resolve, MIN_GROQ_INTERVAL_MS));
+    }
+    lastGroqCallAt = Date.now();
+
+    const prompt = `Voce deve identificar APENAS a RESPOSTA CORRETA para a questao abaixo, baseado no conteudo da fonte.
+
+=== QUESTAO DO CLIENTE ===
+${originalQuestion}
+
+=== CONTEUDO DA FONTE ===
+${sourceContent}
+
+REGRAS CRITICAS:
+1. Procure por indicacoes como: "Gab", "Gabarito", "Resposta correta", "alternativa correta e", "A resposta e"
+2. Para questoes de multipla escolha: responda APENAS a LETRA (A, B, C, D ou E) seguida do texto
+3. Para assercoes (I, II, III): identifique quais estao corretas
+4. Para questoes abertas: responda o conteudo da resposta
+5. NUNCA invente uma resposta - extraia apenas o que esta indicado na fonte
+6. Se nao encontrar resposta clara, responda: SEM_RESPOSTA
+
+FORMATO DE SAIDA:
+[Apenas a resposta, ex: "Alternativa B: texto" ou "I e III estao corretas" ou resposta direta]`;
+
+    try {
+        const response = await fetch(GROQ_API_URL, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'groq/compound',
+                messages: [
+                    { role: 'system', content: 'Voce identifica a resposta correta de questoes. Procure por indicacoes de gabarito. Responda APENAS a resposta encontrada, nunca invente.' },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0.1,
+                max_tokens: 300
+            })
+        });
+
+        if (!response.ok) return null;
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content?.trim() || '';
+
+        if (content.includes('SEM_RESPOSTA') || content.includes('INVALIDO')) return null;
+        return content;
+    } catch (error) {
+        console.error('Erro ao extrair resposta:', error);
+        return null;
+    }
+}
+
+// Funcao principal que combina os 3 prompts
+async function refineWithGroq(item, retryCount = 0) {
+    console.log('AnswerHunter: Iniciando refinamento com 3 prompts...');
+
+    // PROMPT 1: O enunciado SEMPRE vem do site do cliente (item.question)
+    // Nao alteramos o enunciado original capturado
+    const originalQuestion = item.question;
+    console.log('AnswerHunter: Enunciado original preservado:', originalQuestion?.substring(0, 100));
+
+    // PROMPT 2: Extrair opcoes das fontes (se necessario)
+    let options = null;
+    if (item.answer && item.answer.length > 30) {
+        options = await extractOptionsFromSource(item.answer);
+        console.log('AnswerHunter: Opcoes extraidas:', options ? 'Sim' : 'Nao');
+    }
+
+    // PROMPT 3: Identificar a resposta correta
+    const answer = await extractAnswerFromSource(originalQuestion, item.answer);
+    console.log('AnswerHunter: Resposta identificada:', answer ? 'Sim' : 'Nao');
+
+    if (!answer) {
+        console.log('AnswerHunter: Nao foi possivel identificar a resposta.');
+        return null;
+    }
+
+    // Montar o resultado final
+    // O enunciado e SEMPRE o original do site do cliente
+    let finalQuestion = originalQuestion;
+
+    // Se nao temos opcoes no enunciado original mas encontramos nas fontes, adicionamos
+    const hasOptionsInOriginal = /[A-E]\s*[\)\.]\s*\S+/i.test(originalQuestion);
+    if (!hasOptionsInOriginal && options) {
+        finalQuestion = originalQuestion + '\n' + options;
+    }
+
+    return {
+        question: finalQuestion.trim(),
+        answer: answer.trim()
+    };
+}
+
+
 
   function parseAIResponse(content) {
     const lines = content.split('\n').filter(l => l.trim());
@@ -601,31 +717,89 @@ IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, não invente uma re
     if (!text) return '';
 
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
-    const pattern = /([A-E])\s*[\)\.\-]\s*([^]*?)(?=(?:\n?\s*[A-E]\s*[\)\.\-])|$)/gi;
-    const matches = [];
-    let m;
+    const normalized = (text || '').replace(/\r\n/g, '\n');
 
-    while ((m = pattern.exec(text)) !== null) {
-      const letter = m[1].toUpperCase();
-      const body = clean(m[2]);
-      if (body) {
-        matches.push({ letter, body });
-      }
-    }
-
-    if (matches.length >= 2) {
-      const firstIndex = text.search(/[A-E]\s*[\)\.\-]/i);
-      const enunciado = clean(text.substring(0, Math.max(0, firstIndex)));
-      const formattedAlternatives = matches
-        .map(a => `<div class="alternative">${escapeHtml(`${a.letter}) ${a.body}`)}</div>`)
+    const render = (enunciado, alternatives) => {
+      const formattedAlternatives = alternatives
+        .map(a => `
+          <div class="alternative">
+            <span class="alt-letter">${escapeHtml(a.letter)}</span>
+            <span class="alt-text">${escapeHtml(a.body)}</span>
+          </div>
+        `)
         .join('');
       return `
         <div class="question-enunciado">${escapeHtml(enunciado)}</div>
         <div class="question-alternatives">${formattedAlternatives}</div>
       `;
+    };
+
+    const parseByLines = (raw) => {
+      const lines = raw.split(/\n+/).map(line => line.trim()).filter(Boolean);
+      const alternatives = [];
+      const enunciadoParts = [];
+      let currentAlt = null;
+      const altStartRe = /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+
+      for (const line of lines) {
+        const m = line.match(altStartRe);
+        if (m) {
+          if (currentAlt) alternatives.push(currentAlt);
+          currentAlt = { letter: m[1].toUpperCase(), body: clean(m[2]) };
+        } else if (currentAlt) {
+          currentAlt.body = clean(`${currentAlt.body} ${line}`);
+        } else {
+          enunciadoParts.push(line);
+        }
+      }
+
+      if (currentAlt) alternatives.push(currentAlt);
+
+      return { enunciado: clean(enunciadoParts.join(' ')), alternatives };
+    };
+
+    const parsedByLines = parseByLines(normalized);
+    if (parsedByLines.alternatives.length >= 2) {
+      return render(parsedByLines.enunciado, parsedByLines.alternatives);
     }
 
-    return `<div class="question-enunciado">${escapeHtml(clean(text))}</div>`;
+    // Fallback para alternativas em linha unica (evita falsos positivos como "software)")
+    const inlinePattern = /(^|[\s])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:\s)[A-E]\s*[\)\.\-:]|$)/gi;
+    const alternatives = [];
+    let firstIndex = null;
+    let m;
+
+    while ((m = inlinePattern.exec(normalized)) !== null) {
+      if (firstIndex === null) firstIndex = m.index + m[1].length;
+      const letter = m[2].toUpperCase();
+      const body = clean(m[3]);
+      if (body) alternatives.push({ letter, body });
+    }
+
+    if (alternatives.length >= 2) {
+      const enunciado = firstIndex !== null ? clean(normalized.substring(0, firstIndex)) : '';
+      return render(enunciado, alternatives);
+    }
+
+    // Fallback extra: alternativas sem pontuação (ex: "A Texto. B Texto.")
+    const plainAltPattern = /(?:^|[.!?]\s+)([A-E])\s+([A-ZÀ-Ú][^]*?)(?=(?:[.!?]\s+)[A-E]\s+[A-ZÀ-Ú]|$)/g;
+    const plainAlternatives = [];
+    let plainFirstIndex = null;
+    let pm;
+
+    while ((pm = plainAltPattern.exec(normalized)) !== null) {
+      if (plainFirstIndex === null) plainFirstIndex = pm.index;
+      const letter = pm[1].toUpperCase();
+      const body = clean(pm[2].replace(/\s+[.!?]\s*$/, ''));
+      if (body) plainAlternatives.push({ letter, body });
+    }
+
+    if (plainAlternatives.length >= 2) {
+      const enunciado = plainFirstIndex !== null ? clean(normalized.substring(0, plainFirstIndex)) : '';
+      return render(enunciado, plainAlternatives);
+    }
+
+    return `<div class="question-enunciado">${escapeHtml(clean(normalized))}</div>`;
   }
 });
 
