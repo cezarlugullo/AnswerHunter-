@@ -1,4 +1,4 @@
-﻿// Configuraçéo das APIs
+﻿// Configuração das APIs
 const GROQ_API_KEY = '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';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const SERPER_API_KEY = 'feffb9d9843cbe91d25ea499ae460068d5518f45';
@@ -51,10 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (refinedData.length > 0) {
               displayResults(refinedData);
-              showStatus('success', `${refinedData.length} questéo(ões) encontrada(s)!`);
+              showStatus('success', `${refinedData.length} questão(ões) encontrada(s)!`);
               if (copyBtn) copyBtn.disabled = false;
             } else {
-              showStatus('error', 'Nenhuma questéo válida encontrada');
+              showStatus('error', 'Nenhuma questão válida encontrada');
               displayResults([]);
             }
           } else {
@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Pontuar para escolher o melhor
             let score = text.length;
             if (text.includes('?')) score += 500;
-            if (/Atividade|Questéo|Exercício/i.test(text)) score += 300;
+            if (/Atividade|Questão|Exercício/i.test(text)) score += 300;
             if (/\b[A-E]\b/g.test(text)) score += 200;
             
             if (score > bestScore) {
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
         
-        console.log('AnswerHunter: Melhor questéo encontrada:', question?.substring(0, 100));
+        console.log('AnswerHunter: Melhor questão encontrada:', question?.substring(0, 100));
 
         if (!question || question.length < 5) {
           showStatus('error', 'Selecione o texto da pergunta e tente novamente.');
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showStatus('success', `${answers.length} resposta(s) encontrada(s)!`);
           if (copyBtn) copyBtn.disabled = false;
         } else {
-          showStatus('error', 'IA néo encontrou a resposta nos resultados.');
+          showStatus('error', 'IA não encontrou a resposta nos resultados.');
         }
 
       } catch (error) {
@@ -163,17 +163,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function cleanQueryForSearch(query) {
     let clean = query
-      // Remover prefixos de questéo
-      .replace(/^(?:Questéo|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '')
-      // Remover marcadores de reviséo
-      .replace(/Marcar para reviséo/gi, '')
+      // Remover prefixos de questão
+      .replace(/^(?:Questão|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '')
+      // Remover marcadores de revisão
+      .replace(/Marcar para revisão/gi, '')
       // Remover "Responda", "O que você achou", etc
       .replace(/\s*(Responda|O que você achou|Relatar problema|Voltar|Avançar|Menu|Finalizar)[\s\S]*/gi, '')
       // Limpar espaços
       .replace(/\s+/g, ' ')
       .trim();
     
-    // Tentar extrair apenas a pergunta (até a interrogaçéo)
+    // Tentar extrair apenas a pergunta (até a interrogação)
     if (clean.includes('?')) {
       const questionEnd = clean.indexOf('?');
       const questionText = clean.substring(0, questionEnd + 1).trim();
@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return data.organic;
       }
       
-      // Se néo encontrou, tentar com filtro de sites educacionais
+      // Se não encontrou, tentar com filtro de sites educacionais
       console.log('AnswerHunter: Tentando com sites educacionais...');
       response = await fetch(SERPER_API_URL, {
         method: 'POST',
@@ -286,7 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
             answers.push(refined);
             break; // Pegar só a primeira resposta vé¡lida
           } else {
-            // Fallback: retornar snippet como resposta quando a IA néo estiver disponé­vel
+            // Fallback: retornar snippet como resposta quando a IA não estiver disponé­vel
             console.log('AnswerHunter: Debug - IA indisponé­vel. Usando snippet como resposta.');
             answers.push({
               question: originalQuestion,
@@ -329,14 +329,14 @@ INSTRUé‡é•ES CRéTICAS:
 
 1. DETECTE O TIPO DE QUestáƒO:
    - Múltipla escolha tradicional (A, B, C, D, E)
-   - Asserções (I, II, III com ané¡lise de quais estéo corretas)
+   - Asserções (I, II, III com ané¡lise de quais estão corretas)
    - Verdadeiro/Falso
-   - Questéo aberta
+   - Questão aberta
 
 2. ENCONTRE A RESPOSTA CORRETA:
    - Procure por indicações como "Gab", "Gabarito", "Resposta correta", "alternativa correta é©"
-   - Procure frases como "I e II estéo corretas", "apenas I está¡ correta", etc.
-   - A resposta geralmente está¡ na é¡rea de resposta, NéO na pergunta
+   - Procure frases como "I e II estão corretas", "apenas I está¡ correta", etc.
+   - A resposta geralmente está¡ na é¡rea de resposta, não na pergunta
 
 3. IGNORE COMPLETAMENTE:
    - Textos promocionais (Assine, Plus, Premium, desbloqueie)
@@ -348,7 +348,7 @@ INSTRUé‡é•ES CRéTICAS:
 
 Para questões de ASSERé‡é•ES (I, II, III):
 PERGUNTA: [enunciado com as Asserções]
-RESPOSTA: [ex: "I e II estéo corretas" ou "Apenas a asserçéo I é© verdadeira"]
+RESPOSTA: [ex: "I e II estão corretas" ou "Apenas a asserção I é© verdadeira"]
 
 Para MéšLTIPLA ESCOLHA (A, B, C, D, E):
 PERGUNTA: [enunciado]
@@ -359,11 +359,11 @@ D) [opçéo D]
 E) [opçéo E se houver]
 RESPOSTA: Alternativa [LETRA]: [texto da alternativa]
 
-Para questéo ABERTA:
+Para questão ABERTA:
 PERGUNTA: [pergunta]
 RESPOSTA: [resposta direta]
 
-IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, néo invente uma resposta.`;
+IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, não invente uma resposta.`;
 
     try {
       const response = await fetch(GROQ_API_URL, {
@@ -377,7 +377,7 @@ IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, néo invente uma re
           messages: [
             {
               role: 'system',
-              content: 'Você extrai respostas de sites educacionais como Brainly. Identifique o tipo de questéo (múltipla escolha, asserções I/II/III, ou aberta). Procure por indicações de gabarito como "Gab", "I e II estéo corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteúdo promocional, responda INVALIDO.'
+              content: 'Você extrai respostas de sites educacionais como Brainly. Identifique o tipo de questão (múltipla escolha, asserções I/II/III, ou aberta). Procure por indicações de gabarito como "Gab", "I e II estão corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteúdo promocional, responda INVALIDO.'
             },
             {
               role: 'user',
@@ -508,7 +508,7 @@ IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, néo invente uma re
       const savedClass = isSaved ? 'saved filled' : '';
       const iconText = isSaved ? 'bookmark' : 'bookmark_border';
 
-      // Formatar questéo separando enunciado das alternativas
+      // Formatar questão separando enunciado das alternativas
       const formattedQuestion = formatQuestionText(escapeHtml(item.question));
 
       return `
@@ -518,7 +518,7 @@ IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, néo invente uma re
                </div>
                <div class="question-header">
                   <span class="material-symbols-rounded question-icon">help</span>
-                  <span class="header-title">QUestéo</span>
+                  <span class="header-title">QUestão</span>
                </div>
                <div class="question-content">
                   ${formattedQuestion}
@@ -547,7 +547,7 @@ IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, néo invente uma re
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 
-  // Funçéo para formatar questéo separando enunciado das alternativas
+  // Funçéo para formatar questão separando enunciado das alternativas
   function formatQuestionText(text) {
     if (!text) return '';
     
@@ -575,7 +575,7 @@ IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, néo invente uma re
       `;
     }
     
-    // Se néo tem alternativas, retorna como enunciado simples
+    // Se não tem alternativas, retorna como enunciado simples
     return `<div class="question-enunciado">${text}</div>`;
   }
 });
@@ -965,7 +965,7 @@ function extractQuestionOnly() {
     return scoredCandidates[0].text;
   }
 
-  // 2) Header específico da questéo
+  // 2) Header específico da questão
   const questionHeader = document.querySelector('[data-testid="openResponseQuestionHeader"]');
   if (questionHeader) {
     const parent = questionHeader.closest('[data-section]') || questionHeader.parentElement;
@@ -1027,11 +1027,15 @@ window.binderManager = {
   draggedItem: null, // Item sendo arrastado
 
   init() {
+    console.log('AnswerHunter: Inicializando binderManager...');
     chrome.storage.local.get(['binderStructure'], (result) => {
-      if (result.binderStructure) {
+      console.log('AnswerHunter: Dados carregados do storage:', result);
+      if (result.binderStructure && Array.isArray(result.binderStructure) && result.binderStructure.length > 0) {
         this.data = result.binderStructure;
+        console.log('AnswerHunter: Estrutura carregada com sucesso. Items:', this.countItems(this.data));
         this.render();
       } else {
+        console.log('AnswerHunter: Inicializando estrutura vazia');
         this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
         this.save();
         this.render();
@@ -1040,7 +1044,27 @@ window.binderManager = {
   },
 
   save() {
-    chrome.storage.local.set({ binderStructure: this.data });
+    console.log('AnswerHunter: Salvando estrutura... Items:', this.countItems(this.data));
+    chrome.storage.local.set({ binderStructure: this.data }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('AnswerHunter: Erro ao salvar:', chrome.runtime.lastError);
+      } else {
+        console.log('AnswerHunter: Dados salvos com sucesso!');
+        // Verificar imediatamente se foi salvo
+        chrome.storage.local.get(['binderStructure'], (result) => {
+          console.log('AnswerHunter: Verificação pós-save:', result.binderStructure ? 'Dados confirmados' : 'ERRO: Dados não encontrados!');
+        });
+      }
+    });
+  },
+
+  countItems(nodes = this.data) {
+    let count = 0;
+    for (const node of nodes) {
+      if (node.type === 'question') count++;
+      if (node.children) count += this.countItems(node.children);
+    }
+    return count;
   },
 
   findNode(id, nodes = this.data) {
@@ -1105,7 +1129,7 @@ window.binderManager = {
         this.save();
         this.render();
       } else {
-        // Se falhar (ex: target néo existe), recarrega para restaurar
+        // Se falhar (ex: target não existe), recarrega para restaurar
         this.init();
       }
     }
@@ -1144,7 +1168,7 @@ window.binderManager = {
   },
 
   clearAll() {
-    if (confirm('Tem certeza que deseja apagar TODO o fiché¡rio? Esta açéo é© irreversé­vel.')) {
+    if (confirm('Tem certeza que deseja apagar TODO o fiché¡rio? Esta ação é© irreversé­vel.')) {
       this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
       this.currentFolderId = 'root';
       this.save();
@@ -1240,7 +1264,7 @@ window.binderManager = {
                         <div class="full-question">
                             <div class="full-question-label">
                                 <span class="material-symbols-rounded" style="font-size:14px">help_outline</span>
-                                Questéo
+                                Questão
                             </div>
                             <div class="full-question-text">${item.content.question}</div>
                         </div>
@@ -1337,7 +1361,7 @@ window.binderManager = {
           const itemId = copyBtn.dataset.id;
           const item = this.findNode(itemId);
           if (item && item.content) {
-            const text = `Questéo: ${item.content.question}\n\nResposta: ${item.content.answer}`;
+            const text = `Questão: ${item.content.question}\n\nResposta: ${item.content.answer}`;
             navigator.clipboard.writeText(text).then(() => {
               // Feedback visual
               const icon = copyBtn.querySelector('.material-symbols-rounded');
@@ -1357,7 +1381,7 @@ window.binderManager = {
           return;
         }
 
-        // Click Folder (Navegaçéo)
+        // Click Folder (Navegação)
         const folderItem = e.target.closest('.folder-item');
         if (folderItem) {
           const fid = folderItem.dataset.id;
