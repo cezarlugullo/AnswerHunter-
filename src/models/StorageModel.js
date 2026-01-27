@@ -12,14 +12,26 @@ export const StorageModel = {
      */
     async init() {
         return new Promise((resolve) => {
-            chrome.storage.local.get(['binderStructure'], (result) => {
-                if (result.binderStructure && Array.isArray(result.binderStructure)) {
-                    this.data = result.binderStructure;
-                } else {
-                    // Estrutura inicial padrão
-                    this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
+            chrome.storage.sync.get(['binderStructure'], (syncResult) => {
+                if (syncResult.binderStructure && Array.isArray(syncResult.binderStructure)) {
+                    this.data = syncResult.binderStructure;
+                    resolve();
+                    return;
                 }
-                resolve();
+
+                // Migração: tentar local e mover para sync
+                chrome.storage.local.get(['binderStructure'], (localResult) => {
+                    if (localResult.binderStructure && Array.isArray(localResult.binderStructure)) {
+                        this.data = localResult.binderStructure;
+                        chrome.storage.sync.set({ binderStructure: this.data }, () => {
+                            resolve();
+                        });
+                    } else {
+                        // Estrutura inicial padrão
+                        this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
+                        resolve();
+                    }
+                });
             });
         });
     },
@@ -31,7 +43,7 @@ export const StorageModel = {
     async save() {
         console.log('StorageModel: Salvando estrutura...', this.countItems());
         return new Promise((resolve, reject) => {
-            chrome.storage.local.set({ binderStructure: this.data }, () => {
+            chrome.storage.sync.set({ binderStructure: this.data }, () => {
                 if (chrome.runtime.lastError) {
                     console.error('StorageModel: Erro ao salvar:', chrome.runtime.lastError);
                     reject(chrome.runtime.lastError);

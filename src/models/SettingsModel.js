@@ -7,7 +7,6 @@ export const SettingsModel = {
     defaults: {
         groqApiKey: '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',
         groqApiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-        // Modelos por função (rápido vs preciso)
         groqModelFast: 'llama-3.1-8b-instant',
         groqModelAnswer: 'llama-3.3-70b-versatile',
         groqModelFallback: 'llama-3.3-70b-versatile',

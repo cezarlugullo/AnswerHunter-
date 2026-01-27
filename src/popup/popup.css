@@ -648,12 +648,6 @@ button:disabled {
   padding: 0 16px 16px;
 }
 
-.binder-actions {
-  margin-left: auto;
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-}
 .sources-box {
   width: 100%;
   display: flex;

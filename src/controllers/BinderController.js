@@ -29,6 +29,19 @@ export const BinderController = {
         const container = this.view.elements.binderList;
 
         container.addEventListener('click', (e) => {
+            const toggleBtn = e.target.closest('.sources-toggle');
+            if (toggleBtn) {
+                e.stopPropagation();
+                const box = toggleBtn.closest('.sources-box');
+                const list = box?.querySelector('.sources-list');
+                if (box && list) {
+                    const isExpanded = box.classList.toggle('expanded');
+                    list.hidden = !isExpanded;
+                    toggleBtn.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+                }
+                return;
+            }
+
             const newFolderBtn = e.target.closest('#newFolderBtnBinder');
             if (newFolderBtn) {
                 e.preventDefault();
