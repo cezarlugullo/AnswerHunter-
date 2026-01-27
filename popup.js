@@ -717,10 +717,46 @@ function extractQuestionOnly() {
       rect.right > 0 && rect.left < window.innerWidth;
   }
 
+  function getVisibleArea(rect) {
+    const left = Math.max(0, rect.left);
+    const right = Math.min(window.innerWidth, rect.right);
+    const top = Math.max(0, rect.top);
+    const bottom = Math.min(window.innerHeight, rect.bottom);
+    const width = Math.max(0, right - left);
+    const height = Math.max(0, bottom - top);
+    return width * height;
+  }
+
+  function getVisibilityRatio(rect) {
+    const area = rect.width * rect.height;
+    if (area <= 0) return 0;
+    return getVisibleArea(rect) / area;
+  }
+
+  function pickMostVisible(elements) {
+    let best = null;
+    let bestArea = 0;
+    for (const el of elements) {
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      const area = getVisibleArea(rect);
+      if (area > bestArea) {
+        bestArea = area;
+        best = el;
+      }
+    }
+    return best;
+  }
+
   function buildFromActivitySection(sectionEl) {
     if (!sectionEl) return null;
 
-    const questionContainer = sectionEl.querySelector('[data-testid="openResponseQuestionHeader"]');
+    const headerNodes = Array.from(sectionEl.querySelectorAll('[data-testid="openResponseQuestionHeader"]'));
+    const visibleHeaders = headerNodes.filter(isOnScreen);
+    let questionContainer = pickMostVisible(visibleHeaders);
+    if (!questionContainer && headerNodes.length > 0) {
+      questionContainer = headerNodes[headerNodes.length - 1];
+    }
     let questionText = '';
 
     if (questionContainer) {
@@ -734,15 +770,22 @@ function extractQuestionOnly() {
       questionText = questionEl ? sanitizeQuestionText(questionEl.innerText) : '';
     }
 
+    let optionScope = questionContainer || sectionEl;
+    while (optionScope && optionScope !== sectionEl) {
+      if (optionScope.querySelectorAll('button[type="submit"]').length >= 2) break;
+      optionScope = optionScope.parentElement;
+    }
+    if (!optionScope) optionScope = sectionEl;
+
     if (!questionText) {
-      const looseParts = Array.from(sectionEl.querySelectorAll('p'))
+      const looseParts = Array.from(optionScope.querySelectorAll('p'))
         .filter(p => !p.closest('button'))
         .map(p => p.innerText)
         .filter(Boolean);
       questionText = sanitizeQuestionText(looseParts.slice(0, 3).join(' '));
     }
 
-    const optionButtons = sectionEl.querySelectorAll('button[type="submit"]');
+    const optionButtons = optionScope.querySelectorAll('button[type="submit"]');
     const options = [];
 
     optionButtons.forEach((btn) => {
@@ -767,10 +810,17 @@ function extractQuestionOnly() {
       ? `${questionText}\n${options.join('\n')}`
       : questionText;
 
+    const anchorCandidates = [];
+    if (questionContainer) anchorCandidates.push(questionContainer);
+    if (optionButtons[0]) anchorCandidates.push(optionButtons[0]);
+    if (optionButtons.length > 1) anchorCandidates.push(optionButtons[optionButtons.length - 1]);
+    const anchorEl = pickMostVisible(anchorCandidates) || sectionEl;
+
     return {
       text: text.substring(0, 3500),
       optionCount: options.length,
-      questionLength: questionText.length
+      questionLength: questionText.length,
+      anchorRect: anchorEl.getBoundingClientRect()
     };
   }
 
@@ -791,8 +841,10 @@ function extractQuestionOnly() {
     });
     const anchored = reviewButtons[0].closest('[data-section="section_cms-atividade"]');
     if (anchored) {
+      const anchoredRect = anchored.getBoundingClientRect();
+      const anchoredVisibility = getVisibilityRatio(anchoredRect);
       const built = buildFromActivitySection(anchored);
-      if (built) {
+      if (built && anchoredVisibility >= 0.3) {
         console.log('AnswerHunter: Encontrado via botao Marcar para revisao.');
         return built.text;
       }
@@ -844,7 +896,7 @@ function extractQuestionOnly() {
   for (const section of sectionsToScore) {
     const built = buildFromActivitySection(section);
     if (!built) continue;
-    const rect = section.getBoundingClientRect();
+    const rect = built.anchorRect || section.getBoundingClientRect();
     const visibleTop = Math.max(0, rect.top);
     const visibleBottom = Math.min(window.innerHeight, rect.bottom);
     const visibleHeight = Math.max(0, visibleBottom - visibleTop);
