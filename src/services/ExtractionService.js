@@ -106,5 +106,12 @@ export const ExtractionService = {
         }
 
         return [];
+    },
+
+    /**
+     * Obtém texto selecionado
+     */
+    getSelectionScript: function () {
+        return window.getSelection().toString().trim();
     }
 };
