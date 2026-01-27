@@ -22,7 +22,7 @@ export const PopupController = {
     setupEventListeners() {
         // Botões Principais
         this.view.elements.extractBtn?.addEventListener('click', () => this.handleExtract());
-        this.view.elements.searchBtn?.addEventListener('click', () => this.handleManualSearch());
+        this.view.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
         this.view.elements.copyBtn?.addEventListener('click', () => this.handleCopyAll());
 
         // Tabs
@@ -91,32 +91,61 @@ export const PopupController = {
         }
     },
 
-    async handleManualSearch() {
-        const query = this.view.getSearchInput();
-        if (!query || query.length < 3) {
-            this.view.showStatus('error', 'Digite uma pergunta válida.');
-            return;
-        }
-
-        this.view.showStatus('loading', 'Buscando...');
+    async handleSearch() {
+        this.view.showStatus('loading', 'Identificando questão...');
         this.view.setButtonDisabled('searchBtn', true);
         this.view.clearResults();
 
         try {
-            const results = await SearchService.searchAndRefine(query);
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-            if (results && results.length > 0) {
-                this.view.appendResults(results);
-                this.view.showStatus('success', 'Busca concluída!');
-            } else {
-                this.view.showStatus('error', 'Nenhuma resposta encontrada.');
+            // 1. Tentar Seleção
+            let results = await chrome.scripting.executeScript({
+                target: { tabId: tab.id },
+                function: ExtractionService.getSelectionScript
+            });
+            let query = results?.[0]?.result;
+
+            // 2. Fallback: Extração Automática
+            if (!query) {
+                this.view.showStatus('loading', 'Sem seleção, buscando na página...');
+                results = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    function: ExtractionService.extractQAContentScript
+                });
+                const extracted = results?.[0]?.result || [];
+                if (extracted.length > 0) {
+                    query = extracted[0].result || extracted[0].question;
+                }
             }
+
+            if (!query || query.length < 5) {
+                this.view.showStatus('error', 'Selecione o texto da questão ou garanta que ela esteja visível.');
+                return;
+            }
+
+            this.view.showStatus('loading', 'Buscando respostas...');
+
+            // Buscar
+            const finalResults = await SearchService.searchAndRefine(query);
+
+            if (finalResults && finalResults.length > 0) {
+                this.view.appendResults(finalResults);
+                this.view.showStatus('success', 'Busca concluída!');
+                this.view.toggleViewSection('results-view');
+            } else {
+                this.view.showStatus('error', 'Nenhuma resposta encontrada para: ' + query.substring(0, 30) + '...');
+            }
+
         } catch (error) {
+            console.error('Search error:', error);
             this.view.showStatus('error', 'Erro na busca: ' + error.message);
         } finally {
             this.view.setButtonDisabled('searchBtn', false);
         }
     },
+
+
 
     handleCopyAll() {
         const text = this.view.getAllResultsText();
