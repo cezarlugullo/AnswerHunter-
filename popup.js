@@ -8,6 +8,48 @@ const SERPER_API_URL = 'https://google.serper.dev/search';
 let refinedData = [];
 let lastGroqCallAt = 0;
 const MIN_GROQ_INTERVAL_MS = 2500;
+async function validateQuestionWithGroq(questionText) {
+  const now = Date.now();
+  if (now - lastGroqCallAt < MIN_GROQ_INTERVAL_MS) {
+    await new Promise(resolve => setTimeout(resolve, MIN_GROQ_INTERVAL_MS));
+  }
+  lastGroqCallAt = Date.now();
+
+  const prompt = `Voce deve validar se o texto abaixo e UMA questao limpa e coerente.\n\nRegras:\n- Deve ser uma pergunta/questao de prova ou exercicio.\n- Pode ter alternativas (A, B, C, D, E).\n- NAO pode conter menus, botoes, avisos, instrucoes de site, ou texto sem relacao.\n- Se estiver poluida, misturando outra questao, ou sem sentido, responda INVALIDO.\n\nTexto:\n${questionText}\n\nResponda apenas: OK ou INVALIDO.`;
+
+  try {
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: 'Responda apenas OK ou INVALIDO.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 10
+      })
+    });
+
+    if (!response.ok) {
+      console.error('Erro validacao Groq:', response.status);
+      return true;
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content?.trim().toUpperCase() || '';
+    if (content.includes('INVALIDO')) return false;
+    if (content.includes('OK')) return true;
+    return true;
+  } catch (error) {
+    console.error('Erro validacao Groq:', error);
+    return true;
+  }
+}
 
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -110,6 +152,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!question || question.length < 5) {
           showStatus('error', 'Selecione o texto da pergunta e tente novamente.');
+          return;
+        }
+
+        showStatus('loading', 'Validando pergunta com IA...');
+        const isValid = await validateQuestionWithGroq(question);
+        if (!isValid) {
+          showStatus('error', 'Pergunta inválida ou poluída. Tente rolar até a questão correta.');
           return;
         }
 
@@ -509,7 +558,7 @@ IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, não invente uma re
       const iconText = isSaved ? 'bookmark' : 'bookmark_border';
 
       // Formatar questão separando enunciado das alternativas
-      const formattedQuestion = formatQuestionText(escapeHtml(item.question));
+      const formattedQuestion = formatQuestionText(item.question);
 
       return `
             <div class="qa-item">
@@ -550,33 +599,33 @@ IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, não invente uma re
   // Funçéo para formatar questão separando enunciado das alternativas
   function formatQuestionText(text) {
     if (!text) return '';
-    
-    // Padréo para detectar início das alternativas (A), B), etc ou A., B., etc)
-    const alternativePattern = /(\n|^)\s*[A-E]\s*[\)\.\-]\s*/i;
-    const match = text.search(alternativePattern);
-    
-    if (match > 0) {
-      // Separar enunciado das alternativas
-      const enunciado = text.substring(0, match).trim();
-      const alternativas = text.substring(match).trim();
-      
-      // Formatar alternativas com quebras de linha
-      const formattedAlternatives = alternativas
-        .replace(/([A-E]\s*[\)\.\-])/gi, '\n$1')
-        .trim()
-        .split('\n')
-        .filter(line => line.trim())
-        .map(line => `<div class="alternative">${line.trim()}</div>`)
+
+    const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const pattern = /([A-E])\s*[\)\.\-]\s*([^]*?)(?=(?:\n?\s*[A-E]\s*[\)\.\-])|$)/gi;
+    const matches = [];
+    let m;
+
+    while ((m = pattern.exec(text)) !== null) {
+      const letter = m[1].toUpperCase();
+      const body = clean(m[2]);
+      if (body) {
+        matches.push({ letter, body });
+      }
+    }
+
+    if (matches.length >= 2) {
+      const firstIndex = text.search(/[A-E]\s*[\)\.\-]/i);
+      const enunciado = clean(text.substring(0, Math.max(0, firstIndex)));
+      const formattedAlternatives = matches
+        .map(a => `<div class="alternative">${escapeHtml(`${a.letter}) ${a.body}`)}</div>`)
         .join('');
-      
       return `
-        <div class="question-enunciado">${enunciado}</div>
+        <div class="question-enunciado">${escapeHtml(enunciado)}</div>
         <div class="question-alternatives">${formattedAlternatives}</div>
       `;
     }
-    
-    // Se não tem alternativas, retorna como enunciado simples
-    return `<div class="question-enunciado">${text}</div>`;
+
+    return `<div class="question-enunciado">${escapeHtml(clean(text))}</div>`;
   }
 });
 
@@ -735,9 +784,9 @@ function extractQuestionOnly() {
   function sanitizeQuestionText(text) {
     if (!text) return '';
     let cleaned = cleanText(text);
-    cleaned = cleaned.replace(/Marcar para revis[aé]o/gi, '');
-    cleaned = cleaned.replace(/^\d+\s*[-.)]?\s*/i, '');
-    cleaned = cleaned.replace(/^Quest(?:ao|éo|o)\s*\d+\s*[:.\-]?\s*/i, '');
+    cleaned = cleaned.replace(/\bMarcar para revis(?:a|ã)o\b/gi, '');
+    cleaned = cleaned.replace(/^\s*\d+\s*[-.)]?\s*/i, '');
+    cleaned = cleaned.replace(/^(?:Quest(?:a|ã)o|Questao)\s*\d+\s*[:.\-]?\s*/i, '');
     cleaned = cleaned.replace(/^Atividade\s*\d+\s*[:.\-]?\s*/i, '');
     return cleaned.trim();
   }
@@ -1424,6 +1473,9 @@ window.saveItem = function (btn) {
     }
   }
 };
+
+
+
 
 
 
