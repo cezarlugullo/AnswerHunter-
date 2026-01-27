@@ -46,8 +46,18 @@ if not exist ".git" (
 echo.
 echo [3/4] Conectando ao GitHub...
 echo.
-echo ⚠️  ATENCAO: Vai abrir uma janela pedindo login no GitHub.
-echo ⚠️  Faca login com sua conta para autorizar o acesso.
+echo ⚠️  ATENCAO: Para clonar repositorios privados, voce precisa:
+echo.
+echo OPCAO 1 - Personal Access Token (Recomendado):
+echo   1. Acesse: https://github.com/settings/tokens
+echo   2. Clique em "Generate new token" - "Generate new token (classic)"
+echo   3. Selecione o escopo "repo"
+echo   4. Copie o token gerado
+echo   5. Cole aqui como senha quando for solicitado
+echo.
+echo OPCAO 2 - Git Credential Manager (Mais facil):
+echo   1. Deixe o Git abrir um popup de login quando pedir
+echo   2. Use sua senha do GitHub OU um token pessoal
 echo.
 pause
 
@@ -61,8 +71,15 @@ if %errorlevel% neq 0 (
     echo.
     echo [X] FALHA NA AUTENTICACAO!
     echo.
-    echo Nao foi possivel acessar o repositorio.
-    echo Verifique se voce tem permissao de acesso ao repositorio privado.
+    echo Nao foi possivel acessar o repositorio. Tente:
+    echo.
+    echo 1. Gere um token em https://github.com/settings/tokens
+    echo    - Token (classic) com escopo 'repo'
+    echo.
+    echo 2. Configure para salvar a senha:
+    echo    - git config --global credential.helper wincred
+    echo.
+    echo 3. Verifique permissoes em https://github.com/settings/keys
     echo.
     pause
     exit

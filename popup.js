@@ -1,4 +1,4 @@
-﻿// ConfiguraÃ§Ã£o das APIs
+﻿// Configuração das APIs
 const GROQ_API_KEY = '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';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const SERPER_API_KEY = 'feffb9d9843cbe91d25ea499ae460068d5518f45';
@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
               displayResults([]);
             }
           } else {
-            showStatus('error', 'Nenhuma pergunta extraÃ­da. Tente selecionar o texto.');
+            showStatus('error', 'Nenhuma pergunta extraída. Tente selecionar o texto.');
             displayResults([]);
           }
         }
@@ -342,7 +342,7 @@ INSTRUÃ‡Ã•ES CRÃTICAS:
    - Textos promocionais (Assine, Plus, Premium, desbloqueie)
    - Metadata de usuÃ¡rios (especialista, votos, Ãºtil, respostas)
    - Outras perguntas que aparecem no site
-   - Se for APENAS conteÃºdo promocional, responda: INVALIDO
+   - Se for APENAS conteúdo promocional, responda: INVALIDO
 
 4. FORMATO DE SAÃDA:
 
@@ -377,7 +377,7 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
           messages: [
             {
               role: 'system',
-              content: 'VocÃª extrai respostas de sites educacionais como Brainly. Identifique o tipo de questÃ£o (mÃºltipla escolha, asserÃ§Ãµes I/II/III, ou aberta). Procure por indicaÃ§Ãµes de gabarito como "Gab", "I e II estÃ£o corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteÃºdo promocional, responda INVALIDO.'
+              content: 'Você extrai respostas de sites educacionais como Brainly. Identifique o tipo de questão (múltipla escolha, asserções I/II/III, ou aberta). Procure por indicações de gabarito como "Gab", "I e II estão corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteúdo promocional, responda INVALIDO.'
             },
             {
               role: 'user',
@@ -510,10 +510,18 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
 
       return `
             <div class="qa-item">
-               <div class="qa-actions" style="position: absolute; top: 10px; right: 10px;">
+               <div class="qa-actions" style="position: absolute; top: 10px; right: 10px; z-index: 10;">
                    <button class="action-btn save-btn material-symbols-rounded ${savedClass}" data-index="${index}" title="Salvar">${iconText}</button>
                </div>
+               <div class="question-header">
+                  <span class="material-symbols-rounded question-icon">help</span>
+                  <span class="header-title">QUESTÃO</span>
+               </div>
                <div class="question">${escapeHtml(item.question)}</div>
+               <div class="answer-header">
+                  <span class="material-symbols-rounded answer-icon">check_circle</span>
+                  <span class="header-title">RESPOSTA CORRETA</span>
+               </div>
                <div class="answer">${escapeHtml(item.answer)}</div>
                ${item.source ? `<div class="source"><a href="${item.source}" target="_blank">Fonte</a></div>` : ''}
             </div>
@@ -677,300 +685,253 @@ function extractQAContent() {
 }
 
 // === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
-// V13 - Detecta questão VISÍVEL na viewport para páginas com múltiplas questões
+// V19 - Foco em seletores do DOM, sem ler texto global/iframes
+// === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
+// V19 - Foco em seletores do DOM, sem ler texto global/iframes
 function extractQuestionOnly() {
-  console.log('AnswerHunter: Iniciando extração (v13 - viewport detection)...');
+  console.log('AnswerHunter: Iniciando extracao (v19 - DOM only)...');
 
-  // Função para obter texto mesmo em sites com proteção de cópia
-  function getTextContent(element) {
-    if (!element) return '';
-    
-    // Usar textContent que funciona mesmo com proteção CSS
-    let text = '';
-    
-    // Método 1: textContent direto (ignora CSS user-select: none)
-    text = element.textContent || '';
-    
-    // Método 2: Se vazio, tentar innerText
-    if (!text.trim()) {
-      text = element.innerText || '';
+  function cleanText(text) {
+    return (text || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function sanitizeQuestionText(text) {
+    if (!text) return '';
+    let cleaned = cleanText(text);
+    cleaned = cleaned.replace(/Marcar para revis[aã]o/gi, '');
+    cleaned = cleaned.replace(/^\d+\s*[-.)]?\s*/i, '');
+    cleaned = cleaned.replace(/^Quest(?:ao|ão|o)\s*\d+\s*[:.\-]?\s*/i, '');
+    cleaned = cleaned.replace(/^Atividade\s*\d+\s*[:.\-]?\s*/i, '');
+    return cleaned.trim();
+  }
+
+  function isOnScreen(el) {
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return false;
     }
-    
-    // Método 3: Iterar nós de texto (para casos extremos)
-    if (!text.trim()) {
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
-      const textNodes = [];
-      while (walker.nextNode()) {
-        textNodes.push(walker.currentNode.textContent);
+    return rect.width > 30 && rect.height > 15 &&
+      rect.bottom > 0 && rect.top < window.innerHeight &&
+      rect.right > 0 && rect.left < window.innerWidth;
+  }
+
+  function buildFromActivitySection(sectionEl) {
+    if (!sectionEl) return null;
+
+    const questionContainer = sectionEl.querySelector('[data-testid="openResponseQuestionHeader"]');
+    let questionText = '';
+
+    if (questionContainer) {
+      const parts = Array.from(questionContainer.querySelectorAll('p'))
+        .map(p => p.innerText)
+        .filter(Boolean);
+      questionText = sanitizeQuestionText(parts.join(' '));
+    } else {
+      const questionEl = sectionEl.querySelector('[data-testid="openResponseQuestionHeader"] p p') ||
+        sectionEl.querySelector('[data-testid="openResponseQuestionHeader"] p');
+      questionText = questionEl ? sanitizeQuestionText(questionEl.innerText) : '';
+    }
+
+    if (!questionText) {
+      const looseParts = Array.from(sectionEl.querySelectorAll('p'))
+        .filter(p => !p.closest('button'))
+        .map(p => p.innerText)
+        .filter(Boolean);
+      questionText = sanitizeQuestionText(looseParts.slice(0, 3).join(' '));
+    }
+
+    const optionButtons = sectionEl.querySelectorAll('button[type="submit"]');
+    const options = [];
+
+    optionButtons.forEach((btn) => {
+      const letterRaw = btn.querySelector('strong[aria-label]')?.getAttribute('aria-label') || '';
+      const letter = letterRaw.toUpperCase();
+      const optionTextEl = btn.querySelector('div.text-neutral-dark-low p') || btn.querySelector('p');
+      const optionText = optionTextEl ? cleanText(optionTextEl.innerText) : '';
+      if (letter && optionText) {
+        options.push(`${letter}) ${optionText}`);
+        return;
       }
-      text = textNodes.join(' ');
-    }
-    
-    return text.trim();
-  }
-
-  // Função para verificar se elemento está visível na viewport
-  function isInViewport(element) {
-    const rect = element.getBoundingClientRect();
-    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
-    
-    // Elemento está visível se pelo menos 30% dele está na tela
-    const visibleTop = Math.max(0, rect.top);
-    const visibleBottom = Math.min(windowHeight, rect.bottom);
-    const visibleHeight = visibleBottom - visibleTop;
-    const elementHeight = rect.bottom - rect.top;
-    
-    if (elementHeight <= 0) return false;
-    
-    const visibilityRatio = visibleHeight / elementHeight;
-    return visibilityRatio >= 0.3 && visibleTop < windowHeight && rect.bottom > 0;
-  }
-
-  // Função para encontrar containers de questões
-  function findQuestionContainers() {
-    const containers = [];
-    
-    // Seletores comuns para containers de questões (mais abrangente)
-    const selectors = [
-      // Containers genéricos de questão
-      '[class*="question"]',
-      '[class*="questao"]',
-      '[class*="atividade"]',
-      '[class*="exercicio"]',
-      '[class*="item-prova"]',
-      '[class*="enunciado"]',
-      '[class*="pergunta"]',
-      // IDs comuns
-      '[id*="question"]',
-      '[id*="questao"]',
-      // Data attributes
-      '[data-question]',
-      '[data-questao]',
-      // Estácio específico
-      '.question-content',
-      '.activity-item',
-      '.exercise-container',
-      '[class*="exercise"]',
-      '[class*="quiz"]',
-      '[class*="test"]',
-      '[class*="prova"]',
-      // Elementos com numeração
-      '[class*="q-"]',
-      '[class*="item-"]',
-      // Containers genéricos que podem ter questões
-      'article',
-      'section',
-      '.card',
-      '[class*="card"]',
-      '[class*="panel"]',
-      '[class*="box"]',
-      // Divs genéricos maiores
-      'main > div',
-      '.container > div',
-      '.content > div'
-    ];
-    
-    for (const selector of selectors) {
-      try {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(el => {
-          const text = getTextContent(el);
-          // Verificar se parece uma questão (tem ? ou alternativas A-E)
-          const hasQuestion = text.includes('?');
-          const hasAlternatives = (text.match(/\b[A-E]\b/g) || []).length >= 3;
-          if (text.length > 50 && text.length < 5000 && (hasQuestion || hasAlternatives)) {
-            // Evitar duplicatas
-            if (!containers.some(c => c === el || c.contains(el) || el.contains(c))) {
-              containers.push(el);
-            }
-          }
-        });
-      } catch (e) {}
-    }
-    
-    // Se não encontrou containers específicos, buscar por padrão de texto
-    if (containers.length === 0) {
-      console.log('AnswerHunter: Buscando containers por padrão de texto...');
-      // Buscar todos os elementos que contêm texto de questão
-      const allElements = document.querySelectorAll('div, section, article, li, p');
-      allElements.forEach(el => {
-        const text = getTextContent(el);
-        // Verificar se tem padrão de questão
-        const hasQuestionPattern = /\?/.test(text) && (text.match(/\b[A-E]\b/g) || []).length >= 2;
-        const hasActivityPattern = /^(Atividade|Questão|Exercício|Pergunta)\s*\d+/im.test(text);
-        
-        if ((hasQuestionPattern || hasActivityPattern) && text.length > 100 && text.length < 5000) {
-          // Verificar se não é apenas um label pequeno
-          if (!containers.some(c => c === el || c.contains(el) || el.contains(c))) {
-            containers.push(el);
-          }
-        }
-      });
-    }
-    
-    // Ordenar por tamanho (preferir containers menores e mais específicos)
-    containers.sort((a, b) => {
-      const textA = getTextContent(a).length;
-      const textB = getTextContent(b).length;
-      return textA - textB;
+      const fallbackText = cleanText(btn.innerText || '');
+      const match = fallbackText.match(/^\s*([A-E])\s*[).:-]?\s*(.+)$/i);
+      if (match) {
+        options.push(`${match[1].toUpperCase()}) ${match[2].trim()}`);
+      }
     });
-    
-    console.log('AnswerHunter: Containers após filtro:', containers.length);
-    return containers;
+
+    if (!questionText) return null;
+
+    const text = options.length >= 2
+      ? `${questionText}\n${options.join('\n')}`
+      : questionText;
+
+    return {
+      text: text.substring(0, 3500),
+      optionCount: options.length,
+      questionLength: questionText.length
+    };
   }
 
-  // Função para extrair questão de um container
-  function extractFromContainer(container) {
-    const fullText = getTextContent(container);
-    
-    // Padrão: "Atividade X" seguido de texto até marcadores de fim
-    const activityMatch = fullText.match(/(?:Atividade|Questão|Exercício|Pergunta)\s*\d+\s*\n?([^]*?)(?:\nResponda|\nO que você achou|\nRelatar problema|\nVoltar\s*\n|\nAvançar|$)/i);
-    
-    if (activityMatch) {
-      let questionBlock = activityMatch[0]
-        .replace(/\nResponda[\s\S]*$/i, '')
-        .replace(/\nO que você achou[\s\S]*$/i, '')
-        .replace(/\nRelatar problema[\s\S]*$/i, '')
-        .replace(/\nVoltar[\s\S]*$/i, '')
-        .replace(/\nAvançar[\s\S]*$/i, '')
-        .trim();
-      
-      if (questionBlock.length > 50) {
-        return questionBlock;
+  // 1) Estrutura específica do site (data-section)
+  const activitySections = Array.from(document.querySelectorAll('[data-section="section_cms-atividade"]'));
+  const visibleSections = activitySections.filter(isOnScreen);
+
+  // 1) Tentar usar o botao "Marcar para revisao" como ancora (mais preciso)
+  const reviewButtons = Array.from(document.querySelectorAll('button, [role="button"]'))
+    .filter(btn => isOnScreen(btn))
+    .filter(btn => /Marcar para revis[aã]o/i.test((btn.innerText || btn.textContent || '')));
+
+  if (reviewButtons.length > 0) {
+    reviewButtons.sort((a, b) => {
+      const topA = Math.abs(a.getBoundingClientRect().top);
+      const topB = Math.abs(b.getBoundingClientRect().top);
+      return topA - topB;
+    });
+    const anchored = reviewButtons[0].closest('[data-section="section_cms-atividade"]');
+    if (anchored) {
+      const built = buildFromActivitySection(anchored);
+      if (built) {
+        console.log('AnswerHunter: Encontrado via botao Marcar para revisao.');
+        return built.text;
       }
     }
-    
-    // Se não encontrou padrão específico, retornar texto limpo
-    if (fullText.includes('?') && fullText.length > 50) {
-      return fullText.split(/\n{3,}/)[0].trim(); // Primeiro bloco
-    }
-    
-    return '';
   }
 
-  // === LÓGICA PRINCIPAL: Encontrar questão visível ===
-  
-  // 1. Verificar em iframes primeiro
-  const iframes = document.querySelectorAll('iframe');
-  for (const iframe of iframes) {
-    try {
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (iframeDoc && iframeDoc.body) {
-        // Executar a mesma lógica dentro do iframe
-        const iframeContainers = [];
-        const iframeSelectors = ['[class*="question"]', '[class*="questao"]', '[class*="atividade"]', 'article', 'section', '.card', 'div'];
-        
-        for (const selector of iframeSelectors) {
-          try {
-            const elements = iframeDoc.querySelectorAll(selector);
-            elements.forEach(el => {
-              const text = el.textContent || '';
-              if (text.length > 50 && (text.includes('?') || /\b[A-E]\b/.test(text))) {
-                iframeContainers.push(el);
-              }
-            });
-          } catch (e) {}
-        }
-        
-        // Encontrar questão visível no iframe
-        for (const container of iframeContainers) {
-          const rect = container.getBoundingClientRect();
-          // No iframe, considerar posição relativa
-          if (rect.top < window.innerHeight && rect.bottom > 0) {
-            const question = extractFromContainer(container);
-            if (question && question.length > 50) {
-              console.log('AnswerHunter: Questão visível encontrada no iframe');
-              return question.replace(/\s+/g, ' ').trim().substring(0, 3500);
-            }
-          }
-        }
-        
-        // Fallback: buscar no texto do iframe
-        const iframeText = iframeDoc.body.textContent || '';
-        if (iframeText.length > 100) {
-          const match = iframeText.match(/(?:Atividade|Questão)\s*\d+\s*\n?([^]*?)(?:\nResponda|\nO que você|$)/i);
-          if (match) {
-            console.log('AnswerHunter: Questão extraída do iframe (texto)');
-            return match[0].replace(/\s+/g, ' ').trim().substring(0, 3500);
-          }
-        }
-      }
-    } catch (e) {
-      // Cross-origin
+  // 2) Usar pontos de ancoragem no viewport (mais preciso)
+  const probeX = Math.floor(window.innerWidth * 0.5);
+  const probeYs = [
+    Math.floor(window.innerHeight * 0.3),
+    Math.floor(window.innerHeight * 0.5),
+    Math.floor(window.innerHeight * 0.7)
+  ];
+  const hitCount = new Map();
+
+  for (const y of probeYs) {
+    const elAtPoint = document.elementFromPoint(probeX, y);
+    if (!elAtPoint) continue;
+    const anchored = elAtPoint.closest('[data-section="section_cms-atividade"]');
+    if (anchored) {
+      hitCount.set(anchored, (hitCount.get(anchored) || 0) + 1);
     }
   }
-  
-  // 2. Buscar containers de questões na página principal
-  const containers = findQuestionContainers();
-  console.log('AnswerHunter: Containers encontrados:', containers.length);
-  
-  // 3. Encontrar qual container está visível na viewport
-  let visibleQuestion = '';
-  let bestVisibility = 0;
-  
-  for (const container of containers) {
-    if (isInViewport(container)) {
-      const rect = container.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      
-      // Calcular quão centralizado está
-      const center = (rect.top + rect.bottom) / 2;
-      const centerDistance = Math.abs(center - windowHeight / 2);
-      const visibility = 1 - (centerDistance / windowHeight);
-      
-      if (visibility > bestVisibility) {
-        const question = extractFromContainer(container);
-        if (question && question.length > 50) {
-          bestVisibility = visibility;
-          visibleQuestion = question;
-        }
+
+  if (hitCount.size > 0) {
+    let bestSection = null;
+    let bestHits = 0;
+    hitCount.forEach((hits, section) => {
+      if (hits > bestHits) {
+        bestHits = hits;
+        bestSection = section;
+      }
+    });
+
+    if (bestSection && bestHits >= 2) {
+      const built = buildFromActivitySection(bestSection);
+      if (built) {
+        console.log('AnswerHunter: Encontrado via elementFromPoint (ancora multipla).');
+        return built.text;
       }
     }
   }
-  
-  if (visibleQuestion) {
-    console.log('AnswerHunter: Questão visível na viewport:', visibleQuestion.substring(0, 100) + '...');
-    return visibleQuestion.replace(/\s+/g, ' ').trim().substring(0, 3500);
+
+  // 3) Fallback: escolher pelo maior bloco visível e topo mais próximo
+  const sectionsToScore = visibleSections.length > 0 ? visibleSections : activitySections;
+  const scoredCandidates = [];
+
+  const viewportCenter = window.innerHeight / 2;
+  for (const section of sectionsToScore) {
+    const built = buildFromActivitySection(section);
+    if (!built) continue;
+    const rect = section.getBoundingClientRect();
+    const visibleTop = Math.max(0, rect.top);
+    const visibleBottom = Math.min(window.innerHeight, rect.bottom);
+    const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+    const visibilityRatio = rect.height > 0 ? (visibleHeight / rect.height) : 0;
+    const sectionCenter = rect.top + rect.height / 2;
+    const distanceFromCenter = Math.abs(sectionCenter - viewportCenter);
+    const isCentered = distanceFromCenter <= window.innerHeight * 0.25;
+    const isMostlyVisible = visibilityRatio >= 0.6;
+    const score =
+      (built.optionCount * 10) +
+      (built.questionLength > 30 ? 5 : 0) +
+      (visibleHeight * 0.6) +
+      (visibilityRatio * 120) -
+      (distanceFromCenter * 0.2) +
+      (isCentered ? 40 : 0) +
+      (isMostlyVisible ? 30 : 0);
+
+    scoredCandidates.push({ text: built.text, score, rect, visibleHeight });
   }
-  
-  // 4. Fallback: Método antigo (texto da página inteira)
-  console.log('AnswerHunter: Fallback - buscando no texto completo');
-  const fullText = document.body ? (document.body.textContent || document.body.innerText || '') : '';
-  
-  // Tentar encontrar primeira questão
-  const activityMatch = fullText.match(/(?:Atividade|Questão|Exercício|Pergunta)\s*\d+\s*\n([^]*?)(?:\nResponda|\nO que você achou|\nRelatar problema|\nVoltar\s*\nAvançar|$)/i);
-  
-  if (activityMatch) {
-    let questionBlock = activityMatch[0]
-      .replace(/\nResponda[\s\S]*$/i, '')
-      .replace(/\nO que você achou[\s\S]*$/i, '')
-      .replace(/\nRelatar problema[\s\S]*$/i, '')
-      .replace(/\nVoltar[\s\S]*$/i, '')
-      .trim();
-    
-    if (questionBlock.length > 50) {
-      return questionBlock.replace(/\s+/g, ' ').trim().substring(0, 3500);
+
+  if (scoredCandidates.length > 0) {
+    scoredCandidates.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      const topA = Math.abs(a.rect.top);
+      const topB = Math.abs(b.rect.top);
+      return topA - topB;
+    });
+    console.log('AnswerHunter: Encontrado via section_cms-atividade (visibilidade).');
+    return scoredCandidates[0].text;
+  }
+
+  // 2) Header específico da questão
+  const questionHeader = document.querySelector('[data-testid="openResponseQuestionHeader"]');
+  if (questionHeader) {
+    const parent = questionHeader.closest('[data-section]') || questionHeader.parentElement;
+    const built = buildFromActivitySection(parent || questionHeader);
+    if (built) {
+      console.log('AnswerHunter: Encontrado via openResponseQuestionHeader.');
+      return built.text;
     }
   }
-  
-  // Último fallback: primeiro bloco com ?
-  const blocks = fullText.split(/\n{2,}/);
-  for (const block of blocks) {
-    if (block.includes('?') && block.length > 30 && block.length < 2000) {
-      if (/progresso|concluídos|acessar|disciplina/i.test(block)) continue;
-      console.log('AnswerHunter: Usando primeiro bloco com ?');
-      return block.replace(/\s+/g, ' ').trim().substring(0, 3500);
-    }
+
+  // 3) Seleção manual (se houver)
+  const selection = window.getSelection ? window.getSelection().toString() : '';
+  if (selection && selection.trim().length > 5) {
+    console.log('AnswerHunter: Usando selecao manual.');
+    return sanitizeQuestionText(selection).substring(0, 3500);
   }
-  
-  console.log('AnswerHunter: Nada encontrado.');
+
+  // 4) Fallback mínimo (sem texto global)
+  const containers = document.querySelectorAll('main, article, section, div, form');
+  let best = { score: -999, text: '' };
+
+  function scoreContainer(el) {
+    if (!isOnScreen(el)) return null;
+    const text = cleanText(el.innerText || '');
+    if (text.length < 30 || text.length > 6000) return null;
+    const rect = el.getBoundingClientRect();
+    let score = 0;
+
+    if (text.includes('?')) score += 6;
+    if (/Atividade|Quest|Exercicio|Pergunta|Enunciado/i.test(text)) score += 4;
+    if (/[A-E]\)\s+|[A-E]\.\s+/i.test(text)) score += 4;
+    if (el.querySelectorAll('button[type="submit"]').length >= 2) score += 4;
+    if (rect.top >= 0 && rect.top < 350) score += 2;
+
+    // Penalizar menus/sidebars
+    if (/menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|ola\b/i.test(text)) score -= 8;
+    if (rect.width < window.innerWidth * 0.35) score -= 4;
+    if (rect.left > window.innerWidth * 0.55) score -= 3;
+
+    return { score, text };
+  }
+
+  containers.forEach((el) => {
+    const candidate = scoreContainer(el);
+    if (candidate && candidate.score > best.score) best = candidate;
+  });
+
+  if (best.text) {
+    console.log('AnswerHunter: Fallback heuristico usado.');
+    return sanitizeQuestionText(best.text).substring(0, 3500);
+  }
+
+  console.log('AnswerHunter: Nenhuma questao encontrada.');
   return '';
 }
-// ==========================================
-// === BINDER MANAGER (Real) ===
-// ==========================================
-
-
 window.binderManager = {
   data: [], // Estrutura em Ã¡rvore
   currentFolderId: 'root', // Pasta atual visÃ­vel
@@ -1350,6 +1311,8 @@ window.saveItem = function (btn) {
     }
   }
 };
+
+
 
 
 
