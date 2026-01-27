@@ -508,6 +508,9 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
       const savedClass = isSaved ? 'saved filled' : '';
       const iconText = isSaved ? 'bookmark' : 'bookmark_border';
 
+      // Formatar questão separando enunciado das alternativas
+      const formattedQuestion = formatQuestionText(escapeHtml(item.question));
+
       return `
             <div class="qa-item">
                <div class="qa-actions" style="position: absolute; top: 10px; right: 10px; z-index: 10;">
@@ -517,13 +520,15 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
                   <span class="material-symbols-rounded question-icon">help</span>
                   <span class="header-title">QUESTÃO</span>
                </div>
-               <div class="question">${escapeHtml(item.question)}</div>
+               <div class="question-content">
+                  ${formattedQuestion}
+               </div>
                <div class="answer-header">
                   <span class="material-symbols-rounded answer-icon">check_circle</span>
                   <span class="header-title">RESPOSTA CORRETA</span>
                </div>
                <div class="answer">${escapeHtml(item.answer)}</div>
-               ${item.source ? `<div class="source"><a href="${item.source}" target="_blank">Fonte</a></div>` : ''}
+               ${item.source ? `<div class="source"><a href="${item.source}" target="_blank"><span class="material-symbols-rounded" style="font-size: 14px;">link</span> Ver fonte</a></div>` : ''}
             </div>
         `;
     }).join('');
@@ -540,6 +545,38 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
   function escapeHtml(text) {
     if (!text) return '';
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+
+  // Função para formatar questão separando enunciado das alternativas
+  function formatQuestionText(text) {
+    if (!text) return '';
+    
+    // Padrão para detectar início das alternativas (A), B), etc ou A., B., etc)
+    const alternativePattern = /(\n|^)\s*[A-E]\s*[\)\.\-]\s*/i;
+    const match = text.search(alternativePattern);
+    
+    if (match > 0) {
+      // Separar enunciado das alternativas
+      const enunciado = text.substring(0, match).trim();
+      const alternativas = text.substring(match).trim();
+      
+      // Formatar alternativas com quebras de linha
+      const formattedAlternatives = alternativas
+        .replace(/([A-E]\s*[\)\.\-])/gi, '\n$1')
+        .trim()
+        .split('\n')
+        .filter(line => line.trim())
+        .map(line => `<div class="alternative">${line.trim()}</div>`)
+        .join('');
+      
+      return `
+        <div class="question-enunciado">${enunciado}</div>
+        <div class="question-alternatives">${formattedAlternatives}</div>
+      `;
+    }
+    
+    // Se não tem alternativas, retorna como enunciado simples
+    return `<div class="question-enunciado">${text}</div>`;
   }
 });
 
