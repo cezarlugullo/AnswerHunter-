@@ -1,4 +1,4 @@
-import { formatQuestionText, escapeHtml } from '../utils/helpers.js';
+﻿import { formatQuestionText, escapeHtml } from '../utils/helpers.js';
 
 export const PopupView = {
     elements: {},
@@ -15,6 +15,7 @@ export const PopupView = {
             statusDiv: document.getElementById('status'),
             resultsDiv: document.getElementById('results'),
             binderList: document.getElementById('binder-list'),
+            clearBinderBtn: document.getElementById('clearBinderBtn'),
             tabs: document.querySelectorAll('.tab-btn'),
             sections: document.querySelectorAll('.view-section'),
             saveBtns: document.querySelectorAll('.save-btn') // Dinâmico
@@ -77,6 +78,10 @@ export const PopupView = {
         if (!this.elements.resultsDiv) return;
 
         const html = results.map((item, index) => {
+            const isSaved = !!item.saved;
+            const savedClass = isSaved ? 'saved' : '';
+            const iconClass = isSaved ? 'filled' : '';
+            const iconText = isSaved ? 'bookmark' : 'bookmark_border';
             const dataContent = encodeURIComponent(JSON.stringify(item));
 
             return `
@@ -84,8 +89,9 @@ export const PopupView = {
           <div class="qa-card-header">
             <span class="material-symbols-rounded question-icon">help</span>
             <span class="qa-card-title">${escapeHtml(item.title || 'Questão Encontrada')}</span>
-            <button class="action-btn save-btn" data-content="${dataContent}" title="Salvar no Fichário">
-              <span class="material-symbols-rounded">bookmark_border</span>
+            ${item.aiFallback ? `<span class="ai-badge">IA</span>` : ''}
+            <button class="action-btn save-btn ${savedClass}" data-content="${dataContent}" title="Salvar no Fichário">
+              <span class="material-symbols-rounded ${iconClass}">${iconText}</span>
             </button>
           </div>
           
@@ -96,17 +102,43 @@ export const PopupView = {
           <div class="qa-card-answer">
             <div class="qa-card-answer-header">
                <span class="material-symbols-rounded">check_circle</span>
-               Resposta Correta
+               ${item.aiFallback ? 'Resposta consultada pela IA' : 'Resposta sugerida'}
             </div>
             <div class="qa-card-answer-text">
                ${escapeHtml(item.answer)}
             </div>
+            ${item.aiFallback ? `
+              <div class="ai-disclaimer">
+                <span class="material-symbols-rounded">info</span>
+                Resposta gerada sem fonte externa.
+              </div>
+            ` : ''}
           </div>
           
           <div class="qa-card-actions">
-            <div class="source">
-               ${item.source ? `<a href="${item.source}" target="_blank">Fonte: ${new URL(item.source).hostname}</a>` : ''}
-            </div>
+            ${Array.isArray(item.sources) && item.sources.length > 0 ? `
+              <div class="sources-box">
+                <button class="sources-toggle" type="button" aria-expanded="false">
+                  <span class="material-symbols-rounded">link</span>
+                  <span>Fontes</span>
+                  <span class="material-symbols-rounded sources-caret">expand_more</span>
+                </button>
+                <div class="sources-list" hidden>
+                  ${item.sources.map(src => `
+                    <div class="source-item">
+                      <a href="${src.link}" target="_blank" rel="noopener noreferrer">
+                        ${escapeHtml(src.title || new URL(src.link).hostname)}
+                      </a>
+                      ${src.letter ? `<span class="source-badge">${escapeHtml(src.letter)}</span>` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : `
+              <div class="source">
+                 ${item.source ? `<a href="${item.source}" target="_blank">Fonte: ${new URL(item.source).hostname}</a>` : ''}
+              </div>
+            `}
           </div>
         </div>
       `;
@@ -130,12 +162,10 @@ export const PopupView = {
 
     setSaveButtonState(btn, saved) {
         const icon = btn.querySelector('.material-symbols-rounded');
-        if (saved) {
-            btn.classList.add('saved');
-            if (icon) icon.textContent = 'bookmark';
-        } else {
-            btn.classList.remove('saved');
-            if (icon) icon.textContent = 'bookmark_border';
+        btn.classList.toggle('saved', saved);
+        if (icon) {
+            icon.textContent = saved ? 'bookmark' : 'bookmark_border';
+            icon.classList.toggle('filled', saved);
         }
     },
 
@@ -181,10 +211,11 @@ export const PopupView = {
                 } else {
                     const qText = item.content.question || '';
                     const preview = qText.length > 60 ? qText.substring(0, 60) + '...' : qText;
+                    const source = item.content.source;
 
                     html += `
                 <div class="qa-item expandable" draggable="true" data-id="${item.id}" data-type="question">
-                    <div class="summary-view" onclick="this.parentElement.classList.toggle('expanded'); this.parentElement.querySelector('.full-view').style.display = this.parentElement.classList.contains('expanded') ? 'block' : 'none'">
+                    <div class="summary-view">
                         <div class="summary-icon"><span class="material-symbols-rounded">quiz</span></div>
                         <div class="summary-content">
                             <div class="summary-title">${escapeHtml(preview)}</div>
@@ -193,19 +224,52 @@ export const PopupView = {
                     </div>
                     
                     <div class="full-view" style="display:none">
-                        <div class="question-content" style="border:none; padding:10px 0;">
-                           ${formatQuestionText(item.content.question)}
-                        </div>
-                        <div class="answer" style="border:1px solid #eee;">
-                           ${escapeHtml(item.content.answer)}
-                        </div>
-                        <div class="qa-card-actions" style="justify-content:flex-end; margin-top:10px;">
-                            <button class="action-btn copy-single-btn" data-id="${item.id}">
-                               <span class="material-symbols-rounded">content_copy</span>
-                            </button>
-                            <button class="action-btn delete-btn" data-id="${item.id}">
-                               <span class="material-symbols-rounded">delete</span>
-                            </button>
+                        <div class="qa-card">
+                          <div class="qa-card-header">
+                            <span class="material-symbols-rounded question-icon">help</span>
+                            <span class="qa-card-title">${escapeHtml('Questão Salva')}</span>
+                          </div>
+                          
+                          <div class="qa-card-question">
+                            ${formatQuestionText(item.content.question)}
+                          </div>
+                          
+                          <div class="qa-card-answer">
+                            <div class="qa-card-answer-header">
+                               <span class="material-symbols-rounded">check_circle</span>
+                               Resposta sugerida
+                            </div>
+                            <div class="qa-card-answer-text">
+                               ${escapeHtml(item.content.answer)}
+                            </div>
+                          </div>
+                          
+                          <div class="qa-card-actions">
+                            ${source ? `
+                              <div class="sources-box">
+                                <button class="sources-toggle" type="button" aria-expanded="false">
+                                  <span class="material-symbols-rounded">link</span>
+                                  <span>Fonte</span>
+                                  <span class="material-symbols-rounded sources-caret">expand_more</span>
+                                </button>
+                                <div class="sources-list" hidden>
+                                  <div class="source-item">
+                                    <a href="${source}" target="_blank" rel="noopener noreferrer">
+                                      ${escapeHtml(new URL(source).hostname)}
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                            ` : ''}
+                            <div class="binder-actions">
+                              <button class="action-btn copy-single-btn" data-id="${item.id}" title="Copiar">
+                                 <span class="material-symbols-rounded">content_copy</span>
+                              </button>
+                              <button class="action-btn delete-btn" data-id="${item.id}" title="Excluir">
+                                 <span class="material-symbols-rounded">delete</span>
+                              </button>
+                            </div>
+                          </div>
                         </div>
                     </div>
                 </div>`;

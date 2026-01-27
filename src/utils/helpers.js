@@ -48,6 +48,13 @@ export function formatQuestionText(text) {
     if (!text) return '';
 
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const trimNoise = (s) => {
+        if (!s) return s;
+        const noiseRe = /(Resposta correta|Parab[eé]ns|Gabarito|Gabarito Comentado|Alternativa correta|Confira o gabarito|Resposta certa|Resposta correta|Você selecionou a alternativa correta)/i;
+        const idx = s.search(noiseRe);
+        if (idx !== -1) return s.substring(0, idx).trim();
+        return s.trim();
+    };
     const normalized = (text || '').replace(/\r\n/g, '\n');
 
     const render = (enunciado, alternatives) => {
@@ -76,9 +83,9 @@ export function formatQuestionText(text) {
             const m = line.match(altStartRe);
             if (m) {
                 if (currentAlt) alternatives.push(currentAlt);
-                currentAlt = { letter: m[1].toUpperCase(), body: clean(m[2]) };
+                currentAlt = { letter: m[1].toUpperCase(), body: trimNoise(clean(m[2])) };
             } else if (currentAlt) {
-                currentAlt.body = clean(`${currentAlt.body} ${line}`);
+                currentAlt.body = trimNoise(clean(`${currentAlt.body} ${line}`));
             } else {
                 enunciadoParts.push(line);
             }
@@ -103,9 +110,9 @@ export function formatQuestionText(text) {
     while ((m = inlinePattern.exec(normalized)) !== null) {
         if (firstIndex === null) firstIndex = m.index + m[1].length;
         const letter = m[2].toUpperCase();
-        const body = clean(m[3]);
-        if (body) alternatives.push({ letter, body });
-    }
+            const body = trimNoise(clean(m[3]));
+            if (body) alternatives.push({ letter, body });
+        }
 
     if (alternatives.length >= 2) {
         const enunciado = firstIndex !== null ? clean(normalized.substring(0, firstIndex)) : '';
@@ -121,9 +128,9 @@ export function formatQuestionText(text) {
     while ((pm = plainAltPattern.exec(normalized)) !== null) {
         if (plainFirstIndex === null) plainFirstIndex = pm.index;
         const letter = pm[1].toUpperCase();
-        const body = clean(pm[2].replace(/\s+[.!?]\s*$/, ''));
-        if (body) plainAlternatives.push({ letter, body });
-    }
+            const body = trimNoise(clean(pm[2].replace(/\s+[.!?]\s*$/, '')));
+            if (body) plainAlternatives.push({ letter, body });
+        }
 
     if (plainAlternatives.length >= 2) {
         const enunciado = plainFirstIndex !== null ? clean(normalized.substring(0, plainFirstIndex)) : '';
