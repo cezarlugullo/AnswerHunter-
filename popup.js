@@ -1,4 +1,4 @@
-﻿// Configuração das APIs
+﻿// Configuraçéo das APIs
 const GROQ_API_KEY = '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';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const SERPER_API_KEY = 'feffb9d9843cbe91d25ea499ae460068d5518f45';
@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // refinedData is now global
 
 
-  // === EXTRAIR DA PÃGINA ATUAL ===
+  // === EXTRAIR DA PéGINA ATUAL ===
   if (extractBtn) {
     extractBtn.addEventListener('click', async () => {
       showStatus('loading', 'Extraindo conteúdo...');
@@ -51,10 +51,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (refinedData.length > 0) {
               displayResults(refinedData);
-              showStatus('success', `${refinedData.length} questão(ões) encontrada(s)!`);
+              showStatus('success', `${refinedData.length} questéo(ões) encontrada(s)!`);
               if (copyBtn) copyBtn.disabled = false;
             } else {
-              showStatus('error', 'Nenhuma questão válida encontrada');
+              showStatus('error', 'Nenhuma questéo válida encontrada');
               displayResults([]);
             }
           } else {
@@ -96,7 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Pontuar para escolher o melhor
             let score = text.length;
             if (text.includes('?')) score += 500;
-            if (/Atividade|Questão|Exercício/i.test(text)) score += 300;
+            if (/Atividade|Questéo|Exercício/i.test(text)) score += 300;
             if (/\b[A-E]\b/g.test(text)) score += 200;
             
             if (score > bestScore) {
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
         
-        console.log('AnswerHunter: Melhor questão encontrada:', question?.substring(0, 100));
+        console.log('AnswerHunter: Melhor questéo encontrada:', question?.substring(0, 100));
 
         if (!question || question.length < 5) {
           showStatus('error', 'Selecione o texto da pergunta e tente novamente.');
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showStatus('success', `${answers.length} resposta(s) encontrada(s)!`);
           if (copyBtn) copyBtn.disabled = false;
         } else {
-          showStatus('error', 'IA nÃ£o encontrou a resposta nos resultados.');
+          showStatus('error', 'IA néo encontrou a resposta nos resultados.');
         }
 
       } catch (error) {
@@ -163,17 +163,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function cleanQueryForSearch(query) {
     let clean = query
-      // Remover prefixos de questão
-      .replace(/^(?:Questão|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '')
-      // Remover marcadores de revisão
-      .replace(/Marcar para revisão/gi, '')
+      // Remover prefixos de questéo
+      .replace(/^(?:Questéo|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '')
+      // Remover marcadores de reviséo
+      .replace(/Marcar para reviséo/gi, '')
       // Remover "Responda", "O que você achou", etc
       .replace(/\s*(Responda|O que você achou|Relatar problema|Voltar|Avançar|Menu|Finalizar)[\s\S]*/gi, '')
       // Limpar espaços
       .replace(/\s+/g, ' ')
       .trim();
     
-    // Tentar extrair apenas a pergunta (até a interrogação)
+    // Tentar extrair apenas a pergunta (até a interrogaçéo)
     if (clean.includes('?')) {
       const questionEnd = clean.indexOf('?');
       const questionText = clean.substring(0, questionEnd + 1).trim();
@@ -230,7 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return data.organic;
       }
       
-      // Se não encontrou, tentar com filtro de sites educacionais
+      // Se néo encontrou, tentar com filtro de sites educacionais
       console.log('AnswerHunter: Tentando com sites educacionais...');
       response = await fetch(SERPER_API_URL, {
         method: 'POST',
@@ -284,10 +284,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('AnswerHunter: Debug - Resposta encontrada:', refined);
             refined.source = result.link;
             answers.push(refined);
-            break; // Pegar sÃ³ a primeira resposta vÃ¡lida
+            break; // Pegar só a primeira resposta vé¡lida
           } else {
-            // Fallback: retornar snippet como resposta quando a IA nÃ£o estiver disponÃ­vel
-            console.log('AnswerHunter: Debug - IA indisponÃ­vel. Usando snippet como resposta.');
+            // Fallback: retornar snippet como resposta quando a IA néo estiver disponé­vel
+            console.log('AnswerHunter: Debug - IA indisponé­vel. Usando snippet como resposta.');
             answers.push({
               question: originalQuestion,
               answer: `${title}. ${snippet}`,
@@ -315,55 +315,55 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     lastGroqCallAt = Date.now();
 
-    const prompt = `VocÃª Ã© um especialista em extrair respostas de questÃµes educacionais de sites como Brainly e Passei Direto.
+    const prompt = `Você é© um especialista em extrair respostas de questões educacionais de sites como Brainly e Passei Direto.
 
-CONTEÃšDO BRUTO EXTRAÃDO DO SITE:
+CONTEéšDO BRUTO EXTRAéDO DO SITE:
 
-=== ÃREA DA PERGUNTA ===
+=== éREA DA PERGUNTA ===
 ${item.question}
 
-=== ÃREA DA RESPOSTA ===
+=== éREA DA RESPOSTA ===
 ${item.answer}
 
-INSTRUÃ‡Ã•ES CRÃTICAS:
+INSTRUé‡é•ES CRéTICAS:
 
-1. DETECTE O TIPO DE QUESTÃƒO:
-   - MÃºltipla escolha tradicional (A, B, C, D, E)
-   - AsserÃ§Ãµes (I, II, III com anÃ¡lise de quais estÃ£o corretas)
+1. DETECTE O TIPO DE QUestáƒO:
+   - Múltipla escolha tradicional (A, B, C, D, E)
+   - Asserções (I, II, III com ané¡lise de quais estéo corretas)
    - Verdadeiro/Falso
-   - QuestÃ£o aberta
+   - Questéo aberta
 
 2. ENCONTRE A RESPOSTA CORRETA:
-   - Procure por indicaÃ§Ãµes como "Gab", "Gabarito", "Resposta correta", "alternativa correta Ã©"
-   - Procure frases como "I e II estÃ£o corretas", "apenas I estÃ¡ correta", etc.
-   - A resposta geralmente estÃ¡ na Ã¡rea de resposta, NÃƒO na pergunta
+   - Procure por indicações como "Gab", "Gabarito", "Resposta correta", "alternativa correta é©"
+   - Procure frases como "I e II estéo corretas", "apenas I está¡ correta", etc.
+   - A resposta geralmente está¡ na é¡rea de resposta, NéO na pergunta
 
 3. IGNORE COMPLETAMENTE:
    - Textos promocionais (Assine, Plus, Premium, desbloqueie)
-   - Metadata de usuÃ¡rios (especialista, votos, Ãºtil, respostas)
+   - Metadata de usué¡rios (especialista, votos, útil, respostas)
    - Outras perguntas que aparecem no site
    - Se for APENAS conteúdo promocional, responda: INVALIDO
 
-4. FORMATO DE SAÃDA:
+4. FORMATO DE SAéDA:
 
-Para questÃµes de ASSERÃ‡Ã•ES (I, II, III):
-PERGUNTA: [enunciado com as asserÃ§Ãµes]
-RESPOSTA: [ex: "I e II estÃ£o corretas" ou "Apenas a asserÃ§Ã£o I Ã© verdadeira"]
+Para questões de ASSERé‡é•ES (I, II, III):
+PERGUNTA: [enunciado com as Asserções]
+RESPOSTA: [ex: "I e II estéo corretas" ou "Apenas a asserçéo I é© verdadeira"]
 
-Para MÃšLTIPLA ESCOLHA (A, B, C, D, E):
+Para MéšLTIPLA ESCOLHA (A, B, C, D, E):
 PERGUNTA: [enunciado]
-A) [opÃ§Ã£o A]
-B) [opÃ§Ã£o B]
-C) [opÃ§Ã£o C]
-D) [opÃ§Ã£o D]
-E) [opÃ§Ã£o E se houver]
+A) [opçéo A]
+B) [opçéo B]
+C) [opçéo C]
+D) [opçéo D]
+E) [opçéo E se houver]
 RESPOSTA: Alternativa [LETRA]: [texto da alternativa]
 
-Para questÃ£o ABERTA:
+Para questéo ABERTA:
 PERGUNTA: [pergunta]
 RESPOSTA: [resposta direta]
 
-IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma resposta.`;
+IMPORTANTE: Extraia a resposta que está¡ INDICADA NO SITE, néo invente uma resposta.`;
 
     try {
       const response = await fetch(GROQ_API_URL, {
@@ -377,7 +377,7 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
           messages: [
             {
               role: 'system',
-              content: 'Você extrai respostas de sites educacionais como Brainly. Identifique o tipo de questão (múltipla escolha, asserções I/II/III, ou aberta). Procure por indicações de gabarito como "Gab", "I e II estão corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteúdo promocional, responda INVALIDO.'
+              content: 'Você extrai respostas de sites educacionais como Brainly. Identifique o tipo de questéo (múltipla escolha, asserções I/II/III, ou aberta). Procure por indicações de gabarito como "Gab", "I e II estéo corretas", etc. Extraia APENAS a resposta indicada no site, nunca invente. Se for conteúdo promocional, responda INVALIDO.'
             },
             {
               role: 'user',
@@ -508,7 +508,7 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
       const savedClass = isSaved ? 'saved filled' : '';
       const iconText = isSaved ? 'bookmark' : 'bookmark_border';
 
-      // Formatar questão separando enunciado das alternativas
+      // Formatar questéo separando enunciado das alternativas
       const formattedQuestion = formatQuestionText(escapeHtml(item.question));
 
       return `
@@ -518,7 +518,7 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
                </div>
                <div class="question-header">
                   <span class="material-symbols-rounded question-icon">help</span>
-                  <span class="header-title">QUESTÃO</span>
+                  <span class="header-title">QUestéo</span>
                </div>
                <div class="question-content">
                   ${formattedQuestion}
@@ -533,7 +533,7 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
         `;
     }).join('');
 
-    // Event Delegation para o botÃ£o Salvar
+    // Event Delegation para o botéo Salvar
     resultsDiv.onclick = (e) => {
       const btn = e.target.closest('.save-btn');
       if (btn) {
@@ -547,11 +547,11 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 
-  // Função para formatar questão separando enunciado das alternativas
+  // Funçéo para formatar questéo separando enunciado das alternativas
   function formatQuestionText(text) {
     if (!text) return '';
     
-    // Padrão para detectar início das alternativas (A), B), etc ou A., B., etc)
+    // Padréo para detectar início das alternativas (A), B), etc ou A., B., etc)
     const alternativePattern = /(\n|^)\s*[A-E]\s*[\)\.\-]\s*/i;
     const match = text.search(alternativePattern);
     
@@ -575,13 +575,13 @@ IMPORTANTE: Extraia a resposta que estÃ¡ INDICADA NO SITE, nÃ£o invente uma 
       `;
     }
     
-    // Se não tem alternativas, retorna como enunciado simples
+    // Se néo tem alternativas, retorna como enunciado simples
     return `<div class="question-enunciado">${text}</div>`;
   }
 });
 
 // ==========================================
-// === FUNÃ‡Ã•ES INJETADAS (CONTENTSCRIPT) ===
+// === FUNé‡é•ES INJETADAS (CONTENTSCRIPT) ===
 // ==========================================
 
 // 1. Extrair Pergunta e Resposta (Completo/Robusto)
@@ -721,9 +721,9 @@ function extractQAContent() {
   return uniqueResults.slice(0, 10);
 }
 
-// === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
+// === FUNÇéO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
 // V19 - Foco em seletores do DOM, sem ler texto global/iframes
-// === FUNÇÃO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
+// === FUNÇéO PARA EXTRAIR APENAS A PERGUNTA (SITES PROTEGIDOS) ===
 // V19 - Foco em seletores do DOM, sem ler texto global/iframes
 function extractQuestionOnly() {
   console.log('AnswerHunter: Iniciando extracao (v19 - DOM only)...');
@@ -735,9 +735,9 @@ function extractQuestionOnly() {
   function sanitizeQuestionText(text) {
     if (!text) return '';
     let cleaned = cleanText(text);
-    cleaned = cleaned.replace(/Marcar para revis[aã]o/gi, '');
+    cleaned = cleaned.replace(/Marcar para revis[aé]o/gi, '');
     cleaned = cleaned.replace(/^\d+\s*[-.)]?\s*/i, '');
-    cleaned = cleaned.replace(/^Quest(?:ao|ão|o)\s*\d+\s*[:.\-]?\s*/i, '');
+    cleaned = cleaned.replace(/^Quest(?:ao|éo|o)\s*\d+\s*[:.\-]?\s*/i, '');
     cleaned = cleaned.replace(/^Atividade\s*\d+\s*[:.\-]?\s*/i, '');
     return cleaned.trim();
   }
@@ -868,7 +868,7 @@ function extractQuestionOnly() {
   // 1) Tentar usar o botao "Marcar para revisao" como ancora (mais preciso)
   const reviewButtons = Array.from(document.querySelectorAll('button, [role="button"]'))
     .filter(btn => isOnScreen(btn))
-    .filter(btn => /Marcar para revis[aã]o/i.test((btn.innerText || btn.textContent || '')));
+    .filter(btn => /Marcar para revis[aé]o/i.test((btn.innerText || btn.textContent || '')));
 
   if (reviewButtons.length > 0) {
     reviewButtons.sort((a, b) => {
@@ -965,7 +965,7 @@ function extractQuestionOnly() {
     return scoredCandidates[0].text;
   }
 
-  // 2) Header específico da questão
+  // 2) Header específico da questéo
   const questionHeader = document.querySelector('[data-testid="openResponseQuestionHeader"]');
   if (questionHeader) {
     const parent = questionHeader.closest('[data-section]') || questionHeader.parentElement;
@@ -976,7 +976,7 @@ function extractQuestionOnly() {
     }
   }
 
-  // 3) Seleção manual (se houver)
+  // 3) Seleçéo manual (se houver)
   const selection = window.getSelection ? window.getSelection().toString() : '';
   if (selection && selection.trim().length > 5) {
     console.log('AnswerHunter: Usando selecao manual.');
@@ -1022,8 +1022,8 @@ function extractQuestionOnly() {
   return '';
 }
 window.binderManager = {
-  data: [], // Estrutura em Ã¡rvore
-  currentFolderId: 'root', // Pasta atual visÃ­vel
+  data: [], // Estrutura em é¡rvore
+  currentFolderId: 'root', // Pasta atual visé­vel
   draggedItem: null, // Item sendo arrastado
 
   init() {
@@ -1080,7 +1080,7 @@ window.binderManager = {
   },
 
   moveItem(itemId, targetFolderId) {
-    // Helper para remover item de qualquer lugar na Ã¡rvore
+    // Helper para remover item de qualquer lugar na é¡rvore
     const removeFromTree = (nodes, id) => {
       for (let i = 0; i < nodes.length; i++) {
         if (nodes[i].id === id) {
@@ -1094,7 +1094,7 @@ window.binderManager = {
       return null;
     };
 
-    // Previne mover uma pasta para dentro dela mesma (bÃ¡sico)
+    // Previne mover uma pasta para dentro dela mesma (bé¡sico)
     if (itemId === targetFolderId) return;
 
     const itemNode = removeFromTree(this.data, itemId);
@@ -1105,7 +1105,7 @@ window.binderManager = {
         this.save();
         this.render();
       } else {
-        // Se falhar (ex: target nÃ£o existe), recarrega para restaurar
+        // Se falhar (ex: target néo existe), recarrega para restaurar
         this.init();
       }
     }
@@ -1135,7 +1135,7 @@ window.binderManager = {
     if (removeFromTree(this.data, id)) {
       this.save();
       this.render();
-      // Atualizar Ã­cones de salvo na busca se necessÃ¡rio
+      // Atualizar é­cones de salvo na busca se necessé¡rio
       const activeTab = document.querySelector('.tab-btn.active');
       if (activeTab && activeTab.dataset.tab === 'search') {
         // Re-render search results handled poorly but ok for now
@@ -1144,7 +1144,7 @@ window.binderManager = {
   },
 
   clearAll() {
-    if (confirm('Tem certeza que deseja apagar TODO o fichÃ¡rio? Esta aÃ§Ã£o Ã© irreversÃ­vel.')) {
+    if (confirm('Tem certeza que deseja apagar TODO o fiché¡rio? Esta açéo é© irreversé­vel.')) {
       this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
       this.currentFolderId = 'root';
       this.save();
@@ -1240,7 +1240,7 @@ window.binderManager = {
                         <div class="full-question">
                             <div class="full-question-label">
                                 <span class="material-symbols-rounded" style="font-size:14px">help_outline</span>
-                                Questão
+                                Questéo
                             </div>
                             <div class="full-question-text">${item.content.question}</div>
                         </div>
@@ -1299,7 +1299,7 @@ window.binderManager = {
     const folders = container.querySelectorAll('.folder-item');
     folders.forEach(el => {
       el.addEventListener('dragover', (e) => {
-        e.preventDefault(); // NecessÃ¡rio para permitir o drop
+        e.preventDefault(); // Necessé¡rio para permitir o drop
         e.dataTransfer.dropEffect = 'move';
         el.classList.add('drag-over');
       });
@@ -1337,7 +1337,7 @@ window.binderManager = {
           const itemId = copyBtn.dataset.id;
           const item = this.findNode(itemId);
           if (item && item.content) {
-            const text = `Questão: ${item.content.question}\n\nResposta: ${item.content.answer}`;
+            const text = `Questéo: ${item.content.question}\n\nResposta: ${item.content.answer}`;
             navigator.clipboard.writeText(text).then(() => {
               // Feedback visual
               const icon = copyBtn.querySelector('.material-symbols-rounded');
@@ -1357,7 +1357,7 @@ window.binderManager = {
           return;
         }
 
-        // Click Folder (Navegação)
+        // Click Folder (Navegaçéo)
         const folderItem = e.target.closest('.folder-item');
         if (folderItem) {
           const fid = folderItem.dataset.id;
