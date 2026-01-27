@@ -20,6 +20,17 @@ export function cleanText(text) {
         .trim();
 }
 
+export function isLikelyQuestion(text) {
+    if (!text) return false;
+    const clean = text.replace(/\s+/g, ' ').trim();
+    if (clean.length < 30) return false;
+    const hasQuestionMark = clean.includes('?');
+    const hasKeywords = /Quest(?:a|ã)o|Pergunta|Exerc[ií]cio|Enunciado|Atividade/i.test(clean);
+    const hasOptions = /(?:^|\s)[A-E]\s*[\)\.\-:]/i.test(clean);
+    const looksLikeMenu = /menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|voltar|avançar|finalizar|marcar para revis[aã]o/i.test(clean);
+    return (hasQuestionMark || hasKeywords || hasOptions) && !looksLikeMenu;
+}
+
 export function debounce(func, wait) {
     let timeout;
     return function executedFunction(...args) {
@@ -32,11 +43,7 @@ export function debounce(func, wait) {
     };
 }
 
-/**
- * Formata texto de questão com HTML para enunciado e alternativas
- * @param {string} text - Texto completo da questão
- * @returns {string} HTML formatado
- */
+// Funçéo para formatar questão separando enunciado das alternativas
 export function formatQuestionText(text) {
     if (!text) return '';
 
@@ -46,18 +53,16 @@ export function formatQuestionText(text) {
     const render = (enunciado, alternatives) => {
         const formattedAlternatives = alternatives
             .map(a => `
-        <div class="alternative">
-          <span class="alt-letter">${escapeHtml(a.letter)}</span>
-          <span class="alt-text">${escapeHtml(a.body)}</span>
-        </div>
-      `)
+          <div class="alternative">
+            <span class="alt-letter">${escapeHtml(a.letter)}</span>
+            <span class="alt-text">${escapeHtml(a.body)}</span>
+          </div>
+        `)
             .join('');
         return `
-      <div class="question-enunciado">${escapeHtml(enunciado)}</div>
-      <div class="question-alternatives">
-        ${formattedAlternatives}
-      </div>
-    `;
+        <div class="question-enunciado">${escapeHtml(enunciado)}</div>
+        <div class="question-alternatives">${formattedAlternatives}</div>
+      `;
     };
 
     const parseByLines = (raw) => {
@@ -84,22 +89,18 @@ export function formatQuestionText(text) {
         return { enunciado: clean(enunciadoParts.join(' ')), alternatives };
     };
 
-    // 1. Tentar parsear por linhas (mais seguro)
     const parsedByLines = parseByLines(normalized);
     if (parsedByLines.alternatives.length >= 2) {
         return render(parsedByLines.enunciado, parsedByLines.alternatives);
     }
 
-    // 2. Fallback para regex inline
+    // Fallback para alternativas em linha unica (evita falsos positivos como "software)")
     const inlinePattern = /(^|[\s])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:\s)[A-E]\s*[\)\.\-:]|$)/gi;
     const alternatives = [];
     let firstIndex = null;
     let m;
 
-    // Clone para não estragar regex state global se houver
-    const inlineRe = new RegExp(inlinePattern);
-
-    while ((m = inlineRe.exec(normalized)) !== null) {
+    while ((m = inlinePattern.exec(normalized)) !== null) {
         if (firstIndex === null) firstIndex = m.index + m[1].length;
         const letter = m[2].toUpperCase();
         const body = clean(m[3]);
@@ -111,6 +112,23 @@ export function formatQuestionText(text) {
         return render(enunciado, alternatives);
     }
 
-    // 3. Texto simples se não achar alternativas
+    // Fallback extra: alternativas sem pontuação (ex: "A Texto. B Texto.")
+    const plainAltPattern = /(?:^|[.!?]\s+)([A-E])\s+([A-ZÀ-Ú][^]*?)(?=(?:[.!?]\s+)[A-E]\s+[A-ZÀ-Ú]|$)/g;
+    const plainAlternatives = [];
+    let plainFirstIndex = null;
+    let pm;
+
+    while ((pm = plainAltPattern.exec(normalized)) !== null) {
+        if (plainFirstIndex === null) plainFirstIndex = pm.index;
+        const letter = pm[1].toUpperCase();
+        const body = clean(pm[2].replace(/\s+[.!?]\s*$/, ''));
+        if (body) plainAlternatives.push({ letter, body });
+    }
+
+    if (plainAlternatives.length >= 2) {
+        const enunciado = plainFirstIndex !== null ? clean(normalized.substring(0, plainFirstIndex)) : '';
+        return render(enunciado, plainAlternatives);
+    }
+
     return `<div class="question-enunciado">${escapeHtml(clean(normalized))}</div>`;
 }
