@@ -643,7 +643,7 @@ button:disabled {
   padding: 0 16px 12px;
 }
 
-/* === BINDER (FICHÃRIO) === */
+/* === BINDER (FICHÃRIO) === */
 .binder-header {
   display: flex;
   justify-content: space-between;
@@ -846,7 +846,7 @@ footer p {
   text-overflow: ellipsis;
 }
 
-/* === EXPANDABLE ITEMS (FICHÃRIO) === */
+/* === EXPANDABLE ITEMS (FICHÃRIO) === */
 .qa-item.expandable {
   cursor: pointer;
   transition: all 0.25s ease;
