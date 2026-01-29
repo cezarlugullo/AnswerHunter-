@@ -1,90 +1,158 @@
 ﻿import { formatQuestionText, escapeHtml } from '../utils/helpers.js';
 
 export const PopupView = {
-    elements: {},
+  elements: {},
 
-    init() {
-        this.cacheElements();
-    },
+  init() {
+    this.cacheElements();
+  },
 
-    cacheElements() {
-        this.elements = {
-            extractBtn: document.getElementById('extractBtn'),
-            searchBtn: document.getElementById('searchBtn'),
-            copyBtn: document.getElementById('copyBtn'),
-            statusDiv: document.getElementById('status'),
-            resultsDiv: document.getElementById('results'),
-            binderList: document.getElementById('binder-list'),
-            clearBinderBtn: document.getElementById('clearBinderBtn'),
-            tabs: document.querySelectorAll('.tab-btn'),
-            sections: document.querySelectorAll('.view-section'),
-            saveBtns: document.querySelectorAll('.save-btn') // Dinâmico
-        };
-    },
+  cacheElements() {
+    this.elements = {
+      extractBtn: document.getElementById('extractBtn'),
+      searchBtn: document.getElementById('searchBtn'),
+      copyBtn: document.getElementById('copyBtn'),
+      statusDiv: document.getElementById('status'),
+      resultsDiv: document.getElementById('results'),
+      binderList: document.getElementById('binder-list'),
+      clearBinderBtn: document.getElementById('clearBinderBtn'),
+      tabs: document.querySelectorAll('.tab-btn'),
+      sections: document.querySelectorAll('.view-section'),
+      saveBtns: document.querySelectorAll('.save-btn') // Dinâmico
+    };
+  },
 
-    showStatus(type, message) {
-        const el = this.elements.statusDiv;
-        if (!el) return;
+  showStatus(type, message) {
+    const el = this.elements.statusDiv;
+    if (!el) return;
 
-        el.className = `status ${type}`;
-        el.innerHTML = type === 'loading'
-            ? `<span class="material-symbols-rounded spin-loading">sync</span> ${message}`
-            : message;
-        el.style.display = 'flex';
+    el.className = `status ${type}`;
+    el.innerHTML = type === 'loading'
+      ? `<span class="material-symbols-rounded spin-loading">sync</span> ${message}`
+      : message;
+    el.style.display = 'flex';
 
-        if (type !== 'loading') {
-            setTimeout(() => {
-                el.style.opacity = '0';
-                setTimeout(() => {
-                    el.style.display = 'none';
-                    el.style.opacity = '1';
-                }, 300);
-            }, 4000);
+    if (type !== 'loading') {
+      setTimeout(() => {
+        el.style.opacity = '0';
+        setTimeout(() => {
+          el.style.display = 'none';
+          el.style.opacity = '1';
+        }, 300);
+      }, 4000);
+    }
+  },
+
+  setButtonDisabled(btnId, disabled) {
+    const btn = document.getElementById(btnId);
+    if (btn) btn.disabled = disabled;
+  },
+
+  clearResults() {
+    if (this.elements.resultsDiv) this.elements.resultsDiv.innerHTML = '';
+  },
+
+  switchTab(tabName) {
+    this.elements.tabs.forEach(t => {
+      if (t.dataset.tab === tabName) t.classList.add('active');
+      else t.classList.remove('active');
+    });
+
+    this.elements.sections.forEach(s => {
+      if (s.id === `view-${tabName}`) s.classList.add('active');
+      else s.classList.remove('active');
+    });
+  },
+
+  toggleViewSection(sectionId) {
+    this.elements.sections.forEach(s => {
+      if (s.id === sectionId) s.classList.add('active');
+      else s.classList.remove('active');
+    });
+  },
+
+  /**
+   * Renderiza os resultados da busca
+   */
+  appendResults(results) {
+    if (!this.elements.resultsDiv) return;
+
+    const html = results.map((item, index) => {
+      const isSaved = !!item.saved;
+      const savedClass = isSaved ? 'saved' : '';
+      const iconClass = isSaved ? 'filled' : '';
+      const iconText = isSaved ? 'bookmark' : 'bookmark_border';
+      const dataContent = encodeURIComponent(JSON.stringify(item));
+
+      // Extrair letra da resposta se disponível
+      const answerLetter = item.bestLetter || (item.answer?.match(/\b(?:letra\s+|alternativa\s*)?([A-E])\b/i)?.[1]?.toUpperCase()) || null;
+
+      const stripAnswerPrefix = (answer) => {
+        if (!answer) return '';
+        return answer
+          .replace(/^(Alternativa\s*[A-E]\s*[:.\-]\s*|Letra\s*[A-E]\s*[:.\-]\s*)/i, '')
+          .trim();
+      };
+
+      const normalize = (s) => (s || '').replace(/\s+/g, ' ').trim();
+
+      const extractOptionsMap = (questionText) => {
+        const map = {};
+        const lines = (questionText || '').split('\n').map(l => l.trim()).filter(Boolean);
+        const altStartRe = /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+        // Removido altSoloRe pois causa muitos falsos positivos com letras soltas no texto
+        // const altSoloRe = /^([A-E])$/i; 
+        let current = null;
+
+        for (const line of lines) {
+          const m = line.match(altStartRe);
+          if (m) {
+            const body = normalize(m[2]);
+            // Validação contra falsos positivos (ex: A UX...)
+            const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
+
+            if (!isFalsePositive) {
+              if (current && current.body) map[current.letter] = normalize(current.body);
+              current = { letter: m[1].toUpperCase(), body: body };
+              continue;
+            }
+          }
+          // Tratamento para linhas soltas removido ou tornado mais estrito se necessário
+
+          if (current) {
+            current.body = normalize(`${current.body} ${line}`);
+          }
         }
-    },
+        if (current && current.body) map[current.letter] = normalize(current.body);
+        return map;
+      };
 
-    setButtonDisabled(btnId, disabled) {
-        const btn = document.getElementById(btnId);
-        if (btn) btn.disabled = disabled;
-    },
+      const resolveAnswerText = (answer, letter, questionOptions) => {
+        if (!answer) return '';
+        const cleaned = stripAnswerPrefix(answer);
+        const cleanedNormalized = normalize(cleaned);
+        const isOnlyLetter = !!letter && (
+          cleanedNormalized.toUpperCase() === letter ||
+          /^(?:letra|alternativa)\s*[A-E]$/i.test(cleanedNormalized)
+        );
 
-    clearResults() {
-        if (this.elements.resultsDiv) this.elements.resultsDiv.innerHTML = '';
-    },
+        if (letter) {
+          const fromQuestion = questionOptions[letter] || '';
+          if (isOnlyLetter) {
+            return fromQuestion || `Letra ${letter}`;
+          }
+          const removedPrefix = cleanedNormalized.replace(/^(?:letra|alternativa)\s*[A-E]\s*[:.\-]?\s*/i, '').trim();
+          if (removedPrefix) return removedPrefix;
+          return fromQuestion || `Letra ${letter}`;
+        }
 
-    switchTab(tabName) {
-        this.elements.tabs.forEach(t => {
-            if (t.dataset.tab === tabName) t.classList.add('active');
-            else t.classList.remove('active');
-        });
+        return cleanedNormalized || answer;
+      };
 
-        this.elements.sections.forEach(s => {
-            if (s.id === `view-${tabName}`) s.classList.add('active');
-            else s.classList.remove('active');
-        });
-    },
+      const questionOptions = extractOptionsMap(item.question);
+      const answerBody = resolveAnswerText(item.answer, answerLetter, questionOptions);
 
-    toggleViewSection(sectionId) {
-        this.elements.sections.forEach(s => {
-            if (s.id === sectionId) s.classList.add('active');
-            else s.classList.remove('active');
-        });
-    },
-
-    /**
-     * Renderiza os resultados da busca
-     */
-    appendResults(results) {
-        if (!this.elements.resultsDiv) return;
-
-        const html = results.map((item, index) => {
-            const isSaved = !!item.saved;
-            const savedClass = isSaved ? 'saved' : '';
-            const iconClass = isSaved ? 'filled' : '';
-            const iconText = isSaved ? 'bookmark' : 'bookmark_border';
-            const dataContent = encodeURIComponent(JSON.stringify(item));
-
-            return `
+      return `
         <div class="qa-card" style="animation-delay: ${index * 0.1}s">
           <div class="qa-card-header">
             <span class="material-symbols-rounded question-icon">help</span>
@@ -104,9 +172,18 @@ export const PopupView = {
                <span class="material-symbols-rounded">check_circle</span>
                ${item.aiFallback ? 'Resposta consultada pela IA' : 'Resposta sugerida'}
             </div>
-            <div class="qa-card-answer-text">
-               ${escapeHtml(item.answer)}
-            </div>
+            ${answerLetter ? `
+              <div class="answer-option">
+                <div class="alternative answer-alternative">
+                  <span class="alt-letter">${answerLetter}</span>
+                  <span class="alt-text">${escapeHtml(answerBody)}</span>
+                </div>
+              </div>
+            ` : `
+              <div class="qa-card-answer-text">
+                 ${escapeHtml(answerBody)}
+              </div>
+            `}
             ${item.aiFallback ? `
               <div class="ai-disclaimer">
                 <span class="material-symbols-rounded">info</span>
@@ -120,7 +197,7 @@ export const PopupView = {
               <div class="sources-box">
                 <button class="sources-toggle" type="button" aria-expanded="false">
                   <span class="material-symbols-rounded">link</span>
-                  <span>Fontes</span>
+                  <span>Fontes (${item.sources.length})</span>
                   <span class="material-symbols-rounded sources-caret">expand_more</span>
                 </button>
                 <div class="sources-list" hidden>
@@ -142,48 +219,48 @@ export const PopupView = {
           </div>
         </div>
       `;
-        }).join('');
+    }).join('');
 
-        this.elements.resultsDiv.innerHTML = html;
-    },
+    this.elements.resultsDiv.innerHTML = html;
+  },
 
-    getAllResultsText() {
-        // Simplificado. Idealmente pegaria dos dados brutos.
-        // Aqui pegamos do DOM para simplicidade
-        let text = '';
-        const cards = this.elements.resultsDiv.querySelectorAll('.qa-card');
-        cards.forEach((card, i) => {
-            const q = card.querySelector('.qa-card-question').textContent.trim();
-            const a = card.querySelector('.qa-card-answer-text').textContent.trim();
-            text += `Q${i + 1}: ${q}\nR: ${a}\n\n`;
-        });
-        return text;
-    },
+  getAllResultsText() {
+    // Simplificado. Idealmente pegaria dos dados brutos.
+    // Aqui pegamos do DOM para simplicidade
+    let text = '';
+    const cards = this.elements.resultsDiv.querySelectorAll('.qa-card');
+    cards.forEach((card, i) => {
+      const q = card.querySelector('.qa-card-question').textContent.trim();
+      const a = card.querySelector('.qa-card-answer-text').textContent.trim();
+      text += `Q${i + 1}: ${q}\nR: ${a}\n\n`;
+    });
+    return text;
+  },
 
-    setSaveButtonState(btn, saved) {
-        const icon = btn.querySelector('.material-symbols-rounded');
-        btn.classList.toggle('saved', saved);
-        if (icon) {
-            icon.textContent = saved ? 'bookmark' : 'bookmark_border';
-            icon.classList.toggle('filled', saved);
-        }
-    },
+  setSaveButtonState(btn, saved) {
+    const icon = btn.querySelector('.material-symbols-rounded');
+    btn.classList.toggle('saved', saved);
+    if (icon) {
+      icon.textContent = saved ? 'bookmark' : 'bookmark_border';
+      icon.classList.toggle('filled', saved);
+    }
+  },
 
-    resetAllSaveButtons() {
-        const btns = document.querySelectorAll('.save-btn');
-        btns.forEach(btn => this.setSaveButtonState(btn, false));
-    },
+  resetAllSaveButtons() {
+    const btns = document.querySelectorAll('.save-btn');
+    btns.forEach(btn => this.setSaveButtonState(btn, false));
+  },
 
-    updateSaveStatusInSearch() {
-        // TBD: Lógica para verificar quais itens da busca já estão salvos e atualizar ícones
-    },
+  updateSaveStatusInSearch() {
+    // TBD: Lógica para verificar quais itens da busca já estão salvos e atualizar ícones
+  },
 
-    // === BINDER RENDER ===
-    renderBinderList(folder) {
-        if (!this.elements.binderList) return;
+  // === BINDER RENDER ===
+  renderBinderList(folder) {
+    if (!this.elements.binderList) return;
 
-        // Toolbar
-        let html = `
+    // Toolbar
+    let html = `
         <div class="binder-toolbar">
             <span class="crumb-current"><span class="material-symbols-rounded" style="font-size:18px">folder_open</span> ${escapeHtml(folder.title)}</span>
             <div class="toolbar-actions">
@@ -193,12 +270,12 @@ export const PopupView = {
         </div>
         <div class="binder-content">`;
 
-        if (folder.children.length === 0) {
-            html += `<div class="placeholder"><p>Pasta vazia</p></div>`;
-        } else {
-            folder.children.forEach(item => {
-                if (item.type === 'folder') {
-                    html += `
+    if (folder.children.length === 0) {
+      html += `<div class="placeholder"><p>Pasta vazia</p></div>`;
+    } else {
+      folder.children.forEach(item => {
+        if (item.type === 'folder') {
+          html += `
                 <div class="folder-item drop-zone" draggable="true" data-id="${item.id}" data-type="folder">
                     <div class="folder-info">
                        <span class="material-symbols-rounded folder-icon">folder</span>
@@ -208,12 +285,12 @@ export const PopupView = {
                        <span class="material-symbols-rounded" style="font-size:18px">delete</span>
                     </button>
                 </div>`;
-                } else {
-                    const qText = item.content.question || '';
-                    const preview = qText.length > 60 ? qText.substring(0, 60) + '...' : qText;
-                    const source = item.content.source;
+        } else {
+          const qText = item.content.question || '';
+          const preview = qText.length > 60 ? qText.substring(0, 60) + '...' : qText;
+          const source = item.content.source;
 
-                    html += `
+          html += `
                 <div class="qa-item expandable" draggable="true" data-id="${item.id}" data-type="question">
                     <div class="summary-view">
                         <div class="summary-icon"><span class="material-symbols-rounded">quiz</span></div>
@@ -273,18 +350,18 @@ export const PopupView = {
                         </div>
                     </div>
                 </div>`;
-                }
-            });
         }
-
-        html += `</div>`; // Close binder-content
-        this.elements.binderList.innerHTML = html;
-
-        // Precisamos reatribuir listeners dinâmicos aqui ou delegar no Controller?
-        // O Controller delega cliques no container, então botões funcionam.
-        // Navegação (Voltar, Nova Pasta) precisa de IDs
-        // O ideal seria o Controller tratar isso, mas como estamos simplificando:
-        // Disparar CustomEvents? Ou deixar o Controller pegar pelo ID no delegate.
-        // Vamos deixar o BinderController pegar pelo ID no click delegate.
+      });
     }
+
+    html += `</div>`; // Close binder-content
+    this.elements.binderList.innerHTML = html;
+
+    // Precisamos reatribuir listeners dinâmicos aqui ou delegar no Controller?
+    // O Controller delega cliques no container, então botões funcionam.
+    // Navegação (Voltar, Nova Pasta) precisa de IDs
+    // O ideal seria o Controller tratar isso, mas como estamos simplificando:
+    // Disparar CustomEvents? Ou deixar o Controller pegar pelo ID no delegate.
+    // Vamos deixar o BinderController pegar pelo ID no click delegate.
+  }
 };

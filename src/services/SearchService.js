@@ -5,6 +5,62 @@ import { ApiService } from './ApiService.js';
  * Coordena os fluxos de Extração (direta) e Busca (Google).
  */
 export const SearchService = {
+    _normalizeOption(text) {
+        return (text || '')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    },
+
+    _extractOptionsFromQuestion(questionText) {
+        if (!questionText) return [];
+        const lines = questionText.split('\n').map(l => l.trim()).filter(Boolean);
+        const options = [];
+        const optionRe = /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+        for (const line of lines) {
+            const m = line.match(optionRe);
+            if (m) options.push(`${m[1].toUpperCase()}) ${m[2].trim()}`);
+        }
+        return options;
+    },
+
+    _optionsMatch(originalOptions, sourceOptions) {
+        if (!originalOptions || originalOptions.length < 2) return true;
+        if (!sourceOptions || sourceOptions.length < 2) return true;
+
+        const originalSet = new Set(originalOptions.map(o => this._normalizeOption(o)).filter(Boolean));
+        const sourceSet = new Set(sourceOptions.map(o => this._normalizeOption(o)).filter(Boolean));
+        if (originalSet.size === 0 || sourceSet.size === 0) return true;
+
+        let hits = 0;
+        for (const opt of originalSet) {
+            if (sourceSet.has(opt)) hits += 1;
+        }
+
+        const ratio = hits / originalSet.size;
+        return ratio >= 0.6 || hits >= Math.min(3, originalSet.size);
+    },
+
+    _optionsMatchInFreeText(originalOptions, sourceText) {
+        if (!originalOptions || originalOptions.length < 2) return true;
+        if (!sourceText || sourceText.length < 50) return true;
+
+        const normalizedSource = this._normalizeOption(sourceText);
+        if (!normalizedSource) return true;
+
+        const originalSet = new Set(originalOptions.map(o => this._normalizeOption(o)).filter(Boolean));
+        if (originalSet.size === 0) return true;
+
+        let hits = 0;
+        for (const opt of originalSet) {
+            if (opt && normalizedSource.includes(opt)) hits += 1;
+        }
+
+        const ratio = hits / originalSet.size;
+        return ratio >= 0.6 || hits >= Math.min(3, originalSet.size);
+    },
     async searchOnly(questionText) {
         return ApiService.searchWithSerper(questionText);
     },
@@ -37,13 +93,14 @@ export const SearchService = {
 
     /**
      * Fluxo 2: Buscar no Google e refinar (Botão Buscar)
-     * Equivalente ao extractAnswersFromSearch do legado
+     * OTIMIZADO: Reduz chamadas à API para evitar rate limit
      */
-    async refineFromResults(questionText, results) {
+    async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null) {
         if (!results || results.length === 0) return [];
         const answers = [];
         const sources = [];
-        const topResults = results.slice(0, 5); // Aumentar para 5 resultados
+        const topResults = results.slice(0, 5); // Aumentado para 5 resultados
+        const originalOptions = this._extractOptionsFromQuestion(originalQuestionWithOptions);
 
         for (const result of topResults) {
             try {
@@ -51,27 +108,49 @@ export const SearchService = {
                 const title = result.title || '';
                 const fullContent = `${title}. ${snippet}`;
 
-                if (snippet.length < 30) continue;
+                console.log(`SearchService: Analisando fonte: ${title.substring(0, 50)}...`);
+                console.log(`SearchService: Snippet (${snippet.length} chars): ${snippet.substring(0, 150)}...`);
 
-                // NOVA VERIFICACAO: Checar se a fonte corresponde a mesma questao
-                const isMatch = await ApiService.verifyQuestionMatch(questionText, fullContent);
-
-                if (!isMatch) {
-                    console.log('SearchService: Fonte NAO corresponde a questao. Tentando proximo...');
+                if (snippet.length < 20) {
+                    console.log('SearchService: Snippet muito curto, pulando...');
                     continue;
                 }
 
-                // Usar Groq para analisar o snippet
-                // O refineWithGroq espera um objeto {question, answer} onde answer é o texto da fonte
-                const refined = await ApiService.refineWithGroq({
-                    question: questionText,
-                    answer: fullContent
-                });
+                // SIMPLIFICADO: Usar apenas 1 chamada para extrair resposta diretamente
+                if (typeof onStatus === 'function') {
+                    onStatus(`Analisando fonte ${sources.length + 1}...`);
+                }
+                
+                const answerText = await ApiService.extractAnswerFromSource(questionText, fullContent);
+                
+                console.log(`SearchService: Resposta da IA: ${answerText?.substring(0, 100) || 'null'}`);
+                
+                if (answerText && answerText.length > 5) {
+                    // Extrair letra da resposta de várias formas
+                    let letter = null;
+                    
+                    // Padrão 1: "Letra A", "Alternativa B", etc
+                    let letterMatch = answerText.match(/(?:letra|alternativa)\s*([A-E])\b/i);
+                    if (letterMatch) {
+                        letter = letterMatch[1].toUpperCase();
+                    }
+                    
+                    // Padrão 2: Letra isolada no início
+                    if (!letter) {
+                        letterMatch = answerText.match(/^([A-E])\s*[\)\.\-:]/i);
+                        if (letterMatch) letter = letterMatch[1].toUpperCase();
+                    }
+                    
+                    // Padrão 3: "correta é a A", "resposta: B"
+                    if (!letter) {
+                        letterMatch = answerText.match(/(?:correta|resposta)[^A-E]*([A-E])\b/i);
+                        if (letterMatch) letter = letterMatch[1].toUpperCase();
+                    }
 
-                if (refined) {
-                    const answerText = refined.answer || '';
-                    const letterMatch = answerText.match(/\b(?:alternativa\s*)?([A-E])\b/i);
-                    const letter = letterMatch ? letterMatch[1].toUpperCase() : null;
+                    // Para respostas combinadas como "I-D; II-B", não atribui letra única
+                    if (/[IVX]+\s*[-–]\s*[A-E]/i.test(answerText)) {
+                        letter = null;
+                    }
 
                     sources.push({
                         title,
@@ -79,14 +158,27 @@ export const SearchService = {
                         answer: answerText,
                         letter
                     });
-                    answers.push(refined);
+
+                    console.log(`SearchService: ✓ Fonte válida! Letra: ${letter || 'N/A'}, Resposta: ${answerText.substring(0, 80)}...`);
+
+                    // Se já temos 2 fontes com a mesma letra, podemos parar
+                    if (sources.length >= 2) {
+                        const letters = sources.filter(s => s.letter).map(s => s.letter);
+                        const letterCounts = {};
+                        letters.forEach(l => letterCounts[l] = (letterCounts[l] || 0) + 1);
+                        if (Object.values(letterCounts).some(c => c >= 2)) {
+                            console.log('SearchService: 2 fontes concordam, parando busca.');
+                            break;
+                        }
+                    }
                 }
-            } catch (e) {
-                console.error('SearchService Error:', e);
+            } catch (error) {
+                console.error('SearchService Error:', error);
             }
         }
 
-        if (answers.length === 0) {
+        if (sources.length === 0) {
+            console.log('SearchService: Nenhuma resposta encontrada nas fontes.');
             return [];
         }
 
@@ -106,30 +198,32 @@ export const SearchService = {
             }
         });
 
-        let finalAnswer = answers[0]?.answer || '';
+        console.log('SearchService: Votação por letra:', voteCount, '| Melhor:', bestLetter);
+
+        let finalAnswer = sources[0]?.answer || '';
         if (bestLetter) {
             const match = sources.find(s => s.letter === bestLetter && s.answer);
             if (match) finalAnswer = match.answer;
         }
 
         return [{
-            question: answers[0].question,
+            question: questionText,
             answer: finalAnswer,
             sources,
             bestLetter,
-            title: answers[0].title,
+            title: sources[0]?.title || 'Questão Encontrada',
             aiFallback: false
         }];
     },
 
-    async searchAndRefine(questionText) {
+    async searchAndRefine(questionText, originalQuestionWithOptions = '') {
         // 1. Busca no Google
         const results = await ApiService.searchWithSerper(questionText);
         if (!results || results.length === 0) {
             return this.answerFromAi(questionText);
         }
 
-        const refined = await this.refineFromResults(questionText, results);
+        const refined = await this.refineFromResults(questionText, results, originalQuestionWithOptions);
         if (!refined || refined.length === 0) {
             return this.answerFromAi(questionText);
         }

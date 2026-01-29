@@ -206,8 +206,11 @@ export const BinderController = {
             }
         } else {
             // Salvar
-            await StorageModel.addItem(question, answer, source);
+            const added = await StorageModel.addItem(question, answer, source);
             this.view.setSaveButtonState(btnElement, true);
+            if (!added) {
+                console.warn('BinderController: item duplicado, não adicionado.');
+            }
         }
     }
 };
