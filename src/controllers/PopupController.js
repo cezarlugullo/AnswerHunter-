@@ -131,6 +131,49 @@ export const PopupController = {
                 }
             }
 
+            // Verificar se a questão REALMENTE tem alternativas formatadas (não falsos positivos como "A UX")
+            // Precisa ter pelo menos 2 letras consecutivas com formato de alternativa
+            const hasRealOptions = (text) => {
+                if (!text) return false;
+                const matches = text.match(/(?:^|\n)\s*([A-E])\s*[\)\.\-:]\s*\S/gi) || [];
+                // Precisa ter pelo menos 2 alternativas reais
+                return matches.length >= 2;
+            };
+
+            const questionAlreadyHasOptions = hasRealOptions(bestQuestion);
+            console.log('AnswerHunter: Questão já tem alternativas reais?', questionAlreadyHasOptions);
+
+            let displayQuestion = bestQuestion;
+
+            // Só buscar alternativas separadamente se a questão NÃO tiver alternativas
+            // Isso evita pegar alternativas de outra questão da página
+            if (!questionAlreadyHasOptions) {
+                // Capturar alternativas separadamente (se houver)
+                const optionsResults = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id, allFrames: true },
+                    function: ExtractionService.extractOptionsOnlyScript
+                });
+                let optionsText = '';
+                let optionsLength = 0;
+                for (const frameResult of optionsResults || []) {
+                    const text = frameResult?.result || '';
+                    if (text.length > optionsLength) {
+                        optionsLength = text.length;
+                        optionsText = text;
+                    }
+                }
+                console.log('AnswerHunter: Alternativas extraídas separadamente:', optionsText?.substring(0, 200));
+
+                // Adicionar alternativas se foram encontradas
+                if (optionsText && optionsText.length > 10) {
+                    displayQuestion = `${bestQuestion}\n${optionsText}`;
+                }
+            } else {
+                console.log('AnswerHunter: Usando alternativas já incluídas na questão');
+            }
+
+            console.log('AnswerHunter: displayQuestion final:', displayQuestion?.substring(0, 300));
+
             this.view.showStatus('loading', 'Buscando no Google...');
 
             const searchResults = await SearchService.searchOnly(bestQuestion);
@@ -140,10 +183,11 @@ export const PopupController = {
                 if (aiResults && aiResults.length > 0) {
                     const withSaved = aiResults.map(item => ({
                         ...item,
-                        saved: StorageModel.isSaved(item.question)
+                        question: displayQuestion,
+                        saved: StorageModel.isSaved(displayQuestion)
                     }));
                     this.view.appendResults(withSaved);
-                    await this.saveLastResults(aiResults);
+                    await this.saveLastResults(withSaved);
                     this.view.showStatus('success', `${aiResults.length} resposta(s) encontrada(s)!`);
                     this.view.toggleViewSection('view-search');
                     this.view.setButtonDisabled('copyBtn', false);
@@ -154,15 +198,21 @@ export const PopupController = {
             }
 
             this.view.showStatus('loading', `Encontrado ${searchResults.length} resultados. Analisando com IA...`);
-            const finalResults = await SearchService.refineFromResults(bestQuestion, searchResults);
+            const finalResults = await SearchService.refineFromResults(
+                bestQuestion,
+                searchResults,
+                displayQuestion,
+                (message) => this.view.showStatus('loading', message)
+            );
 
             if (finalResults && finalResults.length > 0) {
                 const withSaved = finalResults.map(item => ({
                     ...item,
-                    saved: StorageModel.isSaved(item.question)
+                    question: displayQuestion,
+                    saved: StorageModel.isSaved(displayQuestion)
                 }));
                 this.view.appendResults(withSaved);
-                await this.saveLastResults(finalResults);
+                await this.saveLastResults(withSaved);
                 this.view.showStatus('success', `${finalResults.length} resposta(s) encontrada(s)!`);
                 this.view.toggleViewSection('view-search');
                 this.view.setButtonDisabled('copyBtn', false);
@@ -172,10 +222,11 @@ export const PopupController = {
                 if (aiResults && aiResults.length > 0) {
                     const withSaved = aiResults.map(item => ({
                         ...item,
-                        saved: StorageModel.isSaved(item.question)
+                        question: displayQuestion,
+                        saved: StorageModel.isSaved(displayQuestion)
                     }));
                     this.view.appendResults(withSaved);
-                    await this.saveLastResults(aiResults);
+                    await this.saveLastResults(withSaved);
                     this.view.showStatus('success', `${aiResults.length} resposta(s) encontrada(s)!`);
                     this.view.toggleViewSection('view-search');
                     this.view.setButtonDisabled('copyBtn', false);

@@ -5,14 +5,14 @@
 export const SettingsModel = {
     // Configurações Padrão
     defaults: {
-        groqApiKey: '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',
+        groqApiKey: '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',
         groqApiUrl: 'https://api.groq.com/openai/v1/chat/completions',
         groqModelFast: 'llama-3.1-8b-instant',
         groqModelAnswer: 'llama-3.3-70b-versatile',
         groqModelFallback: 'llama-3.3-70b-versatile',
         serperApiKey: 'feffb9d9843cbe91d25ea499ae460068d5518f45',
         serperApiUrl: 'https://google.serper.dev/search',
-        minGroqIntervalMs: 900 // Cooldown ajustado
+        minGroqIntervalMs: 2500 // Cooldown alto para evitar 429
     },
 
     /**

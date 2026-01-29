@@ -1,4 +1,4 @@
-/**
+﻿/**
  * helpers.js
  * Funções utilitárias puras
  */
@@ -43,22 +43,72 @@ export function debounce(func, wait) {
     };
 }
 
-// Funçéo para formatar questão separando enunciado das alternativas
+// Função para formatar questão separando enunciado das alternativas
 export function formatQuestionText(text) {
     if (!text) return '';
 
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const trimNoise = (s) => {
         if (!s) return s;
-        const noiseRe = /(Resposta correta|Parab[eé]ns|Gabarito|Gabarito Comentado|Alternativa correta|Confira o gabarito|Resposta certa|Resposta correta|Você selecionou a alternativa correta)/i;
+        const noiseRe = /(Resposta correta|Parab[eé]ns|Gabarito|Gabarito Comentado|Alternativa correta|Confira o gabarito|Resposta certa|Resposta correta|Você selecionou a alternativa correta|Marcar para revis[ãa]o)/i;
         const idx = s.search(noiseRe);
         if (idx !== -1) return s.substring(0, idx).trim();
         return s.trim();
     };
-    const normalized = (text || '').replace(/\r\n/g, '\n');
+    
+    // NOVO: Limitar texto para apenas a primeira questão (cortar após 5 alternativas ou próxima questão)
+    const limitToFirstQuestion = (raw) => {
+        const lines = raw.split('\n');
+        const result = [];
+        let altCount = 0;
+        const altRe = /^([A-E])\s*[\)\.\-:]/i;
+        const newQuestionRe = /^\d+\s*[\.\):]?\s*(Marcar para|Quest[ãa]o|\(.*\/\d{4})/i;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            // Se encontrar início de nova questão, parar
+            if (newQuestionRe.test(line.trim()) && altCount >= 2) {
+                break;
+            }
+            
+            // Contar alternativas
+            if (altRe.test(line.trim())) {
+                altCount++;
+            }
+            
+            result.push(line);
+            
+            // Se já temos 5 alternativas (A-E), parar após a última
+            if (altCount >= 5) {
+                // Continuar apenas se a próxima linha faz parte da alternativa E
+                const nextLines = lines.slice(result.length, result.length + 2);
+                const hasMoreAlt = nextLines.some(l => altRe.test(l.trim()));
+                if (!hasMoreAlt) break;
+            }
+        }
+        
+        return result.join('\n');
+    };
+    
+    const limitedText = limitToFirstQuestion(text);
+    const normalized = limitedText.replace(/\r\n/g, '\n');
+    const normalizedForParsing = normalized;
+
+    const looksLikeAcronymStart = (body) => {
+        const match = (body || '').match(/^([A-Z\u00C0-\u00DC]{2,5})(\b|\s*\()/);
+        return !!match;
+    };
+
+    const isLikelyFalseLooseAlt = (letter, body, lineIndex, hasAlternatives) => {
+        if (hasAlternatives) return false;
+        if (letter !== 'A') return false;
+        if (lineIndex <= 2 && looksLikeAcronymStart(body)) return true;
+        return false;
+    };
 
     const render = (enunciado, alternatives) => {
-        const formattedAlternatives = alternatives
+        // Limitar a 5 alternativas máximo
+        const limitedAlts = alternatives.slice(0, 5);
+        const formattedAlternatives = limitedAlts
             .map(a => `
           <div class="alternative">
             <span class="alt-letter">${escapeHtml(a.letter)}</span>
@@ -72,19 +122,37 @@ export function formatQuestionText(text) {
       `;
     };
 
-    const parseByLines = (raw) => {
+    const parseByLines = (raw, allowLoose = false) => {
         const lines = raw.split(/\n+/).map(line => line.trim()).filter(Boolean);
         const alternatives = [];
         const enunciadoParts = [];
         let currentAlt = null;
-        const altStartRe = /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
-
-        for (const line of lines) {
+        const altStartRe = allowLoose
+            ? /^([A-E])\s*(?:[\)\.\-:]\s*|\s+)(.+)$/i
+            : /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+        const altSoloRe = /^([A-E])$/i;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             const m = line.match(altStartRe);
             if (m) {
+                const letter = m[1].toUpperCase();
+                const body = trimNoise(clean(m[2]));
+                if (allowLoose && isLikelyFalseLooseAlt(letter, body, i, alternatives.length > 0)) {
+                    enunciadoParts.push(line);
+                    continue;
+                }
                 if (currentAlt) alternatives.push(currentAlt);
-                currentAlt = { letter: m[1].toUpperCase(), body: trimNoise(clean(m[2])) };
-            } else if (currentAlt) {
+                currentAlt = { letter, body };
+                continue;
+            }
+            const solo = line.match(altSoloRe);
+            if (solo) {
+                if (currentAlt) alternatives.push(currentAlt);
+                currentAlt = { letter: solo[1].toUpperCase(), body: '' };
+                continue;
+            }
+
+            if (currentAlt) {
                 currentAlt.body = trimNoise(clean(`${currentAlt.body} ${line}`));
             } else {
                 enunciadoParts.push(line);
@@ -96,9 +164,36 @@ export function formatQuestionText(text) {
         return { enunciado: clean(enunciadoParts.join(' ')), alternatives };
     };
 
-    const parsedByLines = parseByLines(normalized);
+    const parsedByLines = parseByLines(normalizedForParsing, false);
     if (parsedByLines.alternatives.length >= 2) {
         return render(parsedByLines.enunciado, parsedByLines.alternatives);
+    }
+
+    const parsedByLooseLines = parseByLines(normalizedForParsing, true);
+    if (parsedByLooseLines.alternatives.length >= 2) {
+        return render(parsedByLooseLines.enunciado, parsedByLooseLines.alternatives);
+    }
+
+    // Fallback: alternativas inline (sem quebra de linha), após pontuação
+    const inlineAltPattern = /(^|[\n:;?.!]\s+)([A-E])\s+(?=[A-ZÀ-Ú])/g;
+    const inlineAltLetters = new Set();
+    normalized.replace(inlineAltPattern, (_m, _prefix, letter) => {
+        inlineAltLetters.add(letter.toUpperCase());
+        return _m;
+    });
+    if (inlineAltLetters.size >= 2) {
+        const normalizedInline = normalized.replace(inlineAltPattern, (m, prefix, letter, offset, full) => {
+            const after = full.slice(offset + m.length);
+            if (letter.toUpperCase() === 'A') {
+                const nextWord = after.match(/^([A-Z\u00C0-\u00DC]{2,5})\b/);
+                if (nextWord) return m;
+            }
+            return `${prefix}\n${letter}) `;
+        });
+        const parsedInline = parseByLines(normalizedInline, false);
+        if (parsedInline.alternatives.length >= 2) {
+            return render(parsedInline.enunciado, parsedInline.alternatives);
+        }
     }
 
     // Fallback para alternativas em linha unica (evita falsos positivos como "software)")
@@ -139,3 +234,6 @@ export function formatQuestionText(text) {
 
     return `<div class="question-enunciado">${escapeHtml(clean(normalized))}</div>`;
 }
+
+
+

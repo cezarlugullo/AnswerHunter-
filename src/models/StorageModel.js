@@ -94,6 +94,10 @@ export const StorageModel = {
     async addItem(question, answer, source) {
         if (!this.data.length) await this.init();
 
+        if (this.isSaved(question)) {
+            return false;
+        }
+
         const current = this.findNode(this.currentFolderId);
         if (current && current.type === 'folder') {
             current.children.push({
@@ -103,9 +107,11 @@ export const StorageModel = {
                 createdAt: Date.now()
             });
             await this.save();
+            return true;
         } else {
             console.error('StorageModel: Pasta atual inválida:', this.currentFolderId);
         }
+        return false;
     },
 
     /**

@@ -258,9 +258,15 @@ export const ExtractionService = {
                     return;
                 }
                 const fallbackText = cleanText(btn.innerText || '');
-                const match = fallbackText.match(/^\s*([A-E])\s*[).:-]?\s*(.+)$/i);
+                // CORREÇÃO: Exigir delimitador OBRIGATÓRIO e validar falsos positivos
+                const match = fallbackText.match(/^\s*([A-E])\s*[).:]\s*(.+)$/i);
                 if (match) {
-                    options.push(`${match[1].toUpperCase()}) ${match[2].trim()}`);
+                    const body = match[2].trim();
+                    // Validar que não é falso positivo (ex: "A UX" não é alternativa)
+                    const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
+                    if (!isFalsePositive) {
+                        options.push(`${match[1].toUpperCase()}) ${body}`);
+                    }
                 }
             });
 
@@ -443,6 +449,264 @@ export const ExtractionService = {
 
         console.log('AnswerHunter: Nenhuma questao encontrada.');
         return '';
+    },
+
+    /**
+     * Extrair APENAS as alternativas (quando o enunciado já foi capturado)
+     * IMPORTANTE: Esta função tenta encontrar alternativas da questão VISÍVEL mais relevante
+     * Identifica a seção da questão pelo marcador "Marcar para revisão" ou header da questão.
+     */
+    extractOptionsOnlyScript: function () {
+        function cleanText(text) {
+            return (text || '').replace(/\s+/g, ' ').trim();
+        }
+
+        function normalizeText(text) {
+            return (text || '')
+                .toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function looksLikeQuestionLine(text) {
+            return /assinale|considerando|analise|marque|afirmativa|correta|incorreta|quest[aã]o|enunciado|pergunta/i.test(text || '');
+        }
+
+        function isOnScreen(el) {
+            if (!el) return false;
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+                return false;
+            }
+            return rect.width > 30 && rect.height > 15 &&
+                rect.bottom > 0 && rect.top < window.innerHeight &&
+                rect.right > 0 && rect.left < window.innerWidth;
+        }
+
+        function getVisibleArea(rect) {
+            const left = Math.max(0, rect.left);
+            const right = Math.min(window.innerWidth, rect.right);
+            const top = Math.max(0, rect.top);
+            const bottom = Math.min(window.innerHeight, rect.bottom);
+            return Math.max(0, right - left) * Math.max(0, bottom - top);
+        }
+
+        function getQuestionTextFromHeader() {
+            const headerNodes = Array.from(document.querySelectorAll('[data-testid="openResponseQuestionHeader"]'))
+                .filter(el => isOnScreen(el));
+            if (headerNodes.length === 0) return '';
+            let bestHeader = headerNodes[0];
+            let bestArea = 0;
+            for (const h of headerNodes) {
+                const area = getVisibleArea(h.getBoundingClientRect());
+                if (area > bestArea) {
+                    bestArea = area;
+                    bestHeader = h;
+                }
+            }
+            const parts = Array.from(bestHeader.querySelectorAll('p, span, div'))
+                .map(el => cleanText(el.innerText || el.textContent || ''))
+                .filter(t => t.length >= 8);
+            return parts.length > 0 ? parts.join(' ') : cleanText(bestHeader.innerText || bestHeader.textContent || '');
+        }
+
+        const questionText = getQuestionTextFromHeader();
+
+        function isLikelyQuestionBody(body) {
+            if (!body) return false;
+            if (looksLikeQuestionLine(body)) return true;
+            if (/\(.*?\/\d{4}.*?\)/.test(body)) return true;
+
+            const bNorm = normalizeText(body);
+            const qNorm = normalizeText(questionText);
+            if (bNorm.length >= 40 && qNorm.length >= 40) {
+                if (qNorm.includes(bNorm)) return true;
+                const bTokens = bNorm.split(' ').filter(t => t.length >= 3);
+                const qTokens = new Set(qNorm.split(' ').filter(t => t.length >= 3));
+                if (bTokens.length >= 6) {
+                    let hit = 0;
+                    for (const t of bTokens) {
+                        if (qTokens.has(t)) hit += 1;
+                    }
+                    if (hit / bTokens.length >= 0.6) return true;
+                }
+            }
+            return false;
+        }
+
+        function isNoiseElement(el) {
+            if (!el) return false;
+            const attr = (el.getAttribute && (el.getAttribute('data-testid') || '')) || '';
+            if (/right-answer-alert|wrong-answer-alert|info-box/i.test(attr)) return true;
+            const className = (el.className || '').toString();
+            if (/gabarito|comentado|resposta/i.test(className)) return true;
+            const text = cleanText(el.innerText || el.textContent || '');
+            return /Gabarito|Resposta correta|Resposta incorreta/i.test(text);
+        }
+
+        function extractOptionsFromButtons(rootEl) {
+            if (!rootEl) return [];
+            const options = [];
+            const seenLetters = new Set();
+
+            const buttons = rootEl.querySelectorAll(
+                'button[data-testid^="alternative-"], ' +
+                'button[data-element="link_resposta"], ' +
+                '[data-testid^="alternative-"], ' +
+                '[class*="alternative"], ' +
+                '[class*="alternativa"], ' +
+                'label[for^="option"], ' +
+                '.radio-option'
+            );
+
+            for (const btn of buttons) {
+                if (isNoiseElement(btn) || isNoiseElement(btn.parentElement)) continue;
+
+                const letterEl =
+                    btn.querySelector('[data-testid="circle-letter"]') ||
+                    btn.querySelector('[class*="letter"]') ||
+                    btn.querySelector('small, strong, span');
+
+                let letterText = cleanText(letterEl ? (letterEl.innerText || letterEl.textContent || '') : '');
+
+                if (!/^[A-E]$/i.test(letterText)) {
+                    const fullText = cleanText(btn.innerText || btn.textContent || '');
+                    // CORREÇÃO: Exigir delimitador OBRIGATÓRIO para evitar confundir "A UX" com alternativa
+                    const letterMatch = fullText.match(/^([A-E])\s*[\)\.]\s+/i);
+                    if (letterMatch) letterText = letterMatch[1];
+                }
+
+                const letter = /^[A-E]$/i.test(letterText) ? letterText.toUpperCase() : '';
+
+                const textEl =
+                    btn.querySelector('[data-testid="question-typography"]') ||
+                    btn.querySelector('p, div');
+
+                let raw = cleanText(textEl ? (textEl.innerText || textEl.textContent || '') : '');
+                if (!raw || raw.length < 5) {
+                    raw = cleanText(btn.innerText || btn.textContent || '');
+                }
+
+                const body = cleanText(raw.replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim());
+
+                // Validar que não é falso positivo (ex: "A UX" não é alternativa)
+                // Se body começa com palavra muito curta seguida de maiúsculas, provavelmente é enunciado
+                const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
+                const isQuestionLike = isLikelyQuestionBody(body);
+
+                if (letter && body && body.length >= 5 && !seenLetters.has(letter) && !isFalsePositive && !isQuestionLike) {
+                    options.push(`${letter}) ${body}`);
+                    seenLetters.add(letter);
+                }
+            }
+
+            return options.length >= 2 ? options : [];
+        }
+
+        function extractOptionsFromText(rawText) {
+            if (!rawText) return [];
+            const lines = rawText.split(/\n+/).map(line => line.trim()).filter(Boolean);
+            const alternatives = [];
+            const altStartRe = /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+            let current = null;
+
+            for (const line of lines) {
+                const m = line.match(altStartRe);
+                if (m) {
+                    const body = cleanText(m[2]);
+                    // Validar que não é falso positivo (ex: "A UX" não é alternativa)
+                    const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
+                    const isQuestionLike = isLikelyQuestionBody(body);
+
+                    if (!isFalsePositive && !isQuestionLike) {
+                        if (current) alternatives.push(current);
+                        current = { letter: m[1].toUpperCase(), body: body };
+                        if (alternatives.length >= 5) break;
+                    }
+                } else if (current) {
+                    current.body = cleanText(`${current.body} ${line}`);
+                }
+            }
+            if (current && alternatives.length < 5) alternatives.push(current);
+
+            let merged = alternatives
+                .filter(a => a.body && a.body.length >= 2)
+                .slice(0, 5)
+                .map(a => `${a.letter}) ${a.body}`);
+
+            return merged.length >= 2 ? merged : [];
+        }
+
+        function extractFromSection(sectionEl) {
+            if (!sectionEl) return [];
+            let opts = extractOptionsFromButtons(sectionEl);
+            if (opts.length >= 2) return opts;
+            opts = extractOptionsFromText(sectionEl.innerText || '');
+            return opts;
+        }
+
+        // Tentar identificar a seção da questão ativa (mesma lógica de extractQuestionOnlyScript)
+        const reviewButtons = Array.from(document.querySelectorAll('button, [role="button"]'))
+            .filter(btn => /Marcar para revis[aé]o/i.test((btn.innerText || '').trim()))
+            .filter(btn => isOnScreen(btn));
+
+        let targetSection = null;
+
+        if (reviewButtons.length > 0) {
+            reviewButtons.sort((a, b) => {
+                const topA = Math.abs(a.getBoundingClientRect().top - window.innerHeight / 2);
+                const topB = Math.abs(b.getBoundingClientRect().top - window.innerHeight / 2);
+                return topA - topB;
+            });
+            targetSection = reviewButtons[0].closest('[data-section="section_cms-atividade"]');
+        }
+
+        if (!targetSection) {
+            const headerNodes = Array.from(document.querySelectorAll('[data-testid="openResponseQuestionHeader"]'))
+                .filter(el => isOnScreen(el));
+            if (headerNodes.length > 0) {
+                let bestHeader = headerNodes[0];
+                let bestArea = 0;
+                for (const h of headerNodes) {
+                    const area = getVisibleArea(h.getBoundingClientRect());
+                    if (area > bestArea) {
+                        bestArea = area;
+                        bestHeader = h;
+                    }
+                }
+                targetSection = bestHeader.closest('[data-section="section_cms-atividade"]') ||
+                    bestHeader.closest('section, article, form');
+            }
+        }
+
+        if (targetSection) {
+            console.log('AnswerHunter: extractOptionsOnlyScript - usando seção específica');
+            const opts = extractFromSection(targetSection);
+            if (opts.length >= 2) {
+                return opts.slice(0, 5).join('\n');
+            }
+        }
+
+        // Fallback: buscar no viewport geral
+        console.log('AnswerHunter: extractOptionsOnlyScript - fallback para viewport geral');
+        const candidates = Array.from(document.querySelectorAll('[data-testid="feedback-container"], section, article, div, form'));
+        let best = { score: -1, options: [] };
+
+        for (const el of candidates) {
+            if (!isOnScreen(el)) continue;
+            const opts = extractFromSection(el);
+            if (opts.length < 2 || opts.length > 5) continue;
+            const rect = el.getBoundingClientRect();
+            const score = opts.length * 100 + getVisibleArea(rect) / 1000;
+            if (score > best.score) {
+                best = { score, options: opts };
+            }
+        }
+
+        return best.options.length >= 2 ? best.options.slice(0, 5).join('\n') : '';
     },
 
     // Alias para o getSelectionScript se necessário, ou usar direto extractQuestionOnlyScript que ja tem Fallback manual
