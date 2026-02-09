@@ -529,6 +529,12 @@ button:disabled {
   color: #FF6B00;
 }
 
+.folder-actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
 .action-btn.saved {
   color: #FFD700;
   /* Dourado */
