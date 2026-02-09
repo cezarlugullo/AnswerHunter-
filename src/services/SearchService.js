@@ -61,6 +61,55 @@ export const SearchService = {
         const ratio = hits / originalSet.size;
         return ratio >= 0.6 || hits >= Math.min(3, originalSet.size);
     },
+
+    _buildOptionsMap(questionText) {
+        const options = this._extractOptionsFromQuestion(questionText);
+        const map = {};
+        for (const opt of options) {
+            const m = opt.match(/^([A-E])\)\s*(.+)$/i);
+            if (m) map[m[1].toUpperCase()] = m[2].trim();
+        }
+        return map;
+    },
+
+    _parseAnswerLetter(answerText) {
+        if (!answerText) return null;
+        let letter = null;
+        let m = answerText.match(/\b(?:letra|alternativa)\s*([A-E])\b/i);
+        if (m) letter = m[1].toUpperCase();
+        if (!letter) {
+            m = answerText.match(/^\s*([A-E])\s*[\)\.\-:]/i);
+            if (m) letter = m[1].toUpperCase();
+        }
+        return letter;
+    },
+
+    _parseAnswerText(answerText) {
+        if (!answerText) return '';
+        return answerText
+            .replace(/^(?:Letra|Alternativa)\s*[A-E]\s*[:.\-]?\s*/i, '')
+            .replace(/^\s*[A-E]\s*[\)\.\-:]\s*/i, '')
+            .trim();
+    },
+
+    _findLetterByAnswerText(answerBody, optionsMap) {
+        if (!answerBody || !optionsMap) return null;
+        const normalizedAnswer = this._normalizeOption(answerBody);
+        let bestLetter = null;
+        let bestScore = 0;
+        Object.entries(optionsMap).forEach(([letter, body]) => {
+            const normalizedBody = this._normalizeOption(body);
+            if (!normalizedBody) return;
+            if (normalizedAnswer.includes(normalizedBody)) {
+                const score = normalizedBody.length;
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestLetter = letter;
+                }
+            }
+        });
+        return bestLetter;
+    },
     async searchOnly(questionText) {
         return ApiService.searchWithSerper(questionText);
     },
@@ -68,9 +117,13 @@ export const SearchService = {
     async answerFromAi(questionText) {
         const aiAnswer = await ApiService.generateAnswerFromQuestion(questionText);
         if (!aiAnswer) return [];
+        const answerLetter = this._parseAnswerLetter(aiAnswer);
+        const answerText = this._parseAnswerText(aiAnswer);
         return [{
             question: questionText,
             answer: aiAnswer,
+            answerLetter,
+            answerText,
             aiFallback: true,
             sources: []
         }];
@@ -101,12 +154,39 @@ export const SearchService = {
         const sources = [];
         const topResults = results.slice(0, 5); // Aumentado para 5 resultados
         const originalOptions = this._extractOptionsFromQuestion(originalQuestionWithOptions);
+        const originalOptionsMap = this._buildOptionsMap(originalQuestionWithOptions);
+        const hasOptions = originalOptions && originalOptions.length >= 2;
+
+        const domainWeights = {
+            'qconcursos.com': 2.5,
+            'qconcursos.com.br': 2.5,
+            'passeidireto.com': 1.4,
+            'studocu.com': 1.3,
+            'brainly.com.br': 0.9,
+            'brainly.com': 0.9
+        };
+
+        const getDomainWeight = (link) => {
+            try {
+                const host = new URL(link).hostname.replace(/^www\./, '').toLowerCase();
+                return domainWeights[host] || 1.0;
+            } catch {
+                return 1.0;
+            }
+        };
+
+        const hasGabaritoSignal = (text) => {
+            if (!text) return false;
+            return /gabarito|alternativa\s+correta|resposta\s+correta|letra\s*[A-E]\b|correta\s*[:\-]/i.test(text);
+        };
 
         for (const result of topResults) {
             try {
                 const snippet = result.snippet || '';
                 const title = result.title || '';
                 const fullContent = `${title}. ${snippet}`;
+                const pageText = await ApiService.fetchPageText(result.link);
+                const combinedContent = pageText ? `${fullContent}\n\n${pageText}` : fullContent;
 
                 console.log(`SearchService: Analisando fonte: ${title.substring(0, 50)}...`);
                 console.log(`SearchService: Snippet (${snippet.length} chars): ${snippet.substring(0, 150)}...`);
@@ -116,58 +196,65 @@ export const SearchService = {
                     continue;
                 }
 
+                if (hasOptions) {
+                    const sourceOptions = this._extractOptionsFromQuestion(pageText || '') || [];
+                    const matchByOptions = this._optionsMatch(originalOptions, sourceOptions);
+                    const matchByFreeText = this._optionsMatchInFreeText(originalOptions, combinedContent);
+                    if (!matchByOptions && !matchByFreeText) {
+                        console.log('SearchService: Fonte não corresponde às alternativas, pulando...');
+                        continue;
+                    }
+                }
+
                 // SIMPLIFICADO: Usar apenas 1 chamada para extrair resposta diretamente
                 if (typeof onStatus === 'function') {
                     onStatus(`Analisando fonte ${sources.length + 1}...`);
                 }
-                
-                const answerText = await ApiService.extractAnswerFromSource(questionText, fullContent);
+
+                const questionForInference = originalQuestionWithOptions || questionText;
+                const answerText = await ApiService.inferAnswerFromEvidence(questionForInference, combinedContent);
                 
                 console.log(`SearchService: Resposta da IA: ${answerText?.substring(0, 100) || 'null'}`);
                 
                 if (answerText && answerText.length > 5) {
-                    // Extrair letra da resposta de várias formas
-                    let letter = null;
-                    
-                    // Padrão 1: "Letra A", "Alternativa B", etc
-                    let letterMatch = answerText.match(/(?:letra|alternativa)\s*([A-E])\b/i);
-                    if (letterMatch) {
-                        letter = letterMatch[1].toUpperCase();
-                    }
-                    
-                    // Padrão 2: Letra isolada no início
-                    if (!letter) {
-                        letterMatch = answerText.match(/^([A-E])\s*[\)\.\-:]/i);
-                        if (letterMatch) letter = letterMatch[1].toUpperCase();
-                    }
-                    
-                    // Padrão 3: "correta é a A", "resposta: B"
-                    if (!letter) {
-                        letterMatch = answerText.match(/(?:correta|resposta)[^A-E]*([A-E])\b/i);
-                        if (letterMatch) letter = letterMatch[1].toUpperCase();
+                    let letter = this._parseAnswerLetter(answerText);
+                    const answerBody = this._parseAnswerText(answerText);
+
+                    if (!letter && answerBody && hasOptions) {
+                        letter = this._findLetterByAnswerText(answerBody, originalOptionsMap);
                     }
 
-                    // Para respostas combinadas como "I-D; II-B", não atribui letra única
                     if (/[IVX]+\s*[-–]\s*[A-E]/i.test(answerText)) {
                         letter = null;
                     }
+
+                    if (!letter) {
+                        console.log('SearchService: Sem letra confiável, pulando fonte.');
+                        continue;
+                    }
+
+                    const baseWeight = getDomainWeight(result.link);
+                    const gabaritoBoost = hasGabaritoSignal(combinedContent) ? 0.6 : 0;
+                    const weight = baseWeight + gabaritoBoost;
 
                     sources.push({
                         title,
                         link: result.link,
                         answer: answerText,
-                        letter
+                        letter,
+                        weight
                     });
 
                     console.log(`SearchService: ✓ Fonte válida! Letra: ${letter || 'N/A'}, Resposta: ${answerText.substring(0, 80)}...`);
 
-                    // Se já temos 2 fontes com a mesma letra, podemos parar
                     if (sources.length >= 2) {
-                        const letters = sources.filter(s => s.letter).map(s => s.letter);
-                        const letterCounts = {};
-                        letters.forEach(l => letterCounts[l] = (letterCounts[l] || 0) + 1);
-                        if (Object.values(letterCounts).some(c => c >= 2)) {
-                            console.log('SearchService: 2 fontes concordam, parando busca.');
+                        const letterScores = {};
+                        sources.forEach(s => {
+                            if (!s.letter) return;
+                            letterScores[s.letter] = (letterScores[s.letter] || 0) + (s.weight || 1);
+                        });
+                        if (Object.values(letterScores).some(score => score >= 3.0)) {
+                            console.log('SearchService: Peso suficiente, parando busca.');
                             break;
                         }
                     }
@@ -183,22 +270,22 @@ export const SearchService = {
         }
 
         // Votação simples por letra (quando possível)
-        const voteCount = {};
+        const voteScore = {};
         for (const src of sources) {
             if (!src.letter) continue;
-            voteCount[src.letter] = (voteCount[src.letter] || 0) + 1;
+            voteScore[src.letter] = (voteScore[src.letter] || 0) + (src.weight || 1);
         }
 
         let bestLetter = null;
-        let bestCount = 0;
-        Object.entries(voteCount).forEach(([letter, count]) => {
-            if (count > bestCount) {
-                bestCount = count;
+        let bestScore = 0;
+        Object.entries(voteScore).forEach(([letter, score]) => {
+            if (score > bestScore) {
+                bestScore = score;
                 bestLetter = letter;
             }
         });
 
-        console.log('SearchService: Votação por letra:', voteCount, '| Melhor:', bestLetter);
+        console.log('SearchService: Votação ponderada:', voteScore, '| Melhor:', bestLetter);
 
         let finalAnswer = sources[0]?.answer || '';
         if (bestLetter) {
@@ -206,9 +293,14 @@ export const SearchService = {
             if (match) finalAnswer = match.answer;
         }
 
+        const finalAnswerLetter = this._parseAnswerLetter(finalAnswer) || bestLetter || null;
+        const finalAnswerText = this._parseAnswerText(finalAnswer) || (finalAnswerLetter ? originalOptionsMap[finalAnswerLetter] || '' : '');
+
         return [{
             question: questionText,
             answer: finalAnswer,
+            answerLetter: finalAnswerLetter,
+            answerText: finalAnswerText,
             sources,
             bestLetter,
             title: sources[0]?.title || 'Questão Encontrada',

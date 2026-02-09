@@ -537,6 +537,68 @@ INSTRUÇÕES:
     },
 
     /**
+     * Inferir resposta com base em evidências (gabarito/comentários)
+     */
+    async inferAnswerFromEvidence(originalQuestion, sourceContent) {
+        const { groqApiUrl, groqApiKey, groqModelAnswer } = await this._getSettings();
+
+        const prompt = `Voce deve INFERIR a resposta correta para a questao do cliente usando as evidencias da fonte.
+
+QUESTAO DO CLIENTE:
+${originalQuestion.substring(0, 2000)}
+
+EVIDENCIAS DA FONTE:
+${sourceContent.substring(0, 3500)}
+
+INSTRUCOES:
+- Use gabarito, comentarios e explicacoes da fonte como evidencias.
+- Se a fonte nao for a mesma questao, mas trazer definicoes que permitam responder, use essas definicoes.
+- Responda APENAS no formato: "Letra X: [texto completo da alternativa]".
+- Se nao houver evidencia suficiente, responda apenas: NAO_ENCONTRADO.
+- Nunca invente alternativas que nao estejam na questao do cliente.`;
+
+        try {
+            const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${groqApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: groqModelAnswer,
+                    messages: [
+                        { role: 'system', content: 'Voce infere respostas de questoes com base em evidencias. Responda apenas no formato "Letra X: [texto da alternativa]" ou NAO_ENCONTRADO.' },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.1,
+                    max_tokens: 220
+                })
+            }));
+
+            let content = data.choices?.[0]?.message?.content?.trim() || '';
+            console.log('AnswerHunter: Inferencia IA bruta:', content);
+
+            if (!content || content.length < 3) return null;
+            if (/^(NAO_ENCONTRADO|SEM_RESPOSTA|INVALIDO|N[ãa]o\s+(encontr|consigo|h[áa]))/i.test(content)) return null;
+
+            if (/NAO_ENCONTRADO|SEM_RESPOSTA/i.test(content)) {
+                const beforeError = content.split(/NAO_ENCONTRADO|SEM_RESPOSTA/i)[0].trim();
+                const letterMatch = beforeError.match(/(?:letra|alternativa)\s*([A-E])\b/i);
+                if (letterMatch) {
+                    content = `Letra ${letterMatch[1].toUpperCase()}`;
+                } else {
+                    return null;
+                }
+            }
+
+            return content;
+        } catch (error) {
+            console.error('Erro ao inferir resposta:', error);
+            return null;
+        }
+    },
+
+    /**
      * Função principal de refinamento (3-Passos)
      */
     async refineWithGroq(item) {
@@ -553,7 +615,7 @@ INSTRUÇÕES:
             }
         }
 
-        const answerPromise = this.extractAnswerFromSource(originalQuestion, item.answer);
+        const answerPromise = this.inferAnswerFromEvidence(originalQuestion, item.answer);
         const [answer, optionsFromGroq] = await Promise.all([
             answerPromise,
             optionsPromise ? optionsPromise : Promise.resolve(null)
@@ -584,7 +646,7 @@ INSTRUÇÕES:
         if (!questionText) return null;
         const { groqApiUrl, groqApiKey, groqModelFallback } = await this._getSettings();
 
-        const prompt = `Responda a questão abaixo de forma direta e objetiva.\n\nQUESTÃO:\n${questionText}\n\nREGRAS:\n- Se for múltipla escolha, responda com a alternativa correta (letra e texto, se possível).\n- Se for aberta, responda em 1 a 3 frases.\n- Não invente citações.`;
+        const prompt = `Responda a questão abaixo de forma direta e objetiva.\n\nQUESTÃO:\n${questionText}\n\nREGRAS:\n- Se for múltipla escolha, responda APENAS no formato: "Letra X: [texto completo da alternativa]".\n- Se for aberta, responda em 1 a 3 frases.\n- Não invente citações.`;
 
         try {
             const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
