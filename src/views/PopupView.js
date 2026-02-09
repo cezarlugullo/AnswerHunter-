@@ -226,9 +226,14 @@ export const PopupView = {
                        <span class="material-symbols-rounded folder-icon">folder</span>
                        <span class="folder-name">${escapeHtml(item.title)}</span>
                     </div>
-                    <button class="action-btn delete-btn" data-id="${item.id}" title="Excluir">
-                       <span class="material-symbols-rounded" style="font-size:18px">delete</span>
-                    </button>
+                    <div class="folder-actions">
+                      <button class="action-btn rename-btn" data-id="${item.id}" title="Renomear">
+                         <span class="material-symbols-rounded" style="font-size:18px">edit</span>
+                      </button>
+                      <button class="action-btn delete-btn" data-id="${item.id}" title="Excluir">
+                         <span class="material-symbols-rounded" style="font-size:18px">delete</span>
+                      </button>
+                    </div>
                 </div>`;
         } else {
           const qText = item.content.question || '';

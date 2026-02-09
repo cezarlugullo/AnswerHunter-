@@ -239,6 +239,63 @@ export const StorageModel = {
     },
 
     /**
+     * Renomeia uma pasta
+     * @param {string} folderId
+     * @param {string} newName
+     * @returns {Promise<boolean>}
+     */
+    async renameFolder(folderId, newName) {
+        if (!newName) return false;
+        const folder = this.findNode(folderId);
+        if (!folder || folder.type !== 'folder') return false;
+        folder.title = newName;
+        await this.save();
+        return true;
+    },
+
+    /**
+     * Encontra o nó pai de um dado ID
+     * @param {string} childId
+     * @param {Array} nodes
+     * @returns {Object|null}
+     */
+    findParent(childId, nodes = this.data) {
+        for (const node of nodes) {
+            if (node.children) {
+                for (const child of node.children) {
+                    if (child.id === childId) return node;
+                }
+                const found = this.findParent(childId, node.children);
+                if (found) return found;
+            }
+        }
+        return null;
+    },
+
+    /**
+     * Exclui uma pasta mas move seus filhos para a pasta pai
+     * @param {string} folderId
+     * @returns {Promise<boolean>}
+     */
+    async deleteFolderKeepChildren(folderId) {
+        const folder = this.findNode(folderId);
+        if (!folder || folder.type !== 'folder') return false;
+
+        const parent = this.findParent(folderId);
+        if (!parent || !parent.children) return false;
+
+        const folderIndex = parent.children.findIndex(c => c.id === folderId);
+        if (folderIndex === -1) return false;
+
+        // Inserir filhos da pasta na posição da pasta no pai
+        const children = folder.children || [];
+        parent.children.splice(folderIndex, 1, ...children);
+
+        await this.save();
+        return true;
+    },
+
+    /**
      * Limpa tudo (Factory Reset)
      */
     async clearAll() {

@@ -56,6 +56,13 @@ export const BinderController = {
                 return;
             }
 
+            const renameBtn = e.target.closest('.rename-btn');
+            if (renameBtn) {
+                e.stopPropagation();
+                this.handleRename(renameBtn.dataset.id);
+                return;
+            }
+
             const delBtn = e.target.closest('.delete-btn');
             if (delBtn) {
                 e.stopPropagation();
@@ -151,12 +158,45 @@ export const BinderController = {
         this.renderBinder();
     },
 
+    async handleRename(id) {
+        const node = StorageModel.findNode(id);
+        if (!node || node.type !== 'folder') return;
+        const newName = prompt('Novo nome da pasta:', node.title);
+        if (newName && newName.trim() && newName.trim() !== node.title) {
+            await StorageModel.renameFolder(id, newName.trim());
+            this.renderBinder();
+        }
+    },
+
     async handleDelete(id) {
+        const node = StorageModel.findNode(id);
+        if (!node) return;
+
+        // Se for pasta com filhos, dar opções
+        if (node.type === 'folder' && node.children && node.children.length > 0) {
+            const choice = prompt(
+                `A pasta "${node.title}" contém ${node.children.length} item(ns).\n\n` +
+                'Digite uma opção:\n' +
+                '1 - Excluir pasta E todo o conteúdo\n' +
+                '2 - Excluir só a pasta (mover conteúdo para pasta pai)\n' +
+                '0 - Cancelar'
+            );
+            if (choice === '1') {
+                await StorageModel.deleteNode(id);
+                this.renderBinder();
+                this.refreshSearchSaveStates();
+            } else if (choice === '2') {
+                await StorageModel.deleteFolderKeepChildren(id);
+                this.renderBinder();
+                this.refreshSearchSaveStates();
+            }
+            return;
+        }
+
         if (confirm('Deseja realmente excluir este item?')) {
             const success = await StorageModel.deleteNode(id);
             if (success) {
                 this.renderBinder();
-                // Atualizar status de salvo na busca (se visível)
                 this.refreshSearchSaveStates();
             }
         }
