@@ -84,80 +84,17 @@ export const PopupView = {
       const iconText = isSaved ? 'bookmark' : 'bookmark_border';
       const dataContent = encodeURIComponent(JSON.stringify(item));
 
-      // Extrair letra da resposta se disponível
-      const answerLetter = item.bestLetter || (item.answer?.match(/\b(?:letra\s+|alternativa\s*)?([A-E])\b/i)?.[1]?.toUpperCase()) || null;
-
-      const stripAnswerPrefix = (answer) => {
-        if (!answer) return '';
-        return answer
-          .replace(/^(Alternativa\s*[A-E]\s*[:.\-]\s*|Letra\s*[A-E]\s*[:.\-]\s*)/i, '')
-          .trim();
-      };
-
-      const normalize = (s) => (s || '').replace(/\s+/g, ' ').trim();
-
-      const extractOptionsMap = (questionText) => {
-        const map = {};
-        const lines = (questionText || '').split('\n').map(l => l.trim()).filter(Boolean);
-        const altStartRe = /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
-        // Removido altSoloRe pois causa muitos falsos positivos com letras soltas no texto
-        // const altSoloRe = /^([A-E])$/i; 
-        let current = null;
-
-        for (const line of lines) {
-          const m = line.match(altStartRe);
-          if (m) {
-            const body = normalize(m[2]);
-            // Validação contra falsos positivos (ex: A UX...)
-            const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
-
-            if (!isFalsePositive) {
-              if (current && current.body) map[current.letter] = normalize(current.body);
-              current = { letter: m[1].toUpperCase(), body: body };
-              continue;
-            }
-          }
-          // Tratamento para linhas soltas removido ou tornado mais estrito se necessário
-
-          if (current) {
-            current.body = normalize(`${current.body} ${line}`);
-          }
-        }
-        if (current && current.body) map[current.letter] = normalize(current.body);
-        return map;
-      };
-
-      const resolveAnswerText = (answer, letter, questionOptions) => {
-        if (!answer) return '';
-        const cleaned = stripAnswerPrefix(answer);
-        const cleanedNormalized = normalize(cleaned);
-        const isOnlyLetter = !!letter && (
-          cleanedNormalized.toUpperCase() === letter ||
-          /^(?:letra|alternativa)\s*[A-E]$/i.test(cleanedNormalized)
-        );
-
-        if (letter) {
-          const fromQuestion = questionOptions[letter] || '';
-          if (isOnlyLetter) {
-            return fromQuestion || `Letra ${letter}`;
-          }
-          const removedPrefix = cleanedNormalized.replace(/^(?:letra|alternativa)\s*[A-E]\s*[:.\-]?\s*/i, '').trim();
-          if (removedPrefix) return removedPrefix;
-          return fromQuestion || `Letra ${letter}`;
-        }
-
-        return cleanedNormalized || answer;
-      };
-
-      const questionOptions = extractOptionsMap(item.question);
-      const answerBody = resolveAnswerText(item.answer, answerLetter, questionOptions);
+      const answerLetter = item.answerLetter || item.bestLetter || (item.answer?.match(/\b(?:letra\s+|alternativa\s*)?([A-E])\b/i)?.[1]?.toUpperCase()) || null;
+      const answerBody = item.answerText || (item.answer || '')
+        .replace(/^(?:Letra|Alternativa)\s*[A-E]\s*[:.\-]?\s*/i, '')
+        .replace(/^\s*[A-E]\s*[\)\.\-:]\s*/i, '')
+        .trim();
 
       return `
         <div class="qa-card" style="animation-delay: ${index * 0.1}s">
           <div class="qa-card-header">
             <span class="material-symbols-rounded question-icon">help</span>
             <span class="qa-card-title">${escapeHtml(item.title || 'Questão Encontrada')}</span>
-            ${item.aiFallback ? `<span class="ai-badge">IA</span>` : ''}
             <button class="action-btn save-btn ${savedClass}" data-content="${dataContent}" title="Salvar no Fichário">
               <span class="material-symbols-rounded ${iconClass}">${iconText}</span>
             </button>
@@ -170,7 +107,7 @@ export const PopupView = {
           <div class="qa-card-answer">
             <div class="qa-card-answer-header">
                <span class="material-symbols-rounded">check_circle</span>
-               ${item.aiFallback ? 'Resposta consultada pela IA' : 'Resposta sugerida'}
+               Resposta correta
             </div>
             ${answerLetter ? `
               <div class="answer-option">
@@ -184,12 +121,6 @@ export const PopupView = {
                  ${escapeHtml(answerBody)}
               </div>
             `}
-            ${item.aiFallback ? `
-              <div class="ai-disclaimer">
-                <span class="material-symbols-rounded">info</span>
-                Resposta gerada sem fonte externa.
-              </div>
-            ` : ''}
           </div>
           
           <div class="qa-card-actions">
@@ -206,7 +137,6 @@ export const PopupView = {
                       <a href="${src.link}" target="_blank" rel="noopener noreferrer">
                         ${escapeHtml(src.title || new URL(src.link).hostname)}
                       </a>
-                      ${src.letter ? `<span class="source-badge">${escapeHtml(src.letter)}</span>` : ''}
                     </div>
                   `).join('')}
                 </div>
@@ -230,8 +160,23 @@ export const PopupView = {
     let text = '';
     const cards = this.elements.resultsDiv.querySelectorAll('.qa-card');
     cards.forEach((card, i) => {
-      const q = card.querySelector('.qa-card-question').textContent.trim();
-      const a = card.querySelector('.qa-card-answer-text').textContent.trim();
+      const qEl = card.querySelector('.qa-card-question');
+      const q = qEl ? qEl.innerText.trim() : '';
+
+      let a = '';
+      const answerTextEl = card.querySelector('.qa-card-answer-text');
+      if (answerTextEl) {
+        a = answerTextEl.innerText.trim();
+      } else {
+        const altEl = card.querySelector('.answer-alternative');
+        if (altEl) {
+          const letter = altEl.querySelector('.alt-letter')?.innerText.trim() || '';
+          const body = altEl.querySelector('.alt-text')?.innerText.trim() || '';
+          if (letter && body) a = `${letter} - ${body}`;
+          else a = letter || body;
+        }
+      }
+
       text += `Q${i + 1}: ${q}\nR: ${a}\n\n`;
     });
     return text;
@@ -288,7 +233,12 @@ export const PopupView = {
         } else {
           const qText = item.content.question || '';
           const preview = qText.length > 60 ? qText.substring(0, 60) + '...' : qText;
-          const source = item.content.source;
+          const answerRaw = item.content.answer || '';
+          const answerLetter = (answerRaw.match(/\b(?:letra\s+|alternativa\s*)?([A-E])\b/i)?.[1]?.toUpperCase()) || null;
+          const answerBody = answerRaw
+            .replace(/^(?:Letra|Alternativa)\s*[A-E]\s*[:.\-]?\s*/i, '')
+            .replace(/^\s*[A-E]\s*[\)\.\-:]\s*/i, '')
+            .trim();
 
           html += `
                 <div class="qa-item expandable" draggable="true" data-id="${item.id}" data-type="question">
@@ -314,15 +264,24 @@ export const PopupView = {
                           <div class="qa-card-answer">
                             <div class="qa-card-answer-header">
                                <span class="material-symbols-rounded">check_circle</span>
-                               Resposta sugerida
+                               Resposta correta
                             </div>
-                            <div class="qa-card-answer-text">
-                               ${escapeHtml(item.content.answer)}
-                            </div>
+                            ${answerLetter ? `
+                              <div class="answer-option">
+                                <div class="alternative answer-alternative">
+                                  <span class="alt-letter">${answerLetter}</span>
+                                  <span class="alt-text">${escapeHtml(answerBody)}</span>
+                                </div>
+                              </div>
+                            ` : `
+                              <div class="qa-card-answer-text">
+                                 ${escapeHtml(answerBody)}
+                              </div>
+                            `}
                           </div>
                           
                           <div class="qa-card-actions">
-                            ${source ? `
+                            ${item.content.source ? `
                               <div class="sources-box">
                                 <button class="sources-toggle" type="button" aria-expanded="false">
                                   <span class="material-symbols-rounded">link</span>
@@ -331,8 +290,8 @@ export const PopupView = {
                                 </button>
                                 <div class="sources-list" hidden>
                                   <div class="source-item">
-                                    <a href="${source}" target="_blank" rel="noopener noreferrer">
-                                      ${escapeHtml(new URL(source).hostname)}
+                                    <a href="${item.content.source}" target="_blank" rel="noopener noreferrer">
+                                      ${escapeHtml(new URL(item.content.source).hostname)}
                                     </a>
                                   </div>
                                 </div>

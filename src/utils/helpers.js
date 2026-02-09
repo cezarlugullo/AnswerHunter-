@@ -48,11 +48,21 @@ export function formatQuestionText(text) {
     if (!text) return '';
 
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+    const trimGlobalNoise = (raw) => {
+        if (!raw) return '';
+        // Só cortar em rótulos isolados (início de linha ou após ponto/quebra), 
+        // nunca no meio de frases como "Assinale a alternativa correta..."
+        const noiseRe = /(?:^|\n)\s*(?:Gabarito(?:\s+Comentado)?|Resposta\s+sugerida|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eê]\s+selecionou|Fontes?\s*\(\d+\)|check_circle)\b/im;
+        const idx = raw.search(noiseRe);
+        if (idx > 10) return raw.substring(0, idx).trim();
+        return raw.trim();
+    };
     const trimNoise = (s) => {
         if (!s) return s;
-        const noiseRe = /(Resposta correta|Parab[eé]ns|Gabarito|Gabarito Comentado|Alternativa correta|Confira o gabarito|Resposta certa|Resposta correta|Você selecionou a alternativa correta|Marcar para revis[ãa]o)/i;
+        // Só cortar quando o rótulo aparecer isolado (não dentro de "assinale a alternativa correta")
+        const noiseRe = /(?:^|\n)\s*(?:Resposta\s+correta\s*[:\-]|Parab[eé]ns|Gabarito(?:\s+Comentado)?|Alternativa\s+correta\s*[:\-]|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eê]\s+selecionou|Marcar\s+para\s+revis[ãa]o)/im;
         const idx = s.search(noiseRe);
-        if (idx !== -1) return s.substring(0, idx).trim();
+        if (idx > 10) return s.substring(0, idx).trim();
         return s.trim();
     };
     
@@ -89,9 +99,16 @@ export function formatQuestionText(text) {
         return result.join('\n');
     };
     
-    const limitedText = limitToFirstQuestion(text);
-    const normalized = limitedText.replace(/\r\n/g, '\n');
-    const normalizedForParsing = normalized;
+    const rawTrimmed = trimGlobalNoise(text);
+    let normalized = rawTrimmed.replace(/\r\n/g, '\n');
+    const inlineAltBreakRe = /(?:^|\s)([A-E])\s*[\)\.\-:](?=\s*\S)/gi;
+    const inlineAltMatches = normalized.match(inlineAltBreakRe) || [];
+    if (inlineAltMatches.length >= 2) {
+        normalized = normalized.replace(inlineAltBreakRe, (_m, letter) => `\n${letter.toUpperCase()}) `);
+    }
+
+    const limitedText = limitToFirstQuestion(normalized);
+    const normalizedForParsing = limitedText;
 
     const looksLikeAcronymStart = (body) => {
         const match = (body || '').match(/^([A-Z\u00C0-\u00DC]{2,5})(\b|\s*\()/);
@@ -105,22 +122,35 @@ export function formatQuestionText(text) {
         return false;
     };
 
-    const render = (enunciado, alternatives) => {
-        // Limitar a 5 alternativas máximo
-        const limitedAlts = alternatives.slice(0, 5);
-        const formattedAlternatives = limitedAlts
-            .map(a => `
-          <div class="alternative">
-            <span class="alt-letter">${escapeHtml(a.letter)}</span>
-            <span class="alt-text">${escapeHtml(a.body)}</span>
-          </div>
-        `)
-            .join('');
-        return `
-        <div class="question-enunciado">${escapeHtml(enunciado)}</div>
-        <div class="question-alternatives">${formattedAlternatives}</div>
-      `;
-    };
+        const render = (enunciado, alternatives) => {
+                // Limitar a 5 alternativas máximo
+                const limitedAlts = alternatives.slice(0, 5);
+                const formattedAlternatives = limitedAlts
+                        .map(a => `
+                    <div class="alternative">
+                        <span class="alt-letter">${escapeHtml(a.letter)}</span>
+                        <span class="alt-text">${escapeHtml(a.body)}</span>
+                    </div>
+                `)
+                        .join('');
+                const enunciadoHtml = `
+                <div class="question-section">
+                    <div class="question-section-title">Enunciado</div>
+                    <div class="question-enunciado">${escapeHtml(enunciado)}</div>
+                </div>`;
+
+                if (!formattedAlternatives) {
+                        return enunciadoHtml;
+                }
+
+                return `
+                ${enunciadoHtml}
+                <div class="question-section">
+                    <div class="question-section-title">Alternativas</div>
+                    <div class="question-alternatives">${formattedAlternatives}</div>
+                </div>
+            `;
+        };
 
     const parseByLines = (raw, allowLoose = false) => {
         const lines = raw.split(/\n+/).map(line => line.trim()).filter(Boolean);
@@ -232,7 +262,11 @@ export function formatQuestionText(text) {
         return render(enunciado, plainAlternatives);
     }
 
-    return `<div class="question-enunciado">${escapeHtml(clean(normalized))}</div>`;
+        return `
+        <div class="question-section">
+            <div class="question-section-title">Enunciado</div>
+            <div class="question-enunciado">${escapeHtml(clean(normalized))}</div>
+        </div>`;
 }
 
 
