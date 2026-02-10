@@ -18,7 +18,32 @@ export const PopupView = {
       clearBinderBtn: document.getElementById('clearBinderBtn'),
       tabs: document.querySelectorAll('.tab-btn'),
       sections: document.querySelectorAll('.view-section'),
-      saveBtns: document.querySelectorAll('.save-btn') // Dinâmico
+      saveBtns: document.querySelectorAll('.save-btn'),
+      // Setup wizard elements
+      settingsBtn: document.getElementById('settingsBtn'),
+      setupPanel: document.getElementById('setup-panel'),
+      closeSetupBtn: document.getElementById('closeSetupBtn'),
+      saveSetupBtn: document.getElementById('saveSetupBtn'),
+      welcomeOverlay: document.getElementById('welcome-overlay'),
+      welcomeStartBtn: document.getElementById('welcomeStartBtn'),
+      toastContainer: document.getElementById('toast-container'),
+      setupBackBtn: document.getElementById('setupBackBtn'),
+      setupNextBtn: document.getElementById('setupNextBtn'),
+      stepperSteps: document.querySelectorAll('.stepper-step'),
+      stepperLines: document.querySelectorAll('.stepper-line'),
+      stepPanels: document.querySelectorAll('.setup-step-panel'),
+      // Inputs
+      inputGroq: document.getElementById('input-groq'),
+      inputSerper: document.getElementById('input-serper'),
+      inputGemini: document.getElementById('input-gemini'),
+      // Test buttons
+      testGroq: document.getElementById('test-groq'),
+      testSerper: document.getElementById('test-serper'),
+      testGemini: document.getElementById('test-gemini'),
+      // Status labels
+      statusGroq: document.getElementById('status-groq'),
+      statusSerper: document.getElementById('status-serper'),
+      statusGemini: document.getElementById('status-gemini')
     };
   },
 
@@ -71,8 +96,180 @@ export const PopupView = {
     });
   },
 
+  // === SETUP WIZARD VIEW METHODS ===
+
   /**
-   * Renderiza os resultados da busca
+   * Show/hide the setup panel
+   */
+  setSetupVisible(visible) {
+    if (this.elements.setupPanel) {
+      this.elements.setupPanel.classList.toggle('hidden', !visible);
+    }
+  },
+
+  /**
+   * Show a specific setup step (1-based), hiding others
+   */
+  showSetupStep(stepNum) {
+    this.elements.stepPanels?.forEach(panel => {
+      const thisStep = parseInt(panel.dataset.step);
+      panel.style.display = thisStep === stepNum ? '' : 'none';
+    });
+
+    // Update back/next visibility
+    if (this.elements.setupBackBtn) {
+      this.elements.setupBackBtn.style.visibility = stepNum > 1 ? 'visible' : 'hidden';
+    }
+    if (this.elements.setupNextBtn) {
+      this.elements.setupNextBtn.style.display = stepNum < 3 ? '' : 'none';
+    }
+    if (this.elements.saveSetupBtn) {
+      this.elements.saveSetupBtn.style.display = stepNum === 3 ? '' : 'none';
+    }
+
+    // Update nav visibility
+    const nav = document.querySelector('.setup-nav');
+    if (nav) {
+      nav.style.display = stepNum < 3 ? '' : 'none';
+    }
+  },
+
+  /**
+   * Update stepper state (active/done for each step)
+   */
+  updateStepper(currentStep, doneSteps = []) {
+    this.elements.stepperSteps?.forEach(el => {
+      const step = parseInt(el.dataset.step);
+      el.classList.remove('active', 'done');
+      if (step === currentStep) el.classList.add('active');
+      else if (doneSteps.includes(step)) el.classList.add('done');
+    });
+
+    // Update lines between steps
+    this.elements.stepperLines?.forEach((line, index) => {
+      line.classList.toggle('done', doneSteps.includes(index + 1));
+    });
+  },
+
+  /**
+   * Show welcome overlay
+   */
+  showWelcomeOverlay() {
+    if (this.elements.welcomeOverlay) {
+      this.elements.welcomeOverlay.classList.remove('hidden');
+    }
+  },
+
+  /**
+   * Hide welcome overlay
+   */
+  hideWelcomeOverlay() {
+    if (this.elements.welcomeOverlay) {
+      this.elements.welcomeOverlay.classList.add('hidden');
+    }
+  },
+
+  /**
+   * Show a toast notification
+   */
+  showToast(message, type = '', duration = 3000) {
+    const container = this.elements.toastContainer;
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<span class="material-symbols-rounded" style="font-size:18px">${
+      type === 'success' ? 'check_circle' : type === 'error' ? 'error' : 'info'
+    }</span> ${escapeHtml(message)}`;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+      toast.style.animation = 'toastOut 0.3s ease forwards';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  },
+
+  /**
+   * Set test button loading/success/fail state
+   */
+  setTestButtonLoading(provider, state) {
+    const btn = this.elements[`test${provider.charAt(0).toUpperCase() + provider.slice(1)}`];
+    if (!btn) return;
+    const icon = btn.querySelector('.material-symbols-rounded');
+
+    btn.classList.remove('testing', 'test-ok', 'test-fail');
+    btn.disabled = false;
+
+    if (state === 'loading') {
+      btn.classList.add('testing');
+      btn.disabled = true;
+      if (icon) { icon.textContent = 'sync'; icon.classList.add('spin-loading'); }
+    } else if (state === 'ok') {
+      btn.classList.add('test-ok');
+      if (icon) { icon.textContent = 'check_circle'; icon.classList.remove('spin-loading'); }
+    } else if (state === 'fail') {
+      btn.classList.add('test-fail');
+      if (icon) { icon.textContent = 'error'; icon.classList.remove('spin-loading'); }
+    } else {
+      if (icon) { icon.textContent = 'science'; icon.classList.remove('spin-loading'); }
+    }
+  },
+
+  /**
+   * Set status text for a step
+   */
+  setSetupStatus(provider, text, type = '') {
+    const el = this.elements[`status${provider.charAt(0).toUpperCase() + provider.slice(1)}`];
+    if (!el) return;
+    el.className = `step-status ${type}`;
+    el.textContent = text;
+  },
+
+  /**
+   * Setup visibility toggle for password inputs
+   */
+  setupVisibilityToggle(btn) {
+    btn.addEventListener('click', () => {
+      const targetId = btn.dataset.target;
+      const input = document.getElementById(targetId);
+      if (!input) return;
+      const isPassword = input.type === 'password';
+      input.type = isPassword ? 'text' : 'password';
+      const icon = btn.querySelector('.material-symbols-rounded');
+      if (icon) icon.textContent = isPassword ? 'visibility_off' : 'visibility';
+    });
+  },
+
+  /**
+   * Set attention animation on settings button
+   */
+  setSettingsAttention(active) {
+    if (this.elements.settingsBtn) {
+      this.elements.settingsBtn.classList.toggle('attention', active);
+    }
+  },
+
+  /**
+   * Show confetti animation
+   */
+  showConfetti() {
+    const colors = ['#FF6B00', '#FFD700', '#27AE60', '#3498DB', '#E74C3C', '#9B59B6'];
+    for (let i = 0; i < 40; i++) {
+      const piece = document.createElement('div');
+      piece.className = 'confetti-piece';
+      piece.style.left = `${Math.random() * 100}%`;
+      piece.style.top = `${-10 + Math.random() * 20}px`;
+      piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+      piece.style.animationDelay = `${Math.random() * 0.5}s`;
+      piece.style.animationDuration = `${1.5 + Math.random() * 1}s`;
+      document.body.appendChild(piece);
+      setTimeout(() => piece.remove(), 3000);
+    }
+  },
+
+  /**
+   * Renders search results with confidence circles
    */
   appendResults(results) {
     if (!this.elements.resultsDiv) return;
@@ -90,11 +287,29 @@ export const PopupView = {
         .replace(/^\s*[A-E]\s*[\)\.\-:]\s*/i, '')
         .trim();
 
+      // Confidence score
+      const confidence = item.confidence || item.score || null;
+      let confidenceHtml = '';
+      if (confidence !== null && confidence !== undefined) {
+        const pct = Math.round(confidence * 100);
+        let bg, label;
+        if (pct >= 80) { bg = '#27AE60'; label = 'Excelente'; }
+        else if (pct >= 60) { bg = '#F39C12'; label = 'Bom'; }
+        else if (pct >= 40) { bg = '#E67E22'; label = 'Moderado'; }
+        else { bg = '#E74C3C'; label = 'Baixo'; }
+        confidenceHtml = `
+          <div class="confidence-circle" style="background:${bg}" title="${label}: ${pct}%">
+            ${pct}
+            <div class="confidence-tooltip">${label} · Confiança ${pct}%</div>
+          </div>`;
+      }
+
       return `
         <div class="qa-card" style="animation-delay: ${index * 0.1}s">
           <div class="qa-card-header">
             <span class="material-symbols-rounded question-icon">help</span>
             <span class="qa-card-title">${escapeHtml(item.title || 'Questão Encontrada')}</span>
+            ${confidenceHtml}
             <button class="action-btn save-btn ${savedClass}" data-content="${dataContent}" title="Salvar no Fichário">
               <span class="material-symbols-rounded ${iconClass}">${iconText}</span>
             </button>
@@ -201,16 +416,43 @@ export const PopupView = {
   },
 
   // === BINDER RENDER ===
-  renderBinderList(folder) {
+  renderBinderList(folder, options = {}) {
     if (!this.elements.binderList) return;
 
-    // Toolbar
+    const { showBackupReminder = false } = options;
+
+    // Backup reminder
+    let reminderHtml = '';
+    if (showBackupReminder) {
+      reminderHtml = `
+        <div class="backup-reminder">
+          <span class="material-symbols-rounded">backup</span>
+          <span>Faça backup do seu fichário regularmente!</span>
+          <button class="dismiss-reminder" title="Dispensar">
+            <span class="material-symbols-rounded" style="font-size:16px">close</span>
+          </button>
+        </div>`;
+    }
+
+    // Toolbar with icon-only buttons
     let html = `
+        ${reminderHtml}
         <div class="binder-toolbar">
-            <span class="crumb-current"><span class="material-symbols-rounded" style="font-size:18px">folder_open</span> ${escapeHtml(folder.title)}</span>
+            <span class="crumb-current"><span class="material-symbols-rounded" style="font-size:18px">folder_open</span> ${folder.id === 'root' ? 'Todas as questões' : escapeHtml(folder.title)}</span>
             <div class="toolbar-actions">
-               ${folder.id !== 'root' ? `<button id="btnBackRoot" class="btn-text"><span class="material-symbols-rounded" style="font-size:16px">arrow_back</span> Voltar</button>` : ''}
-               <button id="newFolderBtnBinder" class="btn-text">+ Pasta</button>
+               ${folder.id !== 'root' ? `<button id="btnBackRoot" class="toolbar-icon-btn" title="Voltar"><span class="material-symbols-rounded" style="font-size:18px">arrow_back</span><span class="toolbar-tooltip">Voltar</span></button>` : ''}
+               <button id="newFolderBtnBinder" class="toolbar-icon-btn" title="Nova pasta">
+                 <span class="material-symbols-rounded" style="font-size:18px">create_new_folder</span>
+                 <span class="toolbar-tooltip">Nova pasta</span>
+               </button>
+               <button id="exportBinderBtn" class="toolbar-icon-btn" title="Exportar">
+                 <span class="material-symbols-rounded" style="font-size:18px">download</span>
+                 <span class="toolbar-tooltip">Exportar</span>
+               </button>
+               <button id="importBinderBtn" class="toolbar-icon-btn" title="Importar">
+                 <span class="material-symbols-rounded" style="font-size:18px">upload</span>
+                 <span class="toolbar-tooltip">Importar</span>
+               </button>
             </div>
         </div>
         <div class="binder-content">`;

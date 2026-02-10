@@ -302,5 +302,16 @@ export const StorageModel = {
         this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
         this.currentFolderId = 'root';
         await this.save();
+    },
+
+    /**
+     * Imports data from a backup JSON
+     * @param {Array} importedData
+     */
+    async importData(importedData) {
+        if (!Array.isArray(importedData) || importedData.length === 0) return;
+        this.data = importedData;
+        this.currentFolderId = 'root';
+        await this.save();
     }
 };

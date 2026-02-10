@@ -9,12 +9,161 @@
 </head>
 
 <body>
+  <!-- WELCOME OVERLAY (first-run) -->
+  <div id="welcome-overlay" class="welcome-overlay hidden">
+    <div class="welcome-card">
+      <span class="material-symbols-rounded welcome-icon">waving_hand</span>
+      <h2>Bem-vindo ao AnswerHunter!</h2>
+      <p>Antes de começar, vamos configurar suas chaves de API.<br>Leva menos de 2 minutos.</p>
+      <button id="welcomeStartBtn" class="btn-search" style="width:100%;margin-top:12px;">
+        <span class="material-symbols-rounded">rocket_launch</span>
+        Começar configuração
+      </button>
+    </div>
+  </div>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container" class="toast-container"></div>
+
   <div class="container">
     <header>
       <h1><span class="material-symbols-rounded" style="font-size: 28px; color: #FF6B00;">track_changes</span>
         AnswerHunter</h1>
       <p class="subtitle">Caçador de respostas educacionais</p>
+      <button id="settingsBtn" class="settings-btn" title="Configurações">
+        <span class="material-symbols-rounded">settings</span>
+      </button>
     </header>
+
+    <!-- SETUP WIZARD PANEL -->
+    <div id="setup-panel" class="setup-panel hidden">
+      <div class="setup-header">
+        <h3><span class="material-symbols-rounded">tune</span> Configuração</h3>
+        <button id="closeSetupBtn" class="action-btn" title="Fechar">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- STEPPER -->
+      <div class="setup-stepper">
+        <div class="stepper-step active" data-step="1">
+          <div class="stepper-circle">1</div>
+          <span class="stepper-label">Groq</span>
+        </div>
+        <div class="stepper-line"></div>
+        <div class="stepper-step" data-step="2">
+          <div class="stepper-circle">2</div>
+          <span class="stepper-label">Serper</span>
+        </div>
+        <div class="stepper-line"></div>
+        <div class="stepper-step" data-step="3">
+          <div class="stepper-circle">3</div>
+          <span class="stepper-label">Gemini</span>
+        </div>
+      </div>
+
+      <!-- STEP 1: Groq -->
+      <div class="setup-step-panel" data-step="1">
+        <div class="step-info">
+          <span class="step-badge">Passo 1 de 3</span>
+          <h4>Chave da API Groq</h4>
+          <p class="step-description">A Groq fornece a inteligência artificial que analisa as questões.</p>
+          <ol class="step-instructions">
+            <li>Acesse <a href="https://console.groq.com/" target="_blank" rel="noopener">console.groq.com</a></li>
+            <li>Crie uma conta gratuita ou faça login</li>
+            <li>Vá em "API Keys" e crie uma nova chave</li>
+            <li>Copie a chave e cole abaixo</li>
+          </ol>
+        </div>
+        <div class="input-wrapper">
+          <input type="password" id="input-groq" class="setup-input" placeholder="gsk_xxxxxxxxxxxxxxxx" autocomplete="off">
+          <button class="visibility-toggle" data-target="input-groq" title="Mostrar/ocultar">
+            <span class="material-symbols-rounded">visibility</span>
+          </button>
+        </div>
+        <button class="btn-test" id="test-groq" data-provider="groq">
+          <span class="material-symbols-rounded">science</span>
+          Testar conexão
+        </button>
+        <div class="step-status" id="status-groq"></div>
+      </div>
+
+      <!-- STEP 2: Serper -->
+      <div class="setup-step-panel" data-step="2" style="display:none">
+        <div class="step-info">
+          <span class="step-badge">Passo 2 de 3</span>
+          <h4>Chave da API Serper</h4>
+          <p class="step-description">O Serper permite buscar no Google para encontrar as melhores fontes.</p>
+          <ol class="step-instructions">
+            <li>Acesse <a href="https://serper.dev/" target="_blank" rel="noopener">serper.dev</a></li>
+            <li>Crie uma conta gratuita (inclui 2.500 buscas grátis)</li>
+            <li>No painel, copie sua chave de API</li>
+            <li>Cole abaixo</li>
+          </ol>
+        </div>
+        <div class="input-wrapper">
+          <input type="password" id="input-serper" class="setup-input" placeholder="Cole sua chave Serper aqui" autocomplete="off">
+          <button class="visibility-toggle" data-target="input-serper" title="Mostrar/ocultar">
+            <span class="material-symbols-rounded">visibility</span>
+          </button>
+        </div>
+        <button class="btn-test" id="test-serper" data-provider="serper">
+          <span class="material-symbols-rounded">science</span>
+          Testar conexão
+        </button>
+        <div class="step-status" id="status-serper"></div>
+      </div>
+
+      <!-- STEP 3: Gemini (optional) -->
+      <div class="setup-step-panel" data-step="3" style="display:none">
+        <div class="step-info">
+          <span class="step-badge">Passo 3 de 3 · Opcional</span>
+          <h4>Chave da API Gemini</h4>
+          <p class="step-description">O Gemini é um modelo alternativo do Google. Se configurado, será usado como fallback.</p>
+          <ol class="step-instructions">
+            <li>Acesse <a href="https://aistudio.google.com/" target="_blank" rel="noopener">aistudio.google.com</a></li>
+            <li>Faça login com sua conta Google</li>
+            <li>Clique em "Get API Key" e crie uma chave</li>
+            <li>Cole abaixo (ou pule este passo)</li>
+          </ol>
+        </div>
+        <div class="input-wrapper">
+          <input type="password" id="input-gemini" class="setup-input" placeholder="Cole sua chave Gemini aqui (opcional)" autocomplete="off">
+          <button class="visibility-toggle" data-target="input-gemini" title="Mostrar/ocultar">
+            <span class="material-symbols-rounded">visibility</span>
+          </button>
+        </div>
+        <button class="btn-test" id="test-gemini" data-provider="gemini">
+          <span class="material-symbols-rounded">science</span>
+          Testar conexão
+        </button>
+        <div class="step-status" id="status-gemini"></div>
+      </div>
+
+      <!-- STEP NAVIGATION -->
+      <div class="setup-nav">
+        <button id="setupBackBtn" class="btn-nav btn-nav-back" style="visibility:hidden">
+          <span class="material-symbols-rounded">arrow_back</span>
+          Voltar
+        </button>
+        <button id="setupNextBtn" class="btn-nav btn-nav-next">
+          Próximo
+          <span class="material-symbols-rounded">arrow_forward</span>
+        </button>
+      </div>
+
+      <!-- SAVE BUTTON (shown on last step) -->
+      <button id="saveSetupBtn" class="btn-search setup-save-btn" style="display:none;width:100%">
+        <span class="material-symbols-rounded">check_circle</span>
+        Salvar configurações
+      </button>
+
+      <!-- PRIVACY NOTICE -->
+      <div class="setup-privacy">
+        <span class="material-symbols-rounded">lock</span>
+        Suas chaves são armazenadas apenas no seu computador. Ninguém mais tem acesso a elas.
+      </div>
+    </div>
 
     <div class="tabs">
       <button class="tab-btn active" data-tab="search"><span class="material-symbols-rounded">search</span>
@@ -54,8 +203,16 @@
     <!-- VISÃO DE FICHÁRIO -->
     <div id="view-binder" class="view-section">
       <div class="binder-header">
-        <h2>Meus Estudos</h2>
-        <button id="clearBinderBtn" class="btn-text">Limpar tudo</button>
+        <div class="binder-header-left">
+          <span class="material-symbols-rounded binder-header-icon">menu_book</span>
+          <div>
+            <h2>Meus Estudos</h2>
+            <p class="binder-subtitle">Questões salvas para revisão</p>
+          </div>
+        </div>
+        <button id="clearBinderBtn" class="action-btn" title="Limpar tudo">
+          <span class="material-symbols-rounded">delete_sweep</span>
+        </button>
       </div>
       <div id="binder-list" class="results">
         <div class="placeholder">

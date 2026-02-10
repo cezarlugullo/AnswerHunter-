@@ -1,27 +1,85 @@
 ﻿import { StorageModel } from '../models/StorageModel.js';
 
 export const BinderController = {
-    view: null, // Referência para a View (PopupView)
+    view: null,
     eventsBound: false,
     draggedItemId: null,
+    lastExportTimestamp: null,
 
     init(view) {
         this.view = view;
-        // Carregar dados iniciais (assíncrono, mas init é síncrono no fluxo de eventos)
         StorageModel.init();
+        this._loadLastExportTimestamp();
         this.bindEvents();
     },
 
     async renderBinder() {
         if (!this.view) return;
 
-        // Garante que dados estão carregados
         if (!StorageModel.data || StorageModel.data.length === 0) {
             await StorageModel.init();
         }
 
         const currentFolder = StorageModel.findNode(StorageModel.currentFolderId) || StorageModel.data[0];
-        this.view.renderBinderList(currentFolder);
+
+        // Determine if backup reminder should show
+        const showBackupReminder = await this._shouldShowBackupReminder();
+
+        this.view.renderBinderList(currentFolder, { showBackupReminder });
+    },
+
+    async _shouldShowBackupReminder() {
+        const itemCount = this._countBinderItems();
+        if (itemCount < 5) return false;
+
+        // Check if reminder was dismissed recently
+        try {
+            const data = await chrome.storage.local.get(['_backupReminderDismissedUntil']);
+            const dismissedUntil = data?._backupReminderDismissedUntil;
+            if (dismissedUntil && Date.now() < dismissedUntil) return false;
+        } catch {}
+
+        const daysSince = this._daysSinceLastExport();
+        return daysSince === null || daysSince >= 7;
+    },
+
+    _countBinderItems() {
+        const root = StorageModel.data?.[0];
+        if (!root) return 0;
+        let count = 0;
+        const walk = (node) => {
+            if (node.type === 'question') count++;
+            if (node.children) node.children.forEach(walk);
+        };
+        walk(root);
+        return count;
+    },
+
+    _daysSinceLastExport() {
+        if (!this.lastExportTimestamp) return null;
+        return Math.floor((Date.now() - this.lastExportTimestamp) / (1000 * 60 * 60 * 24));
+    },
+
+    async _loadLastExportTimestamp() {
+        try {
+            const data = await chrome.storage.local.get(['lastExportTimestamp']);
+            this.lastExportTimestamp = data?.lastExportTimestamp || null;
+        } catch {}
+    },
+
+    async _saveLastExportTimestamp() {
+        this.lastExportTimestamp = Date.now();
+        try {
+            await chrome.storage.local.set({ lastExportTimestamp: this.lastExportTimestamp });
+        } catch {}
+    },
+
+    async _dismissBackupReminder() {
+        try {
+            const dismissUntil = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
+            await chrome.storage.local.set({ _backupReminderDismissedUntil: dismissUntil });
+            this.renderBinder();
+        } catch {}
     },
 
     bindEvents() {
@@ -53,6 +111,27 @@ export const BinderController = {
             if (backBtn) {
                 e.preventDefault();
                 this.handleNavigateRoot();
+                return;
+            }
+
+            const exportBtn = e.target.closest('#exportBinderBtn');
+            if (exportBtn) {
+                e.preventDefault();
+                this.handleExport();
+                return;
+            }
+
+            const importBtn = e.target.closest('#importBinderBtn');
+            if (importBtn) {
+                e.preventDefault();
+                this.handleImport();
+                return;
+            }
+
+            const dismissBtn = e.target.closest('.dismiss-reminder');
+            if (dismissBtn) {
+                e.preventDefault();
+                this._dismissBackupReminder();
                 return;
             }
 
@@ -234,22 +313,94 @@ export const BinderController = {
         });
     },
 
-    // Chamado quando clica no botão Salvar/Remover nos resultados da busca
+    // Called when clicking Save/Remove button in search results
     async toggleSaveItem(question, answer, source, btnElement) {
         const isSaved = btnElement.classList.contains('saved');
 
         if (isSaved) {
-            // Remover
             const removed = await StorageModel.removeByContent(question);
             if (removed) {
                 this.view.setSaveButtonState(btnElement, false);
             }
         } else {
-            // Salvar
             const added = await StorageModel.addItem(question, answer, source);
             this.view.setSaveButtonState(btnElement, true);
             if (!added) {
-                console.warn('BinderController: item duplicado, não adicionado.');
+                console.warn('BinderController: duplicate item, not added.');
+            }
+        }
+    },
+
+    // === EXPORT / IMPORT ===
+
+    async handleExport() {
+        try {
+            const data = StorageModel.data;
+            if (!data || data.length === 0) {
+                if (this.view.showToast) {
+                    this.view.showToast('Nada para exportar.', 'error');
+                }
+                return;
+            }
+
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `answerhunter-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            await this._saveLastExportTimestamp();
+
+            if (this.view.showToast) {
+                this.view.showToast('Backup exportado com sucesso!', 'success');
+            }
+        } catch (err) {
+            console.error('Export error:', err);
+            if (this.view.showToast) {
+                this.view.showToast('Erro ao exportar: ' + err.message, 'error');
+            }
+        }
+    },
+
+    async handleImport() {
+        try {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.addEventListener('change', async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+
+                const text = await file.text();
+                const data = JSON.parse(text);
+
+                if (!Array.isArray(data) || data.length === 0) {
+                    if (this.view.showToast) {
+                        this.view.showToast('Arquivo inválido.', 'error');
+                    }
+                    return;
+                }
+
+                // Confirm before overwriting
+                if (!confirm('Isso substituirá todo o fichário atual. Deseja continuar?')) return;
+
+                await StorageModel.importData(data);
+                this.renderBinder();
+
+                if (this.view.showToast) {
+                    this.view.showToast('Dados importados com sucesso!', 'success');
+                }
+            });
+            input.click();
+        } catch (err) {
+            console.error('Import error:', err);
+            if (this.view.showToast) {
+                this.view.showToast('Erro ao importar: ' + err.message, 'error');
             }
         }
     }
