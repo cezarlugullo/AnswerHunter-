@@ -22,3 +22,11 @@ build/
 
 # Test/debug logs
 .playwright-cli/
+# Windows reserved filenames
+nul
+
+# Claude local settings
+.claude/
+
+# i18n (to be implemented)
+src/i18n/
