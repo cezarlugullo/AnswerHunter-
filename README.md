@@ -43,10 +43,17 @@ Extensão Chrome que caça respostas para questões educacionais usando IA.
    - **Extrair Página**: Se a resposta já está visível na página
    - **Buscar Resposta**: Se precisa buscar a resposta no Google
 
+## ⚙️ Configuração de API Keys
+
+Para usar a extensão, você precisa das suas próprias chaves de API:
+
+1. **Groq** (IA): Crie uma conta em [console.groq.com](https://console.groq.com) e gere uma API key
+2. **Serper** (Busca Google): Crie uma conta em [serper.dev](https://serper.dev) e gere uma API key
+
+Após obter as chaves, insira-as nas configurações da extensão.
+
 ## ⚠️ Importante
 
-- As chaves de API já estão configuradas
-- Não compartilhe este repositório publicamente
 - Use apenas para fins educacionais
 
 ## 📝 Changelog

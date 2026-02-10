@@ -31,7 +31,7 @@ if [ ! -d ".git" ]; then
     echo "[2/4] Configurando repositorio..."
     git init
     git branch -M main
-    git remote add origin https://github.com/cezarlugullo/AnswerHunter-.git
+    git remote add origin https://github.com/SEU_USUARIO/AnswerHunter.git
     echo "[OK] Repositorio configurado."
 else
     echo "[OK] Repositorio ja configurado."
