@@ -1,10 +1,10 @@
 /**
- * SettingsModel.js
- * Gerencia configurações globais, chaves de API e preferências do usuário.
+ * SettingsModel
+ * Centralizes extension settings, API keys, and language preferences.
  */
 export const SettingsModel = {
-    // Configurações Padrão
     defaults: {
+        language: 'en',
         groqApiKey: '',
         groqApiUrl: 'https://api.groq.com/openai/v1/chat/completions',
         groqModelFast: 'llama-3.1-8b-instant',
@@ -12,46 +12,114 @@ export const SettingsModel = {
         groqModelFallback: 'llama-3.3-70b-versatile',
         serperApiKey: '',
         serperApiUrl: 'https://google.serper.dev/search',
-        minGroqIntervalMs: 2500 // Cooldown alto para evitar 429
+        geminiApiKey: '',
+        geminiApiUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        geminiModel: 'gemini-2.0-flash',
+        setupCompleted: false,
+        requiredProviders: {
+            groq: true,
+            serper: true,
+            gemini: false
+        },
+        minGroqIntervalMs: 2500,
+        maxGroqRetries: 1
+    },
+
+    normalizeLanguage(language) {
+        if (typeof language !== 'string') return 'en';
+        return /^pt/i.test(language) ? 'pt-BR' : 'en';
+    },
+
+    getBrowserDefaultLanguage() {
+        try {
+            return this.normalizeLanguage(navigator?.language || 'en');
+        } catch (_) {
+            return 'en';
+        }
+    },
+
+    isPresent(value) {
+        return typeof value === 'string' && value.trim().length > 0;
+    },
+
+    normalizeRequiredProviders(requiredProviders = {}) {
+        return {
+            groq: requiredProviders.groq !== false,
+            serper: requiredProviders.serper !== false,
+            gemini: requiredProviders.gemini === true
+        };
+    },
+
+    getProviderReadiness(settings = {}) {
+        const requiredProviders = this.normalizeRequiredProviders(
+            settings.requiredProviders || this.defaults.requiredProviders
+        );
+        const missingRequired = [];
+        const optionalMissing = [];
+
+        if (requiredProviders.groq && !this.isPresent(settings.groqApiKey)) {
+            missingRequired.push('groq');
+        }
+        if (requiredProviders.serper && !this.isPresent(settings.serperApiKey)) {
+            missingRequired.push('serper');
+        }
+        if (requiredProviders.gemini && !this.isPresent(settings.geminiApiKey)) {
+            missingRequired.push('gemini');
+        } else if (!this.isPresent(settings.geminiApiKey)) {
+            optionalMissing.push('gemini');
+        }
+
+        return {
+            ready: missingRequired.length === 0,
+            missingRequired,
+            optionalMissing,
+            requiredProviders
+        };
+    },
+
+    computeSetupCompleted(settings = {}) {
+        return this.getProviderReadiness(settings).ready;
     },
 
     /**
-     * Obtém todas as configurações, mesclando padrões com chrome.storage
-     * @returns {Promise<Object>} Objeto com configurações
+     * Returns settings merged with defaults.
      */
     async getSettings() {
         return new Promise((resolve) => {
             chrome.storage.sync.get(['settings'], (result) => {
                 const stored = result.settings || {};
-                resolve({ ...this.defaults, ...stored });
+                const merged = { ...this.defaults, ...stored };
+                merged.language = this.normalizeLanguage(merged.language || this.getBrowserDefaultLanguage());
+                merged.requiredProviders = this.normalizeRequiredProviders(merged.requiredProviders);
+                merged.setupCompleted = this.computeSetupCompleted(merged);
+                resolve(merged);
             });
         });
     },
 
     /**
-     * Salva configurações no chrome.storage.sync
-     * @param {Object} newSettings - Objeto parcial com novas configurações
-     * @returns {Promise<void>}
+     * Persists settings into chrome.storage.sync.
      */
     async saveSettings(newSettings) {
         const current = await this.getSettings();
         const updated = { ...current, ...newSettings };
+        updated.language = this.normalizeLanguage(updated.language || this.getBrowserDefaultLanguage());
+        updated.requiredProviders = this.normalizeRequiredProviders(updated.requiredProviders);
+        updated.setupCompleted = this.computeSetupCompleted(updated);
         return new Promise((resolve) => {
-            chrome.storage.sync.set({ settings: updated }, () => {
-                resolve();
-            });
+            chrome.storage.sync.set({ settings: updated }, () => resolve());
         });
     },
 
     /**
-     * Obtém apenas as chaves de API
-     * @returns {Promise<Object>} { groqKey, serperKey }
+     * Returns only API keys.
      */
     async getApiKeys() {
         const settings = await this.getSettings();
         return {
             groqKey: settings.groqApiKey,
-            serperKey: settings.serperApiKey
+            serperKey: settings.serperApiKey,
+            geminiKey: settings.geminiApiKey
         };
     }
 };
