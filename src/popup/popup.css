@@ -3888,11 +3888,32 @@ footer p {
 }
 
 .ob-step-desc {
-  font-size: 13.5px;
+  font-size: 14px;
   color: var(--ob-muted);
-  line-height: 1.55;
-  margin-bottom: 18px;
+  line-height: 1.6;
+  margin-bottom: 10px;
   max-width: 340px;
+}
+
+.ob-begin-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border-radius: var(--ob-radius-sm);
+  border: 1px solid #EDEDED;
+  background: #FAFAFA;
+  color: var(--ob-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.ob-begin-hint .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--ob-primary);
+  flex-shrink: 0;
 }
 
 /* ── Tutorial Accordion — Timeline Redesign ── */
@@ -4349,6 +4370,13 @@ footer p {
 
 .ob-test-status.loading {
   color: #1565C0;
+}
+
+.ob-next-help {
+  margin: 2px 0 6px;
+  font-size: 0.72rem;
+  color: var(--ob-muted);
+  line-height: 1.45;
 }
 
 /* ── Info Banner ── */
