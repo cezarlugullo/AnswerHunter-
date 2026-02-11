@@ -2,7 +2,7 @@ import { SettingsModel } from '../models/SettingsModel.js';
 
 /**
  * ApiService.js
- * Gerencia todas as chamadas externas (Groq, Serper) com lÃ³gica robusta recuperada.
+ * Gerencia todas as chamadas externas (Groq, Serper) com lÃƒÂ³gica robusta recuperada.
  */
 export const ApiService = {
     lastGroqCallAt: 0,
@@ -34,7 +34,7 @@ export const ApiService = {
             return taskFn();
         };
         const task = this._groqQueue.then(run, run);
-        this._groqQueue = task.catch(() => {});
+        this._groqQueue = task.catch(() => { });
         return task;
     },
 
@@ -52,7 +52,7 @@ export const ApiService = {
 
                 if (response.status === 429 && attempt < maxRetries) {
                     const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
-                    // Backoff exponencial: 2s, 4s, 8s - mÃ¡ximo 10s
+                    // Backoff exponencial: 2s, 4s, 8s - mÃƒÂ¡ximo 10s
                     const backoffMs = Math.min(10000, Math.max(2000 * Math.pow(2, attempt), retryAfter * 1000));
                     console.log(`AnswerHunter: Rate limit 429, aguardando ${backoffMs}ms (tentativa ${attempt + 1}/${maxRetries})...`);
                     await new Promise(resolve => setTimeout(resolve, backoffMs));
@@ -182,7 +182,7 @@ export const ApiService = {
     },
 
     /**
-     * Valida se o texto Ã© uma questÃ£o vÃ¡lida usando Groq
+     * Valida se o texto ÃƒÂ© uma questÃƒÂ£o vÃƒÂ¡lida usando Groq
      */
     async validateQuestion(questionText) {
         if (!questionText) return false;
@@ -220,25 +220,25 @@ export const ApiService = {
 
     /**
      * Busca no Serper (Google) com fallback para sites educacionais
-     * LÃ³gica exata do searchWithSerper legado
+     * LÃƒÂ³gica exata do searchWithSerper legado
      */
     async searchWithSerper(query) {
         const { serperApiUrl, serperApiKey } = await this._getSettings();
 
         // 1. Limpeza da Query (cleanQueryForSearch interna)
         let cleanQuery = query
-            .replace(/^(?:QuestÃ£o|Pergunta|Atividade|ExercÃ­cio)\s*\d+[\s.:-]*/gi, '')
-            .replace(/Marcar para revisÃ£o/gi, '')
-            .replace(/\s*(Responda|O que vocÃª achou|Relatar problema|Voltar|AvanÃ§ar|Menu|Finalizar)[\s\S]*/gi, '')
+            .replace(/^(?:QuestÃƒÂ£o|Pergunta|Atividade|ExercÃƒÂ­cio)\s*\d+[\s.:-]*/gi, '')
+            .replace(/Marcar para revisÃƒÂ£o/gi, '')
+            .replace(/\s*(Responda|O que vocÃƒÂª achou|Relatar problema|Voltar|AvanÃƒÂ§ar|Menu|Finalizar)[\s\S]*/gi, '')
             .replace(/\s+/g, ' ')
             .trim();
 
-        // Se tem "?" e o texto antes Ã© substancial, usa sÃ³ atÃ© o "?"
-        // Mas sÃ³ se nÃ£o for uma questÃ£o sem interrogaÃ§Ã£o (como "assinale a correta")
+        // Se tem "?" e o texto antes ÃƒÂ© substancial, usa sÃƒÂ³ atÃƒÂ© o "?"
+        // Mas sÃƒÂ³ se nÃƒÂ£o for uma questÃƒÂ£o sem interrogaÃƒÂ§ÃƒÂ£o (como "assinale a correta")
         if (cleanQuery.includes('?')) {
             const questionEnd = cleanQuery.indexOf('?');
             const questionText = cleanQuery.substring(0, questionEnd + 1).trim();
-            // SÃ³ corta se realmente parece ser a pergunta principal
+            // SÃƒÂ³ corta se realmente parece ser a pergunta principal
             if (questionText.length >= 50) cleanQuery = questionText;
         }
 
@@ -304,7 +304,7 @@ export const ApiService = {
     },
 
     /**
-     * Verifica correspondÃªncia entre questÃ£o e fonte
+     * Verifica correspondÃƒÂªncia entre questÃƒÂ£o e fonte
      */
     async verifyQuestionMatch(originalQuestion, sourceContent) {
         const { groqApiUrl, groqApiKey, groqModelFast } = await this._getSettings();
@@ -355,7 +355,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
     },
 
     /**
-     * Extrai OpÃ§Ãµes Localmente (Regex) - Helper interno usado no refinamento
+     * Extrai OpÃƒÂ§ÃƒÂµes Localmente (Regex) - Helper interno usado no refinamento
      */
     _extractOptionsLocally(sourceContent) {
         if (!sourceContent) return null;
@@ -395,7 +395,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
 
         const byPlain = () => {
             const options = [];
-            const plainAltPattern = /(?:^|[.!?]\s+)([A-E])\s+([A-ZÃ€-Ãš][^]*?)(?=(?:[.!?]\s+)[A-E]\s+[A-ZÃ€-Ãš]|$)/g;
+            const plainAltPattern = /(?:^|[.!?]\\s+)([A-E])\\s+([A-Za-z][^]*?)(?=(?:[.!?]\\s+)[A-E]\\s+[A-Za-z]|$)/g;
             let m;
             while ((m = plainAltPattern.exec(normalized)) !== null) {
                 const letter = m[1].toUpperCase();
@@ -405,13 +405,13 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
             return options.length >= 2 ? options : null;
         };
 
-        // MÃ©todo MELHORADO para alternativas sem letra (formato EstÃ¡cio/Brainly)
-        // Detecta frases consecutivas que parecem ser opÃ§Ãµes apÃ³s marcadores
+        // MÃƒÂ©todo MELHORADO para alternativas sem letra (formato EstÃƒÂ¡cio/Brainly)
+        // Detecta frases consecutivas que parecem ser opÃƒÂ§ÃƒÂµes apÃƒÂ³s marcadores
         const bySentencesAfterMarker = () => {
-            // Procura por marcadores de inÃ­cio de opÃ§Ãµes
+            // Procura por marcadores de inÃƒÂ­cio de opÃƒÂ§ÃƒÂµes
             const markers = [
                 /(?:assinale|marque)\s+(?:a\s+)?(?:alternativa\s+)?(?:correta|verdadeira|incorreta|falsa)[.:]/gi,
-                /(?:opÃ§Ã£o|alternativa)\s+(?:correta|verdadeira)[.:]/gi,
+                /(?:opÃƒÂ§ÃƒÂ£o|alternativa)\s+(?:correta|verdadeira)[.:]/gi,
                 /\(Ref\.?:\s*\d+\)/gi,
                 /assinale\s+(?:a\s+)?(?:afirmativa|assertiva)\s+correta[.:]/gi
             ];
@@ -427,7 +427,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
             }
 
             if (startIdx === -1) {
-                // Fallback: procurar apÃ³s "?" ou no inÃ­cio
+                // Fallback: procurar apÃƒÂ³s "?" ou no inÃƒÂ­cio
                 const questionMark = sourceContent.indexOf('?');
                 if (questionMark > 30) {
                     startIdx = questionMark + 1;
@@ -436,28 +436,28 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
                 }
             }
 
-            // Pega o texto apÃ³s o marcador
+            // Pega o texto apÃƒÂ³s o marcador
             let afterMarker = sourceContent.substring(startIdx).trim();
 
-            // Remove referÃªncias como (Ref.: 123456)
+            // Remove referÃƒÂªncias como (Ref.: 123456)
             afterMarker = afterMarker.replace(/\(Ref\.?:\s*\d+\)\s*/gi, '');
 
             // Tenta dividir por frases que parecem alternativas
-            // PadrÃ£o: frases que comeÃ§am com maiÃºscula apÃ³s ponto/quebra e tÃªm tamanho mÃ©dio
+            // PadrÃƒÂ£o: frases que comeÃƒÂ§am com maiÃƒÂºscula apÃƒÂ³s ponto/quebra e tÃƒÂªm tamanho mÃƒÂ©dio
             const sentences = afterMarker
-                .split(/(?<=[.!])\s+(?=[A-ZÃ€-ÃšÃ‰])/)
+                .split(/(?<=[.!])\s+(?=[A-ZÃƒâ‚¬-ÃƒÅ¡Ãƒâ€°])/)
                 .map(s => s.trim())
                 .filter(s => {
-                    // Filtra sentenÃ§as que parecem alternativas vÃ¡lidas
+                    // Filtra sentenÃƒÂ§as que parecem alternativas vÃƒÂ¡lidas
                     if (s.length < 20 || s.length > 500) return false;
-                    // Remove sentenÃ§as que parecem ser respostas/gabaritos
+                    // Remove sentenÃƒÂ§as que parecem ser respostas/gabaritos
                     if (/^(Resposta|Gabarito|Correta|A resposta|portanto|letra\s+[A-E]|De acordo|Segundo)/i.test(s)) return false;
-                    // Remove sentenÃ§as com metadados de sites
-                    if (/verificad[ao]|especialista|winnyfernandes|Excelente|curtidas|usuÃ¡rio|respondeu/i.test(s)) return false;
+                    // Remove sentenÃƒÂ§as com metadados de sites
+                    if (/verificad[ao]|especialista|winnyfernandes|Excelente|curtidas|usuÃƒÂ¡rio|respondeu/i.test(s)) return false;
                     return true;
                 });
 
-            // Se temos entre 3-6 sentenÃ§as vÃ¡lidas, atribui letras
+            // Se temos entre 3-6 sentenÃƒÂ§as vÃƒÂ¡lidas, atribui letras
             if (sentences.length >= 3 && sentences.length <= 6) {
                 const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
                 return sentences.slice(0, 5).map((body, idx) => ({
@@ -468,7 +468,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
             return null;
         };
 
-        // MÃ©todo para alternativas em parÃ¡grafos (formato comum em sites educacionais)
+        // MÃƒÂ©todo para alternativas em parÃƒÂ¡grafos (formato comum em sites educacionais)
         const byParagraphs = () => {
             const lines = normalized.split(/\n+/).map(line => line.trim()).filter(Boolean);
             const candidateOptions = [];
@@ -476,19 +476,19 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
 
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
-                
-                // Marca inÃ­cio da seÃ§Ã£o de opÃ§Ãµes
-                if (/assinale|alternativa|opÃ§Ã£o|opÃ§Ãµes|correta[.:]|incorreta[.:]/i.test(line)) {
+
+                // Marca inÃƒÂ­cio da seÃƒÂ§ÃƒÂ£o de opÃƒÂ§ÃƒÂµes
+                if (/assinale|alternativa|opÃƒÂ§ÃƒÂ£o|opÃƒÂ§ÃƒÂµes|correta[.:]|incorreta[.:]/i.test(line)) {
                     foundStartMarker = true;
                     continue;
                 }
-                
+
                 // Para quando encontra marcadores de resposta
-                if (/^(Resposta|Gabarito|Correta|Alternativa correta|A resposta|estÃ¡ correta|portanto|letra\s+[A-E])/i.test(line)) {
+                if (/^(Resposta|Gabarito|Correta|Alternativa correta|A resposta|estÃƒÂ¡ correta|portanto|letra\s+[A-E])/i.test(line)) {
                     break;
                 }
-                
-                // Se jÃ¡ encontrou o marcador, adiciona linhas como opÃ§Ãµes
+
+                // Se jÃƒÂ¡ encontrou o marcador, adiciona linhas como opÃƒÂ§ÃƒÂµes
                 if (foundStartMarker) {
                     // Ignora linhas muito curtas ou muito longas
                     if (line.length < 15 || line.length > 500) continue;
@@ -496,12 +496,12 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
                     if (line.endsWith('?') || line.endsWith(':')) continue;
                     // Ignora metadados
                     if (/verificad[ao]|especialista|curtidas|respondeu/i.test(line)) continue;
-                    
+
                     candidateOptions.push(line);
                 }
             }
 
-            // Se temos 3+ parÃ¡grafos candidatos, atribui letras
+            // Se temos 3+ parÃƒÂ¡grafos candidatos, atribui letras
             if (candidateOptions.length >= 3 && candidateOptions.length <= 6) {
                 const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
                 return candidateOptions.slice(0, 5).map((body, idx) => ({
@@ -519,7 +519,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
     },
 
     /**
-     * Extrai opÃ§Ãµes (A, B, C...) de qualquer texto
+     * Extrai opÃƒÂ§ÃƒÂµes (A, B, C...) de qualquer texto
      */
     extractOptionsFromText(sourceContent) {
         const raw = this._extractOptionsLocally(sourceContent);
@@ -531,7 +531,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
     },
 
     /**
-     * Prompt 1: Extrair opÃ§Ãµes (IA)
+     * Prompt 1: Extrair opÃƒÂ§ÃƒÂµes (IA)
      */
     async extractOptionsFromSource(sourceContent) {
         const { groqApiUrl, groqApiKey, groqModelFast } = await this._getSettings();
@@ -587,19 +587,19 @@ E) [texto da alternativa E se houver]`;
     async extractAnswerFromSource(originalQuestion, sourceContent) {
         const { groqApiUrl, groqApiKey, groqModelAnswer } = await this._getSettings();
 
-        const prompt = `Analise a fonte e identifique a resposta correta para a questÃ£o.
+        const prompt = `Analise a fonte e identifique a resposta correta para a questÃƒÂ£o.
 
-QUESTÃƒO:
+QUESTÃƒÆ’O:
 ${originalQuestion.substring(0, 1500)}
 
 FONTE:
 ${sourceContent.substring(0, 2500)}
 
-INSTRUÃ‡Ã•ES:
+INSTRUÃƒâ€¡Ãƒâ€¢ES:
 - Identifique a letra da resposta correta (A, B, C, D ou E)
 - Extraia o texto completo da alternativa correta
 - Responda APENAS no formato: "Letra X: [texto completo da alternativa]"
-- Se nÃ£o encontrar resposta clara, diga apenas: NAO_ENCONTRADO`;
+- Se nÃƒÂ£o encontrar resposta clara, diga apenas: NAO_ENCONTRADO`;
 
         try {
             const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
@@ -611,7 +611,7 @@ INSTRUÃ‡Ã•ES:
                 body: JSON.stringify({
                     model: groqModelAnswer,
                     messages: [
-                        { role: 'system', content: 'VocÃª extrai respostas de questÃµes de mÃºltipla escolha. Sempre responda no formato "Letra X: [texto da alternativa]".' },
+                        { role: 'system', content: 'VocÃƒÂª extrai respostas de questÃƒÂµes de mÃƒÂºltipla escolha. Sempre responda no formato "Letra X: [texto da alternativa]".' },
                         { role: 'user', content: prompt }
                     ],
                     temperature: 0.1,
@@ -621,14 +621,14 @@ INSTRUÃ‡Ã•ES:
 
             let content = data.choices?.[0]?.message?.content?.trim() || '';
             console.log('AnswerHunter: Resposta IA bruta:', content);
-            
-            // Limpar respostas que indicam que nÃ£o encontrou
+
+            // Limpar respostas que indicam que nÃƒÂ£o encontrou
             if (!content || content.length < 3) return null;
-            if (/^(NAO_ENCONTRADO|SEM_RESPOSTA|INVALIDO|N[Ã£a]o\s+(encontr|consigo|h[Ã¡a]))/i.test(content)) return null;
-            
-            // Se contÃ©m indicaÃ§Ã£o de nÃ£o encontrado no meio/fim, tentar extrair a parte Ãºtil
+            if (/^(NAO_ENCONTRADO|SEM_RESPOSTA|INVALIDO|N[ÃƒÂ£a]o\s+(encontr|consigo|h[ÃƒÂ¡a]))/i.test(content)) return null;
+
+            // Se contÃƒÂ©m indicaÃƒÂ§ÃƒÂ£o de nÃƒÂ£o encontrado no meio/fim, tentar extrair a parte ÃƒÂºtil
             if (/NAO_ENCONTRADO|SEM_RESPOSTA/i.test(content)) {
-                // Tentar extrair letra antes da indicaÃ§Ã£o de erro
+                // Tentar extrair letra antes da indicaÃƒÂ§ÃƒÂ£o de erro
                 const beforeError = content.split(/NAO_ENCONTRADO|SEM_RESPOSTA/i)[0].trim();
                 const letterMatch = beforeError.match(/(?:letra|alternativa)\s*([A-E])\b/i);
                 if (letterMatch) {
@@ -637,7 +637,7 @@ INSTRUÃ‡Ã•ES:
                     return null;
                 }
             }
-            
+
             return content;
         } catch (error) {
             console.error('Erro ao extrair resposta:', error);
@@ -646,25 +646,50 @@ INSTRUÃ‡Ã•ES:
     },
 
     /**
-     * Inferir resposta com base em evidÃªncias (gabarito/comentÃ¡rios)
+     * Inferir resposta com base em evidências (gabarito/comentários)
+     * Enhanced with per-alternative evaluation & polarity awareness
      */
     async inferAnswerFromEvidence(originalQuestion, sourceContent) {
         const { groqApiUrl, groqApiKey, groqModelAnswer } = await this._getSettings();
 
-        const prompt = `Voce deve INFERIR a resposta correta para a questao do cliente usando as evidencias da fonte.
+        // Detect question polarity
+        const normQ = originalQuestion.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const wantsIncorrect = /\b(falsa|incorreta|errada|exceto|nao\s+correta)\b/i.test(normQ);
+        const polarityNote = wantsIncorrect
+            ? '\n⚠️ ATENÇÃO: A questão pede a alternativa INCORRETA/FALSA/EXCETO. Você deve encontrar a alternativa ERRADA, não a correta.'
+            : '';
 
-QUESTAO DO CLIENTE:
+        const prompt = `INFERÊNCIA DE RESPOSTA COM BASE EM EVIDÊNCIAS
+
+QUESTÃO DO CLIENTE:
 ${originalQuestion.substring(0, 2000)}
 
-EVIDENCIAS DA FONTE:
+EVIDÊNCIAS DAS FONTES:
 ${sourceContent.substring(0, 3500)}
+${polarityNote}
 
-INSTRUCOES:
-- Use gabarito, comentarios e explicacoes da fonte como evidencias.
-- Se a fonte nao for a mesma questao, mas trazer definicoes que permitam responder, use essas definicoes.
-- Responda APENAS no formato: "Letra X: [texto completo da alternativa]".
-- Se nao houver evidencia suficiente, responda apenas: NAO_ENCONTRADO.
-- Nunca invente alternativas que nao estejam na questao do cliente.`;
+INSTRUÇÕES - siga EXATAMENTE esta ordem:
+
+PASSO 1 (VERIFICAÇÃO): As fontes discutem a MESMA questão ou o MESMO tema?
+- Se sim, indique "TEMA COMPATÍVEL" e continue.
+- Se não, responda apenas: NAO_ENCONTRADO
+
+PASSO 2 (EVIDÊNCIAS): Liste os gabaritos, comentários ou definições relevantes encontrados nas fontes.
+
+PASSO 3 (AVALIAÇÃO): Para cada alternativa da questão do cliente, indique:
+- Se as evidências CONFIRMAM, REFUTAM ou são NEUTRAS sobre ela.
+
+PASSO 4 (CONCLUSÃO): Com base nos passos anteriores, indique a resposta.
+
+FORMATO FINAL OBRIGATÓRIO (última linha):
+Letra X: [texto completo da alternativa]
+
+Se não houver evidência suficiente: NAO_ENCONTRADO
+
+REGRAS:
+- Nunca invente alternativas que não estejam na questão do cliente.
+- Se múltiplas fontes concordam, dê mais peso a esse consenso.
+- Se houver gabarito explícito (ex: "Gabarito: C"), priorize-o.`;
 
         try {
             const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
@@ -676,19 +701,19 @@ INSTRUCOES:
                 body: JSON.stringify({
                     model: groqModelAnswer,
                     messages: [
-                        { role: 'system', content: 'Voce infere respostas de questoes com base em evidencias. Responda apenas no formato "Letra X: [texto da alternativa]" ou NAO_ENCONTRADO.' },
+                        { role: 'system', content: 'Você infere respostas de questões com base em evidências de fontes. Analise sistematicamente antes de responder. Formato final: "Letra X: [texto]" ou NAO_ENCONTRADO.' },
                         { role: 'user', content: prompt }
                     ],
                     temperature: 0.1,
-                    max_tokens: 220
+                    max_tokens: 450
                 })
             }));
 
             let content = data.choices?.[0]?.message?.content?.trim() || '';
-            console.log('AnswerHunter: Inferencia IA bruta:', content);
+            console.log('AnswerHunter: Inferencia IA bruta:', content?.substring(0, 200));
 
             if (!content || content.length < 3) return null;
-            if (/^(NAO_ENCONTRADO|SEM_RESPOSTA|INVALIDO|N[Ã£a]o\s+(encontr|consigo|h[Ã¡a]))/i.test(content)) return null;
+            if (/^(NAO_ENCONTRADO|SEM_RESPOSTA|INVALIDO|N[ãa]o\s+(encontr|consigo|h[áa]))/i.test(content)) return null;
 
             if (/NAO_ENCONTRADO|SEM_RESPOSTA/i.test(content)) {
                 const beforeError = content.split(/NAO_ENCONTRADO|SEM_RESPOSTA/i)[0].trim();
@@ -708,7 +733,7 @@ INSTRUCOES:
     },
 
     /**
-     * FunÃ§Ã£o principal de refinamento (3-Passos)
+     * FunÃƒÂ§ÃƒÂ£o principal de refinamento (3-Passos)
      */
     async refineWithGroq(item) {
         console.log('AnswerHunter: Iniciando refinamento com 3 prompts...');
@@ -749,13 +774,44 @@ INSTRUCOES:
     },
 
     /**
-     * Fallback: gerar resposta diretamente pela IA quando nÃ£o houver fontes
+     * Fallback: gerar resposta diretamente pela IA quando não houver fontes
+     * Uses anti-hallucination prompt: evaluates each alternative individually,
+     * checks for contradictions, then selects.
      */
     async generateAnswerFromQuestion(questionText) {
         if (!questionText) return null;
         const { groqApiUrl, groqApiKey, groqModelFallback } = await this._getSettings();
 
-        const prompt = `Responda a questÃ£o abaixo de forma direta e objetiva.\n\nQUESTÃƒO:\n${questionText}\n\nREGRAS:\n- Se for mÃºltipla escolha, responda APENAS no formato: "Letra X: [texto completo da alternativa]".\n- Se for aberta, responda em 1 a 3 frases.\n- NÃ£o invente citaÃ§Ãµes.`;
+        // Detect if multiple choice
+        const hasOptions = /\b[A-E]\s*[).\-]\s/m.test(questionText);
+
+        const prompt = hasOptions
+            ? `ANÁLISE SISTEMÁTICA DE QUESTÃO DE MÚLTIPLA ESCOLHA
+
+QUESTÃO:
+${questionText}
+
+INSTRUÇÕES - siga EXATAMENTE esta ordem:
+
+PASSO 1: Classifique CADA alternativa como V (verdadeira) ou F (falsa), com uma justificativa OBJETIVA de 1 linha baseada em fatos/definições.
+Formato: "X) V/F - [justificativa]"
+
+PASSO 2: Verifique contradições:
+- Há duas alternativas dizendo a mesma coisa? 
+- A questão pede a CORRETA ou a INCORRETA/FALSA/EXCETO?
+
+PASSO 3: Com base nos passos anteriores, indique a resposta FINAL.
+Se a questão pede a CORRETA: escolha a alternativa V.
+Se a questão pede a INCORRETA/FALSA/EXCETO: escolha a alternativa F.
+
+FORMATO FINAL OBRIGATÓRIO (última linha):
+Letra X: [texto completo da alternativa escolhida]
+
+REGRAS:
+- Nunca invente alternativas que não estejam na questão.
+- Se não tiver certeza, indique a mais provável mas mantenha o formato.
+- Preste atenção especial se a questão pede "incorreta", "falsa", "exceto" ou "não é".`
+            : `Responda a questão abaixo de forma direta e objetiva.\n\nQUESTÃO:\n${questionText}\n\nREGRAS:\n- Responda em 1 a 3 frases.\n- Não invente citações.`;
 
         try {
             const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
@@ -767,15 +823,20 @@ INSTRUCOES:
                 body: JSON.stringify({
                     model: groqModelFallback,
                     messages: [
-                        { role: 'system', content: 'VocÃª Ã© um assistente que responde questÃµes com objetividade.' },
+                        {
+                            role: 'system', content: hasOptions
+                                ? 'Você é um especialista em análise de questões de múltipla escolha. Analise cada alternativa sistematicamente antes de responder. Sempre termine com "Letra X: [texto]".'
+                                : 'Você é um assistente que responde questões com objetividade.'
+                        },
                         { role: 'user', content: prompt }
                     ],
-                    temperature: 0.2,
-                    max_tokens: 300
+                    temperature: 0.15,
+                    max_tokens: hasOptions ? 600 : 300
                 })
             }));
 
             const content = data.choices?.[0]?.message?.content?.trim() || '';
+            console.log('AnswerHunter: AI fallback raw response:', content?.substring(0, 200));
             return content || null;
         } catch (error) {
             console.error('Erro ao gerar resposta direta:', error);
@@ -784,7 +845,7 @@ INSTRUCOES:
     },
 
     /**
-     * Busca o conteÃºdo de uma pÃ¡gina web via fetch
+     * Busca o conteÃƒÂºdo de uma pÃƒÂ¡gina web via fetch
      * Usado para analisar fontes mais profundamente
      */
     async fetchPageText(url) {
@@ -799,7 +860,7 @@ INSTRUCOES:
             const text = snap?.text || '';
             return text.length > 120 ? text : null;
         } catch (error) {
-            console.log(AnswerHunter: Erro ao buscar pÃ¡gina :, error?.message || String(error));
+            console.log(`AnswerHunter: Erro ao buscar página:`, error?.message || String(error));
             return null;
         }
     }

@@ -113,106 +113,106 @@ Host permissions:
 
 ---
 
-## PORTUGUES (BRASIL)
+## PORTUGUÊS (BRASIL)
 
-### 1. Visao geral
-AnswerHunter e uma extensao Chrome que extrai questoes da aba ativa, busca evidencias na web e sugere resposta com confianca ponderada.
+### 1. Visão geral
+AnswerHunter é uma extensão Chrome que extrai questões da aba ativa, busca evidências na web e sugere resposta com confiança ponderada.
 
 Objetivos principais:
-- setup simples para usuario leigo
-- sem dependencia obrigatoria de backend
-- priorizar evidencia em vez de chute de modelo
+- setup simples para usuário leigo
+- sem dependência obrigatória de backend
+- priorizar evidência em vez de chute de modelo
 - expor incerteza (`Confirmado`, `Conflito`, `Inconclusivo`)
 
-### 2. Arquitetura de alto nivel
+### 2. Arquitetura de alto nível
 ```
 src/
-  content/        # scripts de extracao no DOM
-  controllers/    # orquestracao do popup e fichario
-  i18n/           # traducoes e servico de idioma
-  models/         # configuracoes e dados persistentes
-  popup/          # entrada do popup (html/css/js)
-  services/       # APIs, ranking de busca e extracao
-  utils/          # helpers puros
-  views/          # renderizacao da interface
+   content/        # scripts de extração no DOM
+   controllers/    # orquestração do popup e fichário
+   i18n/           # traduções e serviço de idioma
+   models/         # configurações e dados persistentes
+   popup/          # entrada do popup (html/css/js)
+   services/       # APIs, ranking de busca e extração
+   utils/          # helpers puros
+   views/          # renderização da interface
 ```
 
-### 3. Fluxo de execucao
-1. Usuario abre o popup.
-2. `PopupController` inicializa i18n, configuracoes, onboarding e fichario.
-3. Se faltar provedor obrigatorio (`Groq`, `Serper`), abre o wizard.
+### 3. Fluxo de execução
+1. Usuário abre o popup.
+2. `PopupController` inicializa i18n, configurações, onboarding e fichário.
+3. Se faltar provedor obrigatório (`Groq`, `Serper`), abre o wizard.
 4. Fluxo Buscar:
-   - extrai questao da pagina
+   - extrai questão da página
    - consulta Serper
-   - busca e pontua evidencias
+   - busca e pontua evidências
    - classifica estado final
-   - renderiza resposta + fontes + confianca
+   - renderiza resposta + fontes + confiança
 5. Fluxo Extrair:
-   - le pergunta/resposta da pagina
+   - lê pergunta/resposta da página
    - refina com IA
    - salva e exibe
 
 ### 4. Modelo de provedores
-Obrigatorios:
-- Groq: analise IA e fallback
+Obrigatórios:
+- Groq: análise IA e fallback
 - Serper: descoberta de fontes
 
 Opcional:
-- Gemini: canal de fallback nao bloqueante
+- Gemini: canal de fallback não bloqueante
 
-### 5. Configuracoes e seguranca
+### 5. Configurações e segurança
 `SettingsModel` guarda:
 - idioma (`en`, `pt-BR`)
 - chaves de API
 - endpoints/modelos
-- flags de prontidao do setup
+- flags de prontidão do setup
 
-Notas de seguranca:
-- sem chaves hardcoded no repositorio
+Notas de segurança:
+- sem chaves hardcoded no repositório
 - chaves guardadas em `chrome.storage.sync`
-- sem backend obrigatorio para uso normal
+- sem backend obrigatório para uso normal
 
 ### 6. Sistema de confiabilidade da busca
 `SearchService` aplica:
-- canonicalizacao da questao
-- filtro de similaridade para descartar pagina diferente
+- canonicalização da questão
+- filtro de similaridade para descartar página diferente
 - contagem de match de alternativas
-- extracao de gabarito explicito
-- janela local de evidencia
-- votacao ponderada multi-fonte
+- extração de gabarito explícito
+- janela local de evidência
+- votação ponderada multi-fonte
 
-Estados de saida:
+Estados de saída:
 - `confirmed`: acordo forte com gabarito explicito
 - `conflict`: letras concorrentes com margem baixa
-- `inconclusive`: evidencia fraca/indireta
+- `inconclusive`: evidência fraca/indireta
 
 ### 7. Sistema de idioma
-- `src/i18n/translations.js`: dicionarios
-- `src/i18n/I18nService.js`: aplicacao de traducao no DOM
-- seletor de idioma no cabecalho do popup
+- `src/i18n/translations.js`: dicionários
+- `src/i18n/I18nService.js`: aplicação de tradução no DOM
+- seletor de idioma no cabeçalho do popup
 - mensagens principais traduzidas
 
-### 8. Persistencia do fichario
+### 8. Persistência do fichário
 `StorageModel` usa `chrome.storage.sync` para:
 - estrutura de pastas
 - itens salvos
-- organizacao por drag and drop
+- organização por drag and drop
 
-Backup/importacao:
+Backup/importação:
 - exporta JSON
-- importa JSON com confirmacao de sobrescrita
+- importa JSON com confirmação de sobrescrita
 
 ### 9. Tratamento de erro
-Codigo comum:
-- `SETUP_REQUIRED`: faltam chaves obrigatorias
+Código comum:
+- `SETUP_REQUIRED`: faltam chaves obrigatórias
 
 Comportamento UX:
 - abre setup automaticamente
-- mostra status/toast amigavel
+- mostra status/toast amigável
 - segue normalmente se provedor opcional faltar
 
-### 10. Permissoes da extensao
-Permissoes:
+### 10. Permissões da extensão
+Permissões:
 - `activeTab`
 - `scripting`
 - `storage`
@@ -222,4 +222,4 @@ Host permissions:
 - API Groq
 - API Serper
 - API Gemini
-- `<all_urls>` para cobertura de extracao
+- `<all_urls>` para cobertura de extração

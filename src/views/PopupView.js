@@ -3,6 +3,7 @@ import { formatQuestionText, escapeHtml } from '../utils/helpers.js';
 export const PopupView = {
   elements: {},
   _translator: (key) => key,
+  _currentSlide: 0,
 
   init() {
     this.cacheElements();
@@ -24,6 +25,7 @@ export const PopupView = {
 
   cacheElements() {
     this.elements = {
+      // Main App
       extractBtn: document.getElementById('extractBtn'),
       searchBtn: document.getElementById('searchBtn'),
       copyBtn: document.getElementById('copyBtn'),
@@ -33,31 +35,38 @@ export const PopupView = {
       clearBinderBtn: document.getElementById('clearBinderBtn'),
       tabs: document.querySelectorAll('.tab-btn'),
       sections: document.querySelectorAll('.view-section'),
-
       settingsBtn: document.getElementById('settingsBtn'),
-      languageSelect: document.getElementById('languageSelect'),
-      setupPanel: document.getElementById('setup-panel'),
-      closeSetupBtn: document.getElementById('closeSetupBtn'),
-      saveSetupBtn: document.getElementById('saveSetupBtn'),
-      welcomeOverlay: document.getElementById('welcome-overlay'),
-      welcomeStartBtn: document.getElementById('welcomeStartBtn'),
+      languageToggle: document.getElementById('languageToggle'),
       toastContainer: document.getElementById('toast-container'),
-      setupBackBtn: document.getElementById('setupBackBtn'),
-      setupNextBtn: document.getElementById('setupNextBtn'),
-      setupSkipBtn: document.getElementById('setupSkipBtn'),
-      setupProgressFill: document.getElementById('setupProgressFill'),
-      stepperSteps: document.querySelectorAll('.stepper-step'),
-      stepperLines: document.querySelectorAll('.stepper-line'),
-      stepPanels: document.querySelectorAll('.setup-step-panel'),
 
+      // New Onboarding Elements
+      onboardingView: document.getElementById('onboarding-view'),
+      onboardingSlides: document.getElementById('onboarding-slides'),
+      progressBar: document.getElementById('onboarding-progress-bar'),
+
+      // Buttons
+      welcomeStartBtn: document.getElementById('welcomeStartBtn'),
+
+      btnNextGroq: document.getElementById('btn-next-groq'),
+      btnNextSerper: document.getElementById('btn-next-serper'),
+      saveSetupBtn: document.getElementById('saveSetupBtn'),
+      setupSkipBtn: document.getElementById('setupSkipBtn'),
+
+      prevGroq: document.getElementById('prev-groq'),
+      prevSerper: document.getElementById('prev-serper'),
+      prevGemini: document.getElementById('prev-gemini'),
+
+      // Inputs
       inputGroq: document.getElementById('input-groq'),
       inputSerper: document.getElementById('input-serper'),
       inputGemini: document.getElementById('input-gemini'),
 
+      // Tests
       testGroq: document.getElementById('test-groq'),
       testSerper: document.getElementById('test-serper'),
       testGemini: document.getElementById('test-gemini'),
 
+      // Status
       statusGroq: document.getElementById('status-groq'),
       statusSerper: document.getElementById('status-serper'),
       statusGemini: document.getElementById('status-gemini')
@@ -65,8 +74,10 @@ export const PopupView = {
   },
 
   setLanguageSelectValue(language) {
-    if (this.elements.languageSelect) {
-      this.elements.languageSelect.value = language;
+    if (this.elements.languageToggle) {
+      this.elements.languageToggle.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lang === language);
+      });
     }
   },
 
@@ -118,77 +129,51 @@ export const PopupView = {
     });
   },
 
+  // ===== NEW ONBOARDING LOGIC =====
+
   setSetupVisible(visible) {
-    if (this.elements.setupPanel) {
-      this.elements.setupPanel.classList.toggle('hidden', !visible);
+    if (this.elements.onboardingView) {
+      this.elements.onboardingView.classList.toggle('hidden', !visible);
     }
   },
 
+  // Step 0: Welcome, 1: Groq, 2: Serper, 3: Gemini
   showSetupStep(stepNumber) {
-    const prevStep = this._lastSetupStep || 1;
-    const direction = stepNumber >= prevStep ? 'right' : 'left';
-    this._lastSetupStep = stepNumber;
+    this._currentSlide = stepNumber;
 
-    this.elements.stepPanels?.forEach((panel) => {
-      const panelStep = Number(panel.dataset.step);
-      const shouldShow = panelStep === stepNumber;
-      panel.style.display = shouldShow ? '' : 'none';
-      panel.classList.remove('slide-in-right', 'slide-in-left');
-      if (shouldShow) {
-        panel.classList.add(`slide-in-${direction}`);
-      }
-    });
-
-    if (this.elements.setupBackBtn) {
-      this.elements.setupBackBtn.style.visibility = stepNumber > 1 ? 'visible' : 'hidden';
+    if (this.elements.onboardingSlides) {
+      // 4 slides total (0, 1, 2, 3). Each is 25% of the 400% width container.
+      // Translate -25% moves one slide.
+      const translate = stepNumber * -25;
+      this.elements.onboardingSlides.style.transform = `translateX(${translate}%)`;
     }
-
-    if (this.elements.setupNextBtn) {
-      this.elements.setupNextBtn.style.display = stepNumber < 3 ? '' : 'none';
-    }
-
-    if (this.elements.setupSkipBtn) {
-      this.elements.setupSkipBtn.style.display = stepNumber === 3 ? '' : 'none';
-    }
-
-    if (this.elements.saveSetupBtn) {
-      this.elements.saveSetupBtn.style.display = stepNumber === 3 ? '' : 'none';
-    }
-
-    // Nav is always visible; back and skip/next change per step
 
     this.updateProgressBar(stepNumber);
   },
 
   updateProgressBar(stepNumber) {
-    if (!this.elements.setupProgressFill) return;
-    const percent = Math.round((stepNumber / 3) * 100);
-    this.elements.setupProgressFill.style.width = `${percent}%`;
+    if (!this.elements.progressBar) return;
+    // 0 -> 10%, 1 -> 40%, 2 -> 70%, 3 -> 100%
+    let percent = 10;
+    if (stepNumber === 1) percent = 40;
+    if (stepNumber === 2) percent = 70;
+    if (stepNumber === 3) percent = 100;
+
+    this.elements.progressBar.style.width = `${percent}%`;
   },
 
-  updateStepper(currentStep, completedSteps = []) {
-    this.elements.stepperSteps?.forEach((stepElement) => {
-      const step = Number(stepElement.dataset.step);
-      stepElement.classList.remove('active', 'done');
-      if (step === currentStep) stepElement.classList.add('active');
-      if (completedSteps.includes(step)) stepElement.classList.add('done');
-    });
-
-    this.elements.stepperLines?.forEach((lineElement, index) => {
-      lineElement.classList.toggle('done', completedSteps.includes(index + 1));
-    });
+  // Backwards compatibility shim for Controller
+  updateStepper(currentStep, completedSteps) {
+    // No-op or map to progress bar
   },
 
   showWelcomeOverlay() {
-    if (this.elements.welcomeOverlay) {
-      this.elements.welcomeOverlay.classList.remove('hidden');
-    }
+    this.setSetupVisible(true);
+    this.showSetupStep(0);
   },
 
   hideWelcomeOverlay() {
-    if (this.elements.welcomeOverlay) {
-      this.elements.welcomeOverlay.classList.add('hidden');
-    }
+    // handled by switching step
   },
 
   showToast(message, type = '', duration = 3200) {
@@ -218,40 +203,47 @@ export const PopupView = {
   },
 
   setTestButtonLoading(provider, state) {
-    const button = this.elements[`test${provider.charAt(0).toUpperCase() + provider.slice(1)}`];
+    const button = document.getElementById(`test-${provider}`); // updated ID
     if (!button) return;
 
-    const icon = button.querySelector('.material-symbols-rounded');
+    const icon = button.querySelector('.material-symbols-rounded'); // might not have one in "Testing" state for modern btn
+
     button.classList.remove('testing', 'test-ok', 'test-fail');
     button.disabled = false;
+    button.innerHTML = icon ? '' : button.innerHTML; // Clear content if needed
 
     if (state === 'loading') {
       button.classList.add('testing');
       button.disabled = true;
-      if (icon) {
-        icon.textContent = 'sync';
-        icon.classList.add('spin-loading');
-      }
+      button.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> Testing...`;
       return;
-    }
-
-    if (icon) {
-      icon.classList.remove('spin-loading');
     }
 
     if (state === 'ok') {
       button.classList.add('test-ok');
-      if (icon) icon.textContent = 'check_circle';
+      button.innerHTML = `<span class="material-symbols-rounded">check</span> Success`;
+      // Enable Next button for this provider
+      this.enableNextButton(provider);
       return;
     }
 
     if (state === 'fail') {
       button.classList.add('test-fail');
-      if (icon) icon.textContent = 'error';
+      button.innerHTML = `<span class="material-symbols-rounded">error</span> Failed`;
       return;
     }
 
-    if (icon) icon.textContent = 'science';
+    // Reset
+    button.innerHTML = `<span data-i18n="setup.test">Test Key</span>`;
+  },
+
+  enableNextButton(provider) {
+    const btnId = `btn-next-${provider}`;
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.add('pulse-next'); // add animation
+    }
   },
 
   setSetupStatus(provider, text, type = '') {
@@ -278,6 +270,48 @@ export const PopupView = {
     });
   },
 
+  showPasteNotification(input) {
+    if (!input) return;
+    const wrapper = input.closest('.input-group');
+    if (!wrapper) return;
+
+    // Add glow animation to input
+    input.classList.add('just-pasted');
+    setTimeout(() => input.classList.remove('just-pasted'), 700);
+  },
+
+  updateKeyFormatHint(provider, value, expectedPrefix) {
+    const hintEl = document.getElementById(`hint-${provider}`);
+    if (!hintEl) return;
+
+    const trimmed = (value || '').trim();
+    hintEl.classList.remove('valid', 'error');
+
+    const icon = hintEl.querySelector('.material-symbols-rounded');
+    if (!trimmed) {
+      if (icon) icon.textContent = 'info';
+      hintEl.style.color = '#999';
+      return;
+    }
+
+    if (expectedPrefix && trimmed.length > 5) {
+      if (trimmed.startsWith(expectedPrefix)) {
+        hintEl.classList.add('valid');
+        if (icon) icon.textContent = 'check_circle';
+        hintEl.style.color = '#4CAF50';
+      } else {
+        hintEl.classList.add('error');
+        if (icon) icon.textContent = 'error';
+        hintEl.style.color = '#F44336';
+      }
+    } else if (trimmed.length > 10) {
+      // No strict prefix (serper)
+      hintEl.classList.add('valid');
+      if (icon) icon.textContent = 'check_circle';
+      hintEl.style.color = '#4CAF50';
+    }
+  },
+
   setSettingsAttention(active) {
     if (this.elements.settingsBtn) {
       this.elements.settingsBtn.classList.toggle('attention', !!active);
@@ -285,45 +319,40 @@ export const PopupView = {
   },
 
   showAutoAdvance(callback) {
-    // Show a brief "moving to next step" indicator then auto-advance
-    const statusArea = document.querySelector('.setup-step-panel:not([style*="display: none"]) .step-status') ||
-                       document.querySelector('.setup-step-panel:not([style*="none"]) .step-status');
-    if (statusArea) {
-      const bar = document.createElement('div');
-      bar.className = 'auto-advance-bar';
-      bar.innerHTML = `
-        <div class="auto-advance-fill"></div>
-        <span class="auto-advance-text">${this.t('setup.autoAdvance')}</span>
-      `;
-      statusArea.parentNode.insertBefore(bar, statusArea.nextSibling);
-
-      this._autoAdvanceTimer = setTimeout(() => {
-        bar.remove();
-        if (typeof callback === 'function') callback();
-      }, 1800);
+    if (typeof callback === 'function') {
+      setTimeout(callback, 500);
     }
   },
 
-  clearAutoAdvance() {
-    if (this._autoAdvanceTimer) {
-      clearTimeout(this._autoAdvanceTimer);
-      this._autoAdvanceTimer = null;
-    }
-    document.querySelectorAll('.auto-advance-bar').forEach((el) => el.remove());
-  },
+  clearAutoAdvance() { },
 
   showConfetti() {
     const colors = ['#FF6B00', '#FFD700', '#27AE60', '#3498DB', '#E74C3C'];
-    for (let i = 0; i < 36; i += 1) {
+    for (let i = 0; i < 50; i += 1) {
       const piece = document.createElement('div');
       piece.className = 'confetti-piece';
       piece.style.left = `${Math.random() * 100}%`;
       piece.style.top = `${-12 + Math.random() * 18}px`;
       piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-      piece.style.animationDelay = `${Math.random() * 0.45}s`;
-      piece.style.animationDuration = `${1.3 + Math.random() * 0.9}s`;
+      piece.style.animation = `confettiFall ${1.5 + Math.random()}s linear forwards`;
+      piece.style.position = 'fixed';
+      piece.style.width = '8px';
+      piece.style.height = '8px';
+      piece.style.zIndex = '3000';
       document.body.appendChild(piece);
       setTimeout(() => piece.remove(), 2800);
+    }
+
+    if (!document.getElementById('confetti-style')) {
+      const style = document.createElement('style');
+      style.id = 'confetti-style';
+      style.textContent = `
+        @keyframes confettiFall {
+          0% { transform: translateY(0) rotate(0); opacity: 1; }
+          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+      `;
+      document.head.appendChild(style);
     }
   },
 
@@ -387,8 +416,18 @@ export const PopupView = {
 
           <div class="qa-card-answer">
             <div class="qa-card-answer-header">
-              <span class="material-symbols-rounded">check_circle</span>
-              ${escapeHtml(this.t('result.correctAnswer'))}
+              <span class="material-symbols-rounded">${(() => {
+          if (resultState === 'confirmed') return 'check_circle';
+          if (resultState === 'conflict') return 'warning';
+          if (item.aiFallback) return 'smart_toy';
+          return 'info';
+        })()}</span>
+              ${escapeHtml((() => {
+          if (resultState === 'confirmed') return this.t('result.verifiedAnswer');
+          if (resultState === 'conflict') return this.t('result.inconclusiveAnswer');
+          if (item.aiFallback) return this.t('result.aiSuggestion');
+          return this.t('result.correctAnswer');
+        })())}
             </div>
             ${answerLetter
           ? `<div class="answer-option"><div class="alternative answer-alternative"><span class="alt-letter">${escapeHtml(answerLetter)}</span><span class="alt-text">${escapeHtml(answerBody)}</span></div></div>`
@@ -412,8 +451,8 @@ export const PopupView = {
               // no-op
             }
             return `<div class="source-item">${source.link
-                ? `<a href="${source.link}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a>`
-                : `<span>${escapeHtml(host)}</span>`
+              ? `<a href="${source.link}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a>`
+              : `<span>${escapeHtml(host)}</span>`
               }</div>`;
           }).join('')}
                   </div>
@@ -542,9 +581,18 @@ export const PopupView = {
                 <div class="qa-card-question">${formatQuestionText(questionText)}</div>
 
                 <div class="qa-card-answer">
-                  <div class="qa-card-answer-header">
-                    <span class="material-symbols-rounded">check_circle</span>
-                    ${escapeHtml(this.t('result.correctAnswer'))}
+                  <div class="qa-card-answer-header ${item.aiFallback ? 'ai-suggestion' : (item.resultState === 'conflict' ? 'conflict-answer' : (item.resultState === 'confirmed' ? '' : 'suggested-answer'))}">
+                    <span class="material-symbols-rounded">${item.aiFallback ? 'auto_awesome'
+            : item.resultState === 'conflict' ? 'help_outline'
+              : item.resultState === 'confirmed' ? 'check_circle'
+                : 'lightbulb'
+          }</span>
+                    ${escapeHtml(
+            item.aiFallback ? (this.t('result.aiSuggestion') || 'AI Suggestion')
+              : item.resultState === 'conflict' ? (this.t('result.inconclusive') || 'Inconclusive')
+                : item.resultState === 'confirmed' ? this.t('result.correctAnswer')
+                  : (this.t('result.suggestedAnswer') || 'Suggested Answer')
+          )}
                   </div>
                   ${answerLetter
             ? `<div class="answer-option"><div class="alternative answer-alternative"><span class="alt-letter">${escapeHtml(answerLetter)}</span><span class="alt-text">${escapeHtml(answerBody)}</span></div></div>`

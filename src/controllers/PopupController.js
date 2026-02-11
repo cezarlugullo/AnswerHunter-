@@ -34,6 +34,24 @@ export const PopupController = {
   },
 
   setupEventListeners() {
+    this.view.elements.settingsBtn?.addEventListener('click', () => this.toggleSetupPanel());
+    // remove closeSetupBtn as we don't have a close button in full screen onboarding
+
+    // New Onboarding Bindings
+    this.view.elements.welcomeStartBtn?.addEventListener('click', () => this.handleWelcomeStart());
+
+    // Slide Navigation
+    this.view.elements.btnNextGroq?.addEventListener('click', () => this.goToSetupStep(2));
+    this.view.elements.prevGroq?.addEventListener('click', () => this.goToSetupStep(0)); // Back to welcome?
+
+    this.view.elements.btnNextSerper?.addEventListener('click', () => this.goToSetupStep(3));
+    this.view.elements.prevSerper?.addEventListener('click', () => this.goToSetupStep(1));
+
+    this.view.elements.prevGemini?.addEventListener('click', () => this.goToSetupStep(2));
+
+    this.view.elements.saveSetupBtn?.addEventListener('click', () => this.handleSaveSetup());
+    this.view.elements.setupSkipBtn?.addEventListener('click', () => this.handleSaveSetup());
+
     this.view.elements.extractBtn?.addEventListener('click', () => this.handleExtract());
     this.view.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
     this.view.elements.copyBtn?.addEventListener('click', () => this.handleCopyAll());
@@ -51,20 +69,14 @@ export const PopupController = {
 
     this.view.elements.resultsDiv?.addEventListener('click', (event) => this.handleResultClick(event));
 
-    this.view.elements.settingsBtn?.addEventListener('click', () => this.toggleSetupPanel());
-    this.view.elements.closeSetupBtn?.addEventListener('click', () => this.toggleSetupPanel(false));
-    this.view.elements.welcomeStartBtn?.addEventListener('click', () => this.handleWelcomeStart());
-
-    this.view.elements.saveSetupBtn?.addEventListener('click', () => this.handleSaveSetup());
-    this.view.elements.setupBackBtn?.addEventListener('click', () => this.goToSetupStep(this.currentSetupStep - 1));
-    this.view.elements.setupNextBtn?.addEventListener('click', () => this.goToSetupStep(this.currentSetupStep + 1));
-    this.view.elements.setupSkipBtn?.addEventListener('click', () => this.handleSkipStep());
-
-    this.view.elements.languageSelect?.addEventListener('change', async (event) => {
-      await this.handleLanguageChange(event.target.value);
+    this.view.elements.languageToggle?.addEventListener('click', async (event) => {
+      const btn = event.target.closest('.lang-btn');
+      if (btn && btn.dataset.lang) {
+        await this.handleLanguageChange(btn.dataset.lang);
+      }
     });
 
-    document.querySelectorAll('.btn-test').forEach((button) => {
+    document.querySelectorAll('.btn-test-modern').forEach((button) => {
       button.addEventListener('click', () => {
         const provider = button.dataset.provider;
         if (provider) this.handleTestProvider(provider);
@@ -75,13 +87,27 @@ export const PopupController = {
       this.view.setupVisibilityToggle(button);
     });
 
+    // Auto-paste detection
     [
-      this.view.elements.inputGroq,
-      this.view.elements.inputSerper,
-      this.view.elements.inputGemini
-    ].forEach((input) => {
+      { input: this.view.elements.inputGroq, provider: 'groq', prefix: 'gsk_' },
+      { input: this.view.elements.inputSerper, provider: 'serper', prefix: '' },
+      { input: this.view.elements.inputGemini, provider: 'gemini', prefix: 'AIza' }
+    ].forEach(({ input, provider, prefix }) => {
       if (!input) return;
-      input.addEventListener('input', () => this.saveDraftKeys());
+
+      input.addEventListener('paste', () => {
+        setTimeout(() => {
+          this.saveDraftKeys();
+          this.view.showPasteNotification(input);
+          this.view.updateKeyFormatHint(provider, input.value, prefix);
+        }, 50);
+      });
+
+      input.addEventListener('input', () => {
+        this.saveDraftKeys();
+        this.view.updateKeyFormatHint(provider, input.value,
+          provider === 'groq' ? 'gsk_' : provider === 'gemini' ? 'AIza' : '');
+      });
     });
   },
 
@@ -119,9 +145,9 @@ export const PopupController = {
     if (!readiness.ready) {
       this.view.setSettingsAttention(true);
       if (!this.onboardingFlags.welcomed) {
-        this.view.showWelcomeOverlay();
+        this.view.showWelcomeOverlay(); // Will show step 0
       } else if (!this.onboardingFlags.setupDone) {
-        this.toggleSetupPanel(true);
+        this.toggleSetupPanel(true); // Will determine current step (1+)
       }
       return;
     }
@@ -166,7 +192,7 @@ export const PopupController = {
     this.view.hideWelcomeOverlay();
     this.onboardingFlags.welcomed = true;
     this.saveOnboardingFlags();
-    this.toggleSetupPanel(true);
+    this.goToSetupStep(1); // Move to Groq step
   },
 
   async toggleSetupPanel(forceState) {
@@ -194,25 +220,17 @@ export const PopupController = {
   },
 
   goToSetupStep(step) {
-    let normalizedStep = Number(step) || 1;
-    if (normalizedStep < 1) normalizedStep = 1;
+    let normalizedStep = Number(step);
+    if (normalizedStep < 0) normalizedStep = 0;
     if (normalizedStep > 3) normalizedStep = 3;
 
-    this.view.clearAutoAdvance();
     this.currentSetupStep = normalizedStep;
     this.view.showSetupStep(normalizedStep);
-    this.updateStepperState();
+    // this.updateStepperState(); // Not needed in new design or handled by view logic
   },
 
   async updateStepperState() {
-    const settings = await SettingsModel.getSettings();
-    const completed = [];
-
-    if (SettingsModel.isPresent(settings.groqApiKey)) completed.push(1);
-    if (SettingsModel.isPresent(settings.serperApiKey)) completed.push(2);
-    if (SettingsModel.isPresent(settings.geminiApiKey)) completed.push(3);
-
-    this.view.updateStepper(this.currentSetupStep, completed);
+    // No-op for new design
   },
 
   async handleTestProvider(provider) {
@@ -243,9 +261,11 @@ export const PopupController = {
         await this.updateStepperState();
 
         // Auto-advance to next step after successful test
+        // Auto-advance
         if (this.currentSetupStep < 3) {
           this.view.showAutoAdvance(() => {
-            this.goToSetupStep(this.currentSetupStep + 1);
+            // In new design, user clicks Next, but we can auto-enable
+            // view.enableNextButton(provider) is called by view.setTestButtonLoading
           });
         }
       } else {
@@ -263,13 +283,7 @@ export const PopupController = {
     }
   },
 
-  handleSkipStep() {
-    if (this.currentSetupStep === 3) {
-      this.handleSaveSetup();
-    } else {
-      this.goToSetupStep(this.currentSetupStep + 1);
-    }
-  },
+  // handleSkipStep removed/merged into handleSaveSetup
 
   async testGroqKey(key) {
     try {
@@ -528,6 +542,89 @@ export const PopupController = {
         }
       }
 
+      // 0) Cache: if we already captured the official gabarito for this exact question, return immediately.
+      const cached = await this._getOfficialAnswerFromCache(displayQuestion);
+      if (cached?.letter) {
+        const optionsMap = this._extractOptionsMap(displayQuestion);
+        const answerText = optionsMap[cached.letter] || '';
+
+        const direct = [{
+          question: displayQuestion,
+          answer: `Letra ${cached.letter}: ${answerText}`.trim(),
+          answerLetter: cached.letter,
+          answerText,
+          sources: [{
+            title: 'Cache (gabarito oficial)',
+            link: cached.sourceUrl || '',
+            type: 'cache'
+          }],
+          bestLetter: cached.letter,
+          votes: { [cached.letter]: 10 },
+          confidence: 0.95,
+          resultState: 'confirmed',
+          reason: 'confirmed_by_sources',
+          title: this.t('result.title'),
+          aiFallback: false
+        }];
+
+        const withSaved = direct.map((item) => ({
+          ...item,
+          saved: StorageModel.isSaved(displayQuestion)
+        }));
+
+        this.view.appendResults(withSaved);
+        await this.saveLastResults(withSaved);
+        this.view.showStatus('success', this.t('status.answersFound', { count: 1 }));
+        this.view.toggleViewSection('view-search');
+        this.view.setButtonDisabled('copyBtn', false);
+        return;
+      }
+
+      // 1) If the platform already shows the gabarito (post-answer), capture it as official truth and cache it.
+      const pageGab = await this._tryExtractPageGabarito(tab.id, displayQuestion);
+      if (pageGab?.letter && pageGab.confidence >= 0.85) {
+        const optionsMap = this._extractOptionsMap(displayQuestion);
+        const answerText = optionsMap[pageGab.letter] || '';
+
+        await this._setOfficialAnswerCache(displayQuestion, {
+          letter: pageGab.letter,
+          sourceUrl: tab.url || '',
+          evidence: pageGab.evidence || '',
+          updatedAt: Date.now()
+        });
+
+        const direct = [{
+          question: displayQuestion,
+          answer: `Letra ${pageGab.letter}: ${answerText}`.trim(),
+          answerLetter: pageGab.letter,
+          answerText,
+          sources: [{
+            title: 'Gabarito da pagina',
+            link: tab.url || '',
+            type: 'page'
+          }],
+          bestLetter: pageGab.letter,
+          votes: { [pageGab.letter]: 15 },
+          confidence: Math.max(0.85, Math.min(0.99, pageGab.confidence)),
+          resultState: 'confirmed',
+          reason: 'confirmed_by_sources',
+          title: this.t('result.title'),
+          aiFallback: false
+        }];
+
+        const withSaved = direct.map((item) => ({
+          ...item,
+          saved: StorageModel.isSaved(displayQuestion)
+        }));
+
+        this.view.appendResults(withSaved);
+        await this.saveLastResults(withSaved);
+        this.view.showStatus('success', this.t('status.answersFound', { count: 1 }));
+        this.view.toggleViewSection('view-search');
+        this.view.setButtonDisabled('copyBtn', false);
+        return;
+      }
+
       this.view.showStatus('loading', this.t('status.searchingGoogle'));
 
       const searchResults = await SearchService.searchOnly(displayQuestion);
@@ -575,6 +672,98 @@ export const PopupController = {
       }
     } finally {
       this.view.setButtonDisabled('searchBtn', false);
+    }
+  },
+
+  _extractOptionsMap(text) {
+    const map = {};
+    const lines = String(text || '').split('\n');
+    const re = /^\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+    for (const line of lines) {
+      const m = line.match(re);
+      if (m) map[m[1].toUpperCase()] = (m[2] || '').trim();
+    }
+    return map;
+  },
+
+  _normalizeForFingerprint(text) {
+    return String(text || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, 2200);
+  },
+
+  _fnv1a32(str) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < str.length; i += 1) {
+      hash ^= str.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193);
+      hash >>>= 0;
+    }
+    return ('0000000' + hash.toString(16)).slice(-8);
+  },
+
+  _makeQuestionFingerprint(displayQuestion) {
+    const norm = this._normalizeForFingerprint(displayQuestion);
+    return `qa_${this._fnv1a32(norm)}`;
+  },
+
+  async _getOfficialAnswerFromCache(displayQuestion) {
+    try {
+      const key = this._makeQuestionFingerprint(displayQuestion);
+      const data = await chrome.storage.local.get(['officialAnswerCache']);
+      const cache = data?.officialAnswerCache || {};
+      return cache[key] || null;
+    } catch (_) {
+      return null;
+    }
+  },
+
+  async _setOfficialAnswerCache(displayQuestion, value) {
+    try {
+      const key = this._makeQuestionFingerprint(displayQuestion);
+      const data = await chrome.storage.local.get(['officialAnswerCache']);
+      const cache = data?.officialAnswerCache || {};
+      cache[key] = value;
+
+      // Keep the cache bounded
+      const keys = Object.keys(cache);
+      if (keys.length > 500) {
+        keys
+          .map((k) => ({ k, t: Number(cache[k]?.updatedAt || 0) }))
+          .sort((a, b) => a.t - b.t)
+          .slice(0, Math.max(0, keys.length - 450))
+          .forEach((entry) => { delete cache[entry.k]; });
+      }
+
+      await chrome.storage.local.set({ officialAnswerCache: cache });
+    } catch (_) {
+      // ignore
+    }
+  },
+
+  async _tryExtractPageGabarito(tabId, displayQuestion) {
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId, allFrames: true },
+        function: ExtractionService.extractGabaritoFromPageScript,
+        args: [displayQuestion || '']
+      });
+
+      let best = null;
+      (results || []).forEach((r) => {
+        const gab = r?.result;
+        if (gab?.letter && (!best || (gab.confidence || 0) > (best.confidence || 0))) {
+          best = gab;
+        }
+      });
+
+      return best;
+    } catch (_) {
+      return null;
     }
   },
 
