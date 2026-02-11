@@ -60,8 +60,6 @@ export function formatQuestionText(text) {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const trimGlobalNoise = (raw) => {
         if (!raw) return '';
-        // Only cut on isolated labels (start of line or after dot/break),
-        // never in the middle of sentences like "Check the correct alternative..."
         const noiseRe = /(?:^|\n)\s*(?:Gabarito(?:\s+Comentado)?|Resposta\s+sugerida|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eê]\s+selecionou|Fontes?\s*\(\d+\)|check_circle)\b/im;
         const idx = raw.search(noiseRe);
         if (idx > 10) return raw.substring(0, idx).trim();
@@ -69,13 +67,20 @@ export function formatQuestionText(text) {
     };
     const trimNoise = (s) => {
         if (!s) return s;
-        // Only cut when the label appears isolated (not inside "check the correct alternative")
-        const noiseRe = /(?:^|\n)\s*(?:Resposta\s+correta\s*[:\-]|Parab[eé]ns|Gabarito(?:\s+Comentado)?|Alternativa\s+correta\s*[:\-]|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eê]\s+selecionou|Marcar\s+para\s+revis[ãa]o)/im;
-        const idx = s.search(noiseRe);
-        if (idx > 10) return s.substring(0, idx).trim();
-        return s.trim();
-    };
+        let value = String(s).trim();
 
+        // Prefer line-bounded labels to avoid cutting valid prose.
+        const isolatedNoiseRe = /(?:^|\n)\s*(?:Resposta\s+correta\s*[:\-]|Parab[eé]ns|Gabarito(?:\s+Comentado)?|Alternativa\s+correta\s*[:\-]|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eê]\s+selecionou|Marcar\s+para\s+revis[ãa]o)\b/im;
+        let idx = value.search(isolatedNoiseRe);
+        if (idx > 10) return value.substring(0, idx).trim();
+
+        // Also cut inline tails commonly appended to an alternative.
+        const inlineNoiseRe = /\b(?:Gabarito(?:\s+Comentado)?|Resposta\s+correta|Alternativa\s+correta|Parab[eé]ns|Voc[eê]\s+acertou|Confira\s+o\s+gabarito)\b/i;
+        idx = value.search(inlineNoiseRe);
+        if (idx > 20) value = value.substring(0, idx).trim();
+
+        return value.trim();
+    };
     // NEW: Limit text to only the first question (cut after 5 alternatives or next question)
     const limitToFirstQuestion = (raw) => {
         const lines = raw.split('\n');

@@ -151,7 +151,11 @@ export const ApiService = {
             };
         }
 
-        const html = String(final.text || '').slice(0, maxHtmlChars);
+        const rawHtml = String(final.text || '').slice(0, maxHtmlChars);
+        const html = rawHtml
+            // Strip active content from third-party pages to avoid CSP noise in extension context.
+            .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+            .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, ' ');
 
         let derivedText = '';
         try {
@@ -225,25 +229,96 @@ export const ApiService = {
     async searchWithSerper(query) {
         const { serperApiUrl, serperApiKey } = await this._getSettings();
 
+        const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+        const normalizeForMatch = (s) => String(s || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const STOPWORDS = new Set([
+            'que', 'para', 'com', 'sem', 'dos', 'das', 'nos', 'nas', 'uma', 'uns', 'umas', 'de', 'da', 'do',
+            'e', 'o', 'a', 'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos', 'se', 'um', 'mais', 'menos',
+            'sobre', 'apenas', 'indica', 'afirmativa', 'fator', 'importante', 'desempenho'
+        ]);
+        const toTokens = (text) => normalizeForMatch(text)
+            .split(' ')
+            .filter(t => t.length >= 3 && !STOPWORDS.has(t));
+        const extractOptionHints = (raw) => {
+            const text = String(raw || '').replace(/\r\n/g, '\n');
+            const re = /(?:^|[\n\r\t ;])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:[\n\r\t ;][A-E]\s*[\)\.\-:]\s)|$)/gi;
+            const out = [];
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                const body = normalizeSpace(m[2] || '')
+                    .replace(/\b(?:gabarito|resposta\s+correta|parab(?:ens|\u00e9ns))\b.*$/i, '')
+                    .trim();
+                if (body.length >= 12) out.push(body);
+                if (out.length >= 5) break;
+            }
+            return out;
+        };
+
+        const buildHintQuery = (stem, options) => {
+            if (!options || options.length < 2) return '';
+            const pickDistributedOptions = (arr) => {
+                if (!arr || arr.length === 0) return [];
+                const picked = [];
+                const pushUnique = (v) => {
+                    if (!v) return;
+                    if (!picked.includes(v)) picked.push(v);
+                };
+                pushUnique(arr[0]);
+                pushUnique(arr[1]);
+                pushUnique(arr[arr.length - 1]); // keep tail option (often D/E) in the query
+                pushUnique(arr[2]);
+                return picked.slice(0, 4);
+            };
+            const hints = pickDistributedOptions(options)
+                .map((opt) => normalizeSpace(opt).split(' ').slice(0, 7).join(' '))
+                .filter(Boolean)
+                .map((h) => `"${h}"`);
+            if (hints.length === 0) return '';
+            return normalizeSpace(`${stem} ${hints.join(' ')} gabarito`).slice(0, 330);
+        };
+
+        const runSerper = async (q, num = 8) => {
+            return this._fetch(serperApiUrl, {
+                method: 'POST',
+                headers: {
+                    'X-API-KEY': serperApiKey,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    q,
+                    gl: 'br',
+                    hl: 'pt-br',
+                    num
+                })
+            });
+        };
+
         // 1. Query cleaning (internal cleanQueryForSearch)
-        let cleanQuery = query
-            .replace(/^(?:Questão|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '')
-            .replace(/Marcar para revisão/gi, '')
-            .replace(/\s*(Responda|O que você achou|Relatar problema|Voltar|Avançar|Menu|Finalizar)[\s\S]*/gi, '')
+        const rawQuery = String(query || '')
+            // Fix collapsed words from OCR/extraction: "dadosNoSQL" -> "dados NoSQL"
+            .replace(/([a-z\u00e0-\u00ff])([A-Z])/g, '$1 $2');
+
+        let cleanQuery = rawQuery
+            .replace(/^(?:Quest(?:ao|\u00e3o)|Pergunta|Atividade|Exerc(?:icio|\u00edcio))\s*\d+[\s.:-]*/gi, '')
+            .replace(/Marcar para revis(?:ao|\u00e3o)/gi, '')
+            .replace(/\s*(Responda|O que voc(?:e|\u00ea) achou|Relatar problema|Voltar|Avan(?:car|\u00e7ar)|Menu|Finalizar)[\s\S]*/gi, '')
+            .replace(/\bNo\s+SQL\b/gi, 'NoSQL')
             .replace(/\s+/g, ' ')
             .trim();
 
-        // If it has "?" and the text before is substantial, use only up to "?"
-        // But only if it is not a question without a question mark (like "select the correct one")
         if (cleanQuery.includes('?')) {
             const questionEnd = cleanQuery.indexOf('?');
             const questionText = cleanQuery.substring(0, questionEnd + 1).trim();
-            // Only cut if it really seems to be the main question
             if (questionText.length >= 50) cleanQuery = questionText;
         }
 
-        // Remove alternatives ONLY if clearly marked with A), B), etc
-        const optionMarkers = [...cleanQuery.matchAll(/(^|\s)[A-E]\s*[\)\.\-:]\s/g)];
+        const optionMarkers = [...cleanQuery.matchAll(/(^|[\s:;])[A-E]\s*[\)\.\-:]\s/gi)];
         if (optionMarkers.length >= 2) {
             const firstMarkerIndex = optionMarkers[0].index ?? -1;
             if (firstMarkerIndex > 30) {
@@ -251,57 +326,119 @@ export const ApiService = {
             }
         }
 
-        cleanQuery = cleanQuery.substring(0, 250); // Limit
-
+        cleanQuery = cleanQuery.substring(0, 250);
         console.log(`AnswerHunter: Query limpa: "${cleanQuery}"`);
 
+        const optionHints = extractOptionHints(rawQuery);
+        const hintQuery = buildHintQuery(cleanQuery, optionHints);
+        if (hintQuery) {
+            console.log(`AnswerHunter: Query com alternativas: "${hintQuery}"`);
+        }
+
         const TOP_SITES = ['brainly.com.br', 'passeidireto.com', 'studocu.com'];
-        const siteFilter = TOP_SITES.map(s => `site:${s}`).join(' OR ');
+        const siteFilter = TOP_SITES.map(s2 => `site:${s2}`).join(' OR ');
+        const domainFromLink = (link) => {
+            try {
+                return new URL(link).hostname.replace(/^www\./, '');
+            } catch (_) {
+                return '';
+            }
+        };
+        const hostBoost = {
+            'passeidireto.com': 1.45,
+            'qconcursos.com': 1.55,
+            'qconcursos.com.br': 1.55,
+            'studocu.com': 1.1,
+            'brainly.com.br': 0.9,
+            'brainly.com': 0.9
+        };
+        const stemTokens = toTokens(cleanQuery).slice(0, 12);
+        const optionTokens = toTokens(optionHints.join(' ')).slice(0, 10);
+        const scoreOrganic = (item, position = 0, queryBoost = 0) => {
+            const link = String(item?.link || '');
+            const host = domainFromLink(link);
+            const normHay = normalizeForMatch(`${item?.title || ''} ${item?.snippet || ''} ${link}`);
+            let stemHits = 0;
+            let optionHits = 0;
+            for (const t of stemTokens) if (normHay.includes(t)) stemHits += 1;
+            for (const t of optionTokens) if (normHay.includes(t)) optionHits += 1;
+            const hostScore = hostBoost[host] || 0.65;
+            const positionScore = Math.max(0, 1.25 - (position * 0.11));
+            return (stemHits * 0.35) + (optionHits * 0.28) + hostScore + positionScore + queryBoost;
+        };
+        const dedupeAndRank = (entries) => {
+            const byLink = new Map();
+            for (const e of entries) {
+                const link = String(e?.item?.link || '').trim();
+                if (!link) continue;
+                const prev = byLink.get(link);
+                if (!prev || e.score > prev.score) byLink.set(link, e);
+            }
+            return Array.from(byLink.values())
+                .sort((a, b) => b.score - a.score)
+                .map(e => e.item);
+        };
+        const hasTrustedCoverage = (items) => {
+            const hosts = new Set((items || []).map(it => domainFromLink(it?.link || '')));
+            return hosts.has('passeidireto.com') || hosts.has('qconcursos.com') || hosts.has('qconcursos.com.br');
+        };
 
         try {
-            // First: search WITHOUT filter
-            console.log(`AnswerHunter: Buscando resposta...`);
-            let data = await this._fetch(serperApiUrl, {
-                method: 'POST',
-                headers: {
-                    'X-API-KEY': serperApiKey,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    q: cleanQuery + ' resposta correta',
-                    gl: 'br',
-                    hl: 'pt-br',
-                    num: 8
-                })
-            });
+            console.log('AnswerHunter: Buscando resposta...');
+            const pooled = [];
+            const pushScored = (items, queryBoost) => {
+                (items || []).forEach((it, idx) => {
+                    pooled.push({
+                        item: it,
+                        score: scoreOrganic(it, idx, queryBoost)
+                    });
+                });
+            };
 
-            if (data.organic && data.organic.length > 0) {
-                console.log(`AnswerHunter: ${data.organic.length} resultados encontrados no Serper`);
-                return data.organic;
+            const firstQuery = `${cleanQuery} resposta correta`;
+            const firstData = await runSerper(firstQuery, 8);
+            pushScored(firstData?.organic || [], 0.55);
+
+            if (hintQuery) {
+                const secondData = await runSerper(hintQuery, 8);
+                pushScored(secondData?.organic || [], 0.7);
             }
 
-            // Fallback: with filter
-            console.log('AnswerHunter: Tentando com sites educacionais...');
-            data = await this._fetch(serperApiUrl, {
-                method: 'POST',
-                headers: {
-                    'X-API-KEY': serperApiKey,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    q: cleanQuery + ' ' + siteFilter,
-                    gl: 'br',
-                    hl: 'pt-br',
-                    num: 5
-                })
-            });
+            // Exact query tends to surface the same URL a user sees on manual Google.
+            const exactQuery = `"${cleanQuery.replace(/[:"']/g, '').slice(0, 180)}"`;
+            if (exactQuery.length > 20) {
+                const exactData = await runSerper(exactQuery, 8);
+                pushScored(exactData?.organic || [], 0.85);
+            }
 
-            return data.organic || [];
+            let ranked = dedupeAndRank(pooled);
+
+            // If still weak on trusted educational sources, run domain-focused expansion.
+            if (ranked.length < 10 || !hasTrustedCoverage(ranked.slice(0, 6))) {
+                const filteredBase = await runSerper(`${cleanQuery} ${siteFilter}`.slice(0, 340), 6);
+                pushScored(filteredBase?.organic || [], 0.5);
+
+                if (hintQuery) {
+                    const filteredHint = await runSerper(`${hintQuery} ${siteFilter}`.slice(0, 340), 6);
+                    pushScored(filteredHint?.organic || [], 0.58);
+                }
+
+                ranked = dedupeAndRank(pooled);
+            }
+
+            if (ranked.length > 0) {
+                console.log(`AnswerHunter: ${ranked.length} resultados combinados e ranqueados no Serper`);
+                return ranked.slice(0, 12);
+            }
+
+            return [];
         } catch (e) {
             console.error('AnswerHunter: Erro na busca:', e);
             return [];
         }
     },
+
+
 
     /**
      * Verifies match between question and source

@@ -7,7 +7,7 @@ AnswerHunter is a Chrome extension that extracts educational questions from the 
 
 Main design goals:
 - Keep setup simple for non-technical users.
-- Avoid backend dependency for normal usage.
+- Run 100% locally in the extension.
 - Prioritize evidence over pure model guessing.
 - Expose uncertainty (`Confirmed`, `Conflict`, `Inconclusive`).
 
@@ -57,7 +57,7 @@ Optional:
 Security notes:
 - no hardcoded API keys in repository
 - keys stored locally in `chrome.storage.sync`
-- no mandatory backend required
+- no backend service in runtime flow
 
 ### 6. Search reliability system
 `SearchService` applies:
@@ -120,7 +120,7 @@ AnswerHunter é uma extensão Chrome que extrai questões da aba ativa, busca ev
 
 Objetivos principais:
 - setup simples para usuário leigo
-- sem dependência obrigatória de backend
+- execução 100% local na extensão
 - priorizar evidência em vez de chute de modelo
 - expor incerteza (`Confirmado`, `Conflito`, `Inconclusivo`)
 
@@ -170,7 +170,7 @@ Opcional:
 Notas de segurança:
 - sem chaves hardcoded no repositório
 - chaves guardadas em `chrome.storage.sync`
-- sem backend obrigatório para uso normal
+- sem serviço de backend no fluxo de execução
 
 ### 6. Sistema de confiabilidade da busca
 `SearchService` aplica:

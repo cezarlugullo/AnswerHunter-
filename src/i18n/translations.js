@@ -34,6 +34,7 @@ export const TRANSLATIONS = {
     'status.couldNotGetAnswer': 'Could not get an answer.',
     'status.searchError': 'Search error: {message}',
     'status.copied': 'Copied to clipboard.',
+    'status.restrictedPage': 'Cannot use this extension on restricted pages (chrome://, etc).',
 
     'setup.welcome.title': 'Welcome to AnswerHunter',
     'setup.welcome.description': 'Before you start, set up your API keys. This takes less than 2 minutes.',
@@ -177,6 +178,7 @@ export const TRANSLATIONS = {
     'setup.feature.private': '100% Private',
     'setup.feature.free': 'Free APIs',
     'setup.timeHint': 'Usually takes about 2 minutes',
+    'setup.keyLabel': 'API key',
     'setup.howToGetKey': 'How to get your key',
     'setup.stepByStepGuide': 'Step-by-step guide',
     'setup.beginHint': 'Start with button 1 below. After copying the key, come back and paste it here.',
@@ -206,7 +208,13 @@ export const TRANSLATIONS = {
     'setup.test.short': 'Validating...',
     'setup.test.success': 'Key validated',
     'setup.test.failed': 'Try again',
-    'setup.skipGemini': 'Skip Gemini, finish setup'
+    'setup.skipGemini': 'Skip Gemini, finish setup',
+    'setup.changeKey': 'Change this key',
+    'setup.closeSettings': 'Close settings',
+    'setup.keyStatus.configured': 'Configured',
+    'setup.keyStatus.missing': 'Not configured',
+    'placeholder.searchHint': 'Open a question in your browser and click "Search" or "Extract".',
+    'binder.goToSearch': 'Go to Search'
   },
 
   'pt-BR': {
@@ -242,6 +250,7 @@ export const TRANSLATIONS = {
     'status.couldNotGetAnswer': 'Não foi possível obter resposta.',
     'status.searchError': 'Erro na busca: {message}',
     'status.copied': 'Copiado para a área de transferência.',
+    'status.restrictedPage': 'Não é possível usar a extensão em páginas restritas (chrome://, etc).',
 
     'setup.welcome.title': 'Bem-vindo ao AnswerHunter',
     'setup.welcome.description': 'Antes de começar, configure suas chaves de API. Isso leva menos de 2 minutos.',
@@ -385,6 +394,7 @@ export const TRANSLATIONS = {
     'setup.feature.private': '100% Privado',
     'setup.feature.free': 'APIs Grátis',
     'setup.timeHint': 'Leva cerca de 2 minutos',
+    'setup.keyLabel': 'Chave da API',
     'setup.howToGetKey': 'Como obter sua chave',
     'setup.stepByStepGuide': 'Guia passo a passo',
     'setup.beginHint': 'Comece pelo botão 1 abaixo. Depois de copiar a chave, volte e cole aqui.',
@@ -414,7 +424,12 @@ export const TRANSLATIONS = {
     'setup.test.short': 'Validando...',
     'setup.test.success': 'Chave validada',
     'setup.test.failed': 'Tentar novamente',
-    'setup.skipGemini': 'Pular Gemini e finalizar'
+    'setup.skipGemini': 'Pular Gemini e finalizar',
+    'setup.changeKey': 'Alterar esta chave',
+    'setup.closeSettings': 'Fechar configura\u00e7\u00f5es',
+    'setup.keyStatus.configured': 'Configurada',
+    'setup.keyStatus.missing': 'N\u00e3o configurada',
+    'placeholder.searchHint': 'Abra uma quest\u00e3o no navegador e clique em "Buscar" ou "Extrair".',
+    'binder.goToSearch': 'Ir para Buscar'
   }
 };
-

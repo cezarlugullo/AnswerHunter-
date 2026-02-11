@@ -11,6 +11,7 @@ export const PopupController = {
   view: null,
   currentSetupStep: 1,
   onboardingFlags: { welcomed: false, setupDone: false },
+  _isReopenMode: false,
 
   async init(view) {
     this.view = view;
@@ -98,6 +99,7 @@ export const PopupController = {
       input.addEventListener('paste', () => {
         setTimeout(() => {
           this.saveDraftKeys();
+          this.resetProviderValidation(provider);
           this.view.showPasteNotification(input);
           this.view.updateKeyFormatHint(provider, input.value, prefix);
         }, 50);
@@ -105,9 +107,36 @@ export const PopupController = {
 
       input.addEventListener('input', () => {
         this.saveDraftKeys();
+        this.resetProviderValidation(provider);
         this.view.updateKeyFormatHint(provider, input.value,
           provider === 'groq' ? 'gsk_' : provider === 'gemini' ? 'AIza' : '');
       });
+    });
+
+    // Onboarding Language Toggle
+    this.view.elements.obLanguageToggle?.addEventListener('click', async (event) => {
+      const btn = event.target.closest('.ob-lang-btn');
+      if (btn && btn.dataset.lang) {
+        await this.handleLanguageChange(btn.dataset.lang);
+      }
+    });
+
+    // Change Key Buttons (settings reopen mode)
+    ['groq', 'serper', 'gemini'].forEach(provider => {
+      const cap = provider.charAt(0).toUpperCase() + provider.slice(1);
+      const changeBtn = this.view.elements[`changeKey${cap}`];
+      if (changeBtn) {
+        changeBtn.addEventListener('click', () => this.handleChangeKey(provider));
+      }
+      const closeBtn = this.view.elements[`closeSettings${cap}`];
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => this.handleCloseSettings());
+      }
+    });
+
+    // Binder CTA: Go to Search
+    this.view.elements.binderGoToSearch?.addEventListener('click', () => {
+      this.view.switchTab('search');
     });
   },
 
@@ -200,22 +229,30 @@ export const PopupController = {
     const shouldShow = forceState !== undefined ? forceState : isHidden;
 
     if (shouldShow) {
+      // Determine if this is a "reopen" (user already completed setup)
+      const isReopen = this.onboardingFlags.setupDone;
+      this._isReopenMode = isReopen;
+
       this.view.setSetupVisible(true);
       const startStep = await this.determineCurrentStep();
-      // If startStep is 1 (Groq) but we haven't "welcomed" yet, maybe start at 0?
-      // Logic in ensureSetupReady handles welcome overlay separate from setup panel usually.
-      // In new design, Welcome is Step 0.
-      // determineCurrentStep returns 1, 2 or 3.
 
-      // If we simply toggle settings, we probably want to see the current status or step 1.
-      // If strictly onboarding, we might want step 0.
+      if (isReopen) {
+        // Show reopen UX: key status chips, change-key buttons, close-settings buttons
+        this.view.setSettingsReopenMode(true);
+        const settings = await SettingsModel.getSettings();
+        this.view.showKeyStatus('groq', SettingsModel.isPresent(settings.groqApiKey));
+        this.view.showKeyStatus('serper', SettingsModel.isPresent(settings.serperApiKey));
+        this.view.showKeyStatus('gemini', SettingsModel.isPresent(settings.geminiApiKey));
+      } else {
+        this.view.setSettingsReopenMode(false);
+      }
 
-      // Let's rely on goToSetupStep. 
-      // If the user manually opens settings (toggle), we show step 1 (Groq) or current missing key.
       this.goToSetupStep(startStep);
       return;
     }
 
+    this._isReopenMode = false;
+    this.view.setSettingsReopenMode(false);
     this.view.setSetupVisible(false);
   },
 
@@ -238,6 +275,17 @@ export const PopupController = {
 
   async updateStepperState() {
     // No-op for new design
+  },
+
+  resetProviderValidation(provider) {
+    this.view.setTestButtonLoading(provider, '');
+    this.view.setSetupStatus(provider, '');
+    const inputName = `input${provider.charAt(0).toUpperCase() + provider.slice(1)}`;
+    const input = this.view.elements[inputName];
+    if (input) input.classList.remove('input-valid');
+    if (provider === 'groq' || provider === 'serper') {
+      this.view.disableNextButton(provider);
+    }
   },
 
   async handleTestProvider(provider) {
@@ -326,6 +374,38 @@ export const PopupController = {
     } catch (_) {
       return false;
     }
+  },
+
+  /**
+   * Handle "Change this key" button click in settings reopen mode.
+   * Reveals the input card, hides the key status chip, focuses the input.
+   */
+  handleChangeKey(provider) {
+    const cap = provider.charAt(0).toUpperCase() + provider.slice(1);
+    // Hide the key status chip
+    this.view.hideKeyStatus(provider);
+    // Show the key card (ensure it's visible)
+    const keyCard = this.view.elements[`input${cap}`]?.closest('.ob-key-card');
+    if (keyCard) keyCard.style.display = '';
+    // Focus the input
+    const input = this.view.elements[`input${cap}`];
+    if (input) {
+      input.type = 'text'; // Show the key
+      input.focus();
+      input.select();
+    }
+    // Hide the change-key button itself
+    const changeBtn = this.view.elements[`changeKey${cap}`];
+    if (changeBtn) changeBtn.classList.add('hidden');
+  },
+
+  /**
+   * Handle "Close settings" button click. Closes the onboarding panel.
+   */
+  handleCloseSettings() {
+    this._isReopenMode = false;
+    this.view.setSettingsReopenMode(false);
+    this.view.setSetupVisible(false);
   },
 
   async handleSaveSetup() {
@@ -438,6 +518,11 @@ export const PopupController = {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
+      if (!tab?.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:') || tab.url.startsWith('chrome-extension://')) {
+        this.view.showStatus('error', this.t('status.restrictedPage'));
+        return;
+      }
+
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         function: ExtractionService.extractQAContentScript
@@ -492,6 +577,11 @@ export const PopupController = {
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      if (!tab?.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:') || tab.url.startsWith('chrome-extension://')) {
+        this.view.showStatus('error', this.t('status.restrictedPage'));
+        return;
+      }
 
       const extractionResults = await chrome.scripting.executeScript({
         target: { tabId: tab.id, allFrames: true },
@@ -684,11 +774,18 @@ export const PopupController = {
 
   _extractOptionsMap(text) {
     const map = {};
+    const cleanOptionBody = (raw) => {
+      let body = String(raw || '').replace(/\s+/g, ' ').trim();
+      const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o\s+gabarito|explica[cç][aã]o)\b/i;
+      const idx = body.search(noiseMarker);
+      if (idx > 20) body = body.slice(0, idx).trim();
+      return body.replace(/[;:,\-.\s]+$/g, '').trim();
+    };
     const lines = String(text || '').split('\n');
     const re = /^\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
     for (const line of lines) {
       const m = line.match(re);
-      if (m) map[m[1].toUpperCase()] = (m[2] || '').trim();
+      if (m) map[m[1].toUpperCase()] = cleanOptionBody(m[2]);
     }
     return map;
   },

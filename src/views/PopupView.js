@@ -8,6 +8,15 @@ export const PopupView = {
   init() {
     this.cacheElements();
     this._setupTutorialToggles();
+    this._setupGlowBackground();
+  },
+
+  /** Interactive glow background that follows mouse cursor */
+  _setupGlowBackground() {
+    document.addEventListener('mousemove', (e) => {
+      document.documentElement.style.setProperty('--ah-mouse-x', e.clientX + 'px');
+      document.documentElement.style.setProperty('--ah-mouse-y', e.clientY + 'px');
+    });
   },
 
   setTranslator(translator) {
@@ -71,34 +80,50 @@ export const PopupView = {
       // Status
       statusGroq: document.getElementById('status-groq'),
       statusSerper: document.getElementById('status-serper'),
-      statusGemini: document.getElementById('status-gemini')
+      statusGemini: document.getElementById('status-gemini'),
+
+      // Key Status Chips (settings reopen)
+      keyStatusGroq: document.getElementById('key-status-groq'),
+      keyStatusSerper: document.getElementById('key-status-serper'),
+      keyStatusGemini: document.getElementById('key-status-gemini'),
+
+      // Change Key Buttons
+      changeKeyGroq: document.getElementById('change-key-groq'),
+      changeKeySerper: document.getElementById('change-key-serper'),
+      changeKeyGemini: document.getElementById('change-key-gemini'),
+
+      // Close Settings Buttons
+      closeSettingsGroq: document.getElementById('close-settings-groq'),
+      closeSettingsSerper: document.getElementById('close-settings-serper'),
+      closeSettingsGemini: document.getElementById('close-settings-gemini'),
+
+      // Onboarding Language Toggle
+      obLanguageToggle: document.getElementById('obLanguageToggle'),
+
+      // Binder Go to Search CTA
+      binderGoToSearch: document.getElementById('binderGoToSearch')
     };
   },
 
-  /** Setup interactive tutorial accordions */
+  /** Tutorial is always visible now — no accordion toggle needed */
   _setupTutorialToggles() {
-    document.querySelectorAll('.ob-tutorial-toggle').forEach(toggle => {
-      toggle.addEventListener('click', () => {
-        const card = toggle.closest('.ob-tutorial-card');
-        if (!card) return;
-        const body = card.querySelector('.ob-tutorial-body');
-        if (!body) return;
-
-        const isExpanded = card.classList.contains('expanded');
-        if (isExpanded) {
-          body.hidden = true;
-          card.classList.remove('expanded');
-        } else {
-          body.hidden = false;
-          card.classList.add('expanded');
-        }
-      });
-    });
+    // No-op: tutorials are always-visible lists, not collapsible accordions
   },
 
   setLanguageSelectValue(language) {
+    // Sync main app language toggle (flags only)
     if (this.elements.languageToggle) {
       this.elements.languageToggle.querySelectorAll('.lang-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lang === language);
+      });
+    }
+    // Sync onboarding language toggle
+    this.setObLanguageSelectValue(language);
+  },
+
+  setObLanguageSelectValue(language) {
+    if (this.elements.obLanguageToggle) {
+      this.elements.obLanguageToggle.querySelectorAll('.ob-lang-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.lang === language);
       });
     }
@@ -144,6 +169,12 @@ export const PopupView = {
     this.elements.sections.forEach((section) => {
       section.classList.toggle('active', section.id === `view-${tabName}`);
     });
+
+    // Animate tab indicator
+    const indicator = document.getElementById('tab-indicator');
+    if (indicator) {
+      indicator.classList.toggle('tab-binder', tabName === 'binder');
+    }
   },
 
   toggleViewSection(sectionId) {
@@ -170,6 +201,11 @@ export const PopupView = {
     if (this.elements.onboardingSlides) {
       const translate = stepNumber * -100;
       this.elements.onboardingSlides.style.transform = `translateX(${translate}%)`;
+    }
+
+    // Glow effect only on welcome slide
+    if (this.elements.onboardingView) {
+      this.elements.onboardingView.classList.toggle('ob-glow-active', stepNumber === 0);
     }
 
     this.updateProgressBar(stepNumber);
@@ -302,6 +338,15 @@ export const PopupView = {
     }
   },
 
+  disableNextButton(provider) {
+    const btnId = `btn-next-${provider}`;
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      btn.disabled = true;
+      btn.classList.remove('pulse-next');
+    }
+  },
+
   setSetupStatus(provider, text, type = '') {
     const status = this.elements[`status${provider.charAt(0).toUpperCase() + provider.slice(1)}`];
     if (!status) return;
@@ -365,6 +410,52 @@ export const PopupView = {
     if (this.elements.settingsBtn) {
       this.elements.settingsBtn.classList.toggle('attention', !!active);
     }
+  },
+
+  /**
+   * Show key status chip (configured / missing) for a provider.
+   * Used when reopening settings.
+   */
+  showKeyStatus(provider, isConfigured) {
+    const statusEl = this.elements[`keyStatus${provider.charAt(0).toUpperCase() + provider.slice(1)}`];
+    if (!statusEl) return;
+    statusEl.classList.remove('hidden', 'configured', 'missing');
+    const iconEl = statusEl.querySelector('.ob-key-status-icon');
+    const textEl = statusEl.querySelector('.ob-key-status-text');
+    if (isConfigured) {
+      statusEl.classList.add('configured');
+      if (iconEl) iconEl.textContent = 'check_circle';
+      if (textEl) textEl.textContent = this.t('setup.keyStatus.configured');
+    } else {
+      statusEl.classList.add('missing');
+      if (iconEl) iconEl.textContent = 'warning';
+      if (textEl) textEl.textContent = this.t('setup.keyStatus.missing');
+    }
+  },
+
+  /** Hide key status chip */
+  hideKeyStatus(provider) {
+    const statusEl = this.elements[`keyStatus${provider.charAt(0).toUpperCase() + provider.slice(1)}`];
+    if (statusEl) statusEl.classList.add('hidden');
+  },
+
+  /**
+   * Show/hide change-key buttons and close-settings buttons.
+   * Used when reopening settings (not first-time setup).
+   */
+  setSettingsReopenMode(isReopen) {
+    if (this.elements.onboardingView) {
+      this.elements.onboardingView.classList.toggle('ob-reopen-mode', !!isReopen);
+    }
+
+    const providers = ['groq', 'serper', 'gemini'];
+    providers.forEach(p => {
+      const cap = p.charAt(0).toUpperCase() + p.slice(1);
+      const changeBtn = this.elements[`changeKey${cap}`];
+      const closeBtn = this.elements[`closeSettings${cap}`];
+      if (changeBtn) changeBtn.classList.toggle('hidden', !isReopen);
+      if (closeBtn) closeBtn.classList.toggle('hidden', !isReopen);
+    });
   },
 
   showAutoAdvance(callback) {

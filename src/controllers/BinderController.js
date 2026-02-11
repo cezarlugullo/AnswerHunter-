@@ -374,33 +374,56 @@ export const BinderController = {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = '.json';
+            input.style.display = 'none';
+            document.body.appendChild(input);
+
             input.addEventListener('change', async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
+                try {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
 
-                const text = await file.text();
-                const data = JSON.parse(text);
-
-                if (!Array.isArray(data) || data.length === 0) {
-                    if (this.view.showToast) {
-                        this.view.showToast(this.t('binder.toast.invalidFile'), 'error');
+                    const text = await file.text();
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        throw new Error('Invalid JSON format');
                     }
-                    return;
-                }
 
-                // Confirm before overwriting
-                if (!confirm(this.t('binder.confirm.importReplace'))) return;
+                    // Handle potential wrapping (e.g. if user exported raw storage object)
+                    if (data && !Array.isArray(data) && Array.isArray(data.binderStructure)) {
+                        data = data.binderStructure;
+                    }
 
-                await StorageModel.importData(data);
-                this.renderBinder();
+                    if (!Array.isArray(data) || data.length === 0) {
+                        if (this.view.showToast) {
+                            this.view.showToast(this.t('binder.toast.invalidFile'), 'error');
+                        }
+                        return;
+                    }
 
-                if (this.view.showToast) {
-                    this.view.showToast(this.t('binder.toast.importSuccess'), 'success');
+                    // Confirm before overwriting
+                    if (!confirm(this.t('binder.confirm.importReplace'))) return;
+
+                    await StorageModel.importData(data);
+                    this.renderBinder();
+
+                    if (this.view.showToast) {
+                        this.view.showToast(this.t('binder.toast.importSuccess'), 'success');
+                    }
+                } catch (innerErr) {
+                    console.error('Import processing error:', innerErr);
+                    if (this.view.showToast) {
+                        this.view.showToast(this.t('binder.toast.importError', { message: innerErr.message }), 'error');
+                    }
+                } finally {
+                    document.body.removeChild(input);
                 }
             });
+
             input.click();
         } catch (err) {
-            console.error('Import error:', err);
+            console.error('Import setup error:', err);
             if (this.view.showToast) {
                 this.view.showToast(this.t('binder.toast.importError', { message: err.message }), 'error');
             }
