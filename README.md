@@ -47,7 +47,7 @@ Use the language selector in the popup header.
 ### Security model
 - API keys are never hardcoded in source.
 - Keys are stored locally via `chrome.storage.sync`.
-- No backend is required for normal usage.
+- No backend is used; everything runs locally in the extension.
 
 ---
 
@@ -94,9 +94,7 @@ Use o seletor de idioma no cabeçalho do popup.
 ### Modelo de segurança
 - Nenhuma API key fica hardcoded no código.
 - As chaves ficam no `chrome.storage.sync` local do usuário.
-- Não existe backend obrigatório para uso comum.
-
----
+- Não existe backend; tudo roda localmente na extensão.
 
 ## Additional docs
 - Full install and API setup guide: `COMO_INSTALAR.md`
