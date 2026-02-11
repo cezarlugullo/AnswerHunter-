@@ -1,4 +1,4 @@
-﻿/**
+/**
  * helpers.js
  * Funções utilitárias puras
  */
@@ -46,6 +46,16 @@ export function debounce(func, wait) {
 // Função para formatar questão separando enunciado das alternativas
 export function formatQuestionText(text) {
     if (!text) return '';
+    const translate = (key, fallback) => {
+        try {
+            if (typeof window !== 'undefined' && typeof window.__answerHunterTranslate === 'function') {
+                return window.__answerHunterTranslate(key);
+            }
+        } catch (_) {
+            // no-op
+        }
+        return fallback;
+    };
 
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const trimGlobalNoise = (raw) => {
@@ -135,7 +145,7 @@ export function formatQuestionText(text) {
                         .join('');
                 const enunciadoHtml = `
                 <div class="question-section">
-                    <div class="question-section-title">Enunciado</div>
+                    <div class="question-section-title">${escapeHtml(translate('result.statement', 'Statement'))}</div>
                     <div class="question-enunciado">${escapeHtml(enunciado)}</div>
                 </div>`;
 
@@ -146,7 +156,7 @@ export function formatQuestionText(text) {
                 return `
                 ${enunciadoHtml}
                 <div class="question-section">
-                    <div class="question-section-title">Alternativas</div>
+                    <div class="question-section-title">${escapeHtml(translate('result.options', 'Options'))}</div>
                     <div class="question-alternatives">${formattedAlternatives}</div>
                 </div>
             `;
@@ -264,7 +274,7 @@ export function formatQuestionText(text) {
 
         return `
         <div class="question-section">
-            <div class="question-section-title">Enunciado</div>
+            <div class="question-section-title">${escapeHtml(translate('result.statement', 'Statement'))}</div>
             <div class="question-enunciado">${escapeHtml(clean(normalized))}</div>
         </div>`;
 }

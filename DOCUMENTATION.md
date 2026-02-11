@@ -1,157 +1,225 @@
-﻿# AnswerHunter - Technical Documentation
+# AnswerHunter Technical Documentation
 
-## 1) Overview
-AnswerHunter is a Chrome Extension that helps students and educators extract or search for answers to educational questions using AI. It provides two primary workflows:
-- Extract: Scrape a visible question/answer from the current page and refine it with AI.
-- Search: Search the web for likely sources, extract answers, then vote on the best answer.
+## ENGLISH
 
-It also includes a Binder (Fichario) to save and organize questions, with persistence via chrome.storage.sync.
+### 1. Overview
+AnswerHunter is a Chrome extension that extracts educational questions from the active tab, searches external evidence, and suggests an answer with weighted confidence.
 
-## 2) Key Features
-- Question extraction from the current page (including protected sites with DOM-only heuristics).
-- Web search (Serper) + AI refinement (Groq) with multi-source voting.
-- AI fallback when sources do not yield an answer.
-- Binder: save, organize, drag-and-drop, copy, and delete questions.
-- Persist last search results when closing/reopening the popup.
-- Export Binder to JSON (manual and optional auto export).
-- MVC architecture for maintainable UI and logic separation.
+Main design goals:
+- Keep setup simple for non-technical users.
+- Avoid backend dependency for normal usage.
+- Prioritize evidence over pure model guessing.
+- Expose uncertainty (`Confirmed`, `Conflict`, `Inconclusive`).
 
-## 3) Architecture (MVC)
-The project is structured with MVC plus service layers:
-
+### 2. High-level architecture
 ```
 src/
-  controllers/
-    PopupController.js
-    BinderController.js
-  models/
-    SettingsModel.js
-    StorageModel.js
-  services/
-    ApiService.js
-    SearchService.js
-    ExtractionService.js
-  utils/
-    helpers.js
-  views/
-    PopupView.js
-  popup/
-    popup.html
-    popup.css
-    popup.js
-  content/
-    content.js
-    content.css
+  content/        # DOM extraction scripts injected into pages
+  controllers/    # Popup orchestration and binder actions
+  i18n/           # Translation dictionaries and language service
+  models/         # Settings + persistent binder data
+  popup/          # Popup entry HTML/CSS/boot script
+  services/       # API clients, search ranking, extraction helpers
+  utils/          # Pure helpers and formatting
+  views/          # Popup rendering layer
 ```
 
-### Controllers
-- PopupController: Orchestrates user actions in the popup (search/extract/copy). Handles UI status updates, result rendering, and persistence of last results.
-- BinderController: Handles binder state, drag-and-drop, CRUD actions, exporting, and sources toggle in the binder list.
+### 3. Runtime flow
+1. User opens popup.
+2. `PopupController` initializes `I18nService`, settings, onboarding flags, and binder.
+3. If required providers are missing (`Groq`, `Serper`), setup wizard is shown.
+4. Search flow:
+   - extract question from page
+   - query Serper
+   - fetch and score evidence
+   - classify result state
+   - render answer + sources + confidence
+5. Extract flow:
+   - parse Q/A from page
+   - refine with AI
+   - save and display
 
-### Models
-- SettingsModel: Stores API keys, endpoints, and model configs.
-- StorageModel: Binder persistence (now in chrome.storage.sync with migration from local).
+### 4. Provider model
+Required:
+- Groq: AI analysis and fallback answer generation.
+- Serper: web search source discovery.
 
-### Services
-- ApiService: All external API calls (Groq + Serper), rate limiting, retries, and model selection.
-- SearchService: Search orchestration, multi-source answer extraction, voting, and AI fallback.
-- ExtractionService: Content scripts injected into pages for robust question extraction.
+Optional:
+- Gemini: reserved fallback channel (non-blocking when missing).
 
-### Views
-- PopupView: DOM rendering and UI helpers, including question formatting, answer rendering, and source toggles.
+### 5. Settings and security
+`SettingsModel` stores:
+- language (`en`, `pt-BR`)
+- provider API keys
+- model and endpoint settings
+- setup readiness flags
 
-## 4) Data Flow
+Security notes:
+- no hardcoded API keys in repository
+- keys stored locally in `chrome.storage.sync`
+- no mandatory backend required
 
-### Extract Flow
-1. Popup -> ExtractionService.extractQAContentScript is injected into the active tab.
-2. Raw question/answer pairs are returned.
-3. SearchService.processExtractedItems() refines answers via Groq.
-4. Results are rendered and cached (last search).
+### 6. Search reliability system
+`SearchService` applies:
+- question canonicalization
+- similarity gating to reject unrelated pages
+- option match counting
+- explicit-answer extraction patterns
+- local evidence window validation
+- multi-source weighted voting
 
-### Search Flow
-1. Popup -> ExtractionService.extractQuestionOnlyScript (frame-aware) extracts a question.
-2. SearchService.searchOnly() calls Serper for results.
-3. For each result, ApiService.verifyQuestionMatch() filters mismatched sources.
-4. ApiService.refineWithGroq() extracts answer (and options if needed).
-5. Answers from multiple sources are voted (simple majority by letter).
-6. If no valid answers, fallback to ApiService.generateAnswerFromQuestion().
+Output states:
+- `confirmed`: strong explicit agreement
+- `conflict`: competing letters with low margin
+- `inconclusive`: weak or indirect evidence
 
-## 5) AI Model Strategy (Speed vs Accuracy)
-AnswerHunter uses multiple Groq models:
-- Fast model (validation/match/options): llama-3.1-8b-instant
-- Answer model (final answer extraction): llama-3.3-70b-versatile
-- Fallback model (direct answer when no sources): llama-3.3-70b-versatile
+### 7. i18n system
+- `src/i18n/translations.js`: dictionaries
+- `src/i18n/I18nService.js`: runtime translation and DOM application
+- language selector in popup header
+- all key statuses and setup messages translated
 
-Model settings live in:
-```
-src/models/SettingsModel.js
-```
+### 8. Binder storage
+`StorageModel` stores tree data in `chrome.storage.sync`:
+- folders
+- question records
+- drag/drop structure
 
-## 6) Storage and Persistence
+Backup/import:
+- export to JSON
+- import from JSON with full replace confirmation
 
-### Binder Storage (Primary)
-- Stored in chrome.storage.sync to survive cache clearing and sync across Chrome profiles.
-- Auto-migrates data from chrome.storage.local if it exists.
+### 9. Error handling strategy
+Common error codes:
+- `SETUP_REQUIRED`: required keys missing
 
-### Last Search Results
-- Cached in chrome.storage.local as lastSearchResults.
-- Restored on popup open to prevent loss after closing.
+UX behavior:
+- open setup panel automatically
+- show user-friendly error toast/status
+- continue gracefully when optional providers are missing
 
-### Export
-- Manual export via the Exportar button.
-- Optional auto export on every change.
-- Saved via chrome.downloads to:
-  Downloads/AnswerHunter/answerhunter-ficheiro.json
-
-## 7) UI and UX Highlights
-- Question formatting: separates statement and alternatives.
-- Noise filtering: removes gabarito-like text from alternatives.
-- Sources: collapsed list by default with toggle.
-- AI badge and disclaimer when no external source is used.
-
-## 8) Permissions and Security
+### 10. Extension permissions
 Manifest permissions:
-- activeTab: access current tab content.
-- scripting: inject extraction scripts.
-- storage: persist binder and settings.
-- downloads: export binder file.
-- host_permissions: Groq + Serper + <all_urls> for extraction.
+- `activeTab`
+- `scripting`
+- `storage`
+- `clipboardWrite`
 
-## 9) Configuration
-Settings are stored in chrome.storage.sync and merged with defaults:
-- Groq API key and endpoint
-- Serper API key and endpoint
-- Model IDs (fast, answer, fallback)
-- Rate limit interval
+Host permissions:
+- Groq API
+- Serper API
+- Gemini API
+- `<all_urls>` for extraction coverage
 
-IMPORTANT: For open source distribution, remove or replace hardcoded API keys. Users should supply their own keys.
+---
 
-## 10) Installation (Developer Mode)
-1. Download this repository.
-2. Open chrome://extensions/ in Chrome.
-3. Enable Developer mode.
-4. Click Load unpacked and select the repository folder (where manifest.json is).
+## PORTUGUES (BRASIL)
 
-## 11) Development Notes
-- Popup entry: src/popup/popup.html
-- Popup script (ES modules): src/popup/popup.js
-- CSS: src/popup/popup.css
-- Content scripts: src/content/content.js
+### 1. Visao geral
+AnswerHunter e uma extensao Chrome que extrai questoes da aba ativa, busca evidencias na web e sugere resposta com confianca ponderada.
 
-## 12) Troubleshooting
-- HTTP 429 from Groq: this is rate limiting. The code retries with backoff.
-  You can also increase minGroqIntervalMs in SettingsModel.
-- If answers appear inside alternatives: noise filtering removes common gabarito phrases.
-  Add more terms in utils/helpers.js if needed.
+Objetivos principais:
+- setup simples para usuario leigo
+- sem dependencia obrigatoria de backend
+- priorizar evidencia em vez de chute de modelo
+- expor incerteza (`Confirmado`, `Conflito`, `Inconclusivo`)
 
-## 13) Limitations
-- Extensions cannot write to arbitrary local paths (project folder) for security reasons.
-- Large binder data can exceed chrome.storage.sync limits; consider periodic exports.
+### 2. Arquitetura de alto nivel
+```
+src/
+  content/        # scripts de extracao no DOM
+  controllers/    # orquestracao do popup e fichario
+  i18n/           # traducoes e servico de idioma
+  models/         # configuracoes e dados persistentes
+  popup/          # entrada do popup (html/css/js)
+  services/       # APIs, ranking de busca e extracao
+  utils/          # helpers puros
+  views/          # renderizacao da interface
+```
 
-## 14) Roadmap Ideas
-- Import JSON back into the binder.
-- Settings UI for API keys and model selection.
-- More robust source ranking and confidence scoring.
+### 3. Fluxo de execucao
+1. Usuario abre o popup.
+2. `PopupController` inicializa i18n, configuracoes, onboarding e fichario.
+3. Se faltar provedor obrigatorio (`Groq`, `Serper`), abre o wizard.
+4. Fluxo Buscar:
+   - extrai questao da pagina
+   - consulta Serper
+   - busca e pontua evidencias
+   - classifica estado final
+   - renderiza resposta + fontes + confianca
+5. Fluxo Extrair:
+   - le pergunta/resposta da pagina
+   - refina com IA
+   - salva e exibe
 
-## 15) License
-Add a license file (MIT/Apache-2.0) before public release.
+### 4. Modelo de provedores
+Obrigatorios:
+- Groq: analise IA e fallback
+- Serper: descoberta de fontes
+
+Opcional:
+- Gemini: canal de fallback nao bloqueante
+
+### 5. Configuracoes e seguranca
+`SettingsModel` guarda:
+- idioma (`en`, `pt-BR`)
+- chaves de API
+- endpoints/modelos
+- flags de prontidao do setup
+
+Notas de seguranca:
+- sem chaves hardcoded no repositorio
+- chaves guardadas em `chrome.storage.sync`
+- sem backend obrigatorio para uso normal
+
+### 6. Sistema de confiabilidade da busca
+`SearchService` aplica:
+- canonicalizacao da questao
+- filtro de similaridade para descartar pagina diferente
+- contagem de match de alternativas
+- extracao de gabarito explicito
+- janela local de evidencia
+- votacao ponderada multi-fonte
+
+Estados de saida:
+- `confirmed`: acordo forte com gabarito explicito
+- `conflict`: letras concorrentes com margem baixa
+- `inconclusive`: evidencia fraca/indireta
+
+### 7. Sistema de idioma
+- `src/i18n/translations.js`: dicionarios
+- `src/i18n/I18nService.js`: aplicacao de traducao no DOM
+- seletor de idioma no cabecalho do popup
+- mensagens principais traduzidas
+
+### 8. Persistencia do fichario
+`StorageModel` usa `chrome.storage.sync` para:
+- estrutura de pastas
+- itens salvos
+- organizacao por drag and drop
+
+Backup/importacao:
+- exporta JSON
+- importa JSON com confirmacao de sobrescrita
+
+### 9. Tratamento de erro
+Codigo comum:
+- `SETUP_REQUIRED`: faltam chaves obrigatorias
+
+Comportamento UX:
+- abre setup automaticamente
+- mostra status/toast amigavel
+- segue normalmente se provedor opcional faltar
+
+### 10. Permissoes da extensao
+Permissoes:
+- `activeTab`
+- `scripting`
+- `storage`
+- `clipboardWrite`
+
+Host permissions:
+- API Groq
+- API Serper
+- API Gemini
+- `<all_urls>` para cobertura de extracao
