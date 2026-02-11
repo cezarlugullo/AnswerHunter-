@@ -1,6 +1,6 @@
 /**
  * helpers.js
- * FunÃƒÂ§ÃƒÂµes utilitÃƒÂ¡rias puras
+ * Pure utility functions
  */
 
 export function escapeHtml(text) {
@@ -25,9 +25,9 @@ export function isLikelyQuestion(text) {
     const clean = text.replace(/\s+/g, ' ').trim();
     if (clean.length < 30) return false;
     const hasQuestionMark = clean.includes('?');
-    const hasKeywords = /Quest(?:a|ÃƒÂ£)o|Pergunta|Exerc[iÃƒÂ­]cio|Enunciado|Atividade/i.test(clean);
+    const hasKeywords = /Quest(?:a|ã)o|Pergunta|Exerc[íi]cio|Enunciado|Atividade/i.test(clean);
     const hasOptions = /(?:^|\s)[A-E]\s*[\)\.\-:]/i.test(clean);
-    const looksLikeMenu = /menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|voltar|avanÃƒÂ§ar|finalizar|marcar para revis[aÃƒÂ£]o/i.test(clean);
+    const looksLikeMenu = /menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|voltar|avançar|finalizar|marcar para revis[aã]o/i.test(clean);
     return (hasQuestionMark || hasKeywords || hasOptions) && !looksLikeMenu;
 }
 
@@ -43,7 +43,7 @@ export function debounce(func, wait) {
     };
 }
 
-// FunÃƒÂ§ÃƒÂ£o para formatar questÃƒÂ£o separando enunciado das alternativas
+// Function to format question separating statement from alternatives
 export function formatQuestionText(text) {
     if (!text) return '';
     const translate = (key, fallback) => {
@@ -60,55 +60,55 @@ export function formatQuestionText(text) {
     const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
     const trimGlobalNoise = (raw) => {
         if (!raw) return '';
-        // SÃƒÂ³ cortar em rÃƒÂ³tulos isolados (inÃƒÂ­cio de linha ou apÃƒÂ³s ponto/quebra), 
-        // nunca no meio de frases como "Assinale a alternativa correta..."
-        const noiseRe = /(?:^|\n)\s*(?:Gabarito(?:\s+Comentado)?|Resposta\s+sugerida|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eÃƒÂª]\s+selecionou|Fontes?\s*\(\d+\)|check_circle)\b/im;
+        // Only cut on isolated labels (start of line or after dot/break),
+        // never in the middle of sentences like "Check the correct alternative..."
+        const noiseRe = /(?:^|\n)\s*(?:Gabarito(?:\s+Comentado)?|Resposta\s+sugerida|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eê]\s+selecionou|Fontes?\s*\(\d+\)|check_circle)\b/im;
         const idx = raw.search(noiseRe);
         if (idx > 10) return raw.substring(0, idx).trim();
         return raw.trim();
     };
     const trimNoise = (s) => {
         if (!s) return s;
-        // SÃƒÂ³ cortar quando o rÃƒÂ³tulo aparecer isolado (nÃƒÂ£o dentro de "assinale a alternativa correta")
-        const noiseRe = /(?:^|\n)\s*(?:Resposta\s+correta\s*[:\-]|Parab[eÃƒÂ©]ns|Gabarito(?:\s+Comentado)?|Alternativa\s+correta\s*[:\-]|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eÃƒÂª]\s+selecionou|Marcar\s+para\s+revis[ÃƒÂ£a]o)/im;
+        // Only cut when the label appears isolated (not inside "check the correct alternative")
+        const noiseRe = /(?:^|\n)\s*(?:Resposta\s+correta\s*[:\-]|Parab[eé]ns|Gabarito(?:\s+Comentado)?|Alternativa\s+correta\s*[:\-]|Confira\s+o\s+gabarito|Resposta\s+certa|Voc[eê]\s+selecionou|Marcar\s+para\s+revis[ãa]o)/im;
         const idx = s.search(noiseRe);
         if (idx > 10) return s.substring(0, idx).trim();
         return s.trim();
     };
-    
-    // NOVO: Limitar texto para apenas a primeira questÃƒÂ£o (cortar apÃƒÂ³s 5 alternativas ou prÃƒÂ³xima questÃƒÂ£o)
+
+    // NEW: Limit text to only the first question (cut after 5 alternatives or next question)
     const limitToFirstQuestion = (raw) => {
         const lines = raw.split('\n');
         const result = [];
         let altCount = 0;
         const altRe = /^([A-E])\s*[\)\.\-:]/i;
-        const newQuestionRe = /^\d+\s*[\.\):]?\s*(Marcar para|Quest[ÃƒÂ£a]o|\(.*\/\d{4})/i;
+        const newQuestionRe = /^\d+\s*[\.\):]?\s*(Marcar para|Quest[ãa]o|\(.*\/\d{4})/i;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            // Se encontrar inÃƒÂ­cio de nova questÃƒÂ£o, parar
+            // If new question start found, stop
             if (newQuestionRe.test(line.trim()) && altCount >= 2) {
                 break;
             }
-            
-            // Contar alternativas
+
+            // Count alternatives
             if (altRe.test(line.trim())) {
                 altCount++;
             }
-            
+
             result.push(line);
-            
-            // Se jÃƒÂ¡ temos 5 alternativas (A-E), parar apÃƒÂ³s a ÃƒÂºltima
+
+            // If we already have 5 alternatives (A-E), stop after the last one
             if (altCount >= 5) {
-                // Continuar apenas se a prÃƒÂ³xima linha faz parte da alternativa E
+                // Continue only if the next line is part of alternative E
                 const nextLines = lines.slice(result.length, result.length + 2);
                 const hasMoreAlt = nextLines.some(l => altRe.test(l.trim()));
                 if (!hasMoreAlt) break;
             }
         }
-        
+
         return result.join('\n');
     };
-    
+
     const rawTrimmed = trimGlobalNoise(text);
     let normalized = rawTrimmed.replace(/\r\n/g, '\n');
     const inlineAltBreakRe = /(?:^|\s)([A-E])\s*[\)\.\-:](?=\s*\S)/gi;
@@ -132,35 +132,35 @@ export function formatQuestionText(text) {
         return false;
     };
 
-        const render = (enunciado, alternatives) => {
-                // Limitar a 5 alternativas mÃƒÂ¡ximo
-                const limitedAlts = alternatives.slice(0, 5);
-                const formattedAlternatives = limitedAlts
-                        .map(a => `
+    const render = (enunciado, alternatives) => {
+        // Limit to 5 alternatives max
+        const limitedAlts = alternatives.slice(0, 5);
+        const formattedAlternatives = limitedAlts
+            .map(a => `
                     <div class="alternative">
                         <span class="alt-letter">${escapeHtml(a.letter)}</span>
                         <span class="alt-text">${escapeHtml(a.body)}</span>
                     </div>
                 `)
-                        .join('');
-                const enunciadoHtml = `
+            .join('');
+        const enunciadoHtml = `
                 <div class="question-section">
                     <div class="question-section-title">${escapeHtml(translate('result.statement', 'Statement'))}</div>
                     <div class="question-enunciado">${escapeHtml(enunciado)}</div>
                 </div>`;
 
-                if (!formattedAlternatives) {
-                        return enunciadoHtml;
-                }
+        if (!formattedAlternatives) {
+            return enunciadoHtml;
+        }
 
-                return `
+        return `
                 ${enunciadoHtml}
                 <div class="question-section">
                     <div class="question-section-title">${escapeHtml(translate('result.options', 'Options'))}</div>
                     <div class="question-alternatives">${formattedAlternatives}</div>
                 </div>
             `;
-        };
+    };
 
     const parseByLines = (raw, allowLoose = false) => {
         const lines = raw.split(/\n+/).map(line => line.trim()).filter(Boolean);
@@ -214,7 +214,7 @@ export function formatQuestionText(text) {
         return render(parsedByLooseLines.enunciado, parsedByLooseLines.alternatives);
     }
 
-    // Fallback: alternativas inline (sem quebra de linha), apÃƒÂ³s pontuaÃƒÂ§ÃƒÂ£o
+    // Fallback: inline alternatives (no line break), after punctuation
     const inlineAltPattern = /(^|[\\n:;?.!]\\s+)([A-E])\\s+(?=[A-Za-z])/g;
     const inlineAltLetters = new Set();
     normalized.replace(inlineAltPattern, (_m, _prefix, letter) => {
@@ -236,7 +236,7 @@ export function formatQuestionText(text) {
         }
     }
 
-    // Fallback para alternativas em linha unica (evita falsos positivos como "software)")
+    // Fallback for single line alternatives (avoids false positives like "software)")
     const inlinePattern = /(^|[\s])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:\s)[A-E]\s*[\)\.\-:]|$)/gi;
     const alternatives = [];
     let firstIndex = null;
@@ -245,16 +245,16 @@ export function formatQuestionText(text) {
     while ((m = inlinePattern.exec(normalized)) !== null) {
         if (firstIndex === null) firstIndex = m.index + m[1].length;
         const letter = m[2].toUpperCase();
-            const body = trimNoise(clean(m[3]));
-            if (body) alternatives.push({ letter, body });
-        }
+        const body = trimNoise(clean(m[3]));
+        if (body) alternatives.push({ letter, body });
+    }
 
     if (alternatives.length >= 2) {
         const enunciado = firstIndex !== null ? clean(normalized.substring(0, firstIndex)) : '';
         return render(enunciado, alternatives);
     }
 
-    // Fallback extra: alternativas sem pontuaÃƒÂ§ÃƒÂ£o (ex: "A Texto. B Texto.")
+    // Extra fallback: alternatives without punctuation (e.g. "A Text. B Text.")
     const plainAltPattern = /(?:^|[.!?]\\s+)([A-E])\\s+([A-Za-z][^]*?)(?=(?:[.!?]\\s+)[A-E]\\s+[A-Za-z]|$)/g;
     const plainAlternatives = [];
     let plainFirstIndex = null;
@@ -263,16 +263,16 @@ export function formatQuestionText(text) {
     while ((pm = plainAltPattern.exec(normalized)) !== null) {
         if (plainFirstIndex === null) plainFirstIndex = pm.index;
         const letter = pm[1].toUpperCase();
-            const body = trimNoise(clean(pm[2].replace(/\s+[.!?]\s*$/, '')));
-            if (body) plainAlternatives.push({ letter, body });
-        }
+        const body = trimNoise(clean(pm[2].replace(/\s+[.!?]\s*$/, '')));
+        if (body) plainAlternatives.push({ letter, body });
+    }
 
     if (plainAlternatives.length >= 2) {
         const enunciado = plainFirstIndex !== null ? clean(normalized.substring(0, plainFirstIndex)) : '';
         return render(enunciado, plainAlternatives);
     }
 
-        return `
+    return `
         <div class="question-section">
             <div class="question-section-title">${escapeHtml(translate('result.statement', 'Statement'))}</div>
             <div class="question-enunciado">${escapeHtml(clean(normalized))}</div>

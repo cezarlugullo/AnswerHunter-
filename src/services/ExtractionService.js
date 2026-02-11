@@ -1,12 +1,12 @@
 ﻿/**
  * ExtractionService.js
- * FunÃ§Ãµes injetadas para ler o DOM da pÃ¡gina ativa
+ * Functions injected to read the active page DOM
  */
 export const ExtractionService = {
 
     /**
-     * Extrair Pergunta e Resposta (Completo/Robusto)
-     * Usado para o botÃ£o EXTRAIR
+     * Extract Question and Answer (Complete/Robust)
+     * Used for the EXTRACT button
      */
     extractQAContentScript: function () {
         const results = [];
@@ -145,8 +145,8 @@ export const ExtractionService = {
     },
 
     /**
-     * Extrair APENAS a Pergunta (Sites Protegidos / V19 Dom Only)
-     * Usado para a BUSCA
+     * Extract ONLY the Question (Protected Sites / V19 Dom Only)
+     * Used for SEARCH
      */
     extractQuestionOnlyScript: function () {
         console.log('AnswerHunter: Iniciando extracao (v19 - DOM only)...');
@@ -158,9 +158,9 @@ export const ExtractionService = {
         function sanitizeQuestionText(text) {
             if (!text) return '';
             let cleaned = cleanText(text);
-            cleaned = cleaned.replace(/\bMarcar para revis(?:a|Ã£)o\b/gi, '');
+            cleaned = cleaned.replace(/\bMarcar para revis(?:a|ã)o\b/gi, '');
             cleaned = cleaned.replace(/^\s*\d+\s*[-.)]?\s*/i, '');
-            cleaned = cleaned.replace(/^(?:Quest(?:a|Ã£)o|Questao)\s*\d+\s*[:.\-]?\s*/i, '');
+            cleaned = cleaned.replace(/^(?:Quest(?:a|ã)o|Questao)\s*\d+\s*[:.\-]?\s*/i, '');
             cleaned = cleaned.replace(/^Atividade\s*\d+\s*[:.\-]?\s*/i, '');
             return cleaned.trim();
         }
@@ -258,11 +258,11 @@ export const ExtractionService = {
                     return;
                 }
                 const fallbackText = cleanText(btn.innerText || '');
-                // CORREÃ‡ÃƒO: Exigir delimitador OBRIGATÃ“RIO e validar falsos positivos
+                // FIX: Require MANDATORY delimiter and validate false positives
                 const match = fallbackText.match(/^\s*([A-E])\s*[).:]\s*(.+)$/i);
                 if (match) {
                     const body = match[2].trim();
-                    // Validar que nÃ£o Ã© falso positivo (ex: "A UX" nÃ£o Ã© alternativa)
+                    // Validate it is not a false positive (e.g. "A UX" is not an alternative)
                     const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
                     if (!isFalsePositive) {
                         options.push(`${match[1].toUpperCase()}) ${body}`);
@@ -290,14 +290,14 @@ export const ExtractionService = {
             };
         }
 
-        // 1) Estrutura especÃ­fica do site (data-section)
+        // 1) Specific site structure (data-section)
         const activitySections = Array.from(document.querySelectorAll('[data-section="section_cms-atividade"]'));
         const visibleSections = activitySections.filter(isOnScreen);
 
-        // 1) Tentar usar o botao "Marcar para revisao" como ancora (mais preciso)
+        // 1) Try to use "Mark for review" button as anchor (more precise)
         const reviewButtons = Array.from(document.querySelectorAll('button, [role="button"]'))
             .filter(btn => isOnScreen(btn))
-            .filter(btn => /Marcar para revis[aÃ©]o/i.test((btn.innerText || btn.textContent || '')));
+            .filter(btn => /Marcar para revis[aã]o/i.test((btn.innerText || btn.textContent || '')));
 
         if (reviewButtons.length > 0) {
             reviewButtons.sort((a, b) => {
@@ -317,7 +317,7 @@ export const ExtractionService = {
             }
         }
 
-        // 2) Usar pontos de ancoragem no viewport (mais preciso)
+        // 2) Use anchor points in viewport (more precise)
         const probeX = Math.floor(window.innerWidth * 0.5);
         const probeYs = [
             Math.floor(window.innerHeight * 0.3),
@@ -354,7 +354,7 @@ export const ExtractionService = {
             }
         }
 
-        // 3) Fallback: escolher pelo maior bloco visÃ­vel e topo mais prÃ³ximo
+        // 3) Fallback: choose by largest visible block and closest top
         const sectionsToScore = visibleSections.length > 0 ? visibleSections : activitySections;
         const scoredCandidates = [];
 
@@ -394,7 +394,7 @@ export const ExtractionService = {
             return scoredCandidates[0].text;
         }
 
-        // 2) Header especÃ­fico da questÃ£o
+        // 2) Specific question header
         const questionHeader = document.querySelector('[data-testid="openResponseQuestionHeader"]');
         if (questionHeader) {
             const parent = questionHeader.closest('[data-section]') || questionHeader.parentElement;
@@ -405,14 +405,14 @@ export const ExtractionService = {
             }
         }
 
-        // 3) SeleÃ§Ã©o manual (se houver)
+        // 3) Manual selection (if any)
         const selection = window.getSelection ? window.getSelection().toString() : '';
         if (selection && selection.trim().length > 5) {
             console.log('AnswerHunter: Usando selecao manual.');
             return sanitizeQuestionText(selection).substring(0, 3500);
         }
 
-        // 4) Fallback mÃ­nimo (sem texto global)
+        // 4) Minimal fallback (no global text)
         const containers = document.querySelectorAll('main, article, section, div, form');
         let best = { score: -999, text: '' };
 
@@ -429,7 +429,7 @@ export const ExtractionService = {
             if (el.querySelectorAll('button[type="submit"]').length >= 2) score += 4;
             if (rect.top >= 0 && rect.top < 350) score += 2;
 
-            // Penalizar menus/sidebars
+            // Penalize menus/sidebars
             if (/menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|ola\b/i.test(text)) score -= 8;
             if (rect.width < window.innerWidth * 0.35) score -= 4;
             if (rect.left > window.innerWidth * 0.55) score -= 3;
@@ -452,9 +452,9 @@ export const ExtractionService = {
     },
 
     /**
-     * Extrair APENAS as alternativas (quando o enunciado jÃ¡ foi capturado)
-     * IMPORTANTE: Esta funÃ§Ã£o tenta encontrar alternativas da questÃ£o VISÃVEL mais relevante
-     * Identifica a seÃ§Ã£o da questÃ£o pelo marcador "Marcar para revisÃ£o" ou header da questÃ£o.
+     * Extract ONLY alternatives (when statement is already captured)
+     * IMPORTANT: This function tries to find alternatives for the most relevant VISIBLE question
+     * Identifies the question section by "Mark for review" marker or question header.
      */
     extractOptionsOnlyScript: function () {
         function cleanText(text) {
@@ -471,7 +471,7 @@ export const ExtractionService = {
         }
 
         function looksLikeQuestionLine(text) {
-            return /assinale|considerando|analise|marque|afirmativa|correta|incorreta|quest[aÃ£]o|enunciado|pergunta/i.test(text || '');
+            return /assinale|considerando|analise|marque|afirmativa|correta|incorreta|quest[aã]o|enunciado|pergunta/i.test(text || '');
         }
 
         function isOnScreen(el) {
@@ -574,7 +574,7 @@ export const ExtractionService = {
 
                 if (!/^[A-E]$/i.test(letterText)) {
                     const fullText = cleanText(btn.innerText || btn.textContent || '');
-                    // CORREÃ‡ÃƒO: Exigir delimitador OBRIGATÃ“RIO para evitar confundir "A UX" com alternativa
+                    // FIX: Require MANDATORY delimiter to avoid confusing "A UX" with alternative
                     const letterMatch = fullText.match(/^([A-E])\s*[\)\.]\s+/i);
                     if (letterMatch) letterText = letterMatch[1];
                 }
@@ -592,8 +592,8 @@ export const ExtractionService = {
 
                 const body = cleanText(raw.replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim());
 
-                // Validar que nÃ£o Ã© falso positivo (ex: "A UX" nÃ£o Ã© alternativa)
-                // Se body comeÃ§a com palavra muito curta seguida de maiÃºsculas, provavelmente Ã© enunciado
+                // Validate it is not a false positive (e.g. "A UX" is not an alternative)
+                // If body starts with very short word followed by uppercase, it's likely a statement
                 const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
                 const isQuestionLike = isLikelyQuestionBody(body);
 
@@ -617,7 +617,7 @@ export const ExtractionService = {
                 const m = line.match(altStartRe);
                 if (m) {
                     const body = cleanText(m[2]);
-                    // Validar que nÃ£o Ã© falso positivo (ex: "A UX" nÃ£o Ã© alternativa)
+                    // Validate it is not a false positive (e.g. "A UX" is not an alternative)
                     const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
                     const isQuestionLike = isLikelyQuestionBody(body);
 
@@ -648,9 +648,9 @@ export const ExtractionService = {
             return opts;
         }
 
-        // Tentar identificar a seÃ§Ã£o da questÃ£o ativa (mesma lÃ³gica de extractQuestionOnlyScript)
+        // Try to identify the active question section (same logic as extractQuestionOnlyScript)
         const reviewButtons = Array.from(document.querySelectorAll('button, [role="button"]'))
-            .filter(btn => /Marcar para revis[aÃ©]o/i.test((btn.innerText || '').trim()))
+            .filter(btn => /Marcar para revis[aã]o/i.test((btn.innerText || '').trim()))
             .filter(btn => isOnScreen(btn));
 
         let targetSection = null;
@@ -683,14 +683,14 @@ export const ExtractionService = {
         }
 
         if (targetSection) {
-            console.log('AnswerHunter: extractOptionsOnlyScript - usando seÃ§Ã£o especÃ­fica');
+            console.log('AnswerHunter: extractOptionsOnlyScript - usando seção específica');
             const opts = extractFromSection(targetSection);
             if (opts.length >= 2) {
                 return opts.slice(0, 5).join('\n');
             }
         }
 
-        // Fallback: buscar no viewport geral
+        // Fallback: search in general viewport
         console.log('AnswerHunter: extractOptionsOnlyScript - fallback para viewport geral');
         const candidates = Array.from(document.querySelectorAll('[data-testid="feedback-container"], section, article, div, form'));
         let best = { score: -1, options: [] };
@@ -711,8 +711,8 @@ export const ExtractionService = {
 
 
     /**
-     * Extrai gabarito exibido na pagina (pos-resposta), quando existir.
-     * Retorna { letter, confidence, source, evidence } ou null.
+     * Extracts answer key displayed on page (post-answer), when it exists.
+     * Returns { letter, confidence, source, evidence } or null.
      */
     extractGabaritoFromPageScript: function (questionText = '') {
         try {
@@ -765,7 +765,7 @@ export const ExtractionService = {
             return null;
         }
     },
-    // Alias para o getSelectionScript se necessÃ¡rio, ou usar direto extractQuestionOnlyScript que ja tem Fallback manual
+    // Alias for getSelectionScript if needed, or use extractQuestionOnlyScript directly which already has manual Fallback
     getSelectionScript: function () {
         return window.getSelection().toString().trim();
     }

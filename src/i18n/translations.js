@@ -164,7 +164,32 @@ export const TRANSLATIONS = {
     'provider.gemini': 'Gemini',
 
     'lang.english': 'English',
-    'lang.portuguese': 'Portuguese (Brazil)'
+    'lang.portuguese': 'Portuguese (Brazil)',
+
+    // New Onboarding Keys
+    'setup.new.welcome.title': 'Welcome to AnswerHunter',
+    'setup.new.welcome.desc': 'Your AI-powered study companion. Let\'s get you ready in less than 2 minutes.',
+    'setup.new.start': 'Get Started',
+    'setup.getKey': 'Get Free Key',
+    'setup.test': 'Test Key',
+    'setup.finish': 'Finish Setup',
+    'setup.step': 'Step',
+    'setup.feature.fast': 'Lightning Fast',
+    'setup.feature.private': '100% Private',
+    'setup.feature.free': 'Free APIs',
+    'setup.timeHint': 'Takes about 2 minutes',
+    'setup.howToGetKey': 'How to get your key',
+    'setup.groq.step1': 'Go to console.groq.com and create a free account',
+    'setup.groq.step2': 'Click "API Keys" in the sidebar',
+    'setup.groq.step3': 'Create a new key and copy it',
+    'setup.serper.step1': 'Go to serper.dev and sign up for free',
+    'setup.serper.step2': 'Open your Dashboard',
+    'setup.serper.step3': 'Copy the API Key from the main page',
+    'setup.gemini.step1': 'Go to aistudio.google.com',
+    'setup.gemini.step2': 'Click "Get API Key" → "Create API Key"',
+    'setup.gemini.step3': 'Copy the key that starts with "AIza"',
+    'setup.gemini.hint': 'You can skip this step. Gemini only activates when Groq is unavailable.',
+    'setup.skipGemini': 'Skip Gemini, finish setup'
   },
 
   'pt-BR': {
@@ -330,6 +355,31 @@ export const TRANSLATIONS = {
     'provider.gemini': 'Gemini',
 
     'lang.english': 'Inglês',
-    'lang.portuguese': 'Português (Brasil)'
+    'lang.portuguese': 'Português (Brasil)',
+
+    // New Onboarding Keys (PT)
+    'setup.new.welcome.title': 'Bem-vindo ao AnswerHunter',
+    'setup.new.welcome.desc': 'Seu parceiro de estudos com IA. Vamos configurar em menos de 2 minutos.',
+    'setup.new.start': 'Começar',
+    'setup.getKey': 'Obter chave grátis',
+    'setup.test': 'Testar chave',
+    'setup.finish': 'Finalizar',
+    'setup.step': 'Passo',
+    'setup.feature.fast': 'Ultra Rápido',
+    'setup.feature.private': '100% Privado',
+    'setup.feature.free': 'APIs Grátis',
+    'setup.timeHint': 'Leva cerca de 2 minutos',
+    'setup.howToGetKey': 'Como obter sua chave',
+    'setup.groq.step1': 'Acesse console.groq.com e crie uma conta grátis',
+    'setup.groq.step2': 'Clique em "API Keys" no menu lateral',
+    'setup.groq.step3': 'Crie uma nova chave e copie',
+    'setup.serper.step1': 'Acesse serper.dev e cadastre-se grátis',
+    'setup.serper.step2': 'Abra seu Dashboard',
+    'setup.serper.step3': 'Copie a API Key da página principal',
+    'setup.gemini.step1': 'Acesse aistudio.google.com',
+    'setup.gemini.step2': 'Clique em "Get API Key" → "Create API Key"',
+    'setup.gemini.step3': 'Copie a chave que começa com "AIza"',
+    'setup.gemini.hint': 'Você pode pular esta etapa. O Gemini só ativa quando o Groq está indisponível.',
+    'setup.skipGemini': 'Pular Gemini, finalizar configuração'
   }
 };

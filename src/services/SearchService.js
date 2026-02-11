@@ -672,7 +672,7 @@ export const SearchService = {
             return false;
         };
 
-        const nonAiSources = sources.filter(s => s.evidenceType && s.evidenceType !== 'ai');
+        const nonAiSources = sources.filter(s => s.evidenceType && s.evidenceType !== 'ai' && s.evidenceType !== 'ai-combined');
         const bestNonAi = nonAiSources.filter(s => s.letter === bestLetter);
         const bestDomains = new Set(bestNonAi.map(s => (s.hostHint || getHost(s.link))).filter(Boolean));
         const bestNonWeakDomains = new Set(bestNonAi.filter(s => !isWeakHost(s.hostHint || getHost(s.link))).map(s => (s.hostHint || getHost(s.link))).filter(Boolean));

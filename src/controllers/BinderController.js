@@ -42,7 +42,7 @@ export const BinderController = {
             const data = await chrome.storage.local.get(['_backupReminderDismissedUntil']);
             const dismissedUntil = data?._backupReminderDismissedUntil;
             if (dismissedUntil && Date.now() < dismissedUntil) return false;
-        } catch {}
+        } catch { }
 
         const daysSince = this._daysSinceLastExport();
         return daysSince === null || daysSince >= 7;
@@ -69,14 +69,14 @@ export const BinderController = {
         try {
             const data = await chrome.storage.local.get(['lastExportTimestamp']);
             this.lastExportTimestamp = data?.lastExportTimestamp || null;
-        } catch {}
+        } catch { }
     },
 
     async _saveLastExportTimestamp() {
         this.lastExportTimestamp = Date.now();
         try {
             await chrome.storage.local.set({ lastExportTimestamp: this.lastExportTimestamp });
-        } catch {}
+        } catch { }
     },
 
     async _dismissBackupReminder() {
@@ -84,7 +84,7 @@ export const BinderController = {
             const dismissUntil = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
             await chrome.storage.local.set({ _backupReminderDismissedUntil: dismissUntil });
             this.renderBinder();
-        } catch {}
+        } catch { }
     },
 
     bindEvents() {
@@ -256,7 +256,7 @@ export const BinderController = {
         const node = StorageModel.findNode(id);
         if (!node) return;
 
-        // Se for pasta com filhos, dar opções
+        // If it is a folder with children, give options
         if (node.type === 'folder' && node.children && node.children.length > 0) {
             const choice = prompt(this.t('binder.prompt.deleteFolderOptions', {
                 title: node.title,
@@ -294,7 +294,7 @@ export const BinderController = {
 
     async handleMoveItem(itemId, targetFolderId) {
         await StorageModel.moveItem(itemId, targetFolderId);
-        this.renderBinder(); // Re-renderiza para mostrar a mudança
+        this.renderBinder(); // Re-renders to show the change
     },
 
     refreshSearchSaveStates() {

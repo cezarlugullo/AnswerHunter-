@@ -2,7 +2,7 @@ import { SettingsModel } from '../models/SettingsModel.js';
 
 /**
  * ApiService.js
- * Gerencia todas as chamadas externas (Groq, Serper) com lÃƒÂ³gica robusta recuperada.
+ * Manages all external calls (Groq, Serper) with robust recovered logic.
  */
 export const ApiService = {
     lastGroqCallAt: 0,
@@ -13,7 +13,7 @@ export const ApiService = {
     },
 
     /**
-     * Respeita o rate limit do Groq
+     * Respects Groq rate limit
      */
     async _waitForRateLimit() {
         const { minGroqIntervalMs } = await this._getSettings();
@@ -26,7 +26,7 @@ export const ApiService = {
         this.lastGroqCallAt = Date.now();
     },
     /**
-     * Enfileira chamadas Groq para evitar concorrencia e respeitar rate limit
+     * Queues Groq calls to avoid concurrency and respect rate limit
      */
     async _withGroqRateLimit(taskFn) {
         const run = async () => {
@@ -39,7 +39,7 @@ export const ApiService = {
     },
 
     /**
-     * Wrapper para fetch com headers comuns e retry robusto
+     * Wrapper for fetch with common headers and robust retry
      */
     async _fetch(url, options) {
         const maxRetries = 3;
@@ -52,7 +52,7 @@ export const ApiService = {
 
                 if (response.status === 429 && attempt < maxRetries) {
                     const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
-                    // Backoff exponencial: 2s, 4s, 8s - mÃƒÂ¡ximo 10s
+                    // Exponential backoff: 2s, 4s, 8s - max 10s
                     const backoffMs = Math.min(10000, Math.max(2000 * Math.pow(2, attempt), retryAfter * 1000));
                     console.log(`AnswerHunter: Rate limit 429, aguardando ${backoffMs}ms (tentativa ${attempt + 1}/${maxRetries})...`);
                     await new Promise(resolve => setTimeout(resolve, backoffMs));
@@ -182,7 +182,7 @@ export const ApiService = {
     },
 
     /**
-     * Valida se o texto ÃƒÂ© uma questÃƒÂ£o vÃƒÂ¡lida usando Groq
+     * Validates if the text is a valid question using Groq
      */
     async validateQuestion(questionText) {
         if (!questionText) return false;
@@ -219,30 +219,30 @@ export const ApiService = {
     },
 
     /**
-     * Busca no Serper (Google) com fallback para sites educacionais
-     * LÃƒÂ³gica exata do searchWithSerper legado
+     * Search on Serper (Google) with fallback to educational sites
+     * Exact logic from legacy searchWithSerper
      */
     async searchWithSerper(query) {
         const { serperApiUrl, serperApiKey } = await this._getSettings();
 
-        // 1. Limpeza da Query (cleanQueryForSearch interna)
+        // 1. Query cleaning (internal cleanQueryForSearch)
         let cleanQuery = query
-            .replace(/^(?:QuestÃƒÂ£o|Pergunta|Atividade|ExercÃƒÂ­cio)\s*\d+[\s.:-]*/gi, '')
-            .replace(/Marcar para revisÃƒÂ£o/gi, '')
-            .replace(/\s*(Responda|O que vocÃƒÂª achou|Relatar problema|Voltar|AvanÃƒÂ§ar|Menu|Finalizar)[\s\S]*/gi, '')
+            .replace(/^(?:Questão|Pergunta|Atividade|Exercício)\s*\d+[\s.:-]*/gi, '')
+            .replace(/Marcar para revisão/gi, '')
+            .replace(/\s*(Responda|O que você achou|Relatar problema|Voltar|Avançar|Menu|Finalizar)[\s\S]*/gi, '')
             .replace(/\s+/g, ' ')
             .trim();
 
-        // Se tem "?" e o texto antes ÃƒÂ© substancial, usa sÃƒÂ³ atÃƒÂ© o "?"
-        // Mas sÃƒÂ³ se nÃƒÂ£o for uma questÃƒÂ£o sem interrogaÃƒÂ§ÃƒÂ£o (como "assinale a correta")
+        // If it has "?" and the text before is substantial, use only up to "?"
+        // But only if it is not a question without a question mark (like "select the correct one")
         if (cleanQuery.includes('?')) {
             const questionEnd = cleanQuery.indexOf('?');
             const questionText = cleanQuery.substring(0, questionEnd + 1).trim();
-            // SÃƒÂ³ corta se realmente parece ser a pergunta principal
+            // Only cut if it really seems to be the main question
             if (questionText.length >= 50) cleanQuery = questionText;
         }
 
-        // Remove alternativas APENAS se estiverem claramente marcadas com A), B), etc
+        // Remove alternatives ONLY if clearly marked with A), B), etc
         const optionMarkers = [...cleanQuery.matchAll(/(^|\s)[A-E]\s*[\)\.\-:]\s/g)];
         if (optionMarkers.length >= 2) {
             const firstMarkerIndex = optionMarkers[0].index ?? -1;
@@ -251,7 +251,7 @@ export const ApiService = {
             }
         }
 
-        cleanQuery = cleanQuery.substring(0, 250); // Limite
+        cleanQuery = cleanQuery.substring(0, 250); // Limit
 
         console.log(`AnswerHunter: Query limpa: "${cleanQuery}"`);
 
@@ -259,7 +259,7 @@ export const ApiService = {
         const siteFilter = TOP_SITES.map(s => `site:${s}`).join(' OR ');
 
         try {
-            // Primeiro: buscar SEM filtro
+            // First: search WITHOUT filter
             console.log(`AnswerHunter: Buscando resposta...`);
             let data = await this._fetch(serperApiUrl, {
                 method: 'POST',
@@ -280,7 +280,7 @@ export const ApiService = {
                 return data.organic;
             }
 
-            // Fallback: com filtro
+            // Fallback: with filter
             console.log('AnswerHunter: Tentando com sites educacionais...');
             data = await this._fetch(serperApiUrl, {
                 method: 'POST',
@@ -304,7 +304,7 @@ export const ApiService = {
     },
 
     /**
-     * Verifica correspondÃƒÂªncia entre questÃƒÂ£o e fonte
+     * Verifies match between question and source
      */
     async verifyQuestionMatch(originalQuestion, sourceContent) {
         const { groqApiUrl, groqApiKey, groqModelFast } = await this._getSettings();
@@ -355,7 +355,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
     },
 
     /**
-     * Extrai OpÃƒÂ§ÃƒÂµes Localmente (Regex) - Helper interno usado no refinamento
+     * Extract Options Locally (Regex) - Internal helper used in refinement
      */
     _extractOptionsLocally(sourceContent) {
         if (!sourceContent) return null;
@@ -405,13 +405,13 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
             return options.length >= 2 ? options : null;
         };
 
-        // MÃƒÂ©todo MELHORADO para alternativas sem letra (formato EstÃƒÂ¡cio/Brainly)
-        // Detecta frases consecutivas que parecem ser opÃƒÂ§ÃƒÂµes apÃƒÂ³s marcadores
+        // IMPROVED method for alternatives without letter (Estácio/Brainly format)
+        // Detects consecutive sentences that appear to be options after markers
         const bySentencesAfterMarker = () => {
-            // Procura por marcadores de inÃƒÂ­cio de opÃƒÂ§ÃƒÂµes
+            // Search for option start markers
             const markers = [
-                /(?:assinale|marque)\s+(?:a\s+)?(?:alternativa\s+)?(?:correta|verdadeira|incorreta|falsa)[.:]/gi,
-                /(?:opÃƒÂ§ÃƒÂ£o|alternativa)\s+(?:correta|verdadeira)[.:]/gi,
+                /(?:assinale|marque)\s+(?:a\s+)?(?:alternativa\s+)?(?:correta|verdadeira|incorreta|falsa)[.:]/gi, ,
+                /(?:opção|alternativa)\s+(?:correta|verdadeira)[.:]/gi,
                 /\(Ref\.?:\s*\d+\)/gi,
                 /assinale\s+(?:a\s+)?(?:afirmativa|assertiva)\s+correta[.:]/gi
             ];
@@ -427,7 +427,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
             }
 
             if (startIdx === -1) {
-                // Fallback: procurar apÃƒÂ³s "?" ou no inÃƒÂ­cio
+                // Fallback: search after "?" or at the beginning
                 const questionMark = sourceContent.indexOf('?');
                 if (questionMark > 30) {
                     startIdx = questionMark + 1;
@@ -436,28 +436,28 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
                 }
             }
 
-            // Pega o texto apÃƒÂ³s o marcador
+            // Get text after the marker
             let afterMarker = sourceContent.substring(startIdx).trim();
 
-            // Remove referÃƒÂªncias como (Ref.: 123456)
+            // Remove references like (Ref.: 123456)
             afterMarker = afterMarker.replace(/\(Ref\.?:\s*\d+\)\s*/gi, '');
 
-            // Tenta dividir por frases que parecem alternativas
-            // PadrÃƒÂ£o: frases que comeÃƒÂ§am com maiÃƒÂºscula apÃƒÂ³s ponto/quebra e tÃƒÂªm tamanho mÃƒÂ©dio
+            // Try to split by sentences that look like alternatives
+            // Pattern: sentences starting with uppercase after dot/newline and having medium length
             const sentences = afterMarker
-                .split(/(?<=[.!])\s+(?=[A-ZÃƒâ‚¬-ÃƒÅ¡Ãƒâ€°])/)
+                .split(/(?<=[.!])\s+(?=[A-ZÀ-ÚÉ])/)
                 .map(s => s.trim())
                 .filter(s => {
-                    // Filtra sentenÃƒÂ§as que parecem alternativas vÃƒÂ¡lidas
+                    // Filters sentences that look like valid alternatives
                     if (s.length < 20 || s.length > 500) return false;
-                    // Remove sentenÃƒÂ§as que parecem ser respostas/gabaritos
+                    // Remove sentences that look like answers/keys
                     if (/^(Resposta|Gabarito|Correta|A resposta|portanto|letra\s+[A-E]|De acordo|Segundo)/i.test(s)) return false;
-                    // Remove sentenÃƒÂ§as com metadados de sites
-                    if (/verificad[ao]|especialista|winnyfernandes|Excelente|curtidas|usuÃƒÂ¡rio|respondeu/i.test(s)) return false;
+                    // Remove sentences with site metadata
+                    if (/verificad[ao]|especialista|winnyfernandes|Excelente|curtidas|usuário|respondeu/i.test(s)) return false;
                     return true;
                 });
 
-            // Se temos entre 3-6 sentenÃƒÂ§as vÃƒÂ¡lidas, atribui letras
+            // If we have between 3-6 valid sentences, assign letters
             if (sentences.length >= 3 && sentences.length <= 6) {
                 const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
                 return sentences.slice(0, 5).map((body, idx) => ({
@@ -468,7 +468,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
             return null;
         };
 
-        // MÃƒÂ©todo para alternativas em parÃƒÂ¡grafos (formato comum em sites educacionais)
+        // Method for alternatives in paragraphs (common format in educational sites)
         const byParagraphs = () => {
             const lines = normalized.split(/\n+/).map(line => line.trim()).filter(Boolean);
             const candidateOptions = [];
@@ -477,31 +477,31 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
 
-                // Marca inÃƒÂ­cio da seÃƒÂ§ÃƒÂ£o de opÃƒÂ§ÃƒÂµes
-                if (/assinale|alternativa|opÃƒÂ§ÃƒÂ£o|opÃƒÂ§ÃƒÂµes|correta[.:]|incorreta[.:]/i.test(line)) {
+                // Marks start of options section
+                if (/assinale|alternativa|opção|opções|correta[.:]|incorreta[.:]/i.test(line)) {
                     foundStartMarker = true;
                     continue;
                 }
 
-                // Para quando encontra marcadores de resposta
-                if (/^(Resposta|Gabarito|Correta|Alternativa correta|A resposta|estÃƒÂ¡ correta|portanto|letra\s+[A-E])/i.test(line)) {
+                // Stops when finding answer markers
+                if (/^(Resposta|Gabarito|Correta|Alternativa correta|A resposta|está correta|portanto|letra\s+[A-E])/i.test(line)) {
                     break;
                 }
 
-                // Se jÃƒÂ¡ encontrou o marcador, adiciona linhas como opÃƒÂ§ÃƒÂµes
+                // If marker already found, add lines as options
                 if (foundStartMarker) {
-                    // Ignora linhas muito curtas ou muito longas
+                    // Ignore lines too short or too long
                     if (line.length < 15 || line.length > 500) continue;
-                    // Ignora linhas que parecem enunciados
+                    // Ignore lines that look like statements
                     if (line.endsWith('?') || line.endsWith(':')) continue;
-                    // Ignora metadados
+                    // Ignore metadata
                     if (/verificad[ao]|especialista|curtidas|respondeu/i.test(line)) continue;
 
                     candidateOptions.push(line);
                 }
             }
 
-            // Se temos 3+ parÃƒÂ¡grafos candidatos, atribui letras
+            // If we have 3+ candidate paragraphs, assign letters
             if (candidateOptions.length >= 3 && candidateOptions.length <= 6) {
                 const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
                 return candidateOptions.slice(0, 5).map((body, idx) => ({
@@ -519,7 +519,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
     },
 
     /**
-     * Extrai opÃƒÂ§ÃƒÂµes (A, B, C...) de qualquer texto
+     * Extracts options (A, B, C...) from any text
      */
     extractOptionsFromText(sourceContent) {
         const raw = this._extractOptionsLocally(sourceContent);
@@ -531,7 +531,7 @@ Responda APENAS: CORRESPONDE ou NAO_CORRESPONDE`;
     },
 
     /**
-     * Prompt 1: Extrair opÃƒÂ§ÃƒÂµes (IA)
+     * Prompt 1: Extract options (AI)
      */
     async extractOptionsFromSource(sourceContent) {
         const { groqApiUrl, groqApiKey, groqModelFast } = await this._getSettings();
@@ -582,24 +582,24 @@ E) [texto da alternativa E se houver]`;
     },
 
     /**
-     * Prompt 2: Identificar a resposta correta (IA)
+     * Prompt 2: Identify the correct answer (AI)
      */
     async extractAnswerFromSource(originalQuestion, sourceContent) {
         const { groqApiUrl, groqApiKey, groqModelAnswer } = await this._getSettings();
 
-        const prompt = `Analise a fonte e identifique a resposta correta para a questÃƒÂ£o.
+        const prompt = `Analise a fonte e identifique a resposta correta para a questão.
 
-QUESTÃƒÆ’O:
+QUESTÃO:
 ${originalQuestion.substring(0, 1500)}
 
 FONTE:
 ${sourceContent.substring(0, 2500)}
 
-INSTRUÃƒâ€¡Ãƒâ€¢ES:
+INSTRUÇÕES:
 - Identifique a letra da resposta correta (A, B, C, D ou E)
 - Extraia o texto completo da alternativa correta
 - Responda APENAS no formato: "Letra X: [texto completo da alternativa]"
-- Se nÃƒÂ£o encontrar resposta clara, diga apenas: NAO_ENCONTRADO`;
+- Se não encontrar resposta clara, diga apenas: NAO_ENCONTRADO`;
 
         try {
             const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
@@ -611,7 +611,7 @@ INSTRUÃƒâ€¡Ãƒâ€¢ES:
                 body: JSON.stringify({
                     model: groqModelAnswer,
                     messages: [
-                        { role: 'system', content: 'VocÃƒÂª extrai respostas de questÃƒÂµes de mÃƒÂºltipla escolha. Sempre responda no formato "Letra X: [texto da alternativa]".' },
+                        { role: 'system', content: 'Você extrai respostas de questões de múltipla escolha. Sempre responda no formato "Letra X: [texto da alternativa]".' },
                         { role: 'user', content: prompt }
                     ],
                     temperature: 0.1,
@@ -622,13 +622,13 @@ INSTRUÃƒâ€¡Ãƒâ€¢ES:
             let content = data.choices?.[0]?.message?.content?.trim() || '';
             console.log('AnswerHunter: Resposta IA bruta:', content);
 
-            // Limpar respostas que indicam que nÃƒÂ£o encontrou
+            // Clear answers indicating not found
             if (!content || content.length < 3) return null;
-            if (/^(NAO_ENCONTRADO|SEM_RESPOSTA|INVALIDO|N[ÃƒÂ£a]o\s+(encontr|consigo|h[ÃƒÂ¡a]))/i.test(content)) return null;
+            if (/^(NAO_ENCONTRADO|SEM_RESPOSTA|INVALIDO|N[ãa]o\s+(encontr|consigo|h[áa]))/i.test(content)) return null;
 
-            // Se contÃƒÂ©m indicaÃƒÂ§ÃƒÂ£o de nÃƒÂ£o encontrado no meio/fim, tentar extrair a parte ÃƒÂºtil
+            // If contains not found indication in middle/end, try to extract useful part
             if (/NAO_ENCONTRADO|SEM_RESPOSTA/i.test(content)) {
-                // Tentar extrair letra antes da indicaÃƒÂ§ÃƒÂ£o de erro
+                // Try to extract letter before error indication
                 const beforeError = content.split(/NAO_ENCONTRADO|SEM_RESPOSTA/i)[0].trim();
                 const letterMatch = beforeError.match(/(?:letra|alternativa)\s*([A-E])\b/i);
                 if (letterMatch) {
@@ -646,7 +646,7 @@ INSTRUÃƒâ€¡Ãƒâ€¢ES:
     },
 
     /**
-     * Inferir resposta com base em evidências (gabarito/comentários)
+     * Infer answer based on evidence (answer key/comments)
      * Enhanced with per-alternative evaluation & polarity awareness
      */
     async inferAnswerFromEvidence(originalQuestion, sourceContent) {
@@ -733,7 +733,7 @@ REGRAS:
     },
 
     /**
-     * FunÃƒÂ§ÃƒÂ£o principal de refinamento (3-Passos)
+     * Main refinement function (3-Steps)
      */
     async refineWithGroq(item) {
         console.log('AnswerHunter: Iniciando refinamento com 3 prompts...');
@@ -774,7 +774,7 @@ REGRAS:
     },
 
     /**
-     * Fallback: gerar resposta diretamente pela IA quando não houver fontes
+     * Fallback: generate answer directly by AI when there are no sources
      * Uses anti-hallucination prompt: evaluates each alternative individually,
      * checks for contradictions, then selects.
      */
@@ -845,8 +845,8 @@ REGRAS:
     },
 
     /**
-     * Busca o conteÃƒÂºdo de uma pÃƒÂ¡gina web via fetch
-     * Usado para analisar fontes mais profundamente
+     * Fetches the content of a web page via fetch
+     * Used to analyze sources more deeply
      */
     async fetchPageText(url) {
         if (!url) return null;

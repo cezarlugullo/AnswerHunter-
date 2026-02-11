@@ -9,180 +9,386 @@
 </head>
 
 <body>
-  <!-- ===== ONBOARDING VIEW (New Design) ===== -->
+  <!-- ===== ONBOARDING WIZARD (Complete Redesign) ===== -->
   <div id="onboarding-view" class="onboarding-view hidden">
 
-    <!-- Animated Background Elements -->
-    <div class="onboarding-bg-shape shape-1"></div>
-    <div class="onboarding-bg-shape shape-2"></div>
+    <!-- Animated Background Blobs -->
+    <div class="ob-blob ob-blob-1"></div>
+    <div class="ob-blob ob-blob-2"></div>
+    <div class="ob-blob ob-blob-3"></div>
 
-    <!-- ProgressBar -->
-    <div class="onboarding-progress-container">
-      <div class="onboarding-progress-bar" id="onboarding-progress-bar"></div>
+    <!-- Dot Grid Pattern -->
+    <div class="ob-dot-grid"></div>
+
+    <!-- Top Progress Indicator -->
+    <div class="ob-progress-track">
+      <div class="ob-progress-fill" id="onboarding-progress-bar"></div>
+      <div class="ob-progress-glow" id="ob-progress-glow"></div>
     </div>
 
-    <!-- SLIDES CONTAINER -->
-    <div class="onboarding-slides" id="onboarding-slides">
+    <!-- Step Indicator Dots -->
+    <div class="ob-step-dots" id="ob-step-dots">
+      <button class="ob-dot active" data-step="0" title="Welcome"></button>
+      <button class="ob-dot" data-step="1" title="Groq"></button>
+      <button class="ob-dot" data-step="2" title="Serper"></button>
+      <button class="ob-dot" data-step="3" title="Gemini"></button>
+    </div>
 
-      <!-- SLIDE 1: WELCOME -->
-      <div class="onboarding-slide active" data-slide="1">
-        <div class="slide-content centered">
-          <div class="hero-icon-container">
-            <span class="material-symbols-rounded hero-icon">rocket_launch</span>
-            <div class="hero-ring"></div>
+    <!-- SLIDES WRAPPER -->
+    <div class="ob-slides-viewport">
+      <div class="ob-slides" id="onboarding-slides">
+
+        <!-- ═══════════ SLIDE 0: WELCOME ═══════════ -->
+        <div class="ob-slide" data-slide="0">
+          <div class="ob-slide-inner ob-center">
+
+            <!-- Animated Illustration -->
+            <div class="ob-hero-illustration">
+              <div class="ob-orbit-ring ob-orbit-1"></div>
+              <div class="ob-orbit-ring ob-orbit-2"></div>
+              <div class="ob-hero-icon-wrap">
+                <span class="material-symbols-rounded ob-hero-icon">rocket_launch</span>
+              </div>
+              <div class="ob-orbit-dot ob-od-1"><span class="material-symbols-rounded">search</span></div>
+              <div class="ob-orbit-dot ob-od-2"><span class="material-symbols-rounded">psychology</span></div>
+              <div class="ob-orbit-dot ob-od-3"><span class="material-symbols-rounded">auto_awesome</span></div>
+            </div>
+
+            <h1 class="ob-title" data-i18n="setup.new.welcome.title">Welcome to AnswerHunter</h1>
+            <p class="ob-subtitle" data-i18n="setup.new.welcome.desc">Your AI-powered study companion. Let's get you
+              ready in less than 2 minutes.</p>
+
+            <!-- Feature Pills -->
+            <div class="ob-feature-pills">
+              <div class="ob-pill">
+                <span class="material-symbols-rounded">bolt</span>
+                <span data-i18n="setup.feature.fast">Lightning Fast</span>
+              </div>
+              <div class="ob-pill">
+                <span class="material-symbols-rounded">lock</span>
+                <span data-i18n="setup.feature.private">100% Private</span>
+              </div>
+              <div class="ob-pill">
+                <span class="material-symbols-rounded">money_off</span>
+                <span data-i18n="setup.feature.free">Free APIs</span>
+              </div>
+            </div>
+
+            <button id="welcomeStartBtn" class="ob-btn-hero">
+              <span data-i18n="setup.new.start">Get Started</span>
+              <span class="material-symbols-rounded">arrow_forward</span>
+              <div class="ob-btn-hero-shine"></div>
+            </button>
+
+            <p class="ob-time-hint">
+              <span class="material-symbols-rounded" style="font-size:14px;">schedule</span>
+              <span data-i18n="setup.timeHint">Takes about 2 minutes</span>
+            </p>
           </div>
-          <h1 data-i18n="setup.new.welcome.title">Welcome to AnswerHunter</h1>
-          <p data-i18n="setup.new.welcome.desc">Your AI-powered study companion. Let's get you ready in less than 2
-            minutes.</p>
-
-          <button id="welcomeStartBtn" class="btn-primary-large">
-            <span data-i18n="setup.new.start">Get Started</span>
-            <span class="material-symbols-rounded">arrow_forward</span>
-          </button>
         </div>
-      </div>
 
-      <!-- SLIDE 2: GROQ -->
-      <div class="onboarding-slide" data-slide="2">
-        <div class="slide-header">
-          <div class="step-badge">1/3</div>
-          <h2 data-i18n="setup.groq.title">Connect the Brain</h2>
+        <!-- ═══════════ SLIDE 1: GROQ ═══════════ -->
+        <div class="ob-slide" data-slide="1">
+          <div class="ob-slide-inner">
+
+            <!-- Step Header -->
+            <div class="ob-step-header">
+              <div class="ob-step-num groq-accent">1</div>
+              <div class="ob-step-info">
+                <div class="ob-step-label">
+                  <span data-i18n="setup.step">Step</span> 1/3
+                  <span class="ob-required-tag" data-i18n="setup.required">Required</span>
+                </div>
+                <h2 data-i18n="setup.groq.title">Connect the Brain</h2>
+              </div>
+              <div class="ob-provider-logo groq-bg">
+                <span class="material-symbols-rounded">psychology</span>
+              </div>
+            </div>
+
+            <p class="ob-step-desc" data-i18n="setup.groq.tagline">Groq powers the AI analysis. It's free and
+              incredibly fast.</p>
+
+            <!-- Interactive Tutorial -->
+            <div class="ob-tutorial-card" id="tutorial-groq">
+              <button class="ob-tutorial-toggle" type="button">
+                <span class="material-symbols-rounded">school</span>
+                <span data-i18n="setup.howToGetKey">How to get your key</span>
+                <span class="material-symbols-rounded ob-tutorial-caret">expand_more</span>
+              </button>
+              <div class="ob-tutorial-body" hidden>
+                <div class="ob-tutorial-step" style="--delay:0s">
+                  <div class="ob-ts-num groq-accent">1</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.groq.step1">Go to console.groq.com and create a free account</span>
+                  </div>
+                </div>
+                <div class="ob-tutorial-step" style="--delay:0.1s">
+                  <div class="ob-ts-num groq-accent">2</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.groq.step2">Click "API Keys" in the sidebar</span>
+                  </div>
+                </div>
+                <div class="ob-tutorial-step" style="--delay:0.2s">
+                  <div class="ob-ts-num groq-accent">3</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.groq.step3">Create a new key and copy it</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Key Input Card -->
+            <div class="ob-key-card">
+              <label class="ob-key-label" for="input-groq">
+                <span class="material-symbols-rounded">vpn_key</span>
+                <span>API Key</span>
+              </label>
+              <div class="ob-input-wrap">
+                <input type="password" id="input-groq" class="ob-input" placeholder="gsk_..." autocomplete="off">
+                <button class="visibility-toggle" data-target="input-groq" type="button">
+                  <span class="material-symbols-rounded">visibility</span>
+                </button>
+              </div>
+              <div class="ob-input-hint" id="hint-groq">
+                <span class="material-symbols-rounded">info</span>
+                <span data-i18n="setup.hint.groq">Starts with "gsk_"</span>
+              </div>
+            </div>
+
+            <!-- Action Buttons Row -->
+            <div class="ob-actions-row">
+              <a href="https://console.groq.com/keys" target="_blank" class="ob-btn-link groq-link">
+                <span class="material-symbols-rounded">open_in_new</span>
+                <span data-i18n="setup.getKey">Get Free Key</span>
+                <span class="ob-free-chip">FREE</span>
+              </a>
+              <button id="test-groq" class="ob-btn-test" data-provider="groq" type="button">
+                <span class="material-symbols-rounded">wifi_tethering</span>
+                <span data-i18n="setup.test">Test Key</span>
+              </button>
+            </div>
+
+            <div class="ob-test-status" id="status-groq"></div>
+
+            <!-- Footer Navigation -->
+            <div class="ob-nav-footer">
+              <button class="ob-nav-back" id="prev-groq" type="button">
+                <span class="material-symbols-rounded">arrow_back</span>
+              </button>
+              <div class="ob-nav-spacer"></div>
+              <button class="ob-nav-next" id="btn-next-groq" disabled type="button">
+                <span data-i18n="setup.next">Next</span>
+                <span class="material-symbols-rounded">arrow_forward</span>
+              </button>
+            </div>
+          </div>
         </div>
-        <p class="slide-desc" data-i18n="setup.groq.tagline">Groq powers the AI analysis. It's free and incredibly fast.
-        </p>
 
-        <div class="input-card">
-          <label class="input-label" for="input-groq">
-            <span class="material-symbols-rounded">vpn_key</span>
-            <span>API Key</span>
-          </label>
-          <div class="input-group">
-            <input type="password" id="input-groq" class="modern-input" placeholder="gsk_..." autocomplete="off">
-            <button class="visibility-toggle" data-target="input-groq">
-              <span class="material-symbols-rounded">visibility</span>
+        <!-- ═══════════ SLIDE 2: SERPER ═══════════ -->
+        <div class="ob-slide" data-slide="2">
+          <div class="ob-slide-inner">
+
+            <div class="ob-step-header">
+              <div class="ob-step-num serper-accent">2</div>
+              <div class="ob-step-info">
+                <div class="ob-step-label">
+                  <span data-i18n="setup.step">Step</span> 2/3
+                  <span class="ob-required-tag" data-i18n="setup.required">Required</span>
+                </div>
+                <h2 data-i18n="setup.serper.title">Enable Vision</h2>
+              </div>
+              <div class="ob-provider-logo serper-bg">
+                <span class="material-symbols-rounded">travel_explore</span>
+              </div>
+            </div>
+
+            <p class="ob-step-desc" data-i18n="setup.serper.tagline">Serper allows the AI to search the web for
+              evidence.</p>
+
+            <div class="ob-tutorial-card" id="tutorial-serper">
+              <button class="ob-tutorial-toggle" type="button">
+                <span class="material-symbols-rounded">school</span>
+                <span data-i18n="setup.howToGetKey">How to get your key</span>
+                <span class="material-symbols-rounded ob-tutorial-caret">expand_more</span>
+              </button>
+              <div class="ob-tutorial-body" hidden>
+                <div class="ob-tutorial-step" style="--delay:0s">
+                  <div class="ob-ts-num serper-accent">1</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.serper.step1">Go to serper.dev and sign up for free</span>
+                  </div>
+                </div>
+                <div class="ob-tutorial-step" style="--delay:0.1s">
+                  <div class="ob-ts-num serper-accent">2</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.serper.step2">Open your Dashboard</span>
+                  </div>
+                </div>
+                <div class="ob-tutorial-step" style="--delay:0.2s">
+                  <div class="ob-ts-num serper-accent">3</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.serper.step3">Copy the API Key from the main page</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ob-key-card">
+              <label class="ob-key-label" for="input-serper">
+                <span class="material-symbols-rounded">travel_explore</span>
+                <span>API Key</span>
+              </label>
+              <div class="ob-input-wrap">
+                <input type="password" id="input-serper" class="ob-input" placeholder="Your Serper Key..."
+                  autocomplete="off">
+                <button class="visibility-toggle" data-target="input-serper" type="button">
+                  <span class="material-symbols-rounded">visibility</span>
+                </button>
+              </div>
+              <div class="ob-input-hint" id="hint-serper">
+                <span class="material-symbols-rounded">info</span>
+                <span data-i18n="setup.hint.serper">From serper.dev dashboard</span>
+              </div>
+            </div>
+
+            <div class="ob-actions-row">
+              <a href="https://serper.dev/api-key" target="_blank" class="ob-btn-link serper-link">
+                <span class="material-symbols-rounded">open_in_new</span>
+                <span data-i18n="setup.getKey">Get Free Key</span>
+                <span class="ob-free-chip">FREE</span>
+              </a>
+              <button id="test-serper" class="ob-btn-test" data-provider="serper" type="button">
+                <span class="material-symbols-rounded">wifi_tethering</span>
+                <span data-i18n="setup.test">Test Key</span>
+              </button>
+            </div>
+
+            <div class="ob-test-status" id="status-serper"></div>
+
+            <div class="ob-nav-footer">
+              <button class="ob-nav-back" id="prev-serper" type="button">
+                <span class="material-symbols-rounded">arrow_back</span>
+              </button>
+              <div class="ob-nav-spacer"></div>
+              <button class="ob-nav-next" id="btn-next-serper" disabled type="button">
+                <span data-i18n="setup.next">Next</span>
+                <span class="material-symbols-rounded">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════════ SLIDE 3: GEMINI (Optional) ═══════════ -->
+        <div class="ob-slide" data-slide="3">
+          <div class="ob-slide-inner">
+
+            <div class="ob-step-header">
+              <div class="ob-step-num gemini-accent">3</div>
+              <div class="ob-step-info">
+                <div class="ob-step-label">
+                  <span data-i18n="setup.step">Step</span> 3/3
+                  <span class="ob-optional-tag" data-i18n="setup.optional">Optional</span>
+                </div>
+                <h2 data-i18n="setup.gemini.title">Add Backup Power</h2>
+              </div>
+              <div class="ob-provider-logo gemini-bg">
+                <span class="material-symbols-rounded">auto_awesome</span>
+              </div>
+            </div>
+
+            <p class="ob-step-desc" data-i18n="setup.gemini.tagline">Gemini acts as a fallback if Groq is busy.</p>
+
+            <!-- Info Banner -->
+            <div class="ob-info-banner">
+              <span class="material-symbols-rounded">lightbulb</span>
+              <span data-i18n="setup.gemini.hint">You can skip this step. Gemini only activates when Groq is
+                unavailable.</span>
+            </div>
+
+            <div class="ob-tutorial-card" id="tutorial-gemini">
+              <button class="ob-tutorial-toggle" type="button">
+                <span class="material-symbols-rounded">school</span>
+                <span data-i18n="setup.howToGetKey">How to get your key</span>
+                <span class="material-symbols-rounded ob-tutorial-caret">expand_more</span>
+              </button>
+              <div class="ob-tutorial-body" hidden>
+                <div class="ob-tutorial-step" style="--delay:0s">
+                  <div class="ob-ts-num gemini-accent">1</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.gemini.step1">Go to aistudio.google.com</span>
+                  </div>
+                </div>
+                <div class="ob-tutorial-step" style="--delay:0.1s">
+                  <div class="ob-ts-num gemini-accent">2</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.gemini.step2">Click "Get API Key" → "Create API Key"</span>
+                  </div>
+                </div>
+                <div class="ob-tutorial-step" style="--delay:0.2s">
+                  <div class="ob-ts-num gemini-accent">3</div>
+                  <div class="ob-ts-content">
+                    <span data-i18n="setup.gemini.step3">Copy the key that starts with "AIza"</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ob-key-card">
+              <label class="ob-key-label" for="input-gemini">
+                <span class="material-symbols-rounded">auto_awesome</span>
+                <span>API Key</span>
+              </label>
+              <div class="ob-input-wrap">
+                <input type="password" id="input-gemini" class="ob-input" placeholder="AIza..." autocomplete="off">
+                <button class="visibility-toggle" data-target="input-gemini" type="button">
+                  <span class="material-symbols-rounded">visibility</span>
+                </button>
+              </div>
+              <div class="ob-input-hint" id="hint-gemini">
+                <span class="material-symbols-rounded">info</span>
+                <span data-i18n="setup.hint.gemini">Starts with "AIza"</span>
+              </div>
+            </div>
+
+            <div class="ob-actions-row">
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" class="ob-btn-link gemini-link">
+                <span class="material-symbols-rounded">open_in_new</span>
+                <span data-i18n="setup.getKey">Get Free Key</span>
+                <span class="ob-free-chip">FREE</span>
+              </a>
+              <button id="test-gemini" class="ob-btn-test" data-provider="gemini" type="button">
+                <span class="material-symbols-rounded">wifi_tethering</span>
+                <span data-i18n="setup.test">Test Key</span>
+              </button>
+            </div>
+
+            <div class="ob-test-status" id="status-gemini"></div>
+
+            <div class="ob-nav-footer">
+              <button class="ob-nav-back" id="prev-gemini" type="button">
+                <span class="material-symbols-rounded">arrow_back</span>
+              </button>
+              <div class="ob-nav-spacer"></div>
+              <button class="ob-btn-finish" id="saveSetupBtn" type="button">
+                <span class="material-symbols-rounded">check_circle</span>
+                <span data-i18n="setup.finish">Finish Setup</span>
+              </button>
+            </div>
+
+            <button id="setupSkipBtn" class="ob-btn-skip" type="button">
+              <span data-i18n="setup.skipGemini">Skip Gemini, finish setup</span>
             </button>
           </div>
-          <div class="input-hint" id="hint-groq">
-            <span class="material-symbols-rounded">info</span>
-            <span data-i18n="setup.hint.groq">Starts with "gsk_"</span>
-          </div>
         </div>
 
-        <div class="action-row">
-          <a href="https://console.groq.com/keys" target="_blank" class="link-btn">
-            <span class="material-symbols-rounded">open_in_new</span>
-            <span data-i18n="setup.getKey">Get Free Key</span>
-          </a>
-          <button id="test-groq" class="btn-test-modern" data-provider="groq">
-            <span data-i18n="setup.test">Test Key</span>
-          </button>
-        </div>
-
-        <div class="slide-footer">
-          <button class="nav-btn-prev" id="prev-groq"><span class="material-symbols-rounded">arrow_back</span></button>
-          <div class="step-status" id="status-groq"></div>
-          <button class="nav-btn-next" id="btn-next-groq" disabled>
-            <span data-i18n="setup.next">Next</span>
-            <span class="material-symbols-rounded">arrow_forward</span>
-          </button>
-        </div>
       </div>
+    </div>
 
-      <!-- SLIDE 3: SERPER -->
-      <div class="onboarding-slide" data-slide="3">
-        <div class="slide-header">
-          <div class="step-badge">2/3</div>
-          <h2 data-i18n="setup.serper.title">Enable Vision</h2>
-        </div>
-        <p class="slide-desc" data-i18n="setup.serper.tagline">Serper allows the AI to search the web for evidence.</p>
-
-        <div class="input-card">
-          <label class="input-label" for="input-serper">
-            <span class="material-symbols-rounded">travel_explore</span>
-            <span>API Key</span>
-          </label>
-          <div class="input-group">
-            <input type="password" id="input-serper" class="modern-input" placeholder="Your Serper Key..."
-              autocomplete="off">
-            <button class="visibility-toggle" data-target="input-serper">
-              <span class="material-symbols-rounded">visibility</span>
-            </button>
-          </div>
-          <div class="input-hint" id="hint-serper">
-            <span class="material-symbols-rounded">info</span>
-            <span data-i18n="setup.hint.serper">From serper.dev dashboard</span>
-          </div>
-        </div>
-
-        <div class="action-row">
-          <a href="https://serper.dev/api-key" target="_blank" class="link-btn">
-            <span class="material-symbols-rounded">open_in_new</span>
-            <span data-i18n="setup.getKey">Get Free Key</span>
-          </a>
-          <button id="test-serper" class="btn-test-modern" data-provider="serper">
-            <span data-i18n="setup.test">Test Key</span>
-          </button>
-        </div>
-
-        <div class="slide-footer">
-          <button class="nav-btn-prev" id="prev-serper"><span
-              class="material-symbols-rounded">arrow_back</span></button>
-          <div class="step-status" id="status-serper"></div>
-          <button class="nav-btn-next" id="btn-next-serper" disabled>
-            <span data-i18n="setup.next">Next</span>
-            <span class="material-symbols-rounded">arrow_forward</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- SLIDE 4: GEMINI (Optional) -->
-      <div class="onboarding-slide" data-slide="4">
-        <div class="slide-header">
-          <div class="step-badge">3/3</div>
-          <h2 data-i18n="setup.gemini.title">Add Backup Power</h2>
-          <span class="badge-optional" data-i18n="setup.optional">Optional</span>
-        </div>
-        <p class="slide-desc" data-i18n="setup.gemini.tagline">Gemini acts as a fallback if Groq is busy.</p>
-
-        <div class="input-card">
-          <label class="input-label" for="input-gemini">
-            <span class="material-symbols-rounded">auto_awesome</span>
-            <span>API Key</span>
-          </label>
-          <div class="input-group">
-            <input type="password" id="input-gemini" class="modern-input" placeholder="AIza..." autocomplete="off">
-            <button class="visibility-toggle" data-target="input-gemini">
-              <span class="material-symbols-rounded">visibility</span>
-            </button>
-          </div>
-          <div class="input-hint" id="hint-gemini">
-            <span class="material-symbols-rounded">info</span>
-            <span data-i18n="setup.hint.gemini">Starts with "AIza"</span>
-          </div>
-        </div>
-
-        <div class="action-row">
-          <a href="https://aistudio.google.com/app/apikey" target="_blank" class="link-btn">
-            <span class="material-symbols-rounded">open_in_new</span>
-            <span data-i18n="setup.getKey">Get Free Key</span>
-          </a>
-          <button id="test-gemini" class="btn-test-modern" data-provider="gemini">
-            <span data-i18n="setup.test">Test Key</span>
-          </button>
-        </div>
-
-        <div class="slide-footer">
-          <button class="nav-btn-prev" id="prev-gemini"><span
-              class="material-symbols-rounded">arrow_back</span></button>
-          <div class="step-status" id="status-gemini"></div>
-          <button class="btn-finish" id="saveSetupBtn">
-            <span data-i18n="setup.finish">Finish Setup</span>
-            <span class="material-symbols-rounded">check</span>
-          </button>
-        </div>
-        <button id="setupSkipBtn" class="btn-text-skip" data-i18n="setup.skip">Skip for now</button>
-      </div>
-
+    <!-- Privacy Footer -->
+    <div class="ob-privacy-bar">
+      <span class="material-symbols-rounded">shield</span>
+      <span data-i18n="setup.privacy">Your keys are stored locally and never sent to our servers.</span>
     </div>
   </div>
 
