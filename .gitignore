@@ -1,32 +1,28 @@
-# Arquivos de sistema e temporários
+# Operating system files
 .DS_Store
 Thumbs.db
-*.log
 *.tmp
 *.bak
 
-# Editor config
+# Logs
+*.log
+
+# IDE folders
 .vscode/
 .idea/
 
-# Dependências (se houver no futuro)
+# Dependencies and builds
 node_modules/
-
-# Build artifacts
 dist/
 build/
 
-# Secrets & environment
+# Env and secrets
 .env
 .env.*
 
-# Test/debug logs
+# Local tooling artifacts
 .playwright-cli/
-# Windows reserved filenames
-nul
-
-# Claude local settings
 .claude/
 
-# i18n (to be implemented)
-src/i18n/
+# Accidental local files
+nul

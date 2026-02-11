@@ -4,7 +4,7 @@
  */
 export const SettingsModel = {
     defaults: {
-        language: 'en',
+        language: '',
         groqApiKey: '',
         groqApiUrl: 'https://api.groq.com/openai/v1/chat/completions',
         groqModelFast: 'llama-3.1-8b-instant',
@@ -79,6 +79,11 @@ export const SettingsModel = {
 
     computeSetupCompleted(settings = {}) {
         return this.getProviderReadiness(settings).ready;
+    },
+
+    async getCurrentProviderReadiness() {
+        const settings = await this.getSettings();
+        return this.getProviderReadiness(settings);
     },
 
     /**

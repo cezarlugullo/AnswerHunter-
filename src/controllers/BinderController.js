@@ -1,10 +1,15 @@
-﻿import { StorageModel } from '../models/StorageModel.js';
+import { StorageModel } from '../models/StorageModel.js';
+import { I18nService } from '../i18n/I18nService.js';
 
 export const BinderController = {
     view: null,
     eventsBound: false,
     draggedItemId: null,
     lastExportTimestamp: null,
+
+    t(key, variables) {
+        return I18nService.t(key, variables);
+    },
 
     init(view) {
         this.view = view;
@@ -154,7 +159,7 @@ export const BinderController = {
                 e.stopPropagation();
                 const item = StorageModel.findNode(copyBtn.dataset.id);
                 if (item && item.content) {
-                    const text = `Questão: ${item.content.question}\n\nResposta: ${item.content.answer}`;
+                    const text = `${this.t('binder.copy.question')}: ${item.content.question}\n\n${this.t('binder.copy.answer')}: ${item.content.answer}`;
                     navigator.clipboard.writeText(text);
                 }
                 return;
@@ -220,7 +225,7 @@ export const BinderController = {
     },
 
     async handleCreateFolder() {
-        const name = prompt('Nome da nova pasta:');
+        const name = prompt(this.t('binder.prompt.newFolder'));
         if (name) {
             await StorageModel.createFolder(name);
             this.renderBinder();
@@ -240,7 +245,7 @@ export const BinderController = {
     async handleRename(id) {
         const node = StorageModel.findNode(id);
         if (!node || node.type !== 'folder') return;
-        const newName = prompt('Novo nome da pasta:', node.title);
+        const newName = prompt(this.t('binder.prompt.renameFolder'), node.title);
         if (newName && newName.trim() && newName.trim() !== node.title) {
             await StorageModel.renameFolder(id, newName.trim());
             this.renderBinder();
@@ -253,13 +258,10 @@ export const BinderController = {
 
         // Se for pasta com filhos, dar opções
         if (node.type === 'folder' && node.children && node.children.length > 0) {
-            const choice = prompt(
-                `A pasta "${node.title}" contém ${node.children.length} item(ns).\n\n` +
-                'Digite uma opção:\n' +
-                '1 - Excluir pasta E todo o conteúdo\n' +
-                '2 - Excluir só a pasta (mover conteúdo para pasta pai)\n' +
-                '0 - Cancelar'
-            );
+            const choice = prompt(this.t('binder.prompt.deleteFolderOptions', {
+                title: node.title,
+                count: node.children.length
+            }));
             if (choice === '1') {
                 await StorageModel.deleteNode(id);
                 this.renderBinder();
@@ -272,7 +274,7 @@ export const BinderController = {
             return;
         }
 
-        if (confirm('Deseja realmente excluir este item?')) {
+        if (confirm(this.t('binder.confirm.deleteItem'))) {
             const success = await StorageModel.deleteNode(id);
             if (success) {
                 this.renderBinder();
@@ -282,7 +284,7 @@ export const BinderController = {
     },
 
     async handleClearAll() {
-        if (confirm('Tem certeza que deseja apagar TODO o fichário? Esta ação é irreversível.')) {
+        if (confirm(this.t('binder.confirm.clearAll'))) {
             await StorageModel.clearAll();
             this.renderBinder();
             this.view.resetAllSaveButtons();
@@ -338,7 +340,7 @@ export const BinderController = {
             const data = StorageModel.data;
             if (!data || data.length === 0) {
                 if (this.view.showToast) {
-                    this.view.showToast('Nada para exportar.', 'error');
+                    this.view.showToast(this.t('binder.toast.nothingToExport'), 'error');
                 }
                 return;
             }
@@ -357,12 +359,12 @@ export const BinderController = {
             await this._saveLastExportTimestamp();
 
             if (this.view.showToast) {
-                this.view.showToast('Backup exportado com sucesso!', 'success');
+                this.view.showToast(this.t('binder.toast.exportSuccess'), 'success');
             }
         } catch (err) {
             console.error('Export error:', err);
             if (this.view.showToast) {
-                this.view.showToast('Erro ao exportar: ' + err.message, 'error');
+                this.view.showToast(this.t('binder.toast.exportError', { message: err.message }), 'error');
             }
         }
     },
@@ -381,27 +383,29 @@ export const BinderController = {
 
                 if (!Array.isArray(data) || data.length === 0) {
                     if (this.view.showToast) {
-                        this.view.showToast('Arquivo inválido.', 'error');
+                        this.view.showToast(this.t('binder.toast.invalidFile'), 'error');
                     }
                     return;
                 }
 
                 // Confirm before overwriting
-                if (!confirm('Isso substituirá todo o fichário atual. Deseja continuar?')) return;
+                if (!confirm(this.t('binder.confirm.importReplace'))) return;
 
                 await StorageModel.importData(data);
                 this.renderBinder();
 
                 if (this.view.showToast) {
-                    this.view.showToast('Dados importados com sucesso!', 'success');
+                    this.view.showToast(this.t('binder.toast.importSuccess'), 'success');
                 }
             });
             input.click();
         } catch (err) {
             console.error('Import error:', err);
             if (this.view.showToast) {
-                this.view.showToast('Erro ao importar: ' + err.message, 'error');
+                this.view.showToast(this.t('binder.toast.importError', { message: err.message }), 'error');
             }
         }
     }
 };
+
+
