@@ -207,31 +207,35 @@
 
             <p class="ob-step-desc" data-i18n="setup.serper.tagline">Serper allows the AI to search the web for
               evidence.</p>
+            <div class="ob-begin-hint">
+              <span class="material-symbols-rounded">touch_app</span>
+              <span data-i18n="setup.beginHint">Start with button 1 below. After copying the key, come back and paste
+                it here.</span>
+            </div>
 
-            <div class="ob-tutorial-card" id="tutorial-serper">
+            <div class="ob-tutorial-card expanded" id="tutorial-serper">
               <button class="ob-tutorial-toggle" type="button">
                 <span class="material-symbols-rounded">school</span>
-                <span data-i18n="setup.howToGetKey">How to get your key</span>
+                <span data-i18n="setup.stepByStepGuide">Step-by-step guide</span>
                 <span class="material-symbols-rounded ob-tutorial-caret">expand_more</span>
               </button>
-              <div class="ob-tutorial-body" hidden>
+              <div class="ob-tutorial-body">
                 <div class="ob-tutorial-step" style="--delay:0s">
                   <div class="ob-ts-num serper-accent">1</div>
                   <div class="ob-ts-content">
-                    <span data-i18n="setup.serper.step1">Go to <a href="https://serper.dev"
-                        target="_blank">serper.dev</a> and sign up for free</span>
+                    <span data-i18n="setup.serper.step1">Click "Open official site" and create your free Serper account.</span>
                   </div>
                 </div>
                 <div class="ob-tutorial-step" style="--delay:0.1s">
                   <div class="ob-ts-num serper-accent">2</div>
                   <div class="ob-ts-content">
-                    <span data-i18n="setup.serper.step2">Open your Dashboard</span>
+                    <span data-i18n="setup.serper.step2">Open your dashboard and locate your API Key.</span>
                   </div>
                 </div>
                 <div class="ob-tutorial-step" style="--delay:0.2s">
                   <div class="ob-ts-num serper-accent">3</div>
                   <div class="ob-ts-content">
-                    <span data-i18n="setup.serper.step3">Copy the API Key from the main page</span>
+                    <span data-i18n="setup.serper.step3">Copy the key, paste below, then click "Validate key".</span>
                   </div>
                 </div>
               </div>
@@ -256,18 +260,21 @@
             </div>
 
             <div class="ob-actions-row">
-              <a href="https://serper.dev/api-key" target="_blank" class="ob-btn-link serper-link">
+              <a href="https://serper.dev/api-key" target="_blank" rel="noopener noreferrer"
+                class="ob-btn-link serper-link">
                 <span class="material-symbols-rounded">open_in_new</span>
-                <span data-i18n="setup.getKey">Get Free Key</span>
+                <span data-i18n="setup.openSiteAction">1. Open official site</span>
                 <span class="ob-free-chip">FREE</span>
               </a>
               <button id="test-serper" class="ob-btn-test" data-provider="serper" type="button">
                 <span class="material-symbols-rounded">wifi_tethering</span>
-                <span data-i18n="setup.test">Test Key</span>
+                <span data-i18n="setup.validateAction">2. Validate key</span>
               </button>
             </div>
 
             <div class="ob-test-status" id="status-serper"></div>
+            <p class="ob-next-help" data-i18n="setup.nextHelp">When validation is successful, the Next button unlocks
+              automatically.</p>
 
             <div class="ob-nav-footer">
               <button class="ob-nav-back" id="prev-serper" type="button">
