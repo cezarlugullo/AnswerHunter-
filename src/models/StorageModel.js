@@ -1,13 +1,13 @@
 /**
  * StorageModel.js
- * Gerencia a persistência de dados do fichário (Binder) usando chrome.storage.local.
+ * Manages binder data persistence using chrome.storage.local.
  */
 export const StorageModel = {
     data: [],
     currentFolderId: 'root',
 
     /**
-     * Inicializa o storage, carregando dados do chrome.storage.local
+     * Initializes storage, loading data from chrome.storage.local
      * @returns {Promise<void>}
      */
     async init() {
@@ -19,7 +19,7 @@ export const StorageModel = {
                     return;
                 }
 
-                // Migração: tentar local e mover para sync
+                // Migration: try local and move to sync
                 chrome.storage.local.get(['binderStructure'], (localResult) => {
                     if (localResult.binderStructure && Array.isArray(localResult.binderStructure)) {
                         this.data = localResult.binderStructure;
@@ -27,7 +27,7 @@ export const StorageModel = {
                             resolve();
                         });
                     } else {
-                        // Estrutura inicial padrão
+                        // Default initial structure
                         this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
                         resolve();
                     }
@@ -37,7 +37,7 @@ export const StorageModel = {
     },
 
     /**
-     * Salva o estado atual no storage
+     * Saves current state to storage
      * @returns {Promise<void>}
      */
     async save() {
@@ -55,7 +55,7 @@ export const StorageModel = {
     },
 
     /**
-     * Conta total de questões salvas (recursivo)
+     * Total count of saved questions (recursive)
      * @param {Array} nodes 
      * @returns {number}
      */
@@ -69,7 +69,7 @@ export const StorageModel = {
     },
 
     /**
-     * Encontra um nó (pasta ou item) pelo ID
+     * Finds a node (folder or item) by ID
      * @param {string} id 
      * @param {Array} nodes 
      * @returns {Object|null}
@@ -86,7 +86,7 @@ export const StorageModel = {
     },
 
     /**
-     * Adiciona uma nova questão à pasta atual
+     * Adds a new question to the current folder
      * @param {string} question 
      * @param {string} answer 
      * @param {string} source 
@@ -115,7 +115,7 @@ export const StorageModel = {
     },
 
     /**
-     * Cria uma nova pasta dentro da pasta atual
+     * Creates a new folder inside the current folder
      * @param {string} name 
      */
     async createFolder(name) {
@@ -134,7 +134,7 @@ export const StorageModel = {
     },
 
     /**
-     * Verifica se uma questão já está salva
+     * Checks if a question is already saved
      * @param {string} questionText 
      * @returns {boolean}
      */
@@ -152,7 +152,7 @@ export const StorageModel = {
     },
 
     /**
-     * Remove uma questão pelo texto do conteúdo
+     * Removes a question by content text
      * @param {string} questionText 
      * @returns {boolean} Sucesso
      */
@@ -178,7 +178,7 @@ export const StorageModel = {
     },
 
     /**
-     * Remove um nó pelo ID
+     * Removes a node by ID
      * @param {string} id 
      * @returns {boolean} Sucesso
      */
@@ -204,14 +204,14 @@ export const StorageModel = {
     },
 
     /**
-     * Move um item para outra pasta
+     * Moves an item to another folder
      * @param {string} itemId 
      * @param {string} targetFolderId 
      */
     async moveItem(itemId, targetFolderId) {
         if (itemId === targetFolderId) return;
 
-        // Helper para remover e retornar o item
+        // Helper to remove and return the item
         const extractFromTree = (nodes, id) => {
             for (let i = 0; i < nodes.length; i++) {
                 if (nodes[i].id === id) {
@@ -232,14 +232,14 @@ export const StorageModel = {
                 targetFolder.children.push(itemNode);
                 await this.save();
             } else {
-                // Se falhar, tenta restaurar recarregando (não é ideal, mas seguro)
+                // If fails, try to restore by reloading (not ideal, but safe)
                 await this.init();
             }
         }
     },
 
     /**
-     * Renomeia uma pasta
+     * Renames a folder
      * @param {string} folderId
      * @param {string} newName
      * @returns {Promise<boolean>}
@@ -254,7 +254,7 @@ export const StorageModel = {
     },
 
     /**
-     * Encontra o nó pai de um dado ID
+     * Finds the parent node of a given ID
      * @param {string} childId
      * @param {Array} nodes
      * @returns {Object|null}
@@ -273,7 +273,7 @@ export const StorageModel = {
     },
 
     /**
-     * Exclui uma pasta mas move seus filhos para a pasta pai
+     * Deletes a folder but moves its children to the parent folder
      * @param {string} folderId
      * @returns {Promise<boolean>}
      */
@@ -287,7 +287,7 @@ export const StorageModel = {
         const folderIndex = parent.children.findIndex(c => c.id === folderId);
         if (folderIndex === -1) return false;
 
-        // Inserir filhos da pasta na posição da pasta no pai
+        // Insert folder children at the folder's position in the parent
         const children = folder.children || [];
         parent.children.splice(folderIndex, 1, ...children);
 
@@ -296,7 +296,7 @@ export const StorageModel = {
     },
 
     /**
-     * Limpa tudo (Factory Reset)
+     * Clears everything (Factory Reset)
      */
     async clearAll() {
         this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];

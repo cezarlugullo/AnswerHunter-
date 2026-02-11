@@ -7,6 +7,7 @@ export const PopupView = {
 
   init() {
     this.cacheElements();
+    this._setupTutorialToggles();
   },
 
   setTranslator(translator) {
@@ -39,14 +40,15 @@ export const PopupView = {
       languageToggle: document.getElementById('languageToggle'),
       toastContainer: document.getElementById('toast-container'),
 
-      // New Onboarding Elements
+      // Onboarding Elements
       onboardingView: document.getElementById('onboarding-view'),
       onboardingSlides: document.getElementById('onboarding-slides'),
       progressBar: document.getElementById('onboarding-progress-bar'),
+      progressGlow: document.getElementById('ob-progress-glow'),
+      stepDots: document.getElementById('ob-step-dots'),
 
       // Buttons
       welcomeStartBtn: document.getElementById('welcomeStartBtn'),
-
       btnNextGroq: document.getElementById('btn-next-groq'),
       btnNextSerper: document.getElementById('btn-next-serper'),
       saveSetupBtn: document.getElementById('saveSetupBtn'),
@@ -71,6 +73,27 @@ export const PopupView = {
       statusSerper: document.getElementById('status-serper'),
       statusGemini: document.getElementById('status-gemini')
     };
+  },
+
+  /** Setup interactive tutorial accordions */
+  _setupTutorialToggles() {
+    document.querySelectorAll('.ob-tutorial-toggle').forEach(toggle => {
+      toggle.addEventListener('click', () => {
+        const card = toggle.closest('.ob-tutorial-card');
+        if (!card) return;
+        const body = card.querySelector('.ob-tutorial-body');
+        if (!body) return;
+
+        const isExpanded = card.classList.contains('expanded');
+        if (isExpanded) {
+          body.hidden = true;
+          card.classList.remove('expanded');
+        } else {
+          body.hidden = false;
+          card.classList.add('expanded');
+        }
+      });
+    });
   },
 
   setLanguageSelectValue(language) {
@@ -129,7 +152,7 @@ export const PopupView = {
     });
   },
 
-  // ===== NEW ONBOARDING LOGIC =====
+  // ===== ONBOARDING LOGIC (REVAMPED) =====
 
   setSetupVisible(visible) {
     if (this.elements.onboardingView) {
@@ -137,29 +160,46 @@ export const PopupView = {
     }
   },
 
-  // Step 0: Welcome, 1: Groq, 2: Serper, 3: Gemini
+  /**
+   * Show a specific onboarding slide (0=welcome, 1=groq, 2=serper, 3=gemini)
+   * Uses CSS translateX on the slides container.
+   */
   showSetupStep(stepNumber) {
     this._currentSlide = stepNumber;
 
     if (this.elements.onboardingSlides) {
-      // 4 slides total (0, 1, 2, 3). Each is 25% of the 400% width container.
-      // Translate -25% moves one slide.
-      const translate = stepNumber * -25;
+      const translate = stepNumber * -100;
       this.elements.onboardingSlides.style.transform = `translateX(${translate}%)`;
     }
 
     this.updateProgressBar(stepNumber);
+    this.updateStepDots(stepNumber);
   },
 
   updateProgressBar(stepNumber) {
-    if (!this.elements.progressBar) return;
-    // 0 -> 10%, 1 -> 40%, 2 -> 70%, 3 -> 100%
-    let percent = 10;
-    if (stepNumber === 1) percent = 40;
-    if (stepNumber === 2) percent = 70;
-    if (stepNumber === 3) percent = 100;
+    // 0 -> 10%, 1 -> 35%, 2 -> 65%, 3 -> 100%
+    const percents = [10, 35, 65, 100];
+    const percent = percents[stepNumber] ?? 10;
 
-    this.elements.progressBar.style.width = `${percent}%`;
+    if (this.elements.progressBar) {
+      this.elements.progressBar.style.width = `${percent}%`;
+    }
+    if (this.elements.progressGlow) {
+      this.elements.progressGlow.style.left = `${Math.max(0, percent - 5)}%`;
+    }
+  },
+
+  updateStepDots(currentStep) {
+    if (!this.elements.stepDots) return;
+    const dots = this.elements.stepDots.querySelectorAll('.ob-dot');
+    dots.forEach((dot, index) => {
+      dot.classList.remove('active', 'done');
+      if (index === currentStep) {
+        dot.classList.add('active');
+      } else if (index < currentStep) {
+        dot.classList.add('done');
+      }
+    });
   },
 
   // Backwards compatibility shim for Controller
@@ -203,14 +243,11 @@ export const PopupView = {
   },
 
   setTestButtonLoading(provider, state) {
-    const button = document.getElementById(`test-${provider}`); // updated ID
+    const button = document.getElementById(`test-${provider}`);
     if (!button) return;
-
-    const icon = button.querySelector('.material-symbols-rounded'); // might not have one in "Testing" state for modern btn
 
     button.classList.remove('testing', 'test-ok', 'test-fail');
     button.disabled = false;
-    button.innerHTML = icon ? '' : button.innerHTML; // Clear content if needed
 
     if (state === 'loading') {
       button.classList.add('testing');
@@ -221,8 +258,7 @@ export const PopupView = {
 
     if (state === 'ok') {
       button.classList.add('test-ok');
-      button.innerHTML = `<span class="material-symbols-rounded">check</span> Success`;
-      // Enable Next button for this provider
+      button.innerHTML = `<span class="material-symbols-rounded">check_circle</span> Success`;
       this.enableNextButton(provider);
       return;
     }
@@ -234,7 +270,7 @@ export const PopupView = {
     }
 
     // Reset
-    button.innerHTML = `<span data-i18n="setup.test">Test Key</span>`;
+    button.innerHTML = `<span class="material-symbols-rounded">wifi_tethering</span> <span data-i18n="setup.test">Test Key</span>`;
   },
 
   enableNextButton(provider) {
@@ -242,7 +278,7 @@ export const PopupView = {
     const btn = document.getElementById(btnId);
     if (btn) {
       btn.disabled = false;
-      btn.classList.add('pulse-next'); // add animation
+      btn.classList.add('pulse-next');
     }
   },
 
@@ -250,7 +286,7 @@ export const PopupView = {
     const status = this.elements[`status${provider.charAt(0).toUpperCase() + provider.slice(1)}`];
     if (!status) return;
 
-    status.className = `step-status ${type}`;
+    status.className = `ob-test-status ${type}`;
     status.textContent = text;
   },
 
@@ -272,10 +308,6 @@ export const PopupView = {
 
   showPasteNotification(input) {
     if (!input) return;
-    const wrapper = input.closest('.input-group');
-    if (!wrapper) return;
-
-    // Add glow animation to input
     input.classList.add('just-pasted');
     setTimeout(() => input.classList.remove('just-pasted'), 700);
   },
@@ -290,7 +322,7 @@ export const PopupView = {
     const icon = hintEl.querySelector('.material-symbols-rounded');
     if (!trimmed) {
       if (icon) icon.textContent = 'info';
-      hintEl.style.color = '#999';
+      hintEl.style.color = '';
       return;
     }
 
@@ -298,17 +330,14 @@ export const PopupView = {
       if (trimmed.startsWith(expectedPrefix)) {
         hintEl.classList.add('valid');
         if (icon) icon.textContent = 'check_circle';
-        hintEl.style.color = '#4CAF50';
       } else {
         hintEl.classList.add('error');
         if (icon) icon.textContent = 'error';
-        hintEl.style.color = '#F44336';
       }
     } else if (trimmed.length > 10) {
       // No strict prefix (serper)
       hintEl.classList.add('valid');
       if (icon) icon.textContent = 'check_circle';
-      hintEl.style.color = '#4CAF50';
     }
   },
 
@@ -327,8 +356,8 @@ export const PopupView = {
   clearAutoAdvance() { },
 
   showConfetti() {
-    const colors = ['#FF6B00', '#FFD700', '#27AE60', '#3498DB', '#E74C3C'];
-    for (let i = 0; i < 50; i += 1) {
+    const colors = ['#FF6B00', '#FFD700', '#27AE60', '#3498DB', '#E74C3C', '#8B5CF6'];
+    for (let i = 0; i < 60; i += 1) {
       const piece = document.createElement('div');
       piece.className = 'confetti-piece';
       piece.style.left = `${Math.random() * 100}%`;
@@ -336,8 +365,9 @@ export const PopupView = {
       piece.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
       piece.style.animation = `confettiFall ${1.5 + Math.random()}s linear forwards`;
       piece.style.position = 'fixed';
-      piece.style.width = '8px';
-      piece.style.height = '8px';
+      piece.style.width = `${6 + Math.random() * 6}px`;
+      piece.style.height = `${6 + Math.random() * 6}px`;
+      piece.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
       piece.style.zIndex = '3000';
       document.body.appendChild(piece);
       setTimeout(() => piece.remove(), 2800);

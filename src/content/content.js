@@ -1,5 +1,5 @@
-// Content script - executa em todas as paginas
-// Responsavel por utilitarios opcionais na pagina (ex: highlight de respostas).
+// Content script - executes on all pages
+// Responsible for optional utilities on the page (e.g., answer highlighting).
 
 (function () {
     'use strict';
@@ -13,12 +13,12 @@
     });
 
     function highlightAnswers() {
-        // Remove highlights anteriores
+        // Removes previous highlights
         document.querySelectorAll('.qa-extractor-highlight').forEach((el) => {
             el.classList.remove('qa-extractor-highlight');
         });
 
-        // Seletores de respostas
+        // Answer selectors
         const answerSelectors = [
             '[class*="answer"]',
             '[class*="resposta"]',

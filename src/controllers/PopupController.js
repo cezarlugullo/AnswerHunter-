@@ -76,7 +76,7 @@ export const PopupController = {
       }
     });
 
-    document.querySelectorAll('.btn-test-modern').forEach((button) => {
+    document.querySelectorAll('.ob-btn-test').forEach((button) => {
       button.addEventListener('click', () => {
         const provider = button.dataset.provider;
         if (provider) this.handleTestProvider(provider);
@@ -196,15 +196,22 @@ export const PopupController = {
   },
 
   async toggleSetupPanel(forceState) {
-    const panel = this.view.elements.setupPanel;
-    if (!panel) return;
-
-    const isHidden = panel.classList.contains('hidden');
+    const isHidden = this.view.elements.onboardingView?.classList.contains('hidden');
     const shouldShow = forceState !== undefined ? forceState : isHidden;
 
     if (shouldShow) {
       this.view.setSetupVisible(true);
       const startStep = await this.determineCurrentStep();
+      // If startStep is 1 (Groq) but we haven't "welcomed" yet, maybe start at 0?
+      // Logic in ensureSetupReady handles welcome overlay separate from setup panel usually.
+      // In new design, Welcome is Step 0.
+      // determineCurrentStep returns 1, 2 or 3.
+
+      // If we simply toggle settings, we probably want to see the current status or step 1.
+      // If strictly onboarding, we might want step 0.
+
+      // Let's rely on goToSetupStep. 
+      // If the user manually opens settings (toggle), we show step 1 (Groq) or current missing key.
       this.goToSetupStep(startStep);
       return;
     }
