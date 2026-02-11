@@ -174,6 +174,7 @@ export const PopupView = {
 
     this.updateProgressBar(stepNumber);
     this.updateStepDots(stepNumber);
+    this.syncTutorialCard(stepNumber);
   },
 
   updateProgressBar(stepNumber) {
@@ -200,6 +201,25 @@ export const PopupView = {
         dot.classList.add('done');
       }
     });
+  },
+
+  syncTutorialCard(currentStep) {
+    const cards = document.querySelectorAll('.ob-tutorial-card');
+    cards.forEach((card) => {
+      const body = card.querySelector('.ob-tutorial-body');
+      if (!body) return;
+      body.hidden = true;
+      card.classList.remove('expanded');
+    });
+
+    const activeSlide = document.querySelector(`.ob-slide[data-slide="${currentStep}"]`);
+    const activeCard = activeSlide?.querySelector('.ob-tutorial-card');
+    if (!activeCard) return;
+
+    const activeBody = activeCard.querySelector('.ob-tutorial-body');
+    if (!activeBody) return;
+    activeBody.hidden = false;
+    activeCard.classList.add('expanded');
   },
 
   // Backwards compatibility shim for Controller
@@ -252,25 +272,25 @@ export const PopupView = {
     if (state === 'loading') {
       button.classList.add('testing');
       button.disabled = true;
-      button.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> Testing...`;
+      button.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> ${escapeHtml(this.t('setup.test.short'))}`;
       return;
     }
 
     if (state === 'ok') {
       button.classList.add('test-ok');
-      button.innerHTML = `<span class="material-symbols-rounded">check_circle</span> Success`;
+      button.innerHTML = `<span class="material-symbols-rounded">check_circle</span> ${escapeHtml(this.t('setup.test.success'))}`;
       this.enableNextButton(provider);
       return;
     }
 
     if (state === 'fail') {
       button.classList.add('test-fail');
-      button.innerHTML = `<span class="material-symbols-rounded">error</span> Failed`;
+      button.innerHTML = `<span class="material-symbols-rounded">error</span> ${escapeHtml(this.t('setup.test.failed'))}`;
       return;
     }
 
     // Reset
-    button.innerHTML = `<span class="material-symbols-rounded">wifi_tethering</span> <span data-i18n="setup.test">Test Key</span>`;
+    button.innerHTML = `<span class="material-symbols-rounded">wifi_tethering</span> ${escapeHtml(this.t('setup.validateAction'))}`;
   },
 
   enableNextButton(provider) {

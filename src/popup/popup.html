@@ -38,7 +38,7 @@
     <div class="ob-slides-viewport">
       <div class="ob-slides" id="onboarding-slides">
 
-        <!-- ═══════════ SLIDE 0: WELCOME ═══════════ -->
+        <!-- SLIDE 0: WELCOME -->
         <div class="ob-slide" data-slide="0">
           <div class="ob-slide-inner ob-center">
 
@@ -87,7 +87,7 @@
           </div>
         </div>
 
-        <!-- ═══════════ SLIDE 1: GROQ ═══════════ -->
+        <!-- SLIDE 1: GROQ -->
         <div class="ob-slide" data-slide="1">
           <div class="ob-slide-inner">
 
@@ -190,7 +190,7 @@
           </div>
         </div>
 
-        <!-- ═══════════ SLIDE 2: SERPER ═══════════ -->
+        <!-- SLIDE 2: SERPER -->
         <div class="ob-slide" data-slide="2">
           <div class="ob-slide-inner">
 
@@ -289,7 +289,7 @@
           </div>
         </div>
 
-        <!-- ═══════════ SLIDE 3: GEMINI (Optional) ═══════════ -->
+        <!-- SLIDE 3: GEMINI (Optional) -->
         <div class="ob-slide" data-slide="3">
           <div class="ob-slide-inner">
 
@@ -313,30 +313,29 @@
                 unavailable.</span>
             </div>
 
-            <div class="ob-tutorial-card" id="tutorial-gemini">
+            <div class="ob-tutorial-card expanded" id="tutorial-gemini">
               <button class="ob-tutorial-toggle" type="button">
                 <span class="material-symbols-rounded">school</span>
-                <span data-i18n="setup.howToGetKey">How to get your key</span>
+                <span data-i18n="setup.stepByStepGuide">Step-by-step guide</span>
                 <span class="material-symbols-rounded ob-tutorial-caret">expand_more</span>
               </button>
-              <div class="ob-tutorial-body" hidden>
+              <div class="ob-tutorial-body">
                 <div class="ob-tutorial-step" style="--delay:0s">
                   <div class="ob-ts-num gemini-accent">1</div>
                   <div class="ob-ts-content">
-                    <span data-i18n="setup.gemini.step1">Go to <a href="https://aistudio.google.com"
-                        target="_blank">aistudio.google.com</a></span>
+                    <span data-i18n="setup.gemini.step1">Click "Open official site" and sign in to Google AI Studio.</span>
                   </div>
                 </div>
                 <div class="ob-tutorial-step" style="--delay:0.1s">
                   <div class="ob-ts-num gemini-accent">2</div>
                   <div class="ob-ts-content">
-                    <span data-i18n="setup.gemini.step2">Click "Get API Key" → "Create API Key"</span>
+                    <span data-i18n="setup.gemini.step2">Click "Get API key" then "Create API key".</span>
                   </div>
                 </div>
                 <div class="ob-tutorial-step" style="--delay:0.2s">
                   <div class="ob-ts-num gemini-accent">3</div>
                   <div class="ob-ts-content">
-                    <span data-i18n="setup.gemini.step3">Copy the key that starts with "AIza"</span>
+                    <span data-i18n="setup.gemini.step3">Copy the key, paste below, and validate it if you want backup AI.</span>
                   </div>
                 </div>
               </div>
@@ -360,18 +359,21 @@
             </div>
 
             <div class="ob-actions-row">
-              <a href="https://aistudio.google.com/app/apikey" target="_blank" class="ob-btn-link gemini-link">
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer"
+                class="ob-btn-link gemini-link">
                 <span class="material-symbols-rounded">open_in_new</span>
-                <span data-i18n="setup.getKey">Get Free Key</span>
+                <span data-i18n="setup.openSiteAction">1. Open official site</span>
                 <span class="ob-free-chip">FREE</span>
               </a>
               <button id="test-gemini" class="ob-btn-test" data-provider="gemini" type="button">
                 <span class="material-symbols-rounded">wifi_tethering</span>
-                <span data-i18n="setup.test">Test Key</span>
+                <span data-i18n="setup.validateAction">2. Validate key</span>
               </button>
             </div>
 
             <div class="ob-test-status" id="status-gemini"></div>
+            <p class="ob-next-help" data-i18n="setup.gemini.finishHelp">Gemini is optional. You can validate now or
+              skip and finish.</p>
 
             <div class="ob-nav-footer">
               <button class="ob-nav-back" id="prev-gemini" type="button">
