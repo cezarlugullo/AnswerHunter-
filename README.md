@@ -51,50 +51,50 @@ Use the language selector in the popup header.
 
 ---
 
-## Portugues (Brasil)
+## Português (Brasil)
 
 ### O que faz
-- Extrai o texto da questao da aba ativa (incluindo iframes).
-- Busca evidencias em varias fontes usando Serper.
-- Pontua e ranqueia evidencias para reduzir falso positivo de questao parecida.
-- Usa Groq para inferir resposta quando a evidencia explicita e fraca.
+- Extrai o texto da questão da aba ativa (incluindo iframes).
+- Busca evidências em várias fontes usando Serper.
+- Pontua e ranqueia evidências para reduzir falso positivo de questão parecida.
+- Usa Groq para inferir resposta quando a evidência explícita é fraca.
 - Mostra estado de confiabilidade para cada resposta:
   - `Confirmado por fontes`
   - `Conflito`
   - `Inconclusivo`
-- Salva resultados no fichario para estudo e revisao.
+- Salva resultados no fichário para estudo e revisão.
 
 ### Arquitetura principal
-- `src/controllers` - orquestracao do popup e fichario
-- `src/services` - extracao, busca e chamadas de API
-- `src/models` - persistencia de configuracoes e dados
-- `src/views` - renderizacao da interface
-- `src/i18n` - traducoes (`en`, `pt-BR`)
+- `src/controllers` - orquestração do popup e fichário
+- `src/services` - extração, busca e chamadas de API
+- `src/models` - persistência de configurações e dados
+- `src/views` - renderização da interface
+- `src/i18n` - traduções (`en`, `pt-BR`)
 
-### Chaves de API obrigatorias
-- Chave Groq (obrigatoria)
-- Chave Serper (obrigatoria)
+### Chaves de API obrigatórias
+- Chave Groq (obrigatória)
+- Chave Serper (obrigatória)
 - Chave Gemini (opcional, fallback)
 
-A configuracao e feita no popup da extensao. Clique na engrenagem para abrir.
+A configuração é feita no popup da extensão. Clique na engrenagem para abrir.
 
 ### Idiomas
-- Ingles
-- Portugues (Brasil)
+- Inglês
+- Português (Brasil)
 
-Use o seletor de idioma no cabecalho do popup.
+Use o seletor de idioma no cabeçalho do popup.
 
 ### Desenvolvimento local
-1. Clone este repositorio.
+1. Clone este repositório.
 2. Abra `chrome://extensions`.
 3. Ative `Modo do desenvolvedor`.
-4. Clique em `Carregar sem compactacao` e selecione esta pasta.
-5. Abra o popup da extensao e execute a configuracao.
+4. Clique em `Carregar sem compactação` e selecione esta pasta.
+5. Abra o popup da extensão e execute a configuração.
 
-### Modelo de seguranca
-- Nenhuma API key fica hardcoded no codigo.
-- As chaves ficam no `chrome.storage.sync` local do usuario.
-- Nao existe backend obrigatorio para uso comum.
+### Modelo de segurança
+- Nenhuma API key fica hardcoded no código.
+- As chaves ficam no `chrome.storage.sync` local do usuário.
+- Não existe backend obrigatório para uso comum.
 
 ---
 

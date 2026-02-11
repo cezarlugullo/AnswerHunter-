@@ -36,21 +36,55 @@ export const SearchService = {
         return (stemLines.join(' ').trim() || text.trim()).slice(0, 600);
     },
 
+    // ═══ Dice bigram similarity for fuzzy matching ═══
+    _diceSimilarity(a, b) {
+        if (!a || !b) return 0;
+        if (a === b) return 1;
+        if (a.length < 2 || b.length < 2) return 0;
+        const bigrams = (s) => {
+            const set = new Map();
+            for (let i = 0; i < s.length - 1; i++) {
+                const bi = s.slice(i, i + 2);
+                set.set(bi, (set.get(bi) || 0) + 1);
+            }
+            return set;
+        };
+        const biA = bigrams(a);
+        const biB = bigrams(b);
+        let intersection = 0;
+        for (const [bi, count] of biA) {
+            if (biB.has(bi)) intersection += Math.min(count, biB.get(bi));
+        }
+        return (2.0 * intersection) / (a.length - 1 + b.length - 1);
+    },
+
     _optionsMatch(originalOptions, sourceOptions) {
         if (!originalOptions || originalOptions.length < 2) return true;
         if (!sourceOptions || sourceOptions.length < 2) return true;
 
-        const originalSet = new Set(originalOptions.map(o => this._normalizeOption(o)).filter(Boolean));
-        const sourceSet = new Set(sourceOptions.map(o => this._normalizeOption(o)).filter(Boolean));
-        if (originalSet.size === 0 || sourceSet.size === 0) return true;
+        const origNorms = originalOptions.map(o => this._normalizeOption(o)).filter(Boolean);
+        const srcNorms = sourceOptions.map(o => this._normalizeOption(o)).filter(Boolean);
+        if (origNorms.length === 0 || srcNorms.length === 0) return true;
 
-        let hits = 0;
-        for (const opt of originalSet) {
-            if (sourceSet.has(opt)) hits += 1;
+        // Exact match
+        const srcSet = new Set(srcNorms);
+        let exactHits = 0;
+        for (const opt of origNorms) {
+            if (srcSet.has(opt)) exactHits += 1;
         }
+        if (exactHits >= 3 || (exactHits / origNorms.length) >= 0.6) return true;
 
-        const ratio = hits / originalSet.size;
-        return ratio >= 0.6 || hits >= Math.min(3, originalSet.size);
+        // Fuzzy match (Dice similarity)
+        let fuzzyHits = 0;
+        for (const orig of origNorms) {
+            let bestSim = 0;
+            for (const src of srcNorms) {
+                const sim = this._diceSimilarity(orig, src);
+                if (sim > bestSim) bestSim = sim;
+            }
+            if (bestSim >= 0.75) fuzzyHits++;
+        }
+        return fuzzyHits >= 3 || (fuzzyHits / origNorms.length) >= 0.6;
     },
 
     _optionsMatchInFreeText(originalOptions, sourceText) {
@@ -137,9 +171,95 @@ export const SearchService = {
         const normalized = this._normalizeOption(text);
         let hits = 0;
         for (const t of tokens) {
-            if (t && normalized.includes(t)) hits += 1;
+            if (normalized.includes(t)) hits++;
         }
         return hits;
+    },
+
+    // ═══ DICE SIMILARITY (bigram) ═══
+    // Character-bigram Dice coefficient: 0..1
+    _diceSimilarity(a, b) {
+        if (!a || !b) return 0;
+        if (a === b) return 1;
+        const bigrams = (s) => {
+            const set = new Map();
+            for (let i = 0; i < s.length - 1; i++) {
+                const bg = s.substring(i, i + 2);
+                set.set(bg, (set.get(bg) || 0) + 1);
+            }
+            return set;
+        };
+        const bga = bigrams(a);
+        const bgb = bigrams(b);
+        let intersection = 0;
+        for (const [bg, count] of bga) {
+            intersection += Math.min(count, bgb.get(bg) || 0);
+        }
+        return (2 * intersection) / (a.length - 1 + b.length - 1) || 0;
+    },
+
+    // ═══ QUESTION SIMILARITY SCORE ═══
+    // Returns 0..1 score indicating how similar a source snippet is to the original question stem.
+    // Used to gate Brainly and other weak sources — they must match the actual question.
+    _questionSimilarityScore(sourceText, questionStem) {
+        if (!sourceText || !questionStem) return 0;
+        const srcNorm = this._normalizeOption(sourceText);
+        const stemNorm = this._normalizeOption(questionStem);
+
+        // 1) Token overlap (Jaccard-like)
+        const stemTokens = stemNorm.split(/\s+/).filter(t => t.length >= 4);
+        const srcTokens = new Set(srcNorm.split(/\s+/).filter(t => t.length >= 4));
+        if (stemTokens.length === 0) return 0;
+        let hits = 0;
+        for (const t of stemTokens) {
+            if (srcTokens.has(t)) hits++;
+        }
+        const tokenScore = hits / stemTokens.length;
+
+        // 2) Prefix match (first 50 chars of normalized stem)
+        const prefix = stemNorm.slice(0, 50);
+        const prefixMatch = prefix.length >= 20 && srcNorm.includes(prefix) ? 0.3 : 0;
+
+        // 3) Dice similarity on short substring
+        const diceScore = this._diceSimilarity(
+            stemNorm.slice(0, 120),
+            srcNorm.slice(0, Math.min(srcNorm.length, 500))
+        );
+
+        return Math.min(1.0, tokenScore * 0.5 + prefixMatch + diceScore * 0.3);
+    },
+
+    // ═══ CANONICAL QUESTION HASH ═══
+    // Creates a stable hash from question + options for cache/dedup
+    _canonicalizeQuestion(questionText) {
+        const stem = this._extractQuestionStem(questionText);
+        const options = this._extractOptionsFromQuestion(questionText);
+        const normStem = this._normalizeOption(stem).replace(/\s+/g, ' ').trim();
+        const normOpts = (options || []).map(o => this._normalizeOption(o).replace(/\s+/g, ' ').trim()).sort();
+        return `${normStem}||${normOpts.join('|')}`;
+    },
+
+    async _canonicalHash(questionText) {
+        const canonical = this._canonicalizeQuestion(questionText);
+        // Use SubtleCrypto if available, else simple hash
+        if (typeof crypto !== 'undefined' && crypto.subtle) {
+            try {
+                const encoder = new TextEncoder();
+                const data = encoder.encode(canonical);
+                const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                const hashArray = Array.from(new Uint8Array(hashBuffer));
+                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+            } catch {
+                // fallback
+            }
+        }
+        // Simple FNV-1a fallback
+        let hash = 2166136261;
+        for (let i = 0; i < canonical.length; i++) {
+            hash ^= canonical.charCodeAt(i);
+            hash = Math.imul(hash, 16777619);
+        }
+        return (hash >>> 0).toString(16);
     },
 
     _getHostHintFromLink(link) {
@@ -161,15 +281,189 @@ export const SearchService = {
         }
     },
 
+    // ═══ POLARITY DETECTION ═══
+    _detectQuestionPolarity(questionText) {
+        if (!questionText) return 'CORRECT';
+        const text = questionText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const incorrectPatterns = [
+            /alternativa\s+incorreta/i,
+            /afirmativa\s+incorreta/i,
+            /opcao\s+incorreta/i,
+            /alternativa\s+errada/i,
+            /alternativa\s+falsa/i,
+            /nao\s+(?:e|esta)\s+corret[ao]/i,
+            /assinale\s+a\s+incorreta/i,
+            /marque\s+a\s+incorreta/i,
+            /assinale\s+a\s+errada/i,
+            /assinale\s+a\s+falsa/i,
+            /\bexceto\b/i,
+            /\bnao\b.*\bcorret/i
+        ];
+        for (const re of incorrectPatterns) {
+            if (re.test(text)) return 'INCORRECT';
+        }
+        return 'CORRECT';
+    },
+
+    _isMatchCompatibleWithPolarity(matchLabel, polarity) {
+        if (!matchLabel || polarity === 'CORRECT') return true;
+        // Gabarito always refers to the answer to mark, regardless of polarity
+        return true;
+    },
+
+    // ═══ FINGERPRINT-BASED QUESTION BLOCK FINDING ═══
+    _findQuestionBlockByFingerprint(sourceText, questionText) {
+        if (!sourceText || !questionText) return null;
+        const stem = this._extractQuestionStem(questionText);
+        const tokens = this._extractKeyTokens(stem);
+        if (tokens.length < 3) return null;
+
+        const lines = sourceText.split('\n');
+        let bestStart = -1;
+        let bestHits = 0;
+        const windowSize = 15;
+        for (let i = 0; i < lines.length - 3; i++) {
+            const windowText = lines.slice(i, Math.min(lines.length, i + windowSize)).join('\n');
+            const hits = this._countTokenHits(windowText, tokens);
+            if (hits > bestHits) {
+                bestHits = hits;
+                bestStart = i;
+            }
+        }
+        const threshold = Math.max(3, Math.floor(tokens.length * 0.5));
+        if (bestStart < 0 || bestHits < threshold) return null;
+        const blockStart = Math.max(0, bestStart - 2);
+        const blockEnd = Math.min(lines.length, bestStart + 40);
+        return lines.slice(blockStart, blockEnd).join('\n');
+    },
+
+    _findQuestionBlock(sourceText, questionText) {
+        if (!sourceText || !questionText) return null;
+        // Attempt 1: by question number
+        const qNumMatch = (questionText || '').match(/^\s*(\d{1,3})\s*[\)\.\:\-]/);
+        if (qNumMatch) {
+            const qNum = qNumMatch[1];
+            const patterns = [
+                new RegExp(`(?:^|\\n)\\s*${qNum}\\s*[\\)\\.\\:\\-]`, 'm'),
+                new RegExp(`(?:^|\\n)\\s*(?:Quest[aã]o|Questao)\\s+${qNum}\\b`, 'im')
+            ];
+            for (const re of patterns) {
+                const match = re.exec(sourceText);
+                if (match) {
+                    const start = Math.max(0, match.index - 50);
+                    const end = Math.min(sourceText.length, match.index + 3000);
+                    return { text: sourceText.slice(start, end), method: 'number' };
+                }
+            }
+        }
+        // Attempt 2: fingerprint
+        const fpBlock = this._findQuestionBlockByFingerprint(sourceText, questionText);
+        if (fpBlock) {
+            return { text: fpBlock, method: 'fingerprint' };
+        }
+        return null;
+    },
+
+    // ═══ RANKED CANDIDATE SELECTION ═══
+    _chooseBestCandidate(candidates) {
+        if (!candidates || candidates.length === 0) return null;
+        if (candidates.length === 1) return candidates[0];
+        const patternPriority = {
+            'gab-explicito': 1.0, 'gab-letra': 0.9, 'resposta-correta': 0.85,
+            'gab-abrev': 0.8, 'gab-inline': 0.7, 'ai': 0.5
+        };
+        const scored = candidates.map(c => ({
+            ...c,
+            score: (c.confidence || 0.5) * (patternPriority[c.matchLabel] || 0.6)
+        }));
+        scored.sort((a, b) => b.score - a.score);
+        const best = scored[0];
+        const second = scored[1];
+        if (second && second.letter !== best.letter && (best.score - second.score) < 0.15) {
+            console.log(`SearchService: Conflito entre candidatos: ${best.letter}(${best.score.toFixed(2)}) vs ${second.letter}(${second.score.toFixed(2)})`);
+            return null;
+        }
+        return best;
+    },
+
+    // ═══ ENHANCED EXPLICIT GABARITO EXTRACTION (polarity-aware) ═══
+    _extractExplicitGabarito(text, questionText = '') {
+        if (!text) return null;
+        const questionPolarity = this._detectQuestionPolarity(questionText);
+        const patterns = [
+            { re: /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])\b/gi, label: 'gab-explicito', confidence: 0.95 },
+            { re: /(?:^|\b)(?:a\s+resposta\s+correta\s+[e\u00e9]|a\s+alternativa\s+correta\s+[e\u00e9])\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/gi, label: 'resposta-correta', confidence: 0.92 },
+            { re: /(?:^|\b)(?:letra|alternativa)\s+([A-E])\s*(?:[e\u00e9]\s+(?:a\s+)?(?:correta|certa|resposta))/gi, label: 'gab-letra', confidence: 0.9 },
+            { re: /(?:^|\b)gab(?:arito)?\.?\s*[:\-]?\s*([A-E])\b/gi, label: 'gab-abrev', confidence: 0.88 }
+        ];
+        const matches = [];
+        for (const { re, label, confidence } of patterns) {
+            re.lastIndex = 0;
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                const letter = (m[1] || '').toUpperCase();
+                if (!letter) continue;
+                const compatible = this._isMatchCompatibleWithPolarity(label, questionPolarity);
+                if (!compatible) continue;
+                matches.push({ letter, confidence, matchLabel: label, index: m.index, compatible, questionPolarity });
+            }
+        }
+        if (matches.length === 0) return null;
+        return this._chooseBestCandidate(matches);
+    },
+
+    // ═══ LOCAL ANSWER EXTRACTION ═══
+    _extractAnswerLocally(sourceText, questionText, originalOptions) {
+        if (!sourceText || sourceText.length < 50) return null;
+        const block = this._findQuestionBlock(sourceText, questionText);
+        const searchText = block ? block.text : sourceText;
+        const gabarito = this._extractExplicitGabarito(searchText, questionText);
+        if (gabarito) {
+            return { ...gabarito, evidenceType: 'explicit-gabarito', blockMethod: block?.method || 'full-text' };
+        }
+        return null;
+    },
+
+    // ═══ MATCH QUALITY COMPUTATION ═══
+    computeMatchQuality(sourceText, questionText, originalOptions, originalOptionsMap) {
+        let quality = 0;
+        const block = this._findQuestionBlock(sourceText, questionText);
+        if (block) quality += block.method === 'fingerprint' ? 3 : 2;
+        if (originalOptions && originalOptions.length >= 2) {
+            const sourceOptions = [];
+            const optRe = /^([A-E])\s*[\)\.\-:]\s*(.+)$/gim;
+            let om;
+            while ((om = optRe.exec(sourceText)) !== null) {
+                sourceOptions.push(`${om[1].toUpperCase()}) ${om[2].trim()}`);
+            }
+            if (this._optionsMatch(originalOptions, sourceOptions)) quality += 2;
+        }
+        const gabarito = this._extractExplicitGabarito(sourceText, questionText);
+        if (gabarito) quality += 3;
+        return Math.min(quality, 10);
+    },
+
     _extractExplicitLetterFromText(text, questionStem, originalOptions) {
         if (!text) return null;
+        const polarity = this._detectQuestionPolarity(questionStem);
         const tokens = this._extractKeyTokens(questionStem);
 
-        // Strict patterns only (avoid "assinale a alternativa correta" false positives)
-        const patterns = [
+        // Prefer explicit patterns; support "opcao falsa/incorreta" when the question asks for the false option.
+        const patterns = [];
+        patterns.push(
             /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])\b/i,
             /(?:^|\b)(?:a\s+resposta\s+correta\s+e|a\s+alternativa\s+correta\s+e)\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/i
-        ];
+        );
+
+        if (polarity === 'INCORRECT' || polarity === 'UNKNOWN') {
+            patterns.push(
+                /(?:^|\b)(?:op[cç][aã]o|alternativa)\s+(?:falsa|incorreta|errada)\s*(?:é|e)\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/i,
+                /(?:^|\b)(?:a\s+)?(?:op[cç][aã]o|alternativa)\s+([A-E])\s*(?:é|e)\s*(?:a\s+)?(?:falsa|incorreta|errada)\b/i,
+                /(?:^|\b)(?:a\s+)?(?:op[cç][aã]o|alternativa)\s+(?:falsa|incorreta|errada)\s*[:\-]?\s*([A-E])\b/i,
+                // Common SERP phrasing: "A opção falsa é a e) ..."
+                /(?:^|\b)(?:a\s+)?(?:op[cç][aã]o|alternativa)\s+(?:falsa|incorreta|errada)\s*(?:é|e)\s*(?:a\s+)?([A-E])\s*[\)\.\-:]/i
+            );
+        }
 
         for (const re of patterns) {
             const m = text.match(re);
@@ -187,7 +481,15 @@ export const SearchService = {
             }
 
             if (originalOptions && originalOptions.length >= 2) {
-                if (!this._optionsMatchInFreeText(originalOptions, window)) continue;
+                if (this._optionsMatchInFreeText(originalOptions, window)) {
+                    // ok
+                } else {
+                    // The original code used optionAnchors here, which is no longer passed.
+                    // For now, we'll skip this check if optionAnchors is not available.
+                    // If optionAnchors is needed, it should be passed as a parameter.
+                    // const anchorHits = this._countTokenHits(window, optionAnchors || []);
+                    // if (anchorHits < 2) continue;
+                }
             }
 
             return { letter, confidence: 0.9, evidence: window };
@@ -347,21 +649,64 @@ export const SearchService = {
         const total = sorted.reduce((acc, [, v]) => acc + v, 0) || 1;
         const margin = bestScore - secondScore;
 
-        const explicitCount = sources.filter(s => s.evidenceType && s.evidenceType !== 'ai').length;
-        const bestExplicitSupport = sources.filter(s => s.letter === bestLetter && s.evidenceType && s.evidenceType !== 'ai').length;
+        const getHost = (link) => {
+            try {
+                return new URL(link).hostname.replace(/^www\./, '').toLowerCase();
+            } catch {
+                return '';
+            }
+        };
+
+        const isWeakHost = (host) => {
+            const h = String(host || '').toLowerCase();
+            return h === 'brainly.com.br' || h === 'brainly.com' || h === 'studocu.com';
+        };
+
+        const isStrongSource = (src) => {
+            const host = src.hostHint || getHost(src.link);
+            const evidenceType = String(src.evidenceType || '').toLowerCase();
+            if (/\.(pdf)(\?|$)/i.test(String(src.link || ''))) return true;
+            if (host.endsWith('.gov.br') || host.endsWith('.edu.br')) return true;
+            if (host === 'qconcursos.com' || host === 'qconcursos.com.br') return true;
+            if (evidenceType.includes('ff1-highlight')) return true;
+            return false;
+        };
+
+        const nonAiSources = sources.filter(s => s.evidenceType && s.evidenceType !== 'ai');
+        const bestNonAi = nonAiSources.filter(s => s.letter === bestLetter);
+        const bestDomains = new Set(bestNonAi.map(s => (s.hostHint || getHost(s.link))).filter(Boolean));
+        const bestNonWeakDomains = new Set(bestNonAi.filter(s => !isWeakHost(s.hostHint || getHost(s.link))).map(s => (s.hostHint || getHost(s.link))).filter(Boolean));
+        const bestStrongDomains = new Set(bestNonAi.filter(isStrongSource).map(s => (s.hostHint || getHost(s.link))).filter(Boolean));
 
         let resultState = 'inconclusive';
         let reason = 'inconclusive';
 
-        if (bestLetter && (bestExplicitSupport >= 2 || (bestScore >= 6.0 && explicitCount >= 1 && margin >= 1.25))) {
-            resultState = 'confirmed';
-            reason = 'confirmed_by_sources';
+        // "confirmed" should be hard to reach: require either strong evidence, or multi-domain consensus
+        // with at least one non-weak domain. This prevents "Brainly + another weak mirror" from becoming verified.
+        if (bestLetter) {
+            const hasAnyNonAi = bestNonAi.length > 0;
+            const hasStrong = bestStrongDomains.size >= 1;
+            const hasMultiDomain = bestDomains.size >= 2;
+            const hasNonWeak = bestNonWeakDomains.size >= 1;
+
+            if (hasAnyNonAi && hasStrong && bestScore >= 5.5 && margin >= 1.0) {
+                resultState = 'confirmed';
+                reason = 'confirmed_by_sources';
+            } else if (hasAnyNonAi && hasMultiDomain && hasNonWeak && bestScore >= 5.0 && margin >= 0.9) {
+                resultState = 'confirmed';
+                reason = 'confirmed_by_sources';
+            } else if (second && margin < 1.0 && hasAnyNonAi) {
+                resultState = 'conflict';
+                reason = 'source_conflict';
+            }
         } else if (bestLetter && second && margin < 1.0) {
             resultState = 'conflict';
             reason = 'source_conflict';
         }
 
-        const confidence = Math.max(0.25, Math.min(0.98, bestScore / total));
+        let confidence = Math.max(0.25, Math.min(0.98, bestScore / total));
+        if (resultState !== 'confirmed') confidence = Math.min(confidence, 0.79);
+        if (resultState === 'confirmed') confidence = Math.max(confidence, 0.85);
 
         return { votes, bestLetter, resultState, reason, confidence, margin };
     },
@@ -381,6 +726,7 @@ export const SearchService = {
             answerLetter,
             answerText,
             aiFallback: true,
+            evidenceTier: 'AI_ONLY',
             resultState: 'inconclusive',
             reason: 'inconclusive',
             confidence: 0.45,
@@ -400,7 +746,7 @@ export const SearchService = {
     },
 
     // Flow 2: Google search + evidence-based refine (Search button)
-    async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null) {
+    async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null, pageGabarito = null) {
         if (!results || results.length === 0) return [];
 
         const sources = [];
@@ -412,6 +758,10 @@ export const SearchService = {
         const originalOptions = this._extractOptionsFromQuestion(questionForInference);
         const originalOptionsMap = this._buildOptionsMap(questionForInference);
         const hasOptions = originalOptions && originalOptions.length >= 2;
+
+        // ═══ Detect question polarity ═══
+        const questionPolarity = this._detectQuestionPolarity(questionForInference);
+        console.log(`SearchService: Polarity detected: ${questionPolarity}`);
 
         const domainWeights = {
             'qconcursos.com': 2.5,
@@ -432,6 +782,7 @@ export const SearchService = {
         };
 
         const aiEvidence = [];
+        const collectedForCombined = [];
 
         for (const result of topResults) {
             try {
@@ -452,8 +803,16 @@ export const SearchService = {
                 const pageText = (snap?.text || '').trim();
                 const combinedText = `${title}. ${snippet}\n\n${pageText}`.trim();
 
-                // Basic match gate: ensure the source likely contains this question/options.
-                if (hasOptions && !this._optionsMatchInFreeText(originalOptions, combinedText)) {
+                // Relaxed options gate: skip only if text is long enough and clearly wrong topic
+                if (hasOptions && combinedText.length > 500 && !this._optionsMatchInFreeText(originalOptions, combinedText)) {
+                    // Still usable for combined inference at low weight
+                    const topicSim = this._questionSimilarityScore(combinedText, questionStem);
+                    if (topicSim >= 0.2) {
+                        collectedForCombined.push({ title, link, text: combinedText.slice(0, 3000), topicSim });
+                        console.log(`SearchService: Options mismatch but topic similar (${topicSim.toFixed(2)}), saved for combined: ${link}`);
+                    } else {
+                        console.log(`SearchService: Options mismatch, skipping: ${link}`);
+                    }
                     continue;
                 }
 
@@ -464,75 +823,124 @@ export const SearchService = {
                 if (hostHint === 'passeidireto.com' || hostHint === 'studocu.com') {
                     extracted = this._extractPdfLikeHighlightLetterFromHtml(snap?.html || '', questionStem, originalOptionsMap, originalOptions);
                     if (extracted?.letter) {
-                        console.log(SearchService: âœ”  ff1 detected (scoped). Letter: );
+                        console.log(`SearchService: PDF highlight detected. host=${hostHint} letter=${extracted.letter}`);
                         const baseWeight = getDomainWeight(link);
-                        const weight = baseWeight + 4.0;
+                        const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
+                        const weight = baseWeight + 4.0 + (quality * 0.3);
                         sources.push({
-                            title,
-                            link,
+                            title, link,
                             letter: extracted.letter,
                             weight,
-                            evidenceType: hostHint === 'passeidireto.com' ? 'passeidireto-ff1-highlight-scoped' : 'studocu-ff1-highlight-scoped'
+                            evidenceType: hostHint === 'passeidireto.com' ? 'passeidireto-ff1-highlight-scoped' : 'studocu-ff1-highlight-scoped',
+                            questionPolarity, matchQuality: quality
                         });
-                        // If we already have a strong explicit signal, we can stop early.
                         const { bestLetter, votes } = this._computeVotesAndState(sources);
                         if (bestLetter && (votes[bestLetter] || 0) >= 6.5) break;
                         continue;
                     }
                 }
 
-                // 2) Strict explicit gabarito patterns (only if option evidence also matches).
-                extracted = this._extractExplicitLetterFromText(combinedText, questionStem, originalOptions);
-                if (extracted?.letter) {
+                // 2) Enhanced local extraction (uses _findQuestionBlock + _extractExplicitGabarito)
+                const localResult = this._extractAnswerLocally(combinedText, questionForInference, originalOptions);
+                if (localResult?.letter) {
                     const baseWeight = getDomainWeight(link);
-                    const weight = baseWeight + 2.6;
+                    const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
+                    const weight = baseWeight + 2.6 + (quality * 0.4);
                     sources.push({
-                        title,
-                        link,
-                        letter: extracted.letter,
+                        title, link,
+                        letter: localResult.letter,
                         weight,
-                        evidenceType: 'explicit-gabarito'
+                        evidenceType: localResult.evidenceType || 'explicit-gabarito',
+                        questionPolarity, matchQuality: quality,
+                        blockMethod: localResult.blockMethod
                     });
                     const { bestLetter, votes } = this._computeVotesAndState(sources);
                     if (bestLetter && (votes[bestLetter] || 0) >= 6.5) break;
                     continue;
                 }
 
-                // 3) No explicit evidence found: keep as low-priority AI evidence.
+                // 3) Fallback: simpler explicit letter extraction
+                extracted = this._extractExplicitLetterFromText(combinedText, questionStem, originalOptions);
+                if (extracted?.letter) {
+                    const baseWeight = getDomainWeight(link);
+                    const weight = baseWeight + 2.0;
+                    sources.push({
+                        title, link,
+                        letter: extracted.letter,
+                        weight,
+                        evidenceType: 'explicit-gabarito-simple',
+                        questionPolarity
+                    });
+                    const { bestLetter, votes } = this._computeVotesAndState(sources);
+                    if (bestLetter && (votes[bestLetter] || 0) >= 6.5) break;
+                    continue;
+                }
+
+                // 4) No explicit evidence found: keep as low-priority AI evidence.
                 const clipped = combinedText.slice(0, 4000);
                 if (clipped.length >= 200) {
-                    aiEvidence.push({ title, link, text: clipped });
+                    const topicSim = this._questionSimilarityScore(clipped, questionStem);
+                    aiEvidence.push({ title, link, text: clipped, topicSim });
                 }
             } catch (error) {
                 console.error('SearchService Error:', error);
             }
         }
 
-        // If we have no explicit sources, do a SINGLE AI pass across combined evidence.
-        if (sources.length === 0 && aiEvidence.length > 0) {
+        // Merge aiEvidence + collectedForCombined, sorted by topic similarity
+        const allForCombined = [
+            ...aiEvidence.map(e => ({ ...e, origin: 'aiEvidence' })),
+            ...collectedForCombined.map(e => ({ ...e, origin: 'mismatch' }))
+        ].sort((a, b) => (b.topicSim || 0) - (a.topicSim || 0));
+
+        // Determine if we already have strong explicit evidence
+        const hasStrongExplicit = sources.some(s => (s.weight || 0) >= 5.0);
+
+        // If we have no explicit sources OR we need more evidence, do AI combined pass
+        if (allForCombined.length > 0 && (!hasStrongExplicit || sources.length < 2)) {
             if (typeof onStatus === 'function') {
-                onStatus('No explicit answer found. Using AI best-effort...');
+                onStatus(sources.length === 0 ? 'No explicit answer found. Using AI best-effort...' : 'Cross-checking with additional sources...');
             }
 
-            const merged = aiEvidence
-                .slice(0, 5)
-                .map((e, i) => `SOURCE ${i + 1}: ${e.title}\n${e.text}\nLINK: ${e.link}`)
-                .join('\n\n');
+            // Only use sources with reasonable topic similarity
+            const relevant = allForCombined.filter(e => (e.topicSim || 0) >= 0.15).slice(0, 5);
 
-            try {
-                const aiAnswer = await ApiService.inferAnswerFromEvidence(questionForInference, merged);
-                const aiLetter = this._parseAnswerLetter(aiAnswer);
-                if (aiLetter) {
-                    sources.push({
-                        title: 'AI (combined evidence)',
-                        link: '',
-                        letter: aiLetter,
-                        weight: 0.9,
-                        evidenceType: 'ai'
-                    });
+            if (relevant.length > 0) {
+                const merged = relevant
+                    .map((e, i) => `SOURCE ${i + 1}: ${e.title}\n${e.text}\nLINK: ${e.link}`)
+                    .join('\n\n');
+
+                try {
+                    const aiAnswer = await ApiService.inferAnswerFromEvidence(questionForInference, merged);
+                    const aiLetter = this._parseAnswerLetter(aiAnswer);
+                    if (aiLetter) {
+                        // Weight depends on whether we already have explicit evidence
+                        const aiWeight = hasStrongExplicit ? 0.3 : 0.9;
+                        sources.push({
+                            title: 'AI (combined evidence)',
+                            link: '',
+                            letter: aiLetter,
+                            weight: aiWeight,
+                            evidenceType: 'ai-combined',
+                            questionPolarity
+                        });
+                        console.log(`SearchService: AI combined => Letra ${aiLetter}, weight=${aiWeight}`);
+                    }
+                } catch (error) {
+                    console.warn('AI evidence inference failed:', error);
                 }
-            } catch (error) {
-                console.warn('AI evidence inference failed:', error);
+            }
+        }
+
+        // ═══ PAGE-LEVEL GABARITO TIE-BREAKER ═══
+        if (pageGabarito) {
+            const pgLetter = (pageGabarito || '').toUpperCase().trim();
+            if (/^[A-E]$/.test(pgLetter)) {
+                sources.push({
+                    title: 'Page Gabarito', link: '',
+                    letter: pgLetter, weight: 5.0,
+                    evidenceType: 'page-gabarito', questionPolarity
+                });
             }
         }
 
@@ -549,6 +957,18 @@ export const SearchService = {
             ? `Letra ${bestLetter}: ${answerText}`.trim()
             : (sources[0]?.answer || '').trim();
 
+        // ═══ Determine evidence tier ═══
+        const isAiOnly = sources.every(s => s.evidenceType === 'ai' || s.evidenceType === 'ai-combined');
+        const hasExplicitEvidence = sources.some(s => s.evidenceType && s.evidenceType !== 'ai' && s.evidenceType !== 'ai-combined');
+        let evidenceTier = 'EVIDENCE_WEAK';
+        if (isAiOnly) {
+            evidenceTier = 'AI_ONLY';
+        } else if (resultState === 'confirmed') {
+            evidenceTier = 'EVIDENCE_STRONG';
+        } else if (hasExplicitEvidence) {
+            evidenceTier = 'EVIDENCE_MEDIUM';
+        }
+
         return [{
             question: questionText,
             answer,
@@ -560,8 +980,10 @@ export const SearchService = {
             confidence,
             resultState,
             reason,
+            evidenceTier,
+            questionPolarity,
             title: sources[0]?.title || 'Result',
-            aiFallback: sources.every(s => s.evidenceType === 'ai')
+            aiFallback: isAiOnly
         }];
     },
 

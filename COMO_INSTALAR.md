@@ -1,4 +1,4 @@
-# AnswerHunter Setup Guide / Guia de Configuracao
+# AnswerHunter Setup Guide / Guia de Configuração
 
 This guide is bilingual (`EN` + `PT-BR`) and focused on non-technical users.
 
@@ -66,22 +66,22 @@ This guide is bilingual (`EN` + `PT-BR`) and focused on non-technical users.
 
 ---
 
-## PORTUGUES (BRASIL)
+## PORTUGUÊS (BRASIL)
 
-### 1) Instalar a extensao no Chrome (modo desenvolvedor)
+### 1) Instalar a extensão no Chrome (modo desenvolvedor)
 1. Baixe e extraia este projeto.
 2. Abra `chrome://extensions`.
 3. Ative `Modo do desenvolvedor` (canto superior direito).
-4. Clique em `Carregar sem compactacao`.
-5. Selecione a pasta que contem `manifest.json`.
+4. Clique em `Carregar sem compactação`.
+5. Selecione a pasta que contém `manifest.json`.
 
-### 2) Abrir o AnswerHunter e iniciar configuracao
-1. Clique no icone da extensao.
+### 2) Abrir o AnswerHunter e iniciar configuração
+1. Clique no ícone da extensão.
 2. Abra o popup do AnswerHunter.
 3. No primeiro uso, o guia de boas-vindas abre automaticamente.
-4. Clique em `Iniciar configuracao`.
+4. Clique em `Iniciar configuração`.
 
-### 3) Obter chave da API Groq (obrigatoria)
+### 3) Obter chave da API Groq (obrigatória)
 1. Acesse https://console.groq.com/keys
 2. Entre ou crie uma conta gratuita.
 3. Clique em `Create API Key`.
@@ -90,7 +90,7 @@ This guide is bilingual (`EN` + `PT-BR`) and focused on non-technical users.
 
 ![Tela de login Groq](docs/screenshots/groq-login.png)
 
-### 4) Obter chave da API Serper (obrigatoria)
+### 4) Obter chave da API Serper (obrigatória)
 1. Acesse https://serper.dev/api-key
 2. Entre ou crie conta gratuita.
 3. Copie a API key do dashboard.
@@ -105,21 +105,21 @@ This guide is bilingual (`EN` + `PT-BR`) and focused on non-technical users.
 3. Cole no AnswerHunter (opcional).
 4. Clique em `Testar` se desejar validar.
 
-### 6) Salvar configuracao
+### 6) Salvar configuração
 1. Com Groq + Serper validados, clique em `Salvar configuracoes`.
-2. O painel fecha e a extensao fica pronta para uso.
+2. O painel fecha e a extensão fica pronta para uso.
 
-![Painel de configuracao AnswerHunter](docs/screenshots/answerhunter-setup.png)
+![Painel de configuração AnswerHunter](docs/screenshots/answerhunter-setup.png)
 
-### 7) Trocar idioma da extensao
+### 7) Trocar idioma da extensão
 1. Abra o popup.
-2. Use o seletor de idioma no cabecalho.
-3. Escolha `Ingles` ou `Portugues (Brasil)`.
+2. Use o seletor de idioma no cabeçalho.
+3. Escolha `Inglês` ou `Português (Brasil)`.
 
-### Solucao de problemas
-- `SETUP_REQUIRED`: faltam chaves obrigatorias. Clique na engrenagem e configure Groq + Serper.
-- `Chave invalida`: confirme copia completa da chave (sem espacos).
-- Sem resposta: selecione a questao completa com alternativas e tente novamente.
+### Solução de problemas
+- `SETUP_REQUIRED`: faltam chaves obrigatórias. Clique na engrenagem e configure Groq + Serper.
+- `Chave inválida`: confirme cópia completa da chave (sem espaços).
+- Sem resposta: selecione a questão completa com alternativas e tente novamente.
 
 ---
 
