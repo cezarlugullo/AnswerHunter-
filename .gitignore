@@ -16,10 +16,9 @@ node_modules/
 dist/
 build/
 
-# Env and secrets
+# Env and secrets (keys are stored in the extension UI, not in files)
 .env
 .env.*
-!.env.example
 
 # Local tooling artifacts
 .playwright-cli/
