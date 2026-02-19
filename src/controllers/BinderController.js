@@ -1,27 +1,90 @@
-﻿import { StorageModel } from '../models/StorageModel.js';
+import { StorageModel } from '../models/StorageModel.js';
+import { I18nService } from '../i18n/I18nService.js';
 
 export const BinderController = {
-    view: null, // Referência para a View (PopupView)
+    view: null,
     eventsBound: false,
     draggedItemId: null,
+    lastExportTimestamp: null,
+
+    t(key, variables) {
+        return I18nService.t(key, variables);
+    },
 
     init(view) {
         this.view = view;
-        // Carregar dados iniciais (assíncrono, mas init é síncrono no fluxo de eventos)
         StorageModel.init();
+        this._loadLastExportTimestamp();
         this.bindEvents();
     },
 
     async renderBinder() {
         if (!this.view) return;
 
-        // Garante que dados estão carregados
         if (!StorageModel.data || StorageModel.data.length === 0) {
             await StorageModel.init();
         }
 
         const currentFolder = StorageModel.findNode(StorageModel.currentFolderId) || StorageModel.data[0];
-        this.view.renderBinderList(currentFolder);
+
+        // Determine if backup reminder should show
+        const showBackupReminder = await this._shouldShowBackupReminder();
+
+        this.view.renderBinderList(currentFolder, { showBackupReminder });
+    },
+
+    async _shouldShowBackupReminder() {
+        const itemCount = this._countBinderItems();
+        if (itemCount < 5) return false;
+
+        // Check if reminder was dismissed recently
+        try {
+            const data = await chrome.storage.local.get(['_backupReminderDismissedUntil']);
+            const dismissedUntil = data?._backupReminderDismissedUntil;
+            if (dismissedUntil && Date.now() < dismissedUntil) return false;
+        } catch { }
+
+        const daysSince = this._daysSinceLastExport();
+        return daysSince === null || daysSince >= 7;
+    },
+
+    _countBinderItems() {
+        const root = StorageModel.data?.[0];
+        if (!root) return 0;
+        let count = 0;
+        const walk = (node) => {
+            if (node.type === 'question') count++;
+            if (node.children) node.children.forEach(walk);
+        };
+        walk(root);
+        return count;
+    },
+
+    _daysSinceLastExport() {
+        if (!this.lastExportTimestamp) return null;
+        return Math.floor((Date.now() - this.lastExportTimestamp) / (1000 * 60 * 60 * 24));
+    },
+
+    async _loadLastExportTimestamp() {
+        try {
+            const data = await chrome.storage.local.get(['lastExportTimestamp']);
+            this.lastExportTimestamp = data?.lastExportTimestamp || null;
+        } catch { }
+    },
+
+    async _saveLastExportTimestamp() {
+        this.lastExportTimestamp = Date.now();
+        try {
+            await chrome.storage.local.set({ lastExportTimestamp: this.lastExportTimestamp });
+        } catch { }
+    },
+
+    async _dismissBackupReminder() {
+        try {
+            const dismissUntil = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days
+            await chrome.storage.local.set({ _backupReminderDismissedUntil: dismissUntil });
+            this.renderBinder();
+        } catch { }
     },
 
     bindEvents() {
@@ -56,6 +119,27 @@ export const BinderController = {
                 return;
             }
 
+            const exportBtn = e.target.closest('#exportBinderBtn');
+            if (exportBtn) {
+                e.preventDefault();
+                this.handleExport();
+                return;
+            }
+
+            const importBtn = e.target.closest('#importBinderBtn');
+            if (importBtn) {
+                e.preventDefault();
+                this.handleImport();
+                return;
+            }
+
+            const dismissBtn = e.target.closest('.dismiss-reminder');
+            if (dismissBtn) {
+                e.preventDefault();
+                this._dismissBackupReminder();
+                return;
+            }
+
             const renameBtn = e.target.closest('.rename-btn');
             if (renameBtn) {
                 e.stopPropagation();
@@ -75,7 +159,7 @@ export const BinderController = {
                 e.stopPropagation();
                 const item = StorageModel.findNode(copyBtn.dataset.id);
                 if (item && item.content) {
-                    const text = `Questão: ${item.content.question}\n\nResposta: ${item.content.answer}`;
+                    const text = `${this.t('binder.copy.question')}: ${item.content.question}\n\n${this.t('binder.copy.answer')}: ${item.content.answer}`;
                     navigator.clipboard.writeText(text);
                 }
                 return;
@@ -141,7 +225,7 @@ export const BinderController = {
     },
 
     async handleCreateFolder() {
-        const name = prompt('Nome da nova pasta:');
+        const name = prompt(this.t('binder.prompt.newFolder'));
         if (name) {
             await StorageModel.createFolder(name);
             this.renderBinder();
@@ -161,7 +245,7 @@ export const BinderController = {
     async handleRename(id) {
         const node = StorageModel.findNode(id);
         if (!node || node.type !== 'folder') return;
-        const newName = prompt('Novo nome da pasta:', node.title);
+        const newName = prompt(this.t('binder.prompt.renameFolder'), node.title);
         if (newName && newName.trim() && newName.trim() !== node.title) {
             await StorageModel.renameFolder(id, newName.trim());
             this.renderBinder();
@@ -172,15 +256,12 @@ export const BinderController = {
         const node = StorageModel.findNode(id);
         if (!node) return;
 
-        // Se for pasta com filhos, dar opções
+        // If it is a folder with children, give options
         if (node.type === 'folder' && node.children && node.children.length > 0) {
-            const choice = prompt(
-                `A pasta "${node.title}" contém ${node.children.length} item(ns).\n\n` +
-                'Digite uma opção:\n' +
-                '1 - Excluir pasta E todo o conteúdo\n' +
-                '2 - Excluir só a pasta (mover conteúdo para pasta pai)\n' +
-                '0 - Cancelar'
-            );
+            const choice = prompt(this.t('binder.prompt.deleteFolderOptions', {
+                title: node.title,
+                count: node.children.length
+            }));
             if (choice === '1') {
                 await StorageModel.deleteNode(id);
                 this.renderBinder();
@@ -193,7 +274,7 @@ export const BinderController = {
             return;
         }
 
-        if (confirm('Deseja realmente excluir este item?')) {
+        if (confirm(this.t('binder.confirm.deleteItem'))) {
             const success = await StorageModel.deleteNode(id);
             if (success) {
                 this.renderBinder();
@@ -203,7 +284,7 @@ export const BinderController = {
     },
 
     async handleClearAll() {
-        if (confirm('Tem certeza que deseja apagar TODO o fichário? Esta ação é irreversível.')) {
+        if (confirm(this.t('binder.confirm.clearAll'))) {
             await StorageModel.clearAll();
             this.renderBinder();
             this.view.resetAllSaveButtons();
@@ -213,7 +294,7 @@ export const BinderController = {
 
     async handleMoveItem(itemId, targetFolderId) {
         await StorageModel.moveItem(itemId, targetFolderId);
-        this.renderBinder(); // Re-renderiza para mostrar a mudança
+        this.renderBinder(); // Re-renders to show the change
     },
 
     refreshSearchSaveStates() {
@@ -234,23 +315,120 @@ export const BinderController = {
         });
     },
 
-    // Chamado quando clica no botão Salvar/Remover nos resultados da busca
+    // Called when clicking Save/Remove button in search results
     async toggleSaveItem(question, answer, source, btnElement) {
         const isSaved = btnElement.classList.contains('saved');
 
         if (isSaved) {
-            // Remover
             const removed = await StorageModel.removeByContent(question);
             if (removed) {
                 this.view.setSaveButtonState(btnElement, false);
             }
         } else {
-            // Salvar
             const added = await StorageModel.addItem(question, answer, source);
             this.view.setSaveButtonState(btnElement, true);
             if (!added) {
-                console.warn('BinderController: item duplicado, não adicionado.');
+                console.warn('BinderController: duplicate item, not added.');
+            }
+        }
+    },
+
+    // === EXPORT / IMPORT ===
+
+    async handleExport() {
+        try {
+            const data = StorageModel.data;
+            if (!data || data.length === 0) {
+                if (this.view.showToast) {
+                    this.view.showToast(this.t('binder.toast.nothingToExport'), 'error');
+                }
+                return;
+            }
+
+            const json = JSON.stringify(data, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `answerhunter-backup-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            await this._saveLastExportTimestamp();
+
+            if (this.view.showToast) {
+                this.view.showToast(this.t('binder.toast.exportSuccess'), 'success');
+            }
+        } catch (err) {
+            console.error('Export error:', err);
+            if (this.view.showToast) {
+                this.view.showToast(this.t('binder.toast.exportError', { message: err.message }), 'error');
+            }
+        }
+    },
+
+    async handleImport() {
+        try {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.style.display = 'none';
+            document.body.appendChild(input);
+
+            input.addEventListener('change', async (e) => {
+                try {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+
+                    const text = await file.text();
+                    let data;
+                    try {
+                        data = JSON.parse(text);
+                    } catch (e) {
+                        throw new Error('Invalid JSON format');
+                    }
+
+                    // Handle potential wrapping (e.g. if user exported raw storage object)
+                    if (data && !Array.isArray(data) && Array.isArray(data.binderStructure)) {
+                        data = data.binderStructure;
+                    }
+
+                    if (!Array.isArray(data) || data.length === 0) {
+                        if (this.view.showToast) {
+                            this.view.showToast(this.t('binder.toast.invalidFile'), 'error');
+                        }
+                        return;
+                    }
+
+                    // Confirm before overwriting
+                    if (!confirm(this.t('binder.confirm.importReplace'))) return;
+
+                    await StorageModel.importData(data);
+                    this.renderBinder();
+
+                    if (this.view.showToast) {
+                        this.view.showToast(this.t('binder.toast.importSuccess'), 'success');
+                    }
+                } catch (innerErr) {
+                    console.error('Import processing error:', innerErr);
+                    if (this.view.showToast) {
+                        this.view.showToast(this.t('binder.toast.importError', { message: innerErr.message }), 'error');
+                    }
+                } finally {
+                    document.body.removeChild(input);
+                }
+            });
+
+            input.click();
+        } catch (err) {
+            console.error('Import setup error:', err);
+            if (this.view.showToast) {
+                this.view.showToast(this.t('binder.toast.importError', { message: err.message }), 'error');
             }
         }
     }
 };
+
+
