@@ -60,12 +60,14 @@ export const PopupView = {
       welcomeStartBtn: document.getElementById('welcomeStartBtn'),
       btnNextGroq: document.getElementById('btn-next-groq'),
       btnNextSerper: document.getElementById('btn-next-serper'),
+      btnNextGemini: document.getElementById('btn-next-gemini'),
       saveSetupBtn: document.getElementById('saveSetupBtn'),
       setupSkipBtn: document.getElementById('setupSkipBtn'),
 
       prevGroq: document.getElementById('prev-groq'),
       prevSerper: document.getElementById('prev-serper'),
       prevGemini: document.getElementById('prev-gemini'),
+      prevPrefs: document.getElementById('prev-prefs'),
 
       // Inputs
       inputGroq: document.getElementById('input-groq'),
@@ -73,8 +75,7 @@ export const PopupView = {
       inputGemini: document.getElementById('input-gemini'),
       selectSearchProvider: document.getElementById('select-search-provider'),
       linkSearchProvider: document.getElementById('link-search-provider'),
-      selectSearchProvider: document.getElementById('select-search-provider'),
-      linkSearchProvider: document.getElementById('link-search-provider'),
+      selectSearchProviderOb: document.getElementById('selectSearchProviderOb'),
 
       // Tests
       testGroq: document.getElementById('test-groq'),
@@ -90,6 +91,8 @@ export const PopupView = {
       providerToggle: document.getElementById('provider-toggle'),
       pillGroq: document.getElementById('pill-groq'),
       pillGemini: document.getElementById('pill-gemini'),
+      pillGroqOb: document.getElementById('pill-groq-ob'),
+      pillGeminiOb: document.getElementById('pill-gemini-ob'),
       providerHint: document.getElementById('provider-hint'),
       selectGroqModel: document.getElementById('select-groq-model'),
       selectGeminiModel: document.getElementById('select-gemini-model'),
@@ -226,8 +229,8 @@ export const PopupView = {
   },
 
   updateProgressBar(stepNumber) {
-    // 0 -> 10%, 1 -> 35%, 2 -> 65%, 3 -> 100%
-    const percents = [10, 35, 65, 100];
+    // 0 -> 10%, 1 -> 30%, 2 -> 50%, 3 -> 75%, 4 -> 100%
+    const percents = [10, 30, 50, 75, 100];
     const percent = percents[stepNumber] ?? 10;
 
     if (this.elements.progressBar) {
@@ -368,7 +371,13 @@ export const PopupView = {
   },
 
   setupVisibilityToggle(button) {
-    button.addEventListener('click', () => {
+    if (!button || button.dataset.visibilityBound === '1') return;
+    button.dataset.visibilityBound = '1';
+
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
       const targetId = button.dataset.target;
       const input = document.getElementById(targetId);
       if (!input) return;
@@ -667,9 +676,9 @@ export const PopupView = {
               <div class="answer-override-pills" hidden>
                 <span class="override-label">${escapeHtml(this.t('result.override.pick'))}</span>
                 <div class="override-options">
-                  ${Object.entries(item.optionsMap).sort(([a],[b]) => a.localeCompare(b)).map(([letter, body]) =>
-                    `<button class="override-pill ${letter === answerLetter ? 'override-current' : ''}" data-letter="${escapeHtml(letter)}" data-body="${encodeURIComponent(body)}" title="${escapeHtml(body.slice(0, 100))}" type="button"><span class="override-pill-letter">${escapeHtml(letter)}</span><span class="override-pill-body">${escapeHtml(body.length > 50 ? body.slice(0, 47) + '...' : body)}</span></button>`
-                  ).join('')}
+                  ${Object.entries(item.optionsMap).sort(([a], [b]) => a.localeCompare(b)).map(([letter, body]) =>
+            `<button class="override-pill ${letter === answerLetter ? 'override-current' : ''}" data-letter="${escapeHtml(letter)}" data-body="${encodeURIComponent(body)}" title="${escapeHtml(body.slice(0, 100))}" type="button"><span class="override-pill-letter">${escapeHtml(letter)}</span><span class="override-pill-body">${escapeHtml(body.length > 50 ? body.slice(0, 47) + '...' : body)}</span></button>`
+          ).join('')}
                 </div>
                 <button class="override-cancel" type="button">${escapeHtml(this.t('result.override.cancel'))}</button>
               </div>

@@ -50,8 +50,13 @@ export const PopupController = {
 
     this.view.elements.prevGemini?.addEventListener('click', () => this.goToSetupStep(2));
 
+    this.view.elements.btnNextGemini?.addEventListener('click', () => this.goToSetupStep(4));
+    this.view.elements.prevPrefs?.addEventListener('click', () => this.goToSetupStep(3));
+
     this.view.elements.saveSetupBtn?.addEventListener('click', () => this.handleSaveSetup());
     this.view.elements.setupSkipBtn?.addEventListener('click', () => this.handleSaveSetup());
+
+    // Bind main search provider setting
     this.view.elements.selectSearchProvider?.addEventListener('change', () => {
       this.applySearchProviderSelection(this.getSelectedSearchProvider(), {
         persistDraft: true,
@@ -59,9 +64,15 @@ export const PopupController = {
       });
     });
 
-    // AI Provider & Model Config
-    this.view.elements.pillGroq?.addEventListener('click', () => this.setProviderPill('groq'));
-    this.view.elements.pillGemini?.addEventListener('click', () => this.setProviderPill('gemini'));
+
+    // AI Provider & Model Config (Settings tab)
+    this.view.elements.pillGroq?.addEventListener('click', () => { this.setProviderPill('groq'); this.syncObPills('groq'); });
+    this.view.elements.pillGemini?.addEventListener('click', () => { this.setProviderPill('gemini'); this.syncObPills('gemini'); });
+
+    // AI Provider Config (Onboarding Tab)
+    this.view.elements.pillGroqOb?.addEventListener('click', () => { this.setProviderPill('groq'); this.syncObPills('groq'); });
+    this.view.elements.pillGeminiOb?.addEventListener('click', () => { this.setProviderPill('gemini'); this.syncObPills('gemini'); });
+
     this.view.elements.selectGroqModel?.addEventListener('change', () => this.persistAiConfig());
     this.view.elements.selectGeminiModel?.addEventListener('change', () => this.persistAiConfig());
 
@@ -89,11 +100,29 @@ export const PopupController = {
       }
     });
 
-    document.querySelectorAll('.ob-btn-test').forEach((button) => {
-      button.addEventListener('click', () => {
-        const provider = button.dataset.provider;
-        if (provider) this.handleTestProvider(provider);
+    const bindProviderTestButton = (button, fallbackProvider = '') => {
+      if (!button || button.dataset.testBound === '1') return;
+
+      const providerCandidate = (button.dataset.provider || fallbackProvider || button.id?.replace(/^test-/, '') || '')
+        .toLowerCase()
+        .trim();
+
+      if (!['groq', 'serper', 'gemini'].includes(providerCandidate)) return;
+
+      button.dataset.testBound = '1';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        this.handleTestProvider(providerCandidate);
       });
+    };
+
+    bindProviderTestButton(this.view.elements.testGroq, 'groq');
+    bindProviderTestButton(this.view.elements.testSerper, 'serper');
+    bindProviderTestButton(this.view.elements.testGemini, 'gemini');
+
+    // Backwards compatibility with old onboarding markup.
+    document.querySelectorAll('.ob-btn-test, .test-btn').forEach((button) => {
+      bindProviderTestButton(button);
     });
 
     document.querySelectorAll('.visibility-toggle').forEach((button) => {
@@ -251,7 +280,7 @@ export const PopupController = {
     }
     this.updateProviderHint(provider);
 
-    // Set model selects
+    // Set model selects (settings panel only)
     const groqModel = settings.groqModelSmart || 'llama-3.3-70b-versatile';
     const geminiModel = settings.geminiModelSmart || 'gemini-2.5-pro';
     if (this.view.elements.selectGroqModel) {
@@ -259,6 +288,17 @@ export const PopupController = {
     }
     if (this.view.elements.selectGeminiModel) {
       this.view.elements.selectGeminiModel.value = geminiModel;
+    }
+    this.syncObPills(provider);
+  },
+
+  syncObPills(provider) {
+    const obPills = [this.view.elements.pillGroqOb, this.view.elements.pillGeminiOb];
+    obPills.forEach(p => p?.classList.remove('active'));
+    if (provider === 'gemini') {
+      this.view.elements.pillGeminiOb?.classList.add('active');
+    } else {
+      this.view.elements.pillGroqOb?.classList.add('active');
     }
   },
 
@@ -278,32 +318,36 @@ export const PopupController = {
   /** Update the hint text below the toggle */
   updateProviderHint(provider) {
     const hint = this.view.elements.providerHint;
-    if (!hint) return;
-    const key = provider === 'gemini'
-      ? 'setup.aiConfig.hintGeminiPrimary'
-      : 'setup.aiConfig.hintGroqPrimary';
-    const text = this.view.t(key);
-    if (text) {
-      const textSpan = hint.querySelector('span:last-child') || hint;
-      textSpan.textContent = text;
+    if (hint) {
+      const key = provider === 'gemini'
+        ? 'setup.aiConfig.hintGeminiPrimary'
+        : 'setup.aiConfig.hintGroqPrimary';
+      const text = this.view.t(key);
+      if (text) {
+        const textSpan = hint.querySelector('span:last-child') || hint;
+        textSpan.textContent = text;
+      }
+    }
+    // Also update the onboarding hint
+    const obHint = document.getElementById('provider-hint-ob');
+    if (obHint) {
+      const key = provider === 'gemini'
+        ? 'setup.prefs.hintGemini'
+        : 'setup.prefs.hintGroq';
+      obHint.textContent = this.view.t(key) || obHint.textContent;
     }
   },
 
   /** Persist the current AI config selections to storage */
   async persistAiConfig() {
-    const isGemini = this.view.elements.pillGemini?.classList.contains('active');
+    const isGemini = this.view.elements.pillGemini?.classList.contains('active')
+      || this.view.elements.pillGeminiOb?.classList.contains('active');
     const primaryProvider = isGemini ? 'gemini' : 'groq';
     const groqModel = this.view.elements.selectGroqModel?.value || 'llama-3.3-70b-versatile';
     const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-pro';
 
-    await SettingsModel.saveSettings({
-      primaryProvider,
-      groqModelSmart: groqModel,
-      groqModelOverview: groqModel === 'openai/gpt-oss-120b' ? 'openai/gpt-oss-120b' : groqModel,
-      geminiModelSmart: geminiModel,
-      geminiModel: geminiModel
-    });
-    console.log(`AnswerHunter: AI config saved â€” primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}`);
+    await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel });
+    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}`);
   },
 
   handleWelcomeStart() {
@@ -323,7 +367,7 @@ export const PopupController = {
       this._isReopenMode = isReopen;
 
       this.view.setSetupVisible(true);
-      const startStep = await this.determineCurrentStep();
+      const startStep = isReopen ? 4 : await this.determineCurrentStep();
 
       if (isReopen) {
         // Show reopen UX: key status chips, change-key buttons, close-settings buttons
@@ -355,10 +399,14 @@ export const PopupController = {
   goToSetupStep(step) {
     let normalizedStep = Number(step);
     if (normalizedStep < 0) normalizedStep = 0;
-    if (normalizedStep > 3) normalizedStep = 3;
+    if (normalizedStep > 4) normalizedStep = 4;
 
     this.currentSetupStep = normalizedStep;
     this.view.showSetupStep(normalizedStep);
+    if (normalizedStep === 3) {
+      // Gemini is optional; allow continuing to preferences without validation.
+      this.view.enableNextButton('gemini');
+    }
     // this.updateStepperState(); // Not needed in new design or handled by view logic
   },
 
@@ -409,7 +457,7 @@ export const PopupController = {
 
         // Auto-advance to next step after successful test
         // Auto-advance
-        if (this.currentSetupStep < 3) {
+        if (this.currentSetupStep < 4) {
           this.view.showAutoAdvance(() => {
             // In new design, user clicks Next, but we can auto-enable
             // view.enableNextButton(provider) is called by view.setTestButtonLoading
@@ -864,52 +912,52 @@ export const PopupController = {
       if (domIsSufficient) {
         console.log('AnswerHunter: OCR_PRIORITY decision=skipped (DOM already sufficient)');
       } else {
-      this.view.showStatus('loading', this.t('status.visionOcr') || 'Capturando tela para OCR visual...');
+        this.view.showStatus('loading', this.t('status.visionOcr') || 'Capturando tela para OCR visual...');
 
-      try {
-        const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 60 });
-        if (dataUrl) {
-          const base64 = dataUrl.split(',')[1];
-          if (base64) {
-            const visionText = await ApiService.extractTextFromScreenshot(base64);
-            if (visionText && visionText.length >= 30) {
-              const visionOpts = countDistinctOptions(visionText);
-              const domOptCount = domOptionCount;
-              console.log(`AnswerHunter: OCR_COMPARE opts_ocr=${visionOpts} opts_dom=${domOptCount} len_ocr=${visionText.length} len_dom=${(domQuestion || '').length}`);
-              console.log(`AnswerHunter: Vision OCR returned ${visionText.length} chars, ${visionOpts} options`);
+        try {
+          const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 60 });
+          if (dataUrl) {
+            const base64 = dataUrl.split(',')[1];
+            if (base64) {
+              const visionText = await ApiService.extractTextFromScreenshot(base64);
+              if (visionText && visionText.length >= 30) {
+                const visionOpts = countDistinctOptions(visionText);
+                const domOptCount = domOptionCount;
+                console.log(`AnswerHunter: OCR_COMPARE opts_ocr=${visionOpts} opts_dom=${domOptCount} len_ocr=${visionText.length} len_dom=${(domQuestion || '').length}`);
+                console.log(`AnswerHunter: Vision OCR returned ${visionText.length} chars, ${visionOpts} options`);
 
-              bestQuestion = visionText;
-              usedVisionOcr = true;
-              ocrVisionText = visionText; // Preserve OCR text even if DOM wins
+                bestQuestion = visionText;
+                usedVisionOcr = true;
+                ocrVisionText = visionText; // Preserve OCR text even if DOM wins
 
-              // If DOM is clearly better in structural completeness, keep DOM.
-              // HOWEVER: if OCR found significantly more options (2+ advantage), OCR always wins
-              // because longer DOM text without options leads to cross-frame option contamination.
-              const domIsLikely = isLikelyQuestion(domQuestion);
-              const ocrHasOptionAdvantage = visionOpts >= domOptCount + 2;
-              const domClearlyBetter = domQuestion
-                && !ocrHasOptionAdvantage
-                && (domOptCount >= Math.max(4, visionOpts + 2) || (domQuestion.length > visionText.length * 1.8 && domIsLikely));
+                // If DOM is clearly better in structural completeness, keep DOM.
+                // HOWEVER: if OCR found significantly more options (2+ advantage), OCR always wins
+                // because longer DOM text without options leads to cross-frame option contamination.
+                const domIsLikely = isLikelyQuestion(domQuestion);
+                const ocrHasOptionAdvantage = visionOpts >= domOptCount + 2;
+                const domClearlyBetter = domQuestion
+                  && !ocrHasOptionAdvantage
+                  && (domOptCount >= Math.max(4, visionOpts + 2) || (domQuestion.length > visionText.length * 1.8 && domIsLikely));
 
-              if (domClearlyBetter) {
-                bestQuestion = domQuestion;
-                usedVisionOcr = false;
-                console.log('AnswerHunter: DOM extraction retained (clearly more complete than OCR)');
-                console.log('AnswerHunter: OCR_PRIORITY decision=dom');
+                if (domClearlyBetter) {
+                  bestQuestion = domQuestion;
+                  usedVisionOcr = false;
+                  console.log('AnswerHunter: DOM extraction retained (clearly more complete than OCR)');
+                  console.log('AnswerHunter: OCR_PRIORITY decision=dom');
+                } else {
+                  console.log('AnswerHunter: Using Vision OCR result as primary statement');
+                  console.log('AnswerHunter: OCR_PRIORITY decision=ocr');
+                }
               } else {
-                console.log('AnswerHunter: Using Vision OCR result as primary statement');
-                console.log('AnswerHunter: OCR_PRIORITY decision=ocr');
+                console.log('AnswerHunter: Vision OCR returned insufficient text, keeping DOM result');
+                console.log('AnswerHunter: OCR_PRIORITY decision=dom_insufficient_ocr');
               }
-            } else {
-              console.log('AnswerHunter: Vision OCR returned insufficient text, keeping DOM result');
-              console.log('AnswerHunter: OCR_PRIORITY decision=dom_insufficient_ocr');
             }
           }
+        } catch (visionErr) {
+          console.warn('AnswerHunter: Vision OCR capture failed:', visionErr.message || visionErr);
+          console.log('AnswerHunter: OCR_PRIORITY decision=dom_capture_failed');
         }
-      } catch (visionErr) {
-        console.warn('AnswerHunter: Vision OCR capture failed:', visionErr.message || visionErr);
-        console.log('AnswerHunter: OCR_PRIORITY decision=dom_capture_failed');
-      }
       } // end else (domIsSufficient)
 
       if (!bestQuestion || bestQuestion.length < 5) {
@@ -1373,42 +1421,85 @@ export const PopupController = {
             // No real options in question text â€” just append all
             displayQuestion = `${bestQuestion}\n${optionsText}`;
           } else {
-            // Merge only MISSING options to avoid duplicates
-            const existingProfile = buildOptionsProfile(bestQuestion);
-            const existingLetters = existingProfile.letters;
-            const codeDominant = existingProfile.entries.length >= 3 && existingProfile.codeRatio >= 0.66;
-            const newLines = optionsText.split('\n').filter(line => {
-              const lineMatch = line.trim().match(/^([A-E])\s*[\)\.\-:]/i);
-              if (!lineMatch || !isValidOptionLine(line)) return false;
-              const letter = lineMatch[1].toUpperCase();
-              if (existingLetters.has(letter)) return false;
+            let processedQuestion = bestQuestion;
+            const domOptsCount = countDistinctOptions(optionsText);
 
-              const body = String(line.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '') || '').replace(/\s+/g, ' ').trim();
-              if (!body) return false;
+            if (usedVisionOcr && domOptsCount >= 2) {
+              const domLines = optionsText.split('\n').filter(line => isValidOptionLine(line));
+              const domLetters = new Map();
 
-              // Guard against cross-question contamination when OCR already has mostly code-like options.
-              if (codeDominant) {
-                if (!looksLikeCodeOptionBody(body)) return false;
-                const candTokens = optionTokens(body);
-                if (candTokens.length >= 3 && existingProfile.tokenSet.size > 0) {
-                  let overlap = 0;
-                  for (const tk of candTokens) {
-                    if (existingProfile.tokenSet.has(tk)) overlap += 1;
-                  }
-                  const overlapRatio = overlap / candTokens.length;
-                  if (overlap < 2 && overlapRatio < 0.28) return false;
+              domLines.forEach(line => {
+                const match = line.trim().match(/^([A-E])\s*[\)\.\-:]/i);
+                if (match) {
+                  domLetters.set(match[1].toUpperCase(), line.trim());
                 }
-              }
+              });
 
-              return true;
-            });
-            if (newLines.length > 0) {
-              displayQuestion = `${bestQuestion}\n${newLines.join('\n')}`;
-              console.log(`AnswerHunter: Merged ${newLines.length} missing option(s) from extractOptionsOnlyScript`);
-              console.log(`AnswerHunter: OCR_DOM_MERGE opts_before=${existingOptionCount} opts_added=${newLines.length} opts_after=${countDistinctOptions(displayQuestion)}`);
-            } else if (usedVisionOcr) {
-              console.log('AnswerHunter: OCR was used; CSS/HTML options scan executed with no new alternatives found');
-              console.log(`AnswerHunter: OCR_DOM_MERGE opts_before=${existingOptionCount} opts_added=0 opts_after=${countDistinctOptions(displayQuestion)}`);
+              if (domLetters.size > 0) {
+                const lines = processedQuestion.split('\n');
+                let replacedCount = 0;
+
+                for (let i = 0; i < lines.length; i++) {
+                  const match = lines[i].trim().match(/^([A-E])\s*[\)\.\-:]/i);
+                  // Ensure we are operating on a line treated as an option
+                  if (match && isValidOptionLine(lines[i])) {
+                    const letter = match[1].toUpperCase();
+                    if (domLetters.has(letter)) {
+                      lines[i] = domLetters.get(letter);
+                      domLetters.delete(letter);
+                      replacedCount++;
+                    }
+                  }
+                }
+
+                processedQuestion = lines.join('\n');
+
+                if (domLetters.size > 0) {
+                  processedQuestion = `${processedQuestion}\n${Array.from(domLetters.values()).join('\n')}`;
+                }
+
+                displayQuestion = processedQuestion;
+                console.log(`AnswerHunter: OVERWROTE ${replacedCount} OCR option(s) with precise DOM options; Added ${domLetters.size} missing DOM option(s)`);
+                console.log(`AnswerHunter: OCR_DOM_REPLACE opts_before=${existingOptionCount} opts_after=${countDistinctOptions(displayQuestion)}`);
+              }
+            } else {
+              // Merge only MISSING options to avoid duplicates
+              const existingProfile = buildOptionsProfile(bestQuestion);
+              const existingLetters = existingProfile.letters;
+              const codeDominant = existingProfile.entries.length >= 3 && existingProfile.codeRatio >= 0.66;
+              const newLines = optionsText.split('\n').filter(line => {
+                const lineMatch = line.trim().match(/^([A-E])\s*[\)\.\-:]/i);
+                if (!lineMatch || !isValidOptionLine(line)) return false;
+                const letter = lineMatch[1].toUpperCase();
+                if (existingLetters.has(letter)) return false;
+
+                const body = String(line.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '') || '').replace(/\s+/g, ' ').trim();
+                if (!body) return false;
+
+                // Guard against cross-question contamination when OCR already has mostly code-like options.
+                if (codeDominant) {
+                  if (!looksLikeCodeOptionBody(body)) return false;
+                  const candTokens = optionTokens(body);
+                  if (candTokens.length >= 3 && existingProfile.tokenSet.size > 0) {
+                    let overlap = 0;
+                    for (const tk of candTokens) {
+                      if (existingProfile.tokenSet.has(tk)) overlap += 1;
+                    }
+                    const overlapRatio = overlap / candTokens.length;
+                    if (overlap < 2 && overlapRatio < 0.28) return false;
+                  }
+                }
+
+                return true;
+              });
+              if (newLines.length > 0) {
+                displayQuestion = `${bestQuestion}\n${newLines.join('\n')}`;
+                console.log(`AnswerHunter: Merged ${newLines.length} missing option(s) from extractOptionsOnlyScript`);
+                console.log(`AnswerHunter: OCR_DOM_MERGE opts_before=${existingOptionCount} opts_added=${newLines.length} opts_after=${countDistinctOptions(displayQuestion)}`);
+              } else if (usedVisionOcr) {
+                console.log('AnswerHunter: OCR was used; CSS/HTML options scan executed with no new alternatives found');
+                console.log(`AnswerHunter: OCR_DOM_MERGE opts_before=${existingOptionCount} opts_added=0 opts_after=${countDistinctOptions(displayQuestion)}`);
+              }
             }
           }
         }

@@ -1,0 +1,137 @@
+[
+    {
+        "id": 1,
+        "priority": 100,
+        "action": {
+            "type": "modifyHeaders",
+            "requestHeaders": [
+                {
+                    "header": "Referer",
+                    "operation": "set",
+                    "value": "https://www.google.com/"
+                },
+                {
+                    "header": "sec-fetch-dest",
+                    "operation": "set",
+                    "value": "document"
+                },
+                {
+                    "header": "sec-fetch-mode",
+                    "operation": "set",
+                    "value": "navigate"
+                },
+                {
+                    "header": "sec-fetch-site",
+                    "operation": "set",
+                    "value": "cross-site"
+                },
+                {
+                    "header": "sec-fetch-user",
+                    "operation": "set",
+                    "value": "?1"
+                },
+                {
+                    "header": "upgrade-insecure-requests",
+                    "operation": "set",
+                    "value": "1"
+                }
+            ]
+        },
+        "condition": {
+            "urlFilter": "||studocu.com/*",
+            "resourceTypes": [
+                "xmlhttprequest"
+            ]
+        }
+    },
+    {
+        "id": 2,
+        "priority": 100,
+        "action": {
+            "type": "modifyHeaders",
+            "requestHeaders": [
+                {
+                    "header": "Referer",
+                    "operation": "set",
+                    "value": "https://www.google.com/"
+                },
+                {
+                    "header": "sec-fetch-dest",
+                    "operation": "set",
+                    "value": "document"
+                },
+                {
+                    "header": "sec-fetch-mode",
+                    "operation": "set",
+                    "value": "navigate"
+                },
+                {
+                    "header": "sec-fetch-site",
+                    "operation": "set",
+                    "value": "cross-site"
+                },
+                {
+                    "header": "sec-fetch-user",
+                    "operation": "set",
+                    "value": "?1"
+                },
+                {
+                    "header": "upgrade-insecure-requests",
+                    "operation": "set",
+                    "value": "1"
+                }
+            ]
+        },
+        "condition": {
+            "urlFilter": "||brainly.com.br/*",
+            "resourceTypes": [
+                "xmlhttprequest"
+            ]
+        }
+    },
+    {
+        "id": 3,
+        "priority": 100,
+        "action": {
+            "type": "modifyHeaders",
+            "requestHeaders": [
+                {
+                    "header": "Referer",
+                    "operation": "set",
+                    "value": "https://www.google.com/"
+                },
+                {
+                    "header": "sec-fetch-dest",
+                    "operation": "set",
+                    "value": "document"
+                },
+                {
+                    "header": "sec-fetch-mode",
+                    "operation": "set",
+                    "value": "navigate"
+                },
+                {
+                    "header": "sec-fetch-site",
+                    "operation": "set",
+                    "value": "cross-site"
+                },
+                {
+                    "header": "sec-fetch-user",
+                    "operation": "set",
+                    "value": "?1"
+                },
+                {
+                    "header": "upgrade-insecure-requests",
+                    "operation": "set",
+                    "value": "1"
+                }
+            ]
+        },
+        "condition": {
+            "urlFilter": "||passeidireto.com/*",
+            "resourceTypes": [
+                "xmlhttprequest"
+            ]
+        }
+    }
+]

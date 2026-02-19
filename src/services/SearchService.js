@@ -28,7 +28,7 @@ export const SearchService = {
 
     _looksLikeCodeOption(text) {
         const body = String(text || '');
-        return /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?/i.test(body);
+        return /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|->|jsonb?/i.test(body);
     },
 
     _normalizeCodeAwareOption(text) {
@@ -36,9 +36,17 @@ export const SearchService = {
             .toLowerCase()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
+            .replace(/->>/g, ' op_json_text ')
+            .replace(/->/g, ' op_json_obj ')
             .replace(/=>/g, ' op_arrow ')
             .replace(/::/g, ' op_dcolon ')
             .replace(/:=/g, ' op_assign ')
+            .replace(/!=/g, ' op_neq ')
+            .replace(/<>/g, ' op_neq ')
+            .replace(/<=/g, ' op_lte ')
+            .replace(/>=/g, ' op_gte ')
+            .replace(/</g, ' op_lt ')
+            .replace(/>/g, ' op_gt ')
             .replace(/:/g, ' op_colon ')
             .replace(/=/g, ' op_eq ')
             .replace(/[^a-z0-9_]+/g, ' ')
@@ -720,7 +728,7 @@ export const SearchService = {
     // remap the source's letter to the user's letter by matching option text content.
     _remapLetterToUserOptions(sourceLetter, sourceOptionsMap, userOptionsMap) {
         if (!sourceLetter || !sourceOptionsMap || !userOptionsMap) {
-            console.log(`    [remap] SKIP: missing data (letter=${sourceLetter} srcOpts=${Object.keys(sourceOptionsMap||{}).length} userOpts=${Object.keys(userOptionsMap||{}).length})`);
+            console.log(`    [remap] SKIP: missing data (letter=${sourceLetter} srcOpts=${Object.keys(sourceOptionsMap || {}).length} userOpts=${Object.keys(userOptionsMap || {}).length})`);
             return sourceLetter;
         }
         const userEntries = Object.entries(userOptionsMap);
@@ -1576,6 +1584,9 @@ export const SearchService = {
         try {
             const clone = doc.body.cloneNode(true);
             clone.querySelectorAll('script, style, noscript, .blank').forEach((n) => n.remove());
+            clone.querySelectorAll('div, p, br, li, h1, h2, h3, h4, h5, h6, tr, td, article, section, footer, header').forEach(el => {
+                el.appendChild(doc.createTextNode(' '));
+            });
             return (clone.textContent || '').replace(/\s+/g, ' ').trim();
         } catch {
             return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
@@ -2845,7 +2856,7 @@ export const SearchService = {
             if (googleMeta?.letter) {
                 const googleWeight = googleMeta.method === 'google-ai-overview' ? 3.8
                     : googleMeta.method === 'google-answerbox' ? 3.2
-                    : 1.8; // PAA
+                        : 1.8; // PAA
                 const confFactor = Math.max(0.5, Math.min(1.0, googleMeta.confidence || 0.75));
                 const adjustedWeight = googleWeight * confFactor;
                 const sourceId = `google-meta:${sources.length + 1}`;

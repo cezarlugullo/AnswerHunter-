@@ -7,7 +7,8 @@
     "activeTab",
     "scripting",
     "storage",
-    "clipboardWrite"
+    "clipboardWrite",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://api.groq.com/*",
@@ -15,6 +16,15 @@
     "https://generativelanguage.googleapis.com/*",
     "<all_urls>"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "src/rules/headers.json"
+      }
+    ]
+  },
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_icon": {

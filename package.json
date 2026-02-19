@@ -1,0 +1,28 @@
+{
+  "name": "answerhunter",
+  "version": "1.0.0",
+  "description": "AnswerHunter is an open-source Chrome extension that helps students extract questions from the current page, search web evidence, and suggest the best answer with AI.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cezarlugullo/AnswerHunter-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/cezarlugullo/AnswerHunter-/issues"
+  },
+  "homepage": "https://github.com/cezarlugullo/AnswerHunter-#readme",
+  "dependencies": {
+    "axios": "^1.13.5",
+    "cheerio": "^1.2.0"
+  }
+}

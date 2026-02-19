@@ -966,7 +966,10 @@ Letra B: TCP
             // Remove empty .blank spans from PDF-like HTML (PasseiDireto/Studocu)
             // to avoid word fragmentation in extracted text.
             doc.querySelectorAll('.blank').forEach(el => el.remove());
-            derivedText = (doc.body?.innerText || '').trim();
+            doc.querySelectorAll('div, p, br, li, h1, h2, h3, h4, h5, h6, tr, td, article, section, footer, header').forEach(el => {
+                el.appendChild(doc.createTextNode(' '));
+            });
+            derivedText = (doc.body?.textContent || '').trim();
         } catch {
             derivedText = '';
         }
@@ -1207,15 +1210,23 @@ Letra B: TCP
             .replace(/&#39;/gi, '\'')
             .replace(/&lt;/gi, '<')
             .replace(/&gt;/gi, '>');
-        const looksLikeCodeOption = (text) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?/i.test(String(text || ''));
+        const looksLikeCodeOption = (text) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|->|jsonb?/i.test(String(text || ''));
         const normalizeCodeAwareHint = (text) => String(text || '')
             .toLowerCase()
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
+            .replace(/->>/g, ' op_json_text ')
+            .replace(/->/g, ' op_json_obj ')
             .replace(/=>/g, ' op_arrow ')
             .replace(/::/g, ' op_dcolon ')
             .replace(/:=/g, ' op_assign ')
+            .replace(/!=/g, ' op_neq ')
+            .replace(/<>/g, ' op_neq ')
+            .replace(/<=/g, ' op_lte ')
+            .replace(/>=/g, ' op_gte ')
+            .replace(/</g, ' op_lt ')
+            .replace(/>/g, ' op_gt ')
             .replace(/:/g, ' op_colon ')
             .replace(/=/g, ' op_eq ')
             .replace(/[^a-z0-9_]+/g, ' ')
