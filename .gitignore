@@ -24,6 +24,13 @@ build/
 .playwright-cli/
 .claude/
 .agents/
+.agent/
+
+# Project folders not for public repo
+gif/
+backend/
+docs/
+_metadata/
 
 # Accidental local files
 nul
