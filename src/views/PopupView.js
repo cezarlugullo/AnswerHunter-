@@ -71,6 +71,10 @@ export const PopupView = {
       inputGroq: document.getElementById('input-groq'),
       inputSerper: document.getElementById('input-serper'),
       inputGemini: document.getElementById('input-gemini'),
+      selectSearchProvider: document.getElementById('select-search-provider'),
+      linkSearchProvider: document.getElementById('link-search-provider'),
+      selectSearchProvider: document.getElementById('select-search-provider'),
+      linkSearchProvider: document.getElementById('link-search-provider'),
 
       // Tests
       testGroq: document.getElementById('test-groq'),
@@ -81,6 +85,14 @@ export const PopupView = {
       statusGroq: document.getElementById('status-groq'),
       statusSerper: document.getElementById('status-serper'),
       statusGemini: document.getElementById('status-gemini'),
+
+      // AI Provider & Model Config
+      providerToggle: document.getElementById('provider-toggle'),
+      pillGroq: document.getElementById('pill-groq'),
+      pillGemini: document.getElementById('pill-gemini'),
+      providerHint: document.getElementById('provider-hint'),
+      selectGroqModel: document.getElementById('select-groq-model'),
+      selectGeminiModel: document.getElementById('select-gemini-model'),
 
       // Key Status Chips (settings reopen)
       keyStatusGroq: document.getElementById('key-status-groq'),
@@ -500,6 +512,32 @@ export const PopupView = {
   appendResults(results) {
     if (!this.elements.resultsDiv) return;
 
+    const discardedUrlDiagnostics = [];
+
+    const sanitizeUrl = (rawUrl, context = 'unknown') => {
+      const value = String(rawUrl || '').trim();
+      if (!value) return '';
+      try {
+        const parsed = new URL(value);
+        if (!/^https?:$/i.test(parsed.protocol)) {
+          discardedUrlDiagnostics.push({ context, reason: 'invalid-protocol', raw: value.slice(0, 240) });
+          return '';
+        }
+        return parsed.href;
+      } catch (_) {
+        discardedUrlDiagnostics.push({ context, reason: 'invalid-url', raw: value.slice(0, 240) });
+        return '';
+      }
+    };
+
+    const sanitizeInjectedMarkup = (markup) => String(markup || '')
+      // Defensive cleanup: prevent accidental active content if any dynamic field bypasses escaping.
+      .replace(/<\s*script\b[\s\S]*?(?:<\/\s*script\s*>|$)/gi, ' ')
+      .replace(/<\s*iframe\b[\s\S]*?(?:<\/\s*iframe\s*>|$)/gi, ' ')
+      .replace(/<\s*object\b[\s\S]*?(?:<\/\s*object\s*>|$)/gi, ' ')
+      .replace(/<\s*embed\b[^>]*>?/gi, ' ')
+      .replace(/<\s*link\b[^>]*>?/gi, ' ');
+
     const html = results.map((item, index) => {
       const isSaved = Boolean(item.saved);
       const saveIcon = isSaved ? 'bookmark' : 'bookmark_border';
@@ -516,63 +554,142 @@ export const PopupView = {
         .trim();
 
       const confidence = Number.isFinite(item.confidence) ? Math.round(item.confidence * 100) : null;
-      let confidenceHtml = '';
-      if (confidence !== null) {
-        let bg = '#E74C3C';
-        if (confidence >= 80) bg = '#27AE60';
-        else if (confidence >= 60) bg = '#F39C12';
-        else if (confidence >= 40) bg = '#E67E22';
-        confidenceHtml = `<div class="confidence-circle" style="background:${bg}">${confidence}</div>`;
-      }
 
       const resultState = item.resultState || 'inconclusive';
       const reasonKey = item.reason === 'confirmed_by_sources'
         ? 'result.reason.confirmed'
         : item.reason === 'source_conflict'
           ? 'result.reason.conflict'
-          : 'result.reason.inconclusive';
+          : (item.reason === 'ai_combined_suggestion' || item.reason === 'ai_knowledge')
+            ? 'result.reason.suggested'
+            : 'result.reason.inconclusive';
 
-      const votesText = item.votes
-        ? Object.entries(item.votes).map(([letter, score]) => `${letter}: ${score}`).join(' | ')
+      // Only show vote pills when 2+ alternatives were scored (AI-only fallback has just one)
+      const votesEntries = item.votes ? Object.entries(item.votes) : [];
+      const showVotes = votesEntries.length >= 2;
+      const aiOverviewStatusText = item.googleMetaSignals
+        ? this.t('result.meta.aiOverview', {
+          status: this.t(item.googleMetaSignals.aiOverview ? 'result.meta.captured' : 'result.meta.absent')
+        })
         : '';
+      const providerText = item.googleMetaSignals?.provider
+        ? ` (${escapeHtml(this.t(item.googleMetaSignals.provider === 'serpapi' ? 'provider.serpapi' : 'provider.serper'))})`
+        : '';
+      const overviewSummary = typeof item.overview?.summary === 'string' ? item.overview.summary.trim() : '';
+      const overviewPoints = Array.isArray(item.overview?.keyPoints)
+        ? item.overview.keyPoints.map((point) => String(point || '').trim()).filter(Boolean)
+        : [];
+      const overviewReferences = Array.isArray(item.overview?.references)
+        ? item.overview.references
+          .map((ref) => ({
+            title: String(ref?.title || '').trim(),
+            link: String(ref?.link || '').trim()
+          }))
+          .filter((ref) => ref.title || ref.link)
+        : [];
 
       return `
         <div class="qa-card" style="animation-delay:${index * 0.07}s;">
           <div class="qa-card-header">
             <span class="material-symbols-rounded question-icon">help</span>
             <span class="qa-card-title">${escapeHtml(item.title || this.t('result.title'))}</span>
-            ${confidenceHtml}
             <button class="action-btn save-btn ${saveClass}" data-content="${dataContent}" title="${escapeHtml(this.t('result.save'))}">
               <span class="material-symbols-rounded ${iconClass}">${saveIcon}</span>
             </button>
           </div>
 
-          <div class="result-meta">
-            <span class="result-badge ${escapeHtml(resultState)}">${escapeHtml(this.t(`result.state.${resultState}`))}</span>
-            <span class="result-reason">${escapeHtml(this.t(reasonKey))}</span>
-            ${votesText ? `<span class="result-votes"><strong>${escapeHtml(this.t('result.votes'))}:</strong> ${escapeHtml(votesText)}</span>` : ''}
-          </div>
-
           <div class="qa-card-question">${formatQuestionText(item.question)}</div>
 
           <div class="qa-card-answer">
-            <div class="qa-card-answer-header">
-              <span class="material-symbols-rounded">${(() => {
+            <div class="qa-card-answer-header ${item.userOverride ? 'override-answer' : resultState === 'conflict' ? 'conflict-answer' : resultState === 'suggested' || item.aiFallback ? (item.aiFallback ? 'ai-suggestion' : 'suggested-answer') : ''}">
+              <span class="material-symbols-rounded answer-state-icon">${(() => {
+          if (item.userOverride) return 'person';
           if (resultState === 'confirmed') return 'check_circle';
           if (resultState === 'conflict') return 'warning';
+          if (resultState === 'suggested') return 'lightbulb';
           if (item.aiFallback) return 'smart_toy';
           return 'info';
         })()}</span>
-              ${escapeHtml((() => {
+              <span class="answer-header-title">${escapeHtml((() => {
+          if (item.userOverride) return this.t('result.override.applied');
           if (resultState === 'confirmed') return this.t('result.verifiedAnswer');
           if (resultState === 'conflict') return this.t('result.inconclusiveAnswer');
+          if (resultState === 'suggested') return this.t('result.suggestedAnswer');
           if (item.aiFallback) return this.t('result.aiSuggestion');
           return this.t('result.correctAnswer');
-        })())}
+        })())}</span>
+              ${confidence !== null ? `
+              <div class="confidence-pill" style="--conf-color: ${confidence >= 80 ? '#27AE60' : confidence >= 60 ? '#F39C12' : confidence >= 40 ? '#E67E22' : '#E74C3C'}">
+                <svg class="confidence-ring" viewBox="0 0 36 36">
+                  <circle class="confidence-ring-bg" cx="18" cy="18" r="15.9" />
+                  <circle class="confidence-ring-fill" cx="18" cy="18" r="15.9" style="stroke: var(--conf-color); stroke-dasharray: ${confidence}, 100;" />
+                </svg>
+                <span class="confidence-value">${confidence}</span>
+                <span class="confidence-tooltip">${escapeHtml(this.t('result.confidenceTooltip', { value: confidence }))}</span>
+              </div>` : ''}
             </div>
+
+            <div class="result-detail-strip">
+              <span class="result-detail-reason">${escapeHtml(this.t(reasonKey))}</span>
+              ${aiOverviewStatusText ? `<span class="result-detail-reason">${escapeHtml(aiOverviewStatusText)}${providerText}</span>` : ''}
+              ${showVotes ? `<div class="result-votes-inline">
+                <span class="votes-label-tooltip">
+                  <span class="material-symbols-rounded votes-label-icon">help_outline</span>
+                  <span class="votes-tooltip-text">${escapeHtml(this.t('result.votesTooltip'))}</span>
+                </span>
+                ${votesEntries.map(([letter, score]) => {
+          const isTop = votesEntries.every(([, s]) => score >= s);
+          return `<span class="vote-pill ${isTop ? 'vote-top' : ''}" title="${escapeHtml(this.t('result.voteScoreTooltip', { letter, score: typeof score === 'number' ? score.toFixed(1) : score }))}"><span class="vote-letter">${escapeHtml(letter)}</span><span class="vote-score">${typeof score === 'number' ? score.toFixed(1) : score}</span></span>`;
+        }).join('')}
+              </div>` : ''}
+            </div>
+
             ${answerLetter
           ? `<div class="answer-option"><div class="alternative answer-alternative"><span class="alt-letter">${escapeHtml(answerLetter)}</span><span class="alt-text">${escapeHtml(answerBody)}</span></div></div>`
           : `<div class="qa-card-answer-text">${escapeHtml(answerBody)}</div>`}
+
+            ${item.aiReasoning ? `
+            <details class="answer-reasoning">
+              <summary class="answer-reasoning-toggle">
+                <span class="material-symbols-rounded">psychology</span>
+                <span>${escapeHtml(this.t('result.aiReasoning'))}</span>
+                <span class="material-symbols-rounded answer-reasoning-caret">expand_more</span>
+              </summary>
+              <div class="answer-reasoning-body">${escapeHtml(item.aiReasoning)}</div>
+            </details>` : ''}
+
+            ${item.optionsMap && Object.keys(item.optionsMap).length >= 2 ? `
+            <div class="answer-override-section">
+              <button class="answer-override-trigger" type="button" title="${escapeHtml(this.t('result.override.tooltip'))}">
+                <span class="material-symbols-rounded">edit</span>
+                <span>${escapeHtml(this.t('result.override.btn'))}</span>
+              </button>
+              <div class="answer-override-pills" hidden>
+                <span class="override-label">${escapeHtml(this.t('result.override.pick'))}</span>
+                <div class="override-options">
+                  ${Object.entries(item.optionsMap).sort(([a],[b]) => a.localeCompare(b)).map(([letter, body]) =>
+                    `<button class="override-pill ${letter === answerLetter ? 'override-current' : ''}" data-letter="${escapeHtml(letter)}" data-body="${encodeURIComponent(body)}" title="${escapeHtml(body.slice(0, 100))}" type="button"><span class="override-pill-letter">${escapeHtml(letter)}</span><span class="override-pill-body">${escapeHtml(body.length > 50 ? body.slice(0, 47) + '...' : body)}</span></button>`
+                  ).join('')}
+                </div>
+                <button class="override-cancel" type="button">${escapeHtml(this.t('result.override.cancel'))}</button>
+              </div>
+            </div>` : ''}
+
+            ${overviewSummary
+          ? `<div class="qa-card-answer-text"><strong>${escapeHtml(this.t('result.overview.title'))}</strong><br>${escapeHtml(overviewSummary)}</div>`
+          : ''}
+            ${overviewPoints.length > 0
+          ? `<div class="qa-card-answer-text"><strong>${escapeHtml(this.t('result.overview.points'))}</strong><br>${overviewPoints.map((point) => `• ${escapeHtml(point)}`).join('<br>')}</div>`
+          : ''}
+            ${overviewReferences.length > 0
+          ? `<div class="qa-card-answer-text"><strong>${escapeHtml(this.t('result.overview.references'))}</strong><br>${overviewReferences.map((ref) => {
+            const label = escapeHtml(ref.title || ref.link);
+            const safeRefLink = sanitizeUrl(ref.link, 'overview-reference');
+            return safeRefLink
+              ? `<a href="${escapeHtml(safeRefLink)}" target="_blank" rel="noopener noreferrer">${label}</a>`
+              : `<span>${label}</span>`;
+          }).join('<br>')}</div>`
+          : ''}
           </div>
 
           <div class="qa-card-actions">
@@ -586,13 +703,14 @@ export const PopupView = {
                   <div class="sources-list" hidden>
                     ${item.sources.map((source) => {
             let host = source.title || source.link || '';
+            const safeSourceLink = sanitizeUrl(source.link, 'source-link');
             try {
-              if (source.link) host = new URL(source.link).hostname;
+              if (safeSourceLink) host = new URL(safeSourceLink).hostname;
             } catch (_) {
               // no-op
             }
-            return `<div class="source-item">${source.link
-              ? `<a href="${source.link}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a>`
+            return `<div class="source-item">${safeSourceLink
+              ? `<a href="${escapeHtml(safeSourceLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a>`
               : `<span>${escapeHtml(host)}</span>`
               }</div>`;
           }).join('')}
@@ -604,7 +722,18 @@ export const PopupView = {
       `;
     }).join('');
 
-    this.elements.resultsDiv.innerHTML = html;
+    this.elements.resultsDiv.innerHTML = sanitizeInjectedMarkup(html);
+    this.elements.resultsDiv
+      .querySelectorAll('script, iframe, object, embed, link[rel="preload"][as="script"], link[rel="modulepreload"]')
+      .forEach((el) => el.remove());
+
+    if (discardedUrlDiagnostics.length > 0) {
+      const compact = discardedUrlDiagnostics
+        .slice(0, 6)
+        .map((d) => `[${d.context}] ${d.reason}: ${d.raw}`)
+        .join(' | ');
+      console.warn(`AnswerHunter: Sanitizer discarded ${discardedUrlDiagnostics.length} URL(s): ${compact}`);
+    }
   },
 
   getAllResultsText() {
@@ -646,6 +775,24 @@ export const PopupView = {
   renderBinderList(folder, options = {}) {
     if (!this.elements.binderList) return;
     const { showBackupReminder = false } = options;
+
+    const sanitizeUrl = (rawUrl) => {
+      const value = String(rawUrl || '').trim();
+      if (!value) return '';
+      try {
+        const parsed = new URL(value);
+        return /^https?:$/i.test(parsed.protocol) ? parsed.href : '';
+      } catch (_) {
+        return '';
+      }
+    };
+
+    const sanitizeInjectedMarkup = (markup) => String(markup || '')
+      .replace(/<\s*script\b[\s\S]*?(?:<\/\s*script\s*>|$)/gi, ' ')
+      .replace(/<\s*iframe\b[\s\S]*?(?:<\/\s*iframe\s*>|$)/gi, ' ')
+      .replace(/<\s*object\b[\s\S]*?(?:<\/\s*object\s*>|$)/gi, ' ')
+      .replace(/<\s*embed\b[^>]*>?/gi, ' ')
+      .replace(/<\s*link\b[^>]*>?/gi, ' ');
 
     const reminderHtml = showBackupReminder
       ? `<div class="backup-reminder"><span class="material-symbols-rounded">backup</span><span>${escapeHtml(this.t('binder.backupReminder'))}</span><button class="dismiss-reminder" title="${escapeHtml(this.t('binder.backupDismiss'))}"><span class="material-symbols-rounded" style="font-size:16px;">close</span></button></div>`
@@ -694,11 +841,12 @@ export const PopupView = {
           .replace(/^\s*[A-E]\s*[\)\.\-:]\s*/i, '')
           .trim();
 
+        const safeSourceLink = sanitizeUrl(item.content?.source);
         let host = '';
-        if (item.content?.source) {
-          host = item.content.source;
+        if (safeSourceLink) {
+          host = safeSourceLink;
           try {
-            host = new URL(item.content.source).hostname;
+            host = new URL(safeSourceLink).hostname;
           } catch (_) {
             // no-op
           }
@@ -741,7 +889,7 @@ export const PopupView = {
                 </div>
 
                 <div class="qa-card-actions">
-                  ${item.content?.source ? `<div class="sources-box"><button class="sources-toggle" type="button" aria-expanded="false"><span class="material-symbols-rounded">link</span><span>${escapeHtml(this.t('result.source'))}</span><span class="material-symbols-rounded sources-caret">expand_more</span></button><div class="sources-list" hidden><div class="source-item"><a href="${item.content.source}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a></div></div></div>` : ''}
+                  ${safeSourceLink ? `<div class="sources-box"><button class="sources-toggle" type="button" aria-expanded="false"><span class="material-symbols-rounded">link</span><span>${escapeHtml(this.t('result.source'))}</span><span class="material-symbols-rounded sources-caret">expand_more</span></button><div class="sources-list" hidden><div class="source-item"><a href="${escapeHtml(safeSourceLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a></div></div></div>` : ''}
                   <div class="binder-actions">
                     <button class="action-btn copy-single-btn" data-id="${item.id}" title="${escapeHtml(this.t('binder.copy'))}"><span class="material-symbols-rounded">content_copy</span></button>
                     <button class="action-btn delete-btn" data-id="${item.id}" title="${escapeHtml(this.t('binder.delete'))}"><span class="material-symbols-rounded">delete</span></button>
@@ -755,6 +903,9 @@ export const PopupView = {
     }
 
     html += '</div>';
-    this.elements.binderList.innerHTML = html;
+    this.elements.binderList.innerHTML = sanitizeInjectedMarkup(html);
+    this.elements.binderList
+      .querySelectorAll('script, iframe, object, embed, link[rel="preload"][as="script"], link[rel="modulepreload"]')
+      .forEach((el) => el.remove());
   }
 };
