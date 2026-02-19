@@ -12,25 +12,26 @@ export const StorageModel = {
      */
     async init() {
         return new Promise((resolve) => {
+            // Check both storages and use whichever has more data (local may be newer after sync quota failures)
             chrome.storage.sync.get(['binderStructure'], (syncResult) => {
-                if (syncResult.binderStructure && Array.isArray(syncResult.binderStructure)) {
-                    this.data = syncResult.binderStructure;
-                    resolve();
-                    return;
-                }
-
-                // Migration: try local and move to sync
                 chrome.storage.local.get(['binderStructure'], (localResult) => {
-                    if (localResult.binderStructure && Array.isArray(localResult.binderStructure)) {
-                        this.data = localResult.binderStructure;
-                        chrome.storage.sync.set({ binderStructure: this.data }, () => {
-                            resolve();
-                        });
+                    const syncData = syncResult.binderStructure;
+                    const localData = localResult.binderStructure;
+
+                    const countItems = (nodes) => {
+                        if (!Array.isArray(nodes)) return 0;
+                        return nodes.reduce((n, node) => n + (node.type === 'question' ? 1 : 0) + countItems(node.children), 0);
+                    };
+
+                    if (Array.isArray(syncData) || Array.isArray(localData)) {
+                        const syncCount = countItems(syncData);
+                        const localCount = countItems(localData);
+                        this.data = (localCount > syncCount && Array.isArray(localData)) ? localData
+                                  : (Array.isArray(syncData) ? syncData : localData);
                     } else {
-                        // Default initial structure
                         this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
-                        resolve();
                     }
+                    resolve();
                 });
             });
         });
@@ -42,11 +43,17 @@ export const StorageModel = {
      */
     async save() {
         console.log('StorageModel: Salvando estrutura...', this.countItems());
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             chrome.storage.sync.set({ binderStructure: this.data }, () => {
                 if (chrome.runtime.lastError) {
-                    console.error('StorageModel: Erro ao salvar:', chrome.runtime.lastError);
-                    reject(chrome.runtime.lastError);
+                    // Sync quota exceeded — fall back to local storage
+                    console.warn('StorageModel: Sync quota exceeded, falling back to local:', chrome.runtime.lastError.message);
+                    chrome.storage.local.set({ binderStructure: this.data }, () => {
+                        if (chrome.runtime.lastError) {
+                            console.error('StorageModel: Local save also failed:', chrome.runtime.lastError);
+                        }
+                        resolve();
+                    });
                 } else {
                     resolve();
                 }
