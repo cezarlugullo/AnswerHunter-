@@ -1,0 +1,56 @@
+# AnswerHunter - Community-Driven Educational Project
+
+## Important Notice
+
+**AnswerHunter** is a collaborative, community-developed project created by and for students to facilitate peer learning and knowledge sharing. This initiative is maintained by volunteer contributors from the global developer and student community.
+
+### Community Commitment
+
+This project operates under the principle of collective intelligence, where knowledge is democratized and shared freely among learners worldwide. We are committed to fostering an inclusive environment that promotes educational growth and technical skill development.
+
+### Disclaimer of Liability and Usage Terms
+
+**IMPORTANT:** The creator and contributors of this project are not responsible for:
+
+1. **Legal Compliance**: How users utilize this software in their respective jurisdictions. Users are solely responsible for ensuring their usage complies with all applicable local, national, and international laws and regulations.
+
+2. **Educational Integrity**: The manner in which users apply the knowledge or tools provided. Each user assumes full responsibility for ethical and appropriate application of the material.
+
+3. **Professional Liability**: Any professional, academic, or personal consequences arising from the use or misuse of this project. This includes, but is not limited to, academic penalties, professional repercussions, or legal violations.
+
+4. **Data Security & Privacy**: Any data loss, unauthorized access, or privacy breaches resulting from the use of this software. Users implement their own security measures at their discretion.
+
+5. **Technical Accuracy**: While we strive for quality, occasional errors or outdated information may exist. Users are encouraged to verify information independently before reliance.
+
+### Terms of Use
+
+By accessing and using AnswerHunter, you acknowledge that:
+
+- You are responsible for understanding and complying with the laws and regulations applicable to your jurisdiction
+- You use this project entirely at your own risk
+- Contributors provide this software "as-is" without warranty of any kind
+- You release all contributors, maintainers, and the project from any liability for damages or consequences
+
+---
+
+## MIT License
+
+Copyright (c) 2026 cezarlugullo
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
