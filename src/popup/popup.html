@@ -412,6 +412,28 @@
                 </button>
               </div>
 
+              <!-- Primary AI provider toggle -->
+              <div class="ob-key-card" id="provider-config-section">
+                <label class="ob-key-label">
+                  <span class="material-symbols-rounded">psychology</span>
+                  <span data-i18n="setup.aiConfig.primaryLabel">Primary AI provider</span>
+                </label>
+                <div class="ob-provider-toggle" id="provider-toggle">
+                  <button class="ob-provider-pill active" id="pill-groq" data-provider="groq" type="button">
+                    <span class="material-symbols-rounded">bolt</span>
+                    <span>Groq</span>
+                  </button>
+                  <button class="ob-provider-pill" id="pill-gemini" data-provider="gemini" type="button">
+                    <span class="material-symbols-rounded">auto_awesome</span>
+                    <span>Gemini</span>
+                  </button>
+                </div>
+                <div class="ob-input-hint" id="provider-hint">
+                  <span class="material-symbols-rounded">info</span>
+                  <span data-i18n="setup.aiConfig.hintGroqPrimary">Groq runs first (fast). Gemini kicks in if Groq is busy.</span>
+                </div>
+              </div>
+
               <div class="ob-nav-footer">
                 <button class="ob-nav-back" id="prev-gemini" type="button">
                   <span class="material-symbols-rounded">arrow_back</span>

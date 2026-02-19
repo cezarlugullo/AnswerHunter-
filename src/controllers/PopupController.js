@@ -283,7 +283,10 @@ export const PopupController = {
       ? 'setup.aiConfig.hintGeminiPrimary'
       : 'setup.aiConfig.hintGroqPrimary';
     const text = this.view.t(key);
-    if (text) hint.textContent = text;
+    if (text) {
+      const textSpan = hint.querySelector('span:last-child') || hint;
+      textSpan.textContent = text;
+    }
   },
 
   /** Persist the current AI config selections to storage */
