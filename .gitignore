@@ -19,10 +19,12 @@ build/
 # Env and secrets
 .env
 .env.*
+!.env.example
 
 # Local tooling artifacts
 .playwright-cli/
 .claude/
+.agents/
 
 # Accidental local files
 nul

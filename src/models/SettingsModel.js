@@ -7,22 +7,30 @@ export const SettingsModel = {
         language: '',
         groqApiKey: '',
         groqApiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-        groqModelFast: 'llama-3.1-8b-instant',
-        groqModelAnswer: 'llama-3.3-70b-versatile',
-        groqModelFallback: 'llama-3.3-70b-versatile',
+        // Fast model for simple tasks (1000 t/s): validation, extraction, parsing
+        groqModelFast: 'openai/gpt-oss-20b',
+        // Smart model for complex reasoning (280 t/s): inference, consensus, analysis
+        groqModelSmart: 'llama-3.3-70b-versatile',
+        // Most capable model for Google-like overview synthesis (tries this first)
+        groqModelOverview: 'openai/gpt-oss-120b',
+        groqModelVision: 'meta-llama/llama-4-scout-17b-16e-instruct',
         serperApiKey: '',
         serperApiUrl: 'https://google.serper.dev/search',
         geminiApiKey: '',
         geminiApiUrl: 'https://generativelanguage.googleapis.com/v1beta',
-        geminiModel: 'gemini-2.0-flash',
+        geminiModel: 'gemini-2.5-flash',
+        geminiModelSmart: 'gemini-2.5-pro',
+        primaryProvider: 'groq',
         setupCompleted: false,
         requiredProviders: {
             groq: true,
-            serper: true,
+            serper: false,
             gemini: false
         },
         minGroqIntervalMs: 2500,
-        maxGroqRetries: 1
+        consensusVotingEnabled: true, // Enable multi-attempt consensus
+        consensusMinAttempts: 2, // Minimum attempts for consensus (2-3)
+        consensusThreshold: 0.5 // Minimum vote ratio to accept (0.5 = 50%)
     },
 
     normalizeLanguage(language) {
