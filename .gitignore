@@ -1,0 +1,43 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+*.tmp
+*.bak
+
+# Logs
+*.log
+
+# IDE folders
+.vscode/
+.idea/
+
+# Dependencies and builds
+node_modules/
+dist/
+build/
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Local tooling artifacts
+.playwright-cli/
+.claude/
+.agents/
+.agent/
+.github/
+
+# Backend (server-side component, not part of the extension)
+backend/
+
+# Internal planning/analysis docs (not for public release)
+docs/*.md
+DOCUMENTATION.md
+COMO_INSTALAR.md
+
+# Backup files
+ONBOARDING_BACKUP*
+
+# Accidental local files
+nul
