@@ -106,6 +106,8 @@ export const PopupView = {
       changeKeyGroq: document.getElementById('change-key-groq'),
       changeKeySerper: document.getElementById('change-key-serper'),
       changeKeyGemini: document.getElementById('change-key-gemini'),
+      removeKeySerper: document.getElementById('remove-key-serper'),
+      removeKeyGemini: document.getElementById('remove-key-gemini'),
 
       // Close Settings Buttons
       closeSettingsGroq: document.getElementById('close-settings-groq'),
@@ -450,7 +452,12 @@ export const PopupView = {
     } else {
       statusEl.classList.add('missing');
       if (iconEl) iconEl.textContent = 'warning';
-      if (textEl) textEl.textContent = this.t('setup.keyStatus.missing');
+      if (textEl) {
+        const missingKey = provider === 'gemini'
+          ? 'setup.keyStatus.geminiMissing'
+          : 'setup.keyStatus.missing';
+        textEl.textContent = this.t(missingKey);
+      }
     }
   },
 
@@ -477,6 +484,12 @@ export const PopupView = {
       if (changeBtn) changeBtn.classList.toggle('hidden', !isReopen);
       if (closeBtn) closeBtn.classList.toggle('hidden', !isReopen);
     });
+    if (this.elements.removeKeyGemini) {
+      this.elements.removeKeyGemini.classList.toggle('hidden', !isReopen);
+    }
+    if (this.elements.removeKeySerper) {
+      this.elements.removeKeySerper.classList.toggle('hidden', !isReopen);
+    }
   },
 
   showAutoAdvance(callback) {
@@ -609,6 +622,11 @@ export const PopupView = {
 
           <div class="qa-card-question">${formatQuestionText(item.question)}</div>
 
+          <div class="qa-card-ai-warning">
+            <span class="material-symbols-rounded">info</span>
+            <span>${escapeHtml(this.t('result.aiWarning'))}</span>
+          </div>
+
           <div class="qa-card-answer">
             <div class="qa-card-answer-header ${item.userOverride ? 'override-answer' : resultState === 'conflict' ? 'conflict-answer' : resultState === 'suggested' || item.aiFallback ? (item.aiFallback ? 'ai-suggestion' : 'suggested-answer') : ''}">
               <span class="material-symbols-rounded answer-state-icon">${(() => {
@@ -683,6 +701,22 @@ export const PopupView = {
                 <button class="override-cancel" type="button">${escapeHtml(this.t('result.override.cancel'))}</button>
               </div>
             </div>` : ''}
+
+            <div class="study-actions-container">
+              <button class="study-action-btn btn-tutor" type="button" data-question="${encodeURIComponent(item.question)}" data-answer="${encodeURIComponent(item.answer || '')}" data-context="${encodeURIComponent(overviewSummary || Object.values(item.optionsMap || {}).join(' '))}" title="${escapeHtml(this.t('result.tutor.title'))}">
+                <span class="material-symbols-rounded">school</span>
+                <span>${escapeHtml(this.t('result.tutor.btn'))}</span>
+              </button>
+              <button class="study-action-btn btn-similar" type="button" data-question="${encodeURIComponent(item.question)}" title="${escapeHtml(this.t('result.similar.title'))}">
+                <span class="material-symbols-rounded">quiz</span>
+                <span>${escapeHtml(this.t('result.similar.btn'))}</span>
+              </button>
+              <button class="study-action-btn btn-chat" type="button" data-question="${encodeURIComponent(item.question)}" data-answer="${encodeURIComponent(item.answer || '')}" data-context="${encodeURIComponent(overviewSummary || Object.values(item.optionsMap || {}).join(' '))}" title="${escapeHtml(this.t('result.chat.title') || 'Follow-up Chat')}">
+                <span class="material-symbols-rounded">forum</span>
+                <span>${escapeHtml(this.t('result.chat.btn') || 'Dúvidas')}</span>
+              </button>
+            </div>
+            <div class="study-feature-output hidden"></div>
 
             ${overviewSummary
           ? `<div class="qa-card-answer-text"><strong>${escapeHtml(this.t('result.overview.title'))}</strong><br>${escapeHtml(overviewSummary)}</div>`
@@ -783,7 +817,7 @@ export const PopupView = {
 
   renderBinderList(folder, options = {}) {
     if (!this.elements.binderList) return;
-    const { showBackupReminder = false } = options;
+    const { showBackupReminder = false, isStudyMode = false } = options;
 
     const sanitizeUrl = (rawUrl) => {
       const value = String(rawUrl || '').trim();
@@ -813,6 +847,7 @@ export const PopupView = {
         <span class="crumb-current"><span class="material-symbols-rounded" style="font-size:18px;">folder_open</span> ${folder.id === 'root' ? escapeHtml(this.t('binder.title')) : escapeHtml(folder.title)}</span>
         <div class="toolbar-actions">
           ${folder.id !== 'root' ? `<button id="btnBackRoot" class="toolbar-icon-btn" title="${escapeHtml(this.t('binder.back'))}"><span class="material-symbols-rounded" style="font-size:18px;">arrow_back</span></button>` : ''}
+          <button id="btnStudyMode" class="toolbar-icon-btn ${isStudyMode ? 'active-study-mode' : ''}" title="${escapeHtml(this.t('binder.studyMode.toggle') || 'Study Mode')}"><span class="material-symbols-rounded" style="font-size:18px;">${isStudyMode ? 'school' : 'menu_book'}</span></button>
           <button id="newFolderBtnBinder" class="toolbar-icon-btn" title="${escapeHtml(this.t('binder.newFolder'))}"><span class="material-symbols-rounded" style="font-size:18px;">create_new_folder</span></button>
           <button id="exportBinderBtn" class="toolbar-icon-btn" title="Export"><span class="material-symbols-rounded" style="font-size:18px;">download</span></button>
           <button id="importBinderBtn" class="toolbar-icon-btn" title="Import"><span class="material-symbols-rounded" style="font-size:18px;">upload</span></button>
@@ -878,7 +913,13 @@ export const PopupView = {
 
                 <div class="qa-card-question">${formatQuestionText(questionText)}</div>
 
-                <div class="qa-card-answer">
+                ${isStudyMode ? `
+                <button class="study-reveal-btn" type="button">
+                  <span class="material-symbols-rounded">visibility</span>
+                  <span>${escapeHtml(this.t('binder.studyMode.reveal') || 'Ver Resposta')}</span>
+                </button>
+                ` : ''}
+                <div class="qa-card-answer ${isStudyMode ? 'study-hidden' : ''}">
                   <div class="qa-card-answer-header ${item.aiFallback ? 'ai-suggestion' : (item.resultState === 'conflict' ? 'conflict-answer' : (item.resultState === 'confirmed' ? '' : 'suggested-answer'))}">
                     <span class="material-symbols-rounded">${item.aiFallback ? 'auto_awesome'
             : item.resultState === 'conflict' ? 'help_outline'
@@ -896,6 +937,22 @@ export const PopupView = {
             ? `<div class="answer-option"><div class="alternative answer-alternative"><span class="alt-letter">${escapeHtml(answerLetter)}</span><span class="alt-text">${escapeHtml(answerBody)}</span></div></div>`
             : `<div class="qa-card-answer-text">${escapeHtml(answerBody)}</div>`}
                 </div>
+
+                <div class="study-actions-container">
+                  <button class="study-action-btn btn-tutor" type="button" data-question="${encodeURIComponent(questionText)}" data-answer="${encodeURIComponent(answerRaw || '')}" data-context="${encodeURIComponent(item.content?.overview?.summary || '')}" title="${escapeHtml(this.t('result.tutor.title') || 'Tutor')}">
+                    <span class="material-symbols-rounded">school</span>
+                    <span>${escapeHtml(this.t('result.tutor.btn') || 'Tutor')}</span>
+                  </button>
+                  <button class="study-action-btn btn-similar" type="button" data-question="${encodeURIComponent(questionText)}" title="${escapeHtml(this.t('result.similar.title') || 'Similar Question')}">
+                    <span class="material-symbols-rounded">quiz</span>
+                    <span>${escapeHtml(this.t('result.similar.btn') || 'Similar')}</span>
+                  </button>
+                  <button class="study-action-btn btn-chat" type="button" data-question="${encodeURIComponent(questionText)}" data-answer="${encodeURIComponent(answerRaw || '')}" data-context="${encodeURIComponent(item.content?.overview?.summary || '')}" title="${escapeHtml(this.t('result.chat.title') || 'Follow-up Chat')}">
+                    <span class="material-symbols-rounded">forum</span>
+                    <span>${escapeHtml(this.t('result.chat.btn') || 'Dúvidas')}</span>
+                  </button>
+                </div>
+                <div class="study-feature-output hidden"></div>
 
                 <div class="qa-card-actions">
                   ${safeSourceLink ? `<div class="sources-box"><button class="sources-toggle" type="button" aria-expanded="false"><span class="material-symbols-rounded">link</span><span>${escapeHtml(this.t('result.source'))}</span><span class="material-symbols-rounded sources-caret">expand_more</span></button><div class="sources-list" hidden><div class="source-item"><a href="${escapeHtml(safeSourceLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a></div></div></div>` : ''}

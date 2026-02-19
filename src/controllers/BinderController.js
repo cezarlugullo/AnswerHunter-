@@ -6,6 +6,7 @@ export const BinderController = {
     eventsBound: false,
     draggedItemId: null,
     lastExportTimestamp: null,
+    isStudyMode: false,
 
     t(key, variables) {
         return I18nService.t(key, variables);
@@ -30,7 +31,7 @@ export const BinderController = {
         // Determine if backup reminder should show
         const showBackupReminder = await this._shouldShowBackupReminder();
 
-        this.view.renderBinderList(currentFolder, { showBackupReminder });
+        this.view.renderBinderList(currentFolder, { showBackupReminder, isStudyMode: this.isStudyMode });
     },
 
     async _shouldShowBackupReminder() {
@@ -109,6 +110,27 @@ export const BinderController = {
             if (newFolderBtn) {
                 e.preventDefault();
                 this.handleCreateFolder();
+                return;
+            }
+
+            const studyModeBtn = e.target.closest('#btnStudyMode');
+            if (studyModeBtn) {
+                e.preventDefault();
+                this.isStudyMode = !this.isStudyMode;
+                this.renderBinder();
+                return;
+            }
+
+            const studyRevealBtn = e.target.closest('.study-reveal-btn');
+            if (studyRevealBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                // Hide button, show answer
+                studyRevealBtn.style.display = 'none';
+                const answerBlock = studyRevealBtn.nextElementSibling;
+                if (answerBlock && answerBlock.classList.contains('qa-card-answer')) {
+                    answerBlock.classList.remove('study-hidden');
+                }
                 return;
             }
 
@@ -376,6 +398,15 @@ export const BinderController = {
             input.accept = '.json';
             input.style.display = 'none';
             document.body.appendChild(input);
+
+            // Cleanup if user dismisses the file picker without selecting a file
+            const cleanupInput = () => {
+                if (document.body.contains(input)) document.body.removeChild(input);
+            };
+            window.addEventListener('focus', function onWindowFocus() {
+                window.removeEventListener('focus', onWindowFocus);
+                setTimeout(cleanupInput, 500);
+            }, { once: true });
 
             input.addEventListener('change', async (e) => {
                 try {

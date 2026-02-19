@@ -8251,3 +8251,162 @@ input:focus {
 .hidden {
   display: none !important;
 }
+
+/* ========== QA CARD STUDY FEATURES ========== */
+.study-actions-container {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  border-top: 1px solid var(--ah-border);
+  padding-top: 12px;
+}
+.study-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--ah-surface);
+  border: 1px solid var(--ah-border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--ah-text);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.study-action-btn:hover:not(:disabled) {
+  background-color: var(--ah-surface-alt);
+  transform: translateY(-1px);
+}
+.study-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.study-action-btn .material-symbols-rounded {
+  font-size: 16px;
+  color: var(--ah-primary);
+}
+.study-feature-output {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: var(--ah-surface-alt);
+  border-radius: 8px;
+  border: 1px solid var(--ah-border);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ah-text);
+}
+.study-loading-placeholder {
+  color: var(--ah-text-muted);
+  font-style: italic;
+}
+.study-tutor-explanation strong {
+  color: var(--ah-text);
+  font-weight: 600;
+}
+.study-tutor-explanation em {
+  color: var(--ah-text-muted);
+}
+.study-error {
+  color: var(--ah-danger);
+}
+.similar-question-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.similar-q-text {
+  font-weight: 500;
+}
+.similar-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 8px;
+}
+.similar-answer-reveal {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ah-border);
+}
+.similar-answer-reveal summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--ah-primary);
+  user-select: none;
+}
+.similar-answer-text {
+  margin-top: 8px;
+  padding: 8px;
+  background-color: var(--ah-surface);
+  border-radius: 6px;
+  border-left: 3px solid var(--ah-success);
+}
+#btnStudyMode.active-study-mode {
+  background-color: var(--ah-primary);
+  color: #fff;
+  border-color: var(--ah-primary);
+}
+#btnStudyMode.active-study-mode .material-symbols-rounded {
+  color: #fff;
+}
+.qa-card-answer.study-hidden {
+  display: none !important;
+}
+.study-reveal-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  margin-top: 12px;
+  background-color: var(--ah-surface);
+  border: 1px dashed var(--ah-border);
+  border-radius: 8px;
+  color: var(--ah-primary);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.study-reveal-btn:hover {
+  background-color: var(--ah-surface-alt);
+  border-style: solid;
+}
+.study-reveal-btn .material-symbols-rounded {
+  font-size: 18px;
+}
+.qa-card-ai-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 16px 0 16px;
+  padding: 6px 10px;
+  background-color: rgba(243, 156, 18, 0.1);
+  border: 1px solid rgba(243, 156, 18, 0.3);
+  border-radius: 6px;
+  color: #d68910;
+  font-size: 11px;
+}
+.qa-card-ai-warning .material-symbols-rounded {
+  font-size: 14px;
+}
+
+.dict-tooltip { font-family: var(--ah-font-main, system-ui, sans-serif); }
+.study-chat-container { display: flex; flex-direction: column; gap: 12px; background-color: var(--ah-surface, #fff); border: 1px solid var(--ah-border, #eee); border-radius: 12px; overflow: hidden; }
+.study-chat-history { display: flex; flex-direction: column; gap: 10px; max-height: 250px; overflow-y: auto; padding: 12px; background-color: var(--ah-surface-alt, #fafafa); }
+.chat-message { display: flex; align-items: flex-end; gap: 8px; max-width: 90%; }
+.chat-message .material-symbols-rounded { font-size: 18px; color: var(--ah-text-muted, #888); margin-bottom: 2px; }
+.chat-message .msg-content { padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; color: var(--ah-text, #333); }
+.chat-message.ai-message { align-self: flex-start; }
+.chat-message.ai-message .msg-content { background-color: var(--ah-surface, #fff); border: 1px solid var(--ah-border, #eee); border-bottom-left-radius: 4px; }
+.chat-message.user-message { align-self: flex-end; flex-direction: row-reverse; }
+.chat-message.user-message .msg-content { background-color: var(--ah-primary, #FF6B00); color: #fff; border-bottom-right-radius: 4px; }
+.chat-message.user-message .material-symbols-rounded { color: var(--ah-primary, #FF6B00); }
+.study-chat-input-area { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--ah-border, #eee); background-color: var(--ah-surface, #fff); }
+.study-chat-input { flex: 1; background: transparent; border: none; outline: none; font-size: 13px; color: var(--ah-text, #333); }
+.study-chat-input::placeholder { color: var(--ah-text-muted, #aaa); }
+.study-chat-send { background: transparent; border: none; display: flex; align-items: center; justify-content: center; color: var(--ah-primary, #FF6B00); cursor: pointer; padding: 4px; border-radius: 50%; transition: background-color 0.2s; }
+.study-chat-send:hover:not(:disabled) { background-color: rgba(255, 107, 0, 0.1); }
+.study-chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.error-msg .msg-content { color: #d32f2f; background-color: #ffebee; border-color: #ffcdd2; }

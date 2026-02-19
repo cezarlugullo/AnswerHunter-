@@ -6,6 +6,9 @@ AnswerHunter is an open-source Chrome extension that helps students extract ques
 
 ## English
 
+### Who is this for?
+As an **academic extension** powered by **Artificial Intelligence for studies**, AnswerHunter is designed for students who need fast assistance. Whether you are looking for an **exam answer key**, finding **answers to questions**, studying for **university exams**, or solving **civil service exam questions**, the tool acts as your invisible assistant. It automates searches that would normally take hours across major educational document and Q&A platforms like **Passei Direto**, **Brainly**, **Studocu**, and **Qconcursos**.
+
 ### What it does
 - Extracts question text from the active tab (including iframe pages).
 - Searches multiple sources using Serper.
@@ -52,6 +55,9 @@ Use the language selector in the popup header.
 ---
 
 ## Português (Brasil)
+
+### Para quem é?
+Sendo uma **extensão acadêmica** impulsionada por **Inteligência Artificial para estudos**, o AnswerHunter foi desenhado para estudantes que precisam de ajuda ágil. Seja buscando o **gabarito de provas**, encontrando **respostas de questões** complexas, revisando para **provas universitárias** ou resolvendo **questões de concursos**, a ferramenta atua como um assistente invisível. Ela automatiza pesquisas que normalmente levariam horas em plataformas conceituadas de documentos e perguntas educacionais, como **Passei Direto**, **Brainly**, **Studocu** e **Qconcursos**.
 
 ### O que faz
 - Extrai o texto da questão da aba ativa (incluindo iframes).

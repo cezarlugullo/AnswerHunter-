@@ -32,6 +32,10 @@ export const PopupController = {
     await this.syncLanguageSelector();
     await this.ensureSetupReady();
     await this.restoreLastResults({ clear: false });
+
+    // Clear draft keys when popup closes without completing setup,
+    // so stale plaintext keys don't persist in storage indefinitely.
+    window.addEventListener('pagehide', () => { this.clearDraftKeys(); }, { once: true });
   },
 
   setupEventListeners() {
@@ -66,12 +70,12 @@ export const PopupController = {
 
 
     // AI Provider & Model Config (Settings tab)
-    this.view.elements.pillGroq?.addEventListener('click', () => { this.setProviderPill('groq'); this.syncObPills('groq'); });
-    this.view.elements.pillGemini?.addEventListener('click', () => { this.setProviderPill('gemini'); this.syncObPills('gemini'); });
+    this.view.elements.pillGroq?.addEventListener('click', () => { this.setProviderPill('groq'); });
+    this.view.elements.pillGemini?.addEventListener('click', () => { this.setProviderPill('gemini'); });
 
     // AI Provider Config (Onboarding Tab)
-    this.view.elements.pillGroqOb?.addEventListener('click', () => { this.setProviderPill('groq'); this.syncObPills('groq'); });
-    this.view.elements.pillGeminiOb?.addEventListener('click', () => { this.setProviderPill('gemini'); this.syncObPills('gemini'); });
+    this.view.elements.pillGroqOb?.addEventListener('click', () => { this.setProviderPill('groq'); });
+    this.view.elements.pillGeminiOb?.addEventListener('click', () => { this.setProviderPill('gemini'); });
 
     this.view.elements.selectGroqModel?.addEventListener('change', () => this.persistAiConfig());
     this.view.elements.selectGeminiModel?.addEventListener('change', () => this.persistAiConfig());
@@ -174,11 +178,69 @@ export const PopupController = {
         closeBtn.addEventListener('click', () => this.handleCloseSettings());
       }
     });
+    this.view.elements.removeKeySerper?.addEventListener('click', () => this.handleRemoveSerperKey());
+    this.view.elements.removeKeyGemini?.addEventListener('click', () => this.handleRemoveGeminiKey());
 
     // Binder CTA: Go to Search
     this.view.elements.binderGoToSearch?.addEventListener('click', () => {
       this.view.switchTab('search');
     });
+
+    // --- Study Feature: Contextual Dictionary ---
+    document.addEventListener('mouseup', async (e) => {
+      if (e.target.closest('.dict-tooltip')) return;
+
+      const selection = window.getSelection();
+      const text = selection.toString().trim();
+      
+      const existing = document.querySelector('.dict-tooltip');
+      if (existing) existing.remove();
+
+      if (text && text.length > 0 && text.length < 50 && text.split(/\s+/).length <= 5) {
+        const cardContext = e.target.closest('.qa-card-question, .qa-card-answer, .full-question-text, .full-answer-text, .qa-card-answer-text, .alt-text');
+        if (cardContext) {
+          try {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+
+            const tooltip = document.createElement('div');
+            tooltip.className = 'dict-tooltip';
+            tooltip.innerHTML = `<span class="material-symbols-rounded spin-loading" style="font-size:14px; vertical-align: middle;">sync</span> <span style="font-size:12px; margin-left:4px; vertical-align: middle;">Definindo...</span>`;
+            
+            tooltip.style.position = 'absolute';
+            tooltip.style.left = `${Math.max(10, rect.left + window.scrollX)}px`;
+            tooltip.style.top = `${rect.bottom + window.scrollY + 5}px`;
+            tooltip.style.zIndex = '99999';
+            tooltip.style.backgroundColor = 'var(--bg-card, #fff)';
+            tooltip.style.border = '1px solid var(--border-color, #eee)';
+            tooltip.style.padding = '8px 12px';
+            tooltip.style.borderRadius = '8px';
+            tooltip.style.boxShadow = '0 10px 25px rgba(0,0,0,0.15)';
+            tooltip.style.maxWidth = '250px';
+            tooltip.style.color = 'var(--text-color, #333)';
+            tooltip.style.fontFamily = 'var(--font-family, sans-serif)';
+
+            document.body.appendChild(tooltip);
+
+            const contextText = cardContext.textContent || '';
+            const ApiModule = await import('../services/ApiService.js');
+            const definition = await ApiModule.ApiService.defineTerm(text, contextText);
+
+            const escapeHtml = (str) => {
+              const div = document.createElement('div');
+              div.textContent = str;
+              return div.innerHTML;
+            };
+
+            tooltip.innerHTML = `<div style="font-size:12.5px; line-height: 1.45;"><strong>${escapeHtml(text)}:</strong> ${escapeHtml(definition)}</div>`;
+          } catch (err) {
+            console.warn('AnswerHunter Dict Error', err);
+            document.querySelector('.dict-tooltip')?.remove();
+          }
+        }
+      }
+    });
+
   },
 
   t(key, variables) {
@@ -302,17 +364,30 @@ export const PopupController = {
     }
   },
 
+  hasGeminiKey() {
+    return SettingsModel.isPresent(this.sanitizeKey(this.view.elements.inputGemini?.value));
+  },
+
   /** Handle provider pill click */
   setProviderPill(provider) {
+    let effectiveProvider = provider;
+    if (provider === 'gemini' && !this.hasGeminiKey()) {
+      effectiveProvider = 'groq';
+      this.view.showToast(this.t('setup.toast.noGeminiKeySaved'), 'warning');
+      this.view.setSetupStatus('gemini', this.t('setup.status.geminiMissing'), 'error');
+    }
+
     const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini];
     pills.forEach(p => p?.classList.remove('active'));
-    if (provider === 'gemini') {
+    if (effectiveProvider === 'gemini') {
       this.view.elements.pillGemini?.classList.add('active');
     } else {
       this.view.elements.pillGroq?.classList.add('active');
     }
-    this.updateProviderHint(provider);
+    this.syncObPills(effectiveProvider);
+    this.updateProviderHint(effectiveProvider);
     this.persistAiConfig();
+    return effectiveProvider;
   },
 
   /** Update the hint text below the toggle */
@@ -342,7 +417,15 @@ export const PopupController = {
   async persistAiConfig() {
     const isGemini = this.view.elements.pillGemini?.classList.contains('active')
       || this.view.elements.pillGeminiOb?.classList.contains('active');
-    const primaryProvider = isGemini ? 'gemini' : 'groq';
+    let primaryProvider = isGemini ? 'gemini' : 'groq';
+    if (primaryProvider === 'gemini' && !this.hasGeminiKey()) {
+      primaryProvider = 'groq';
+      this.view.elements.pillGemini?.classList.remove('active');
+      this.view.elements.pillGeminiOb?.classList.remove('active');
+      this.view.elements.pillGroq?.classList.add('active');
+      this.view.elements.pillGroqOb?.classList.add('active');
+      this.updateProviderHint('groq');
+    }
     const groqModel = this.view.elements.selectGroqModel?.value || 'llama-3.3-70b-versatile';
     const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-pro';
 
@@ -562,6 +645,57 @@ export const PopupController = {
     this._isReopenMode = false;
     this.view.setSettingsReopenMode(false);
     this.view.setSetupVisible(false);
+  },
+
+  async handleRemoveSerperKey() {
+    if (this.view.elements.inputSerper) {
+      this.view.elements.inputSerper.value = '';
+      this.view.elements.inputSerper.type = 'password';
+    }
+
+    const settings = await SettingsModel.getSettings();
+    await SettingsModel.saveSettings({
+      serperApiKey: '',
+      requiredProviders: {
+        ...(settings.requiredProviders || {}),
+        serper: false
+      }
+    });
+
+    this.resetProviderValidation('serper');
+    this.view.showKeyStatus('serper', false);
+    this.saveDraftKeys();
+
+    this.view.setSetupStatus('serper', this.t('setup.status.serperMissing'), 'error');
+    this.view.showToast(this.t('setup.toast.serperKeyRemoved'), 'success');
+  },
+
+  async handleRemoveGeminiKey() {
+    if (this.view.elements.inputGemini) {
+      this.view.elements.inputGemini.value = '';
+      this.view.elements.inputGemini.type = 'password';
+    }
+
+    const settings = await SettingsModel.getSettings();
+    const forceGroq = settings.primaryProvider === 'gemini';
+    const payload = { geminiApiKey: '' };
+    if (forceGroq) payload.primaryProvider = 'groq';
+    await SettingsModel.saveSettings(payload);
+
+    this.resetProviderValidation('gemini');
+    this.view.showKeyStatus('gemini', false);
+    this.saveDraftKeys();
+
+    if (forceGroq) {
+      this.view.elements.pillGemini?.classList.remove('active');
+      this.view.elements.pillGeminiOb?.classList.remove('active');
+      this.view.elements.pillGroq?.classList.add('active');
+      this.view.elements.pillGroqOb?.classList.add('active');
+      this.updateProviderHint('groq');
+    }
+
+    this.view.setSetupStatus('gemini', this.t('setup.status.geminiMissing'), 'error');
+    this.view.showToast(this.t('setup.toast.geminiKeyRemoved'), 'success');
   },
 
   async handleSaveSetup() {
@@ -1931,12 +2065,211 @@ export const PopupController = {
     }
 
     const saveButton = event.target.closest('.save-btn');
-    if (!saveButton) return;
+    if (saveButton) {
+      const dataContent = saveButton.dataset.content;
+      if (!dataContent) return;
 
-    const dataContent = saveButton.dataset.content;
-    if (!dataContent) return;
+      const data = JSON.parse(decodeURIComponent(dataContent));
+      await BinderController.toggleSaveItem(data.question, data.answer, data.source, saveButton);
+      return;
+    }
 
-    const data = JSON.parse(decodeURIComponent(dataContent));
-    await BinderController.toggleSaveItem(data.question, data.answer, data.source, saveButton);
+    // --- Study Feature: Tutor Mode ---
+    const tutorBtn = event.target.closest('.btn-tutor');
+    if (tutorBtn) {
+      const container = tutorBtn.closest('.study-actions-container')?.nextElementSibling; // the .study-feature-output div
+      if (!container) return;
+
+      const question = decodeURIComponent(tutorBtn.dataset.question || '');
+      const answer = decodeURIComponent(tutorBtn.dataset.answer || '');
+      const context = decodeURIComponent(tutorBtn.dataset.context || '');
+
+      tutorBtn.disabled = true;
+      tutorBtn.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> <span>${this.t('status.refiningWithAi') || 'Pensando...'}</span>`;
+      container.classList.remove('hidden');
+      container.innerHTML = `<div class="study-loading-placeholder">Gerando explicação passo a passo...</div>`;
+
+      try {
+        const ApiServiceModule = (await import('../services/ApiService.js')).ApiService;
+        const explanation = await ApiServiceModule.generateTutorExplanation(question, answer, context);
+
+        // Escape raw AI content first, then apply safe markdown substitutions
+        const safeExplanation = this._escapeHtml(explanation);
+        const htmlExplanation = safeExplanation
+          .replace(/^### (.*$)/gim, '<strong>$1</strong>')
+          .replace(/^## (.*$)/gim, '<strong>$1</strong>')
+          .replace(/^# (.*$)/gim, '<strong>$1</strong>')
+          .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+          .replace(/\*(.*?)\*/gim, '<em>$1</em>')
+          .replace(/\n\n/g, '<br><br>')
+          .replace(/\n\+/g, '<br>• ')
+          .replace(/\n-/g, '<br>• ');
+
+        container.innerHTML = `<div class="study-tutor-explanation">${htmlExplanation}</div>`;
+      } catch (err) {
+        console.error('AnswerHunter Tutor Mode err:', err);
+        container.innerHTML = `<div class="study-error">Erro ao gerar explicação. Tente novamente mais tarde.</div>`;
+      } finally {
+        tutorBtn.disabled = false;
+        tutorBtn.innerHTML = `<span class="material-symbols-rounded">school</span> <span>${this.t('result.tutor.btn')}</span>`;
+      }
+      return;
+    }
+
+    // --- Study Feature: Similar Question ---
+    const similarBtn = event.target.closest('.btn-similar');
+    if (similarBtn) {
+      // Note: Currently stubbing Similar Question logic, will fill out in next phase.
+      // Marking as in-progress.
+      const container = similarBtn.closest('.study-actions-container')?.nextElementSibling; // the .study-feature-output div
+      if (!container) return;
+
+      const question = decodeURIComponent(similarBtn.dataset.question || '');
+
+      similarBtn.disabled = true;
+      similarBtn.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> <span>${this.t('status.refiningWithAi') || 'Criando questão...'}</span>`;
+      container.classList.remove('hidden');
+      container.innerHTML = `<div class="study-loading-placeholder">Gerando uma questão similar para testar seus conhecimentos...</div>`;
+
+      try {
+        const ApiServiceModule = (await import('../services/ApiService.js')).ApiService;
+        const newQuestion = await ApiServiceModule.generateSimilarQuestion(question);
+
+        if (newQuestion && newQuestion.questionText) {
+          const optionsHtml = Object.entries(newQuestion.optionsMap || {})
+            .map(([letter, text]) => `<div class="similar-option"><strong>${this._escapeHtml(letter)})</strong> ${this._escapeHtml(text)}</div>`)
+            .join('');
+
+          container.innerHTML = `
+            <div class="similar-question-block">
+              <div class="similar-q-text"><strong>Q:</strong> ${this._escapeHtml(newQuestion.questionText)}</div>
+              <div class="similar-options-list">${optionsHtml}</div>
+              <details class="similar-answer-reveal">
+                <summary>Ver Resposta</summary>
+                <div class="similar-answer-text">Alternativa correta: <strong>${this._escapeHtml(newQuestion.answerLetter)}</strong></div>
+              </details>
+            </div>
+          `;
+        } else {
+          throw new Error('Invalid question format received.');
+        }
+      } catch (err) {
+        console.error('AnswerHunter Similar Question err:', err);
+        container.innerHTML = `<div class="study-error">Erro ao gerar questão. Tente novamente mais tarde.</div>`;
+      } finally {
+        similarBtn.disabled = false;
+        similarBtn.innerHTML = `<span class="material-symbols-rounded">quiz</span> <span>${this.t('result.similar.btn')}</span>`;
+      }
+      return;
+    }
+
+    // --- Study Feature: Follow-up Chat ---
+    const chatBtn = event.target.closest('.btn-chat');
+    if (chatBtn) {
+      const container = chatBtn.closest('.study-actions-container')?.nextElementSibling;
+      if (!container) return;
+
+      const question = decodeURIComponent(chatBtn.dataset.question || '');
+      const answer = decodeURIComponent(chatBtn.dataset.answer || '');
+      const context = decodeURIComponent(chatBtn.dataset.context || '');
+
+      if (!container.dataset.chatInitialized) {
+        container.dataset.chatInitialized = 'true';
+        container.classList.remove('hidden');
+        container.innerHTML = `
+          <div class="study-chat-container">
+            <div class="study-chat-history">
+              <div class="chat-message ai-message">
+                <span class="material-symbols-rounded">robot_2</span>
+                <div class="msg-content">${this.t ? this.t('result.chat.hello') || 'Olá! Como posso ajudar você a entender melhor esta questão?' : 'Olá! Como posso ajudar você a entender melhor esta questão?'}</div>
+              </div>
+            </div>
+            <div class="study-chat-input-area">
+              <input type="text" class="study-chat-input" placeholder="${this.t ? this.t('result.chat.placeholder') || 'Digite sua dúvida aqui...' : 'Digite sua dúvida aqui...'}">
+              <button class="study-chat-send" type="button">
+                <span class="material-symbols-rounded">send</span>
+              </button>
+            </div>
+          </div>
+        `;
+
+        const input = container.querySelector('.study-chat-input');
+        const sendBtn = container.querySelector('.study-chat-send');
+        const history = container.querySelector('.study-chat-history');
+
+        let messageHistory = [];
+
+        const handleSend = async () => {
+          const userMsg = input.value.trim();
+          if (!userMsg) return;
+
+          input.value = '';
+          input.disabled = true;
+          sendBtn.disabled = true;
+
+          history.insertAdjacentHTML('beforeend', `
+            <div class="chat-message user-message">
+              <div class="msg-content">${this._escapeHtml ? this._escapeHtml(userMsg) : userMsg}</div>
+              <span class="material-symbols-rounded">person</span>
+            </div>
+            <div class="chat-message ai-message pending-msg">
+              <span class="material-symbols-rounded spin-loading">sync</span>
+              <div class="msg-content">...</div>
+            </div>
+          `);
+          history.scrollTop = history.scrollHeight;
+
+          try {
+            const ApiServiceModule = (await import('../services/ApiService.js')).ApiService;
+            const response = await ApiServiceModule.answerFollowUp(question, answer, context, userMsg, messageHistory);
+            
+            messageHistory.push({ role: 'user', content: userMsg });
+            messageHistory.push({ role: 'assistant', content: response });
+
+            const pending = history.querySelector('.pending-msg');
+            if (pending) pending.remove();
+
+            // Escape raw AI content first, then apply safe markdown substitutions
+            const safeResponse = this._escapeHtml(response);
+            const htmlResponse = safeResponse
+              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+              .replace(/\*(.*?)\*/g, '<em>$1</em>')
+              .replace(/\n/g, '<br>');
+
+            history.insertAdjacentHTML('beforeend', `
+              <div class="chat-message ai-message">
+                <span class="material-symbols-rounded">robot_2</span>
+                <div class="msg-content">${htmlResponse}</div>
+              </div>
+            `);
+          } catch (err) {
+            console.error('AnswerHunter Chat Error:', err);
+            const pending = history.querySelector('.pending-msg');
+            if (pending) pending.remove();
+            history.insertAdjacentHTML('beforeend', `
+              <div class="chat-message ai-message error-msg">
+                <span class="material-symbols-rounded">error</span>
+                <div class="msg-content">Erro de conexão. Tente novamente.</div>
+              </div>
+            `);
+          } finally {
+            input.disabled = false;
+            sendBtn.disabled = false;
+            input.focus();
+            history.scrollTop = history.scrollHeight;
+          }
+        };
+
+        sendBtn.addEventListener('click', handleSend);
+        input.addEventListener('keypress', (e) => {
+          if (e.key === 'Enter') handleSend();
+        });
+        
+        input.focus();
+      } else {
+        container.classList.toggle('hidden');
+      }
+      return;
+    }
   }
 };
