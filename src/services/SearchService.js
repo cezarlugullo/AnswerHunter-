@@ -1,7 +1,13 @@
 import { ApiService } from './ApiService.js';
+import { QuestionParser } from './search/QuestionParser.js';
+import { OptionsMatchService } from './search/OptionsMatchService.js';
+import { HtmlExtractorService } from './search/HtmlExtractorService.js';
+import { EvidenceService } from './search/EvidenceService.js';
+import { SearchCacheService } from './search/SearchCacheService.js';
 
 // SearchService
 // Coordinates (1) direct extraction and (2) web search + evidence-based refinement.
+// Sub-services handle the heavy lifting; this file remains the orchestrator.
 export const SearchService = {
     _SEARCH_CACHE_KEY: 'ahSearchDecisionCacheV2',
     _SEARCH_METRICS_KEY: 'ahSearchMetricsV1',
