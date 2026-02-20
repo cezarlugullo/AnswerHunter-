@@ -13,6 +13,78 @@ export const SearchService = {
     _SNAPSHOT_CACHE_TTL: 5 * 60 * 1000, // 5 minutes
     _SNAPSHOT_CACHE_MAX: 30,            // max 30 URLs in memory
 
+    // AI extraction result cache: persisted to chrome.storage.local so LLM calls
+    // are not repeated for the same URL + question on subsequent searches.
+    _aiResultCache: null,  // null = not loaded yet; Map<cacheKey, {letter,knowledge,cachedAt}>
+    _AI_RESULT_CACHE_KEY: 'ahAiResultCacheV1',
+    _AI_RESULT_CACHE_MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
+    _AI_RESULT_CACHE_MAX_ENTRIES: 500,
+
+    _getAiResultCacheKey(url, questionStem) {
+        // Simple hash: hostname + first 80 chars of stem (enough to distinguish questions)
+        let host = url;
+        try { host = new URL(url).hostname; } catch (_) { /* keep full url */ }
+        const stem = String(questionStem || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        return `${host}|${stem}`;
+    },
+
+    async _loadAiResultCache() {
+        if (this._aiResultCache !== null) return; // already loaded
+        this._aiResultCache = new Map();
+        try {
+            await new Promise(resolve => {
+                chrome.storage.local.get([this._AI_RESULT_CACHE_KEY], (result) => {
+                    const raw = result[this._AI_RESULT_CACHE_KEY];
+                    if (raw && typeof raw === 'object') {
+                        const now = Date.now();
+                        for (const [k, v] of Object.entries(raw)) {
+                            if (v && now - (v.cachedAt || 0) < this._AI_RESULT_CACHE_MAX_AGE_MS) {
+                                this._aiResultCache.set(k, v);
+                            }
+                        }
+                    }
+                    resolve();
+                });
+            });
+        } catch (_) { /* non-critical */ }
+    },
+
+    async _saveAiResultCache() {
+        if (!this._aiResultCache) return;
+        try {
+            // Evict oldest entries if over max
+            if (this._aiResultCache.size > this._AI_RESULT_CACHE_MAX_ENTRIES) {
+                const sorted = [...this._aiResultCache.entries()]
+                    .sort((a, b) => (a[1].cachedAt || 0) - (b[1].cachedAt || 0));
+                const toDelete = sorted.slice(0, this._aiResultCache.size - this._AI_RESULT_CACHE_MAX_ENTRIES);
+                for (const [k] of toDelete) this._aiResultCache.delete(k);
+            }
+            const obj = Object.fromEntries(this._aiResultCache);
+            chrome.storage.local.set({ [this._AI_RESULT_CACHE_KEY]: obj });
+        } catch (_) { /* non-critical */ }
+    },
+
+    _getCachedAiResult(url, questionStem) {
+        if (!this._aiResultCache) return null;
+        const key = this._getAiResultCacheKey(url, questionStem);
+        const entry = this._aiResultCache.get(key);
+        if (!entry) return null;
+        if (Date.now() - (entry.cachedAt || 0) > this._AI_RESULT_CACHE_MAX_AGE_MS) {
+            this._aiResultCache.delete(key);
+            return null;
+        }
+        return entry;
+    },
+
+    _setCachedAiResult(url, questionStem, result) {
+        if (!this._aiResultCache) return;
+        const key = this._getAiResultCacheKey(url, questionStem);
+        this._aiResultCache.set(key, { ...result, cachedAt: Date.now() });
+        // Fire-and-forget persist
+        this._saveAiResultCache();
+    },
+
+
     _stripOptionTailNoise(text) {
         if (!text) return '';
         let cleaned = String(text).replace(/\s+/g, ' ').trim();
@@ -33,7 +105,7 @@ export const SearchService = {
 
     _looksLikeCodeOption(text) {
         const body = String(text || '');
-        return /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|->|jsonb?/i.test(body);
+        return /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|->|jsonb?|\bdb\.\w|\.(?:find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(body);
     },
 
     _normalizeCodeAwareOption(text) {
@@ -129,7 +201,13 @@ export const SearchService = {
 
             const codeEntries = parsed.filter((o) => o.codeLike);
             const nonCodeEntries = parsed.filter((o) => !o.codeLike);
-            if (codeEntries.length >= 3 && nonCodeEntries.length >= 1) {
+            // Only drop non-code outliers when letters are NOT a complete sequential set.
+            // If A-B-C-D-E (or A-B-C-D) are all present and form a contiguous sequence, keep all —
+            // the question mixes code/non-code options intentionally (common in MongoDB/SQL mixed exams).
+            const allLetters = parsed.map((o) => o.letter).sort();
+            const expectedLettersForCount = ['A', 'B', 'C', 'D', 'E'].slice(0, allLetters.length);
+            const isCompleteSequence = allLetters.join('') === expectedLettersForCount.join('');
+            if (codeEntries.length >= 3 && nonCodeEntries.length >= 1 && !isCompleteSequence) {
                 return codeEntries.map((o) => `${o.letter}) ${o.body}`);
             }
         }
@@ -3022,6 +3100,9 @@ export const SearchService = {
         // Reset webcache 429 tracking for this search session.
         ApiService.resetWebcache429();
 
+        // Load AI extraction result cache (no-op if already loaded this session).
+        await this._loadAiResultCache();
+
         const sources = [];
         const topResults = results.slice(0, 10);
 
@@ -3746,7 +3827,17 @@ export const SearchService = {
                             if (typeof onStatus === 'function') {
                                 onStatus(`AI analyzing HTML from ${hostHint}...`);
                             }
-                            const aiHtmlResult = await ApiService.aiExtractFromHtml(htmlSnippet, questionForInference, hostHint);
+                            // Check AI result cache first to avoid re-calling LLM on the same URL+question
+                            const _aiHtmlCacheKey = link + '|html';
+                            const _aiHtmlCached = this._getCachedAiResult(_aiHtmlCacheKey, questionForInference);
+                            let aiHtmlResult;
+                            if (_aiHtmlCached) {
+                                console.log(`  🤖 [AI-HTML] 📦 Cache hit for ${hostHint} — skipping LLM call`);
+                                aiHtmlResult = _aiHtmlCached;
+                            } else {
+                                aiHtmlResult = await ApiService.aiExtractFromHtml(htmlSnippet, questionForInference, hostHint);
+                                if (aiHtmlResult) this._setCachedAiResult(_aiHtmlCacheKey, questionForInference, aiHtmlResult);
+                            }
                             aiHtmlExtractionCount++;
                             if (aiHtmlResult?.letter) {
                                 console.log(`  🤖 [AI-HTML] Found letter=${aiHtmlResult.letter} via ${aiHtmlResult.method}`);
@@ -3968,7 +4059,16 @@ export const SearchService = {
                     if (typeof onStatus === 'function') {
                         onStatus(`AI analyzing ${hostHint || 'source'} (${runStats.analyzed}/${topResults.length})...`);
                     }
-                    const aiExtracted = await ApiService.aiExtractFromPage(aiScopedText, questionForInference, hostHint);
+                    // Check AI result cache to avoid re-calling LLM for same URL+question
+                    const _aiPageCached = this._getCachedAiResult(link, questionForInference);
+                    let aiExtracted;
+                    if (_aiPageCached) {
+                        console.log(`  🤖 [AI-EXTRACT] 📦 Cache hit for ${hostHint} — skipping LLM call`);
+                        aiExtracted = _aiPageCached;
+                    } else {
+                        aiExtracted = await ApiService.aiExtractFromPage(aiScopedText, questionForInference, hostHint);
+                        if (aiExtracted) this._setCachedAiResult(link, questionForInference, aiExtracted);
+                    }
                     aiExtractionCount++;
 
                     // Collect knowledge even if no definitive letter found
@@ -4017,9 +4117,19 @@ export const SearchService = {
                         console.log(`  🤖 [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
                         aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, scopedCombinedText, originalOptionsMap);
                         console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
+                        // Validate the letter exists in the user's options map.
+                        // The AI may find a different question on the same page (e.g. one with 5 options)
+                        // and return a letter that doesn't exist in the current question (e.g. E when only A-D exist).
+                        if (originalOptionsMap && aiExtracted.letter && !originalOptionsMap[aiExtracted.letter]) {
+                            console.log(`  🤖 [AI-EXTRACT] ❌ Letter ${aiExtracted.letter} not in options map [${Object.keys(originalOptionsMap).join(',')}] — discarding`);
+                            aiExtracted.letter = null;
+                        }
                         const baseWeight = getDomainWeight(link);
                         const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
-                        const weight = baseWeight + 0.85 + (quality * 0.35);
+                        // Penalize risky hosts (passeidireto, brainly, scribd) when options didn't match exactly.
+                        // These pages often have many questions; the AI can accidentally read a neighbor question's gabarito.
+                        const riskyMismatchPenalty = (riskyCombinedHosts.has(hostHint) && !optionsMatchBase) ? 0.4 : 0;
+                        const weight = baseWeight + 0.85 + (quality * 0.35) - riskyMismatchPenalty;
                         const sourceId = `${hostHint || 'source'}:${sources.length + 1}`;
                         const evidenceBlock = this._buildEvidenceBlock({
                             questionFingerprint,

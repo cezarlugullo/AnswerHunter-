@@ -1000,7 +1000,7 @@ export const PopupController = {
         return true;
       };
 
-      const looksLikeCodeOptionBody = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?/i.test(String(body || ''));
+      const looksLikeCodeOptionBody = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
       const normalizeOptionBody = (body) => String(body || '')
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -1421,7 +1421,7 @@ export const PopupController = {
                   .replace(/\s+/g, ' ')
                   .trim();
 
-                const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?/i.test(String(body || ''));
+                const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
 
                 const extractOptionLines = (rawText) => {
                   if (!rawText) return [];
@@ -1569,7 +1569,7 @@ export const PopupController = {
                   .replace(/[^a-z0-9]+/g, ' ')
                   .replace(/\s+/g, ' ')
                   .trim();
-                const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?/i.test(String(body || ''));
+                const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
 
                 const stop = new Set([
                   'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questão',

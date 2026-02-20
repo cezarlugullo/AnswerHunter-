@@ -121,7 +121,7 @@ export const ApiService = {
             ? (settings.geminiModelSmart || 'gemini-2.5-flash')
             : (settings.geminiModel || 'gemini-2.5-flash');
         const flashModel = settings.geminiModel || 'gemini-2.5-flash';
-        const temps = [0.1, 0.4, 0.7];
+        const temps = [0.1, 0.5]; // 2 attempts instead of 3 to preserve API quota
 
         const runConsensusLoop = async (model, tempList) => {
             const votes = {};
@@ -142,20 +142,30 @@ export const ApiService = {
 
                     if (content.length >= 3
                         && !/^(NAO_ENCONTRADO|SEM_RESPOSTA|INCONCLUSIVO)/i.test(content)) {
-                        const m = content.match(letterPattern);
+                        // Strip markdown formatting before applying the letter pattern
+                        // (Gemini often wraps answers like **Letra E:** which breaks plain regex)
+                        const contentClean = content.replace(/[*_~`]+/g, '');
+                        const m = contentClean.match(letterPattern) || content.match(letterPattern);
                         if (m) {
-                            const letter = m[1].toUpperCase();
-                            votes[letter] = (votes[letter] || 0) + 1;
-                            if (!responses[letter] || content.length > responses[letter].length) {
-                                responses[letter] = content;
+                            const letter = (m[1] || m[2] || '').toUpperCase();
+                            if (letter) {
+                                votes[letter] = (votes[letter] || 0) + 1;
+                                if (!responses[letter] || content.length > responses[letter].length) {
+                                    responses[letter] = content;
+                                }
+                                if (votes[letter] >= 2) break; // early consensus
+                            } else {
+                                if (!responses['_noletter'] || content.length > responses['_noletter'].length) {
+                                    responses['_noletter'] = content;
+                                }
                             }
-                            if (votes[letter] >= 2) break; // early consensus
                         } else {
                             if (!responses['_noletter'] || content.length > responses['_noletter'].length) {
                                 responses['_noletter'] = content;
                             }
                         }
                     }
+
                 } catch (err) {
                     console.warn(`AnswerHunter: Gemini consensus temp=${temp} model=${model} error:`, err?.message || err);
                     nullCount++;
@@ -1380,7 +1390,8 @@ Letra B: TCP
             .replace(/&#39;/gi, '\'')
             .replace(/&lt;/gi, '<')
             .replace(/&gt;/gi, '>');
-        const looksLikeCodeOption = (text) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|->|jsonb?/i.test(String(text || ''));
+        const looksLikeCodeOption = (text) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|->|jsonb?|\bdb\.\w|\.(?:find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(text || ''));
+
         const normalizeCodeAwareHint = (text) => String(text || '')
             .toLowerCase()
             .normalize('NFD')
@@ -1442,7 +1453,9 @@ Letra B: TCP
                     .trim();
 
                 const braceMatch = opt.match(/\{[\s\S]*\}/);
-                if (braceMatch) opt = braceMatch[0];
+                // Only replace with brace-content when it is substantial (> 6 chars),
+                // otherwise commands like db.find({}).pretty() would collapse to just '{}'.
+                if (braceMatch && braceMatch[0].length > 6) opt = braceMatch[0];
             }
 
             return normalizeSpace(opt).split(' ').slice(0, looksLikeCodeOption(optRaw) ? 12 : 7).join(' ');
@@ -2838,7 +2851,7 @@ REGRAS:
         // For multiple choice, try primary provider first then fallback
         if (hasOptions) {
             const mcSystemMsg = 'Você é um especialista em análise de questões de múltipla escolha. Seja conservador: quando faltar evidência clara, responda INCONCLUSIVO em vez de chutar.';
-            const mcLetterPattern = /(?:Letra|Letter)\s*([A-E])[:\s\)]/i;
+            const mcLetterPattern = /[*_]{0,2}(?:Letra|Letter|Alternativa|Resposta\s+(?:correta|final))[:\s*_]{0,4}[*_]{0,2}\s*([A-E])\b|\b([A-E])\s*[).]\s*(?:V\b|verdadeira|correta)/i;
             const geminiPrimary = await this._isGeminiPrimary();
 
             /** Parse MC attempts into votes using the existing parseAttemptDecision logic */
@@ -2897,7 +2910,7 @@ REGRAS:
                 // Fallback to Groq
                 console.log('AnswerHunter: Gemini MC failed — trying Groq fallback...');
                 const groqResult = await this._groqConsensus(mcSystemMsg, prompt, mcLetterPattern, {
-                    model: groqModelSmart, temps: [0.12, 0.20, 0.28]
+                    model: groqModelSmart, temps: [0.12, 0.28] // 2 attempts to preserve quota
                 });
                 if (groqResult.attempts.length > 0) {
                     const tabulated = tabulateGroqAttempts(groqResult.attempts);
@@ -2908,7 +2921,7 @@ REGRAS:
 
             // ── Groq PRIMARY for MC ──
             const groqResult = await this._groqConsensus(mcSystemMsg, prompt, mcLetterPattern, {
-                model: groqModelSmart, temps: [0.12, 0.20, 0.28]
+                model: groqModelSmart, temps: [0.12, 0.28] // 2 attempts to preserve quota
             });
             if (groqResult.attempts.length > 0) {
                 const tabulated = tabulateGroqAttempts(groqResult.attempts);
