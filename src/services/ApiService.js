@@ -692,6 +692,162 @@ Analise o texto passo a passo e responda no formato acima:`;
     },
 
     /**
+     * AI extraction from raw HTML — lets the LLM detect visual highlights
+     * (CSS classes, bold, colors) without hardcoded selectors.
+     * @param {string} htmlSnippet - Raw HTML chunk centered on the question
+     * @param {string} questionText - Full question with options
+     * @param {string} hostHint - Domain for logging
+     * @returns {Promise<{letter:string|null, evidence:string, confidence:number, method:string, knowledge:string}|null>}
+     */
+    async aiExtractFromHtml(htmlSnippet, questionText, hostHint = '') {
+        if (!htmlSnippet || htmlSnippet.length < 300 || !questionText) {
+            console.log(`  🔬 [aiHtml] SKIP: snippet too short (${(htmlSnippet || '').length} chars)`);
+            return null;
+        }
+
+        const settings = await this._getSettings();
+        const truncatedHtml = htmlSnippet.substring(0, 12000);
+        const truncatedQuestion = questionText.substring(0, 1800);
+
+        console.log(`  🔬 [aiHtml] START host=${hostHint} htmlLen=${truncatedHtml.length} questionLen=${truncatedQuestion.length}`);
+
+        const systemMsg = `Você é um especialista em análise de HTML/CSS de páginas educacionais. Sua tarefa é encontrar respostas de questões identificando DESTAQUES VISUAIS no HTML.`;
+
+        const prompt = `# Tarefa
+Analise o HTML abaixo de uma página de exercícios acadêmicos. Encontre a questão do aluno e identifique qual alternativa está VISUALMENTE DESTACADA como correta.
+
+# Como identificar a resposta no HTML
+
+## Destaques CSS (mais comum em PDFs renderizados como HTML):
+- Uma alternativa tem classe CSS DIFERENTE das outras (ex: alternativas normais têm "ff2" mas a correta tem "ff1" ou "ff4")
+- Font-family ou font-weight diferente em uma alternativa
+- Uma alternativa está em <b>, <strong>, ou tem font-weight: bold
+- Cor de fundo diferente (background-color, highlight)
+
+## Marcações explícitas:
+- Ícone de check (✓, ✔, ★) próximo de uma alternativa
+- Texto "Gabarito: X", "Resposta: X", "Correta: X"
+- Classe CSS com nome sugestivo (correct, right, answer, selected, checked)
+
+## IMPORTANTE:
+- A página pode ter VÁRIAS questões. Compare o ENUNCIADO e as ALTERNATIVAS EXATAS
+- Procure diferenças ENTRE as alternativas da mesma questão (uma destacada vs as demais)
+- Se todas alternativas têm o mesmo estilo, NÃO há destaque visual
+
+# Formato de resposta
+
+## Se encontrou destaque visual:
+RESULTADO: ENCONTRADO
+LETRA_DESTACADA: [A-E]
+EVIDENCIA_CSS: [descreva a diferença CSS/HTML que indica o destaque]
+TEXTO_ALTERNATIVA: [texto da alternativa destacada]
+
+## Se encontrou gabarito textual:
+RESULTADO: ENCONTRADO
+EVIDÊNCIA: [trecho exato]
+Letra [A-E]: [texto da alternativa]
+
+## Se não encontrou:
+RESULTADO: NAO_ENCONTRADO
+
+# HTML da página (${hostHint}):
+${truncatedHtml}
+
+# Questão do aluno:
+${truncatedQuestion}
+
+Analise o HTML e responda:`;
+
+        /* Try Gemini first (larger context window, free) */
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                console.log(`  🔬 [aiHtml] Trying Gemini...`);
+                return await this._callGemini([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.05, max_tokens: 400, model: 'gemini-2.5-flash' });
+            } catch (e) {
+                console.warn(`  🔬 [aiHtml] Gemini error:`, e?.message || e);
+                return null;
+            }
+        };
+
+        const tryGroq = async () => {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                console.log(`  🔬 [aiHtml] Trying Groq (${settings.groqModelSmart})...`);
+                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: settings.groqModelSmart,
+                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
+                        temperature: 0.05,
+                        max_tokens: 400
+                    })
+                }));
+                return data?.choices?.[0]?.message?.content?.trim() || null;
+            } catch (e) {
+                console.warn(`  🔬 [aiHtml] Groq error:`, e?.message || e);
+                return null;
+            }
+        };
+
+        let content = null;
+        const geminiPrimary = await this._isGeminiPrimary();
+        if (geminiPrimary) {
+            content = await tryGemini();
+            if (!content) content = await tryGroq();
+        } else {
+            content = await tryGroq();
+            if (!content) content = await tryGemini();
+        }
+
+        if (!content || content.length < 10) {
+            console.log(`  🔬 [aiHtml] RESULT: no response`);
+            return null;
+        }
+
+        console.log(`  🔬 [aiHtml] Response (${content.length} chars): "${content.substring(0, 250)}"`);
+
+        if (/RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
+            console.log(`  🔬 [aiHtml] RESULT: NAO_ENCONTRADO`);
+            return null;
+        }
+
+        // Parse LETRA_DESTACADA format
+        const highlightMatch = content.match(/LETRA_DESTACADA:\s*([A-E])\b/i);
+        // Parse standard Letra X format
+        const letterMatch = highlightMatch
+            || content.match(/\bLetra\s+([A-E])\b/i)
+            || content.match(/\b([A-E])\s*[\):\.\-]\s*\S/);
+
+        if (!letterMatch) {
+            console.log(`  🔬 [aiHtml] RESULT: response but no letter found`);
+            return {
+                letter: null, evidence: null, confidence: 0,
+                method: 'ai-html-noletter',
+                knowledge: content.substring(0, 1200)
+            };
+        }
+
+        const letter = letterMatch[1].toUpperCase();
+        const evidenceCss = content.match(/EVIDENCIA_CSS:\s*([\s\S]*?)(?=TEXTO_ALTERNATIVA:|Letra\s+[A-E]|$)/i);
+        const evidenceText = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
+        const evidence = (evidenceCss ? evidenceCss[1].trim() : evidenceText ? evidenceText[1].trim() : content).slice(0, 900);
+
+        console.log(`  🔬 [aiHtml] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
+        return {
+            letter,
+            evidence,
+            confidence: 0.85,
+            method: 'ai-html-extraction',
+            knowledge: content.substring(0, 1200)
+        };
+    },
+
+    /**
      * AI combined reflection: takes accumulated knowledge from multiple sources
      * and reflects on them together to infer the answer.
      * This is the "last resort" when no single source had a definitive answer.
@@ -1014,7 +1170,7 @@ Letra B: TCP
         const settings = await this._getSettings();
         const { groqApiUrl, groqApiKey, groqModelFast } = settings;
 
-        const prompt = `Voce deve validar se o texto abaixo e UMA questao limpa e coerente.\n\nRegras:\n- Deve ser uma pergunta/questao de prova ou exercicio.\n- Pode ter alternativas (A, B, C, D, E).\n- NAO pode conter menus, botoes, avisos, instrucoes de site, ou texto sem relacao.\n- Se estiver poluida, misturando outra questao, ou sem sentido, responda INVALIDO.\n\nTexto:\n${questionText}\n\nResponda apenas: OK ou INVALIDO.`;
+        const prompt = `Voce deve validar se o texto abaixo e UMA questão limpa e coerente.\n\nRegras:\n- Deve ser uma pergunta/questão de prova ou exercicio.\n- Pode ter alternativas (A, B, C, D, E).\n- NAO pode conter menus, botoes, avisos, instrucoes de site, ou texto sem relação.\n- Se estiver poluida, misturando outra questão, ou sem sentido, responda INVALIDO.\n\nTexto:\n${questionText}\n\nResponda apenas: OK ou INVALIDO.`;
         const systemMsg = 'Responda apenas OK ou INVALIDO.';
 
         const parseValidation = (content) => {

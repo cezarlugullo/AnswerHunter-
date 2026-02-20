@@ -320,9 +320,9 @@ export const ExtractionService = {
         // 2) Use anchor points in viewport (more precise)
         const probeX = Math.floor(window.innerWidth * 0.5);
         const probeYs = [
+            Math.floor(window.innerHeight * 0.15),
             Math.floor(window.innerHeight * 0.3),
-            Math.floor(window.innerHeight * 0.5),
-            Math.floor(window.innerHeight * 0.7)
+            Math.floor(window.innerHeight * 0.5)
         ];
         const hitCount = new Map();
 
@@ -367,17 +367,19 @@ export const ExtractionService = {
             const visibleBottom = Math.min(window.innerHeight, rect.bottom);
             const visibleHeight = Math.max(0, visibleBottom - visibleTop);
             const visibilityRatio = rect.height > 0 ? (visibleHeight / rect.height) : 0;
-            const sectionCenter = rect.top + rect.height / 2;
-            const distanceFromCenter = Math.abs(sectionCenter - viewportCenter);
-            const isCentered = distanceFromCenter <= window.innerHeight * 0.25;
             const isMostlyVisible = visibilityRatio >= 0.6;
+
+            // Prioritize elements near the top of the viewport instead of the absolute center
+            const distanceFromTop = Math.abs(rect.top);
+            const isNearTop = distanceFromTop <= window.innerHeight * 0.3;
+
             const score =
                 (built.optionCount * 10) +
                 (built.questionLength > 30 ? 5 : 0) +
                 (visibleHeight * 0.6) +
                 (visibilityRatio * 120) -
-                (distanceFromCenter * 0.2) +
-                (isCentered ? 40 : 0) +
+                (distanceFromTop * 0.1) +
+                (isNearTop ? 50 : 0) +
                 (isMostlyVisible ? 30 : 0);
 
             scoredCandidates.push({ text: built.text, score, rect, visibleHeight });
@@ -678,8 +680,8 @@ export const ExtractionService = {
 
         if (reviewButtons.length > 0) {
             reviewButtons.sort((a, b) => {
-                const topA = Math.abs(a.getBoundingClientRect().top - window.innerHeight / 2);
-                const topB = Math.abs(b.getBoundingClientRect().top - window.innerHeight / 2);
+                const topA = Math.abs(a.getBoundingClientRect().top - window.innerHeight * 0.2);
+                const topB = Math.abs(b.getBoundingClientRect().top - window.innerHeight * 0.2);
                 return topA - topB;
             });
             targetSection = reviewButtons[0].closest('[data-section="section_cms-atividade"]');

@@ -28,6 +28,7 @@ export const SettingsModel = {
             gemini: false
         },
         minGroqIntervalMs: 2500,
+        minGeminiIntervalMs: 4200,
         consensusVotingEnabled: true, // Enable multi-attempt consensus
         consensusMinAttempts: 2, // Minimum attempts for consensus (2-3)
         consensusThreshold: 0.5 // Minimum vote ratio to accept (0.5 = 50%)

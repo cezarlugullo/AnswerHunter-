@@ -8,10 +8,15 @@ export const SearchService = {
     _CACHE_MAX_ENTRIES: 220,
     _CACHE_MAX_AGE_MS: 1000 * 60 * 60 * 24 * 7, // 7 days
 
+    // Snapshot cache: reuse fetched pages across searches (same session)
+    _snapshotCache: new Map(),          // url → { snap, fetchedAt }
+    _SNAPSHOT_CACHE_TTL: 5 * 60 * 1000, // 5 minutes
+    _SNAPSHOT_CACHE_MAX: 30,            // max 30 URLs in memory
+
     _stripOptionTailNoise(text) {
         if (!text) return '';
         let cleaned = String(text).replace(/\s+/g, ' ').trim();
-        const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eÃƒÂ©]ns|voc[eÃƒÂª]\s+acertou|confira\s+o\s+gabarito|explica[cÃƒÂ§][aÃƒÂ£]o)\b/i;
+        const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parabéns|você\s+acertou|confira\s+o\s+gabarito|explicação)\b/i;
         const idx = cleaned.search(noiseMarker);
         if (idx > 20) cleaned = cleaned.slice(0, idx).trim();
         return cleaned.replace(/[;:,\-.\s]+$/g, '').trim();
@@ -56,7 +61,7 @@ export const SearchService = {
 
     _isUsableOptionBody(body) {
         const cleaned = String(body || '').replace(/\s+/g, ' ').trim();
-        if (!cleaned || cleaned.length < 8) return false;
+        if (!cleaned || cleaned.length < 1) return false;
         if (/^[A-E]\s*[\)\.\-:]?\s*$/i.test(cleaned)) return false;
         if (/^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(cleaned)) return false;
         if (/^(?:resposta|gabarito|alternativa\s+correta)\b/i.test(cleaned)) return false;
@@ -355,7 +360,7 @@ export const SearchService = {
         // Match "a resposta (correta) é/seria (a alternativa) X"
         const prosePatterns = [
             /(?:resposta|answer)\s+(?:correta\s+)?(?:[eéÉ]|seria)\s+(?:a\s+)?(?:alternativa\s+|letra\s+)?([A-E])\b/gi,
-            /(?:alternativa|opcao|op[çc][aã]o)\s+(?:correta\s+)?(?:[eéÉ]\s+)?(?:a\s+)?([A-E])\b/gi,
+            /(?:alternativa|opção|op[çc][aã]o)\s+(?:correta\s+)?(?:[eéÉ]\s+)?(?:a\s+)?([A-E])\b/gi,
             /\bcorresponde\s+(?:[aà]\s+)?(?:alternativa\s+|letra\s+)?([A-E])\b/gi
         ];
         for (const re of prosePatterns) {
@@ -849,7 +854,57 @@ export const SearchService = {
         return hits;
     },
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â DICE SIMILARITY (bigram) Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ OPTION-BASED DISCRIMINATIVE TOKENS ═══
+    // Extracts tokens from option bodies that are NOT present in the stem.
+    // These tokens uniquely identify a specific question among many on the same topic.
+    _extractOptionTokens(questionText) {
+        const options = this._extractOptionsFromQuestion(questionText);
+        if (options.length < 2) return [];
+
+        const stem = this._extractQuestionStem(questionText);
+        const stemTokenSet = new Set(this._extractKeyTokens(stem));
+        // Also exclude all stem words (including short ones) since they are generic topic tokens
+        const stemNorm = this._normalizeOption(stem);
+        for (const w of stemNorm.split(/\s+/)) {
+            if (w.length >= 3) stemTokenSet.add(w);
+        }
+
+        const tokenFreq = new Map();
+        const optionCount = options.length;
+
+        for (const rawOpt of options) {
+            const m = String(rawOpt || '').match(/^([A-E])\)\s*(.+)$/i);
+            const body = m ? this._stripOptionTailNoise(m[2]) : '';
+            if (!body) continue;
+
+            const isCode = this._looksLikeCodeOption(body);
+            const normalized = isCode
+                ? this._normalizeCodeAwareOption(body)
+                : this._normalizeOption(body);
+            if (!normalized) continue;
+
+            const words = normalized.split(/\s+/).filter(Boolean);
+            const seenInThisOption = new Set();
+            for (const w of words) {
+                if (w.length >= 3 && !stemTokenSet.has(w) && !seenInThisOption.has(w)) {
+                    seenInThisOption.add(w);
+                    tokenFreq.set(w, (tokenFreq.get(w) || 0) + 1);
+                }
+            }
+        }
+
+        // Prefer tokens appearing in fewer options (more discriminative).
+        // Skip tokens in >50% of options — they are too generic.
+        const maxFreq = Math.ceil(optionCount / 2);
+        const ranked = [...tokenFreq.entries()]
+            .filter(([, count]) => count <= maxFreq)
+            .sort((a, b) => a[1] - b[1])
+            .map(([token]) => token);
+
+        return ranked.slice(0, 8);
+    },
+
+    // ═══ DICE SIMILARITY (bigram) ═══
     // Character-bigram Dice coefficient: 0..1
     _diceSimilarity(a, b) {
         if (!a || !b) return 0;
@@ -871,7 +926,7 @@ export const SearchService = {
         return (2 * intersection) / (a.length - 1 + b.length - 1) || 0;
     },
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â QUESTION SIMILARITY SCORE Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ QUESTION SIMILARITY SCORE ═══
     // Returns 0..1 score indicating how similar a source snippet is to the original question stem.
     // Used to gate Brainly and other weak sources Ã¢â‚¬â€ they must match the actual question.
     _questionSimilarityScore(sourceText, questionStem) {
@@ -902,7 +957,7 @@ export const SearchService = {
         return Math.min(1.0, tokenScore * 0.5 + prefixMatch + diceScore * 0.3);
     },
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â CANONICAL QUESTION HASH Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ CANONICAL QUESTION HASH ═══
     // Creates a stable hash from question + options for cache/dedup
     _canonicalizeQuestion(questionText) {
         const stem = this._extractQuestionStem(questionText);
@@ -1200,7 +1255,7 @@ export const SearchService = {
         }
     },
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â POLARITY DETECTION Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ POLARITY DETECTION ═══
     _detectQuestionPolarity(questionText) {
         if (!questionText) return 'CORRECT';
         const stemOnly = this._extractQuestionStem(questionText);
@@ -1208,7 +1263,7 @@ export const SearchService = {
         const incorrectPatterns = [
             /alternativa\s+incorreta/i,
             /afirmativa\s+incorreta/i,
-            /opcao\s+incorreta/i,
+            /opção\s+incorreta/i,
             /alternativa\s+errada/i,
             /alternativa\s+falsa/i,
             /nao\s+(?:e|esta)\s+corret[ao]/i,
@@ -1226,30 +1281,67 @@ export const SearchService = {
 
 
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â FINGERPRINT-BASED QUESTION BLOCK FINDING Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ FINGERPRINT-BASED QUESTION BLOCK FINDING ═══
     _findQuestionBlockByFingerprint(sourceText, questionText) {
         if (!sourceText || !questionText) return null;
         const stem = this._extractQuestionStem(questionText);
-        const tokens = this._extractKeyTokens(stem);
-        if (tokens.length < 3) return null;
+        const stemTokens = this._extractKeyTokens(stem);
+        if (stemTokens.length < 3) return null;
 
-        const lines = sourceText.split('\n');
+        const optionTokens = this._extractOptionTokens(questionText);
+        const hasOptionTokens = optionTokens.length >= 2;
+
+        // Split by sentences or lines if no lines
+        let chunks = sourceText.split('\n');
+        if (chunks.length < 5 || chunks.some(c => c.length > 500)) {
+            // Split by sentence delimiters roughly, preserving them
+            chunks = sourceText.replace(/([.?!])\s+(?=[A-Z0-9])/g, '$1\n').split('\n');
+        }
+
         let bestStart = -1;
-        let bestHits = 0;
-        const windowSize = 15;
-        for (let i = 0; i < lines.length - 3; i++) {
-            const windowText = lines.slice(i, Math.min(lines.length, i + windowSize)).join('\n');
-            const hits = this._countTokenHits(windowText, tokens);
-            if (hits > bestHits) {
-                bestHits = hits;
+        let bestScore = 0;
+        // Larger window when options exist (a question with 5 options spans 6+ lines)
+        const windowSize = hasOptionTokens ? 10 : 5;
+
+        for (let i = 0; i <= chunks.length - 1; i++) {
+            const windowText = chunks.slice(i, i + windowSize).join(' ');
+            const stemHits = this._countTokenHits(windowText, stemTokens);
+            const optHits = hasOptionTokens ? this._countTokenHits(windowText, optionTokens) : 0;
+            // Option tokens weighted 2x — they are more discriminative than stem tokens
+            const score = stemHits + (optHits * 2);
+            if (score > bestScore) {
+                bestScore = score;
                 bestStart = i;
             }
         }
-        const threshold = Math.max(3, Math.floor(tokens.length * 0.5));
-        if (bestStart < 0 || bestHits < threshold) return null;
+
+        const stemThreshold = Math.max(3, Math.floor(stemTokens.length * 0.45));
+        const bestWindowText = bestStart >= 0 ? chunks.slice(bestStart, bestStart + windowSize).join(' ') : '';
+        const bestStemHits = bestStart >= 0 ? this._countTokenHits(bestWindowText, stemTokens) : 0;
+        const bestOptHits = hasOptionTokens && bestStart >= 0 ? this._countTokenHits(bestWindowText, optionTokens) : 0;
+
+        console.log(`    [find-block] Attempted fingerprint. bestStart=${bestStart}, stemHits=${bestStemHits}/${stemTokens.length}, optHits=${bestOptHits}/${optionTokens.length}, score=${bestScore}`);
+        if (hasOptionTokens) {
+            console.log(`    [find-block] optionTokens: [${optionTokens.join(', ')}]`);
+        }
+
+        if (bestStart < 0 || bestStemHits < stemThreshold) return null;
+
+        // CRITICAL GATE: if we have option tokens, require at least some to match.
+        // This prevents anchoring on the wrong question in pages with many similar questions.
+        if (hasOptionTokens) {
+            const minOptionHits = Math.max(1, Math.floor(optionTokens.length * 0.25));
+            if (bestOptHits < minOptionHits) {
+                console.log(`    [find-block] REJECTED: stem matched but only ${bestOptHits}/${optionTokens.length} option tokens found (need ${minOptionHits}). Wrong question block.`);
+                return null;
+            }
+        }
+
         const blockStart = Math.max(0, bestStart - 2);
-        const blockEnd = Math.min(lines.length, bestStart + 40);
-        return lines.slice(blockStart, blockEnd).join('\n');
+        const blockEnd = Math.min(chunks.length, bestStart + 20); // About 20 chunks context
+        const fpBlock = chunks.slice(blockStart, blockEnd).join('\n');
+        console.log(`    [find-block] Snippet: "${fpBlock.slice(0, 200)}"`);
+        return fpBlock;
     },
 
     _findQuestionBlock(sourceText, questionText) {
@@ -1260,7 +1352,7 @@ export const SearchService = {
             const qNum = qNumMatch[1];
             const patterns = [
                 new RegExp(`(?:^|\\n)\\s*${qNum}\\s*[\\)\\.\\:\\-]`, 'm'),
-                new RegExp(`(?:^|\\n)\\s*(?:Quest[aÃƒÂ£]o|Questao)\\s+${qNum}\\b`, 'im')
+                new RegExp(`(?:^|\\n)\\s*(?:Quest[aã]o|Questão)\\s+${qNum}\\b`, 'im')
             ];
             for (const re of patterns) {
                 const match = re.exec(sourceText);
@@ -1289,7 +1381,60 @@ export const SearchService = {
         return raw.slice(0, maxChars);
     },
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â RANKED CANDIDATE SELECTION Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ RANKED CANDIDATE SELECTION ═══
+    /**
+     * Extract a chunk of raw HTML centered on the user's question.
+     * Used to send HTML+CSS to AI so it can detect visual highlights
+     * without hardcoded class names.
+     */
+    _extractHtmlAroundQuestion(html, questionStem, optionTokens, maxChars = 6000) {
+        if (!html || !questionStem || html.length < 500) return null;
+
+        const stemNorm = (questionStem || '')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, ' ').trim();
+        const stemWords = stemNorm.split(/\s+/).filter(w => w.length >= 5).slice(0, 6);
+        if (stemWords.length < 2) return null;
+
+        const htmlLower = html.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        let bestPos = -1;
+        let bestHits = 0;
+
+        for (let i = 0; i < htmlLower.length - 200; i += 200) {
+            const window = htmlLower.substring(i, i + 600);
+            let hits = 0;
+            for (const w of stemWords) {
+                if (window.includes(w)) hits++;
+            }
+            if (optionTokens && optionTokens.length >= 2) {
+                for (const t of optionTokens) {
+                    if (window.includes(t)) hits += 2;
+                }
+            }
+            if (hits > bestHits) {
+                bestHits = hits;
+                bestPos = i;
+            }
+        }
+
+        if (bestPos < 0 || bestHits < 2) return null;
+
+        const halfWindow = Math.floor(maxChars / 2);
+        let start = Math.max(0, bestPos - halfWindow);
+        let end = Math.min(html.length, bestPos + halfWindow);
+
+        const tagOpen = html.lastIndexOf('<', start + 50);
+        if (tagOpen > start - 200 && tagOpen >= 0) start = tagOpen;
+        const tagClose = html.indexOf('>', end - 50);
+        if (tagClose > 0 && tagClose < end + 200) end = tagClose + 1;
+
+        const snippet = html.substring(start, end);
+        console.log(`    [html-snippet] Extracted ${snippet.length} chars from pos ${start}-${end} (stemHits+optHits=${bestHits})`);
+        return snippet;
+    },
+
     _chooseBestCandidate(candidates) {
         if (!candidates || candidates.length === 0) return null;
         if (candidates.length === 1) return candidates[0];
@@ -1311,7 +1456,7 @@ export const SearchService = {
         return best;
     },
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â ENHANCED EXPLICIT GABARITO EXTRACTION (polarity-aware) Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ ENHANCED EXPLICIT GABARITO EXTRACTION (polarity-aware) ═══
     _extractExplicitGabarito(text, questionText = '') {
         if (!text) return null;
         const questionPolarity = this._detectQuestionPolarity(questionText);
@@ -1331,25 +1476,45 @@ export const SearchService = {
                 matches.push({ letter, confidence, matchLabel: label, index: m.index, questionPolarity });
             }
         }
-        if (matches.length === 0) return null;
-        return this._chooseBestCandidate(matches);
+        if (matches.length === 0) {
+            console.log(`    [explicit-gab] No explicit pattern matched for: "${String(questionText).slice(0, 80)}"`);
+            return null;
+        }
+        console.log(`    [explicit-gab] Candidates found:`, JSON.stringify(matches));
+        const best = this._chooseBestCandidate(matches);
+        console.log(`    [explicit-gab] Best candidate chosen:`, JSON.stringify(best));
+        return best;
     },
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â LOCAL ANSWER EXTRACTION Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ LOCAL ANSWER EXTRACTION ═══
     _extractAnswerLocally(sourceText, questionText, originalOptions) {
         if (!sourceText || sourceText.length < 50) return null;
         const block = this._findQuestionBlock(sourceText, questionText);
         const searchText = block ? block.text : sourceText;
+
+        const optionsMap = {};
+        if (originalOptions) {
+            for (const opt of originalOptions) {
+                const m = opt.match(/^([A-E])\)\s*(.*)/i);
+                if (m) optionsMap[m[1].toUpperCase()] = m[2].trim();
+            }
+        }
+
         // 1) Try explicit gabarito patterns first (uploaded answer keys, Brainly, etc.)
         const gabarito = this._extractExplicitGabarito(searchText, questionText);
         if (gabarito) {
-            return { ...gabarito, evidenceType: 'explicit-gabarito', blockMethod: block?.method || 'full-text' };
+            const expectedBody = optionsMap[gabarito.letter];
+            if (!expectedBody || this._isExplicitLetterSafe(searchText, gabarito.letter, expectedBody)) {
+                return { ...gabarito, evidenceType: 'explicit-gabarito', blockMethod: block?.method || 'full-text' };
+            }
         }
         // 2) Try explanation-to-option content matching
         const explanationMatch = this._matchExplanationToOption(searchText, questionText, originalOptions);
         if (explanationMatch) {
+            console.log(`    [local-extract] Selected explanation match:`, JSON.stringify(explanationMatch));
             return { ...explanationMatch, evidenceType: 'explanation-content-match', blockMethod: block?.method || 'full-text' };
         }
+        console.log(`    [local-extract] Failed to extract any valid local answer.`);
         return null;
     },
 
@@ -1363,11 +1528,54 @@ export const SearchService = {
      * Example: "...devido ao fato de que seu suporte ao processamento não segue o modelo
      * clássico de transações..." → matches option E: "Ter suporte de transações diferente do relacional"
      */
+    // --- LOCAL HALLUCINATION GUARD ---
+    _isExplicitLetterSafe(text, letter, expectedBody) {
+        if (!expectedBody) return true; // nothing to guard against
+
+        const isShortAcronym = expectedBody.length <= 6 && this._looksLikeCodeOption(expectedBody);
+
+        // 1) If the text is an explanation and the user's short acronym is completely absent = cross-question
+        if (isShortAcronym && text.length > 80) {
+            if (!this._normalizeCodeAwareOption(text).includes(this._normalizeCodeAwareOption(expectedBody))) {
+                console.log(`    [guard] REJECT: Explicit said ${letter} but short option "${expectedBody}" is absent.`);
+                return false;
+            }
+        }
+
+        // 2) Parse the immediate literal option text written after the letter (e.g. "letra d) csv")
+        const rx = new RegExp(`(?:letra|alternativa|op[cç][aã]o|resposta)\\s*(?:correta\\s*(?:[eé]\\s*(?:a\\s+)?)?)?${letter}\\s*[)\\.\\-:]?\\s*([^\\.,;\\n]+)`, 'i');
+        const m = text.match(rx);
+        if (m && m[1]) {
+            const nextWords = this._normalizeOption(m[1].trim());
+            // Drop explanation fillers
+            if (nextWords && !/^(?:pois|porque|já\s*que|dado|como|sendo|visto|uma\s*vez)/.test(nextWords)) {
+                const dice = this._diceSimilarity(nextWords, expectedBody);
+                if (dice < 0.2) {
+                    const nextTokens = nextWords.split(/\s+/).filter(t => t.length >= 3);
+                    let shared = 0;
+                    for (const tk of nextTokens) { if (expectedBody.includes(tk)) shared++; }
+
+                    // Clashes with the actual noun/content?
+                    if (shared === 0 && nextTokens.length >= 1 && nextTokens.length <= 4) {
+                        console.log(`    [guard] REJECT: Explicit text "${nextWords}" contradicts expected "${expectedBody}".`);
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    },
+
     _matchExplanationToOption(sourceText, questionText, originalOptions) {
         if (!sourceText || !originalOptions || originalOptions.length < 2) return null;
         const questionStem = this._extractQuestionStem(questionText);
         const stemTokens = this._extractKeyTokens(questionStem);
         if (stemTokens.length < 2) return null;
+
+        // Detect question polarity — negation-aware guard
+        const polarity = this._detectQuestionPolarity(questionStem);
+        const hasNegation = polarity === 'INCORRECT';
 
         // Build options map from originalOptions
         const optionsMap = {};
@@ -1393,9 +1601,16 @@ export const SearchService = {
         // Check that the explanation is actually about the question topic
         const explNorm = this._normalizeOption(explanationText);
         const topicHits = this._countTokenHits(explNorm, stemTokens);
-        if (topicHits < Math.min(2, stemTokens.length)) return null;
+        // Improved threshold: require at least 40% of stem tokens or a minimum of 2
+        const requiredTopicHits = Math.max(2, Math.floor(stemTokens.length * 0.4));
+        if (topicHits < requiredTopicHits) {
+            console.log(`    [expl-match] REJECTED: topicHits=${topicHits} < required=${requiredTopicHits}`);
+            console.log(`    [expl-match] Rejecting text: "${explanationText.slice(0, 300)}"`);
+            return null;
+        }
 
         console.log(`    [expl-match] Explanation text found (${explanationText.length} chars), topicHits=${topicHits}/${stemTokens.length}`);
+        console.log(`    [expl-match] Explanation block text: "${explanationText.slice(0, 600)}"`);
 
         // For each option, compute how strongly the explanation text mentions its key concepts
         const scores = {};
@@ -1419,6 +1634,21 @@ export const SearchService = {
             console.log(`    [expl-match] ${letter}) tokenHits=${tokenHits}/${optTokens.length} dice=${dice.toFixed(3)} score=${scores[letter].toFixed(3)} body="${body.slice(0, 60)}"`);
         }
 
+        // ── NEGATION-AWARE INVERSION ──
+        if (hasNegation) {
+            console.log(`    [expl-match] NEGATION detected — inverting scores (polarity=${polarity})`);
+            const allLetters = Object.keys(scores);
+            const maxScore = Math.max(...Object.values(scores));
+            if (maxScore > 0) {
+                for (const letter of allLetters) {
+                    scores[letter] = maxScore - scores[letter];
+                }
+                for (const [letter] of Object.entries(scores)) {
+                    console.log(`    [expl-match] ${letter}) inverted_score=${scores[letter].toFixed(3)}`);
+                }
+            }
+        }
+
         // Find best and second-best
         const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
         if (sorted.length < 2) return null;
@@ -1435,7 +1665,12 @@ export const SearchService = {
         }
 
         // Compute confidence based on score strength and margin
-        const confidence = Math.min(0.88, 0.60 + (bestScore * 0.2) + (margin * 0.3));
+        let confidence = Math.min(0.88, 0.60 + (bestScore * 0.2) + (margin * 0.3));
+        if (hasNegation) {
+            confidence = Math.min(confidence, 0.72);
+            console.log(`    [expl-match] NEGATION confidence capped to ${confidence.toFixed(2)}`);
+        }
+
         console.log(`    [expl-match] ACCEPTED: letter=${bestLetter} confidence=${confidence.toFixed(2)}`);
 
         return {
@@ -1446,7 +1681,7 @@ export const SearchService = {
         };
     },
 
-    // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â MATCH QUALITY COMPUTATION Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+    // ═══ MATCH QUALITY COMPUTATION ═══
     computeMatchQuality(sourceText, questionText, originalOptions, originalOptionsMap) {
         let quality = 0;
         const block = this._findQuestionBlock(sourceText, questionText);
@@ -1470,7 +1705,7 @@ export const SearchService = {
         const polarity = this._detectQuestionPolarity(questionStem);
         const tokens = this._extractKeyTokens(questionStem);
 
-        // Prefer explicit patterns; support "opcao falsa/incorreta" when the question asks for the false option.
+        // Prefer explicit patterns; support "opção falsa/incorreta" when the question asks for the false option.
         const patterns = [];
         patterns.push(
             /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])\b/i,
@@ -1479,11 +1714,11 @@ export const SearchService = {
 
         if (polarity === 'INCORRECT' || polarity === 'UNKNOWN') {
             patterns.push(
-                /(?:^|\b)(?:op[cÃƒÂ§][aÃƒÂ£]o|alternativa)\s+(?:falsa|incorreta|errada)\s*(?:ÃƒÂ©|e)\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/i,
-                /(?:^|\b)(?:a\s+)?(?:op[cÃƒÂ§][aÃƒÂ£]o|alternativa)\s+([A-E])\s*(?:ÃƒÂ©|e)\s*(?:a\s+)?(?:falsa|incorreta|errada)\b/i,
-                /(?:^|\b)(?:a\s+)?(?:op[cÃƒÂ§][aÃƒÂ£]o|alternativa)\s+(?:falsa|incorreta|errada)\s*[:\-]?\s*([A-E])\b/i,
-                // Common SERP phrasing: "A opÃƒÂ§ÃƒÂ£o falsa ÃƒÂ© a e) ..."
-                /(?:^|\b)(?:a\s+)?(?:op[cÃƒÂ§][aÃƒÂ£]o|alternativa)\s+(?:falsa|incorreta|errada)\s*(?:ÃƒÂ©|e)\s*(?:a\s+)?([A-E])\s*[\)\.\-:]/i
+                /(?:^|\b)(?:op[cç][aã]o|alternativa)\s+(?:falsa|incorreta|errada)\s*(?:é|e)\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/i,
+                /(?:^|\b)(?:a\s+)?(?:op[cç][aã]o|alternativa)\s+([A-E])\s*(?:é|e)\s*(?:a\s+)?(?:falsa|incorreta|errada)\b/i,
+                /(?:^|\b)(?:a\s+)?(?:op[cç][aã]o|alternativa)\s+(?:falsa|incorreta|errada)\s*[:\-]?\s*([A-E])\b/i,
+                // Common SERP phrasing: "A opção falsa é a e) ..."
+                /(?:^|\b)(?:a\s+)?(?:op[cç][aã]o|alternativa)\s+(?:falsa|incorreta|errada)\s*(?:é|e)\s*(?:a\s+)?([A-E])\s*[\)\.\-:]/i
             );
         }
 
@@ -1793,7 +2028,7 @@ export const SearchService = {
         }
 
         const anchorRe = /(resposta\s+correta|gabarito|alternativa\s+correta|resposta\s*:\s*letra)/i;
-        const stopRe = /(coment[aÃƒÂ¡]rio|resolu[cÃƒÂ§][aÃƒÂ£]o|explica[cÃƒÂ§][aÃƒÂ£]o|pergunta\s+\d+|quest[aÃƒÂ£]o\s+\d+)/i;
+        const stopRe = /(coment[aá]rio|resolu[cç][aã]o|explica[cç][aã]o|pergunta\s+\d+|quest[aã]o\s+\d+)/i;
         let anchorIdx = -1;
         for (let i = 0; i < blockFrags.length; i += 1) {
             if (anchorRe.test(blockFrags[i].text)) {
@@ -1848,9 +2083,14 @@ export const SearchService = {
 
         const candidates = [];
         for (const c of containers.slice(0, 18)) {
-            const text = (c.textContent || '').replace(/\s+/g, ' ').trim();
+            let text = (c.textContent || '').replace(/\s+/g, ' ').trim();
             if (!text || text.length < 40) continue;
             if (this._isLikelyObfuscatedText(text)) continue;
+
+            const block = this._findQuestionBlock(text, questionStem);
+            if (block && block.text.length >= 80) {
+                text = block.text;
+            }
 
             const sim = this._questionSimilarityScore(text, questionStem);
             const explicit = this._extractExplicitGabarito(text, questionForInference)
@@ -1888,10 +2128,10 @@ export const SearchService = {
         if (!fullText || fullText.length < 120) return null;
         if (this._isLikelyObfuscatedText(fullText)) return null;
 
-        const noisyContextRe = /(resposta\s+gerada\s+por\s+ia|desbloqueie|premium|ajude\s+estudantes|conte[ÃƒÂºu]dos\s+liberados|respostas?\s+dispon[ÃƒÂ­i]veis\s+nesse\s+material)/i;
-        const strongAnchorRe = /(gabarito|resposta\s+correta|resposta\s*:\s*(?:letra\s*)?[A-E]|a\s+resposta\s+[eÃƒÂ©]|alternativa\s+correta\s*(?:[eÃƒÂ©]|[:\-]))/i;
-        const anchorRe = /(gabarito|resposta\s+correta|alternativa\s+correta|resposta\s*:\s*letra|a\s+resposta\s+[eÃƒÂ©])/ig;
-        const directiveRe = /(assinale|marque|selecione|indique)\s+(?:a\s+)?(?:alternativa|afirmativa|op[cÃƒÂ§][aÃƒÂ£]o)\s+(?:correta|incorreta|falsa|errada)/i;
+        const noisyContextRe = /(resposta\s+gerada\s+por\s+ia|desbloqueie|premium|ajude\s+estudantes|conte[íºu]dos\s+liberados|respostas?\s+dispon[í­i]veis\s+nesse\s+material)/i;
+        const strongAnchorRe = /(gabarito|resposta\s+correta|resposta\s*:\s*(?:letra\s*)?[A-E]|a\s+resposta\s+[eé]|alternativa\s+correta\s*(?:[eé]|[:\-]))/i;
+        const anchorRe = /(gabarito|resposta\s+correta|alternativa\s+correta|resposta\s*:\s*letra|a\s+resposta\s+[eé])/ig;
+        const directiveRe = /(assinale|marque|selecione|indique)\s+(?:a\s+)?(?:alternativa|afirmativa|op[cç][aã]o)\s+(?:correta|incorreta|falsa|errada)/i;
         const riskyHost = hostHint === 'passeidireto.com' || hostHint === 'brainly.com.br' || hostHint === 'brainly.com';
         const candidates = [];
         let m;
@@ -1910,7 +2150,7 @@ export const SearchService = {
             if (noisyContextRe.test(ctx)) continue;
             const hasStrongAnchorSignal = strongAnchorRe.test(ctx);
             if (!hasStrongAnchorSignal) continue;
-            if (directiveRe.test(ctx) && !/(gabarito|resposta\s+correta|a\s+resposta\s+[eÃƒÂ©]|resposta\s*:)/i.test(ctx)) continue;
+            if (directiveRe.test(ctx) && !/(gabarito|resposta\s+correta|a\s+resposta\s+[eé]|resposta\s*:)/i.test(ctx)) continue;
 
             const sim = this._questionSimilarityScore(ctx, questionStem);
             if (sim < (riskyHost ? 0.22 : 0.16)) continue;
@@ -2034,6 +2274,9 @@ export const SearchService = {
     _extractPdfLikeHighlightLetterFromHtml(html, questionStem, originalOptionsMap, originalOptions) {
         if (!html || html.length < 2000) return null;
         const tokens = this._extractKeyTokens(questionStem);
+        const reconstructedQ = questionStem + '\n' + (originalOptions || []).join('\n');
+        const optTokens = this._extractOptionTokens(reconstructedQ);
+        const hasOptTokens = optTokens.length >= 2;
 
         const { doc, nodes } = this._parseHtmlDomWithEmbeddedFallback(html);
 
@@ -2042,7 +2285,7 @@ export const SearchService = {
         console.log(`    [ff1-highlight] check: 'ff4' occurrences: ${(html.match(/ff4/g) || []).length}`);
         console.log(`    [ff1-highlight] check: 'div.t' nodes extracted: ${nodes.length}`);
 
-        if (nodes.length < 50) return null;
+        if (nodes.length < 15) return null;
 
         const frags = nodes
             .map((n) => ({
@@ -2054,37 +2297,60 @@ export const SearchService = {
             .filter(f => f.text && f.text.length >= 1);
 
         console.log(`    [ff1-highlight] check: frags_len=${frags.length}`);
-        if (frags.length < 50) return null;
+        if (frags.length < 15) return null;
 
         // Find the best anchor position for the question block.
-        // Use a small rolling window because PDF-like exports often split words across many fragments.
+        // Use option tokens (from alternatives) for combined scoring to avoid
+        // anchoring on the wrong question when multiple questions share stem words.
         let bestIdx = -1;
-        let bestHits = 0;
+        let bestAnchorScore = 0;
+        const anchorWindowSize = hasOptTokens ? 10 : 5;
         for (let i = 0; i < frags.length; i += 1) {
             const windowTextForAnchor = frags
-                .slice(i, Math.min(frags.length, i + 5))
+                .slice(i, Math.min(frags.length, i + anchorWindowSize))
                 .map(f => f.text)
                 .join(' ');
-            const hits = this._countTokenHits(windowTextForAnchor, tokens);
-            if (hits > bestHits) {
-                bestHits = hits;
+            const stemHits = this._countTokenHits(windowTextForAnchor, tokens);
+            const optHits = hasOptTokens ? this._countTokenHits(windowTextForAnchor, optTokens) : 0;
+            const score = stemHits + (optHits * 2);
+            if (score > bestAnchorScore) {
+                bestAnchorScore = score;
                 bestIdx = i;
             }
         }
 
-        const minAnchorHits = tokens.length >= 4 ? 2 : 1;
-        console.log(`    [ff1-highlight] tokens=${JSON.stringify(tokens)} bestIdx=${bestIdx} bestHits=${bestHits}/${tokens.length} minRequired=${minAnchorHits} totalFrags=${frags.length}`);
-        if (bestIdx < 0 || bestHits < minAnchorHits) {
-            console.log(`    [ff1-highlight] REJECTED: anchor not found (bestIdx=${bestIdx} bestHits=${bestHits} < ${minAnchorHits})`);
+        const bestWindowTextCheck = bestIdx >= 0
+            ? frags.slice(bestIdx, Math.min(frags.length, bestIdx + anchorWindowSize)).map(f => f.text).join(' ')
+            : '';
+        const bestStemHits = bestIdx >= 0 ? this._countTokenHits(bestWindowTextCheck, tokens) : 0;
+        const bestOptHits = hasOptTokens && bestIdx >= 0 ? this._countTokenHits(bestWindowTextCheck, optTokens) : 0;
+        const minAnchorHits = Math.max(2, Math.floor(tokens.length * 0.35));
+        console.log(`    [ff1-highlight] tokens=${JSON.stringify(tokens)} bestIdx=${bestIdx} stemHits=${bestStemHits}/${tokens.length} optHits=${bestOptHits}/${optTokens.length} score=${bestAnchorScore} minRequired=${minAnchorHits} totalFrags=${frags.length}`);
+        if (hasOptTokens) {
+            console.log(`    [ff1-highlight] optTokens: [${optTokens.join(', ')}]`);
+        }
+        if (bestIdx < 0 || bestStemHits < minAnchorHits) {
+            console.log(`    [ff1-highlight] REJECTED: anchor not found`);
+            if (bestIdx >= 0) {
+                const bestWindowText = frags.slice(bestIdx, Math.min(frags.length, bestIdx + 15)).map(f => f.text).join(' ');
+                console.log(`    [ff1-highlight] Closest anchor window snippet: "${bestWindowText.slice(0, 300)}"`);
+            }
             return null;
         }
 
-        const windowStart = Math.max(0, bestIdx - 80);
-        const windowFrags = frags.slice(windowStart, Math.min(frags.length, bestIdx + 520));
+        // Option-token gate: if we have option tokens but none matched near the anchor,
+        // we likely anchored on the wrong question in a multi-question page.
+        if (hasOptTokens && bestOptHits < 1) {
+            console.log(`    [ff1-highlight] REJECTED: stem matched but 0/${optTokens.length} option tokens found near anchor. Wrong question block.`);
+            return null;
+        }
+
+        const windowStart = Math.max(0, bestIdx - 30);
+        const windowFrags = frags.slice(windowStart, Math.min(frags.length, bestIdx + 120));
         const windowText = windowFrags.map(f => f.text).join('\n');
 
         // Options evidence gate: require at least 2 option bodies present in this window.
-        const optBodies = Object.values(originalOptionsMap || {}).map(v => this._normalizeOption(v)).filter(v => v.length >= 8);
+        const optBodies = Object.values(originalOptionsMap || {}).map(v => this._normalizeOption(v)).filter(v => v.length >= 2);
         let optionHits = 0;
         const normWindow = this._normalizeOption(windowText);
         const optionHitDetails = [];
@@ -2281,7 +2547,7 @@ export const SearchService = {
                     letter: verified.letter,
                     confidence: verified.confidence,
                     method: 'ff1-highlight',
-                    evidence: `ff1_hits=${bestScore} window_tokens=${bestHits} option_hits=${optionHits}`
+                    evidence: `ff1_hits=${bestScore} window_tokens=${bestStemHits} option_hits=${optionHits}`
                 };
             }
         }
@@ -2339,7 +2605,7 @@ export const SearchService = {
                         letter: outlierConf.letter,
                         confidence: outlierConf.confidence,
                         method: 'ff-outlier',
-                        evidence: `outlier_ff=${outlier.token} dominant_ff=${globalDominantFf} option_hits=${optionHits} window_tokens=${bestHits}`
+                        evidence: `outlier_ff=${outlier.token} dominant_ff=${globalDominantFf} option_hits=${optionHits} window_tokens=${bestStemHits}`
                     };
                 }
             }
@@ -2398,7 +2664,7 @@ export const SearchService = {
             letter: sigConf.letter,
             confidence: sigConf.confidence,
             method: 'css-signature',
-            evidence: `sig_score=${sigBestScore.toFixed(2)} margin=${sigMargin.toFixed(2)} option_hits=${optionHits} window_tokens=${bestHits}`
+            evidence: `sig_score=${sigBestScore.toFixed(2)} margin=${sigMargin.toFixed(2)} option_hits=${optionHits} window_tokens=${bestStemHits}`
         };
     },
 
@@ -2431,10 +2697,10 @@ export const SearchService = {
 
         const letter = String(optionLetter || '').toUpperCase();
         const letPosRe = letter
-            ? new RegExp(`(?:letra|alternativa|opcao)\\s*${letter}\\s*(?:e|eh)?\\s*(?:a\\s+)?(?:correta|certa|resposta)`, 'i')
+            ? new RegExp(`(?:letra|alternativa|opção)\\s*${letter}\\s*(?:e|eh)?\\s*(?:a\\s+)?(?:correta|certa|resposta)`, 'i')
             : null;
         const letNegRe = letter
-            ? new RegExp(`(?:letra|alternativa|opcao)\\s*${letter}\\s*(?:e|eh)?\\s*(?:a\\s+)?(?:incorreta|falsa|errada)`, 'i')
+            ? new RegExp(`(?:letra|alternativa|opção)\\s*${letter}\\s*(?:e|eh)?\\s*(?:a\\s+)?(?:incorreta|falsa|errada)`, 'i')
             : null;
 
         if (letPosRe && letPosRe.test(evidenceText || '')) return { stance: 'entails', score: 0.84 };
@@ -2767,7 +3033,7 @@ export const SearchService = {
         const originalOptionsMap = this._buildOptionsMap(questionForInference);
         const hasOptions = originalOptions && originalOptions.length >= 2;
 
-        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â Detect question polarity Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        // ═══ Detect question polarity ═══
         const questionPolarity = this._detectQuestionPolarity(questionStem);
         console.log(`SearchService: Polarity detected: ${questionPolarity}`);
 
@@ -2789,8 +3055,8 @@ export const SearchService = {
             'brainly.com': 0.9
         };
 
-        const riskyCombinedHosts = new Set(['passeidireto.com', 'brainly.com.br', 'brainly.com', 'studocu.com', 'scribd.com', 'pt.scribd.com']);
-        const trustedCombinedHosts = new Set(['qconcursos.com', 'qconcursos.com.br', 'google']);
+        const riskyCombinedHosts = new Set(['passeidireto.com', 'brainly.com.br', 'brainly.com', 'scribd.com', 'pt.scribd.com']);
+        const trustedCombinedHosts = new Set(['qconcursos.com', 'qconcursos.com.br', 'google', 'studocu.com']);
         const isTrustedCombinedHost = (host) => {
             const h = String(host || '').toLowerCase();
             if (!h) return false;
@@ -2823,7 +3089,8 @@ export const SearchService = {
 
         const aiEvidence = [];
         const collectedForCombined = [];
-        let aiExtractionCount = 0; // max 5 AI per-page extraction calls per search run
+        let aiExtractionCount = 0; // max AI per-page extraction calls per search run
+        let aiHtmlExtractionCount = 0; // max AI HTML extraction calls per search run
         const aiKnowledgePool = []; // Accumulated knowledge from AI extraction (partial + full)
         const runStats = {
             analyzed: 0,
@@ -2931,39 +3198,103 @@ export const SearchService = {
             console.groupEnd();
         }
 
-        // ═══ PARALLEL PAGE FETCH ═══
-        // Fetch all pages concurrently instead of sequentially.
-        // Sequential: 10 × (0.25s delay + ~2s fetch) ≈ 22s
-        // Parallel (5 workers): ~4-7s (limited by slowest page)
-        if (typeof onStatus === 'function') {
-            onStatus(`Fetching ${topResults.length} sources in parallel...`);
+        // ═══ BATCHED PAGE FETCH (with cross-search cache) ═══
+        // Fetch in 2 batches: first 5 results (usually contain the answer), then
+        // remaining 5 only if no strong answer found. Saves 2-4s when batch 1 suffices.
+        // Also reuses snapshots from previous searches (5-min TTL, max 30 URLs).
+        const _cacheNow = Date.now();
+        for (const [_cUrl, _cEntry] of this._snapshotCache) {
+            if (_cacheNow - _cEntry.fetchedAt > this._SNAPSHOT_CACHE_TTL) {
+                this._snapshotCache.delete(_cUrl);
+            }
         }
+
         const _prefetchedSnaps = new Map();
-        {
-            let _fetchIdx = 0;
-            const _fetchWorkers = Array.from(
-                { length: Math.min(5, topResults.length) },
+        let _cacheHits = 0;
+        for (const r of topResults) {
+            const cached = this._snapshotCache.get(r.link);
+            if (cached) {
+                _prefetchedSnaps.set(r.link, cached.snap);
+                _cacheHits++;
+                try {
+                    console.log(`  📦 [cache-hit] ${new URL(r.link).hostname} (age=${Math.round((_cacheNow - cached.fetchedAt) / 1000)}s)`);
+                } catch (_) { /* invalid URL */ }
+            }
+        }
+
+        const _BATCH_SIZE = 5;
+        const _storeFetchInCache = () => {
+            for (const [_sUrl, _sSnap] of _prefetchedSnaps) {
+                if (_sSnap?.ok && !this._snapshotCache.has(_sUrl)) {
+                    if (this._snapshotCache.size >= this._SNAPSHOT_CACHE_MAX) {
+                        const oldest = [...this._snapshotCache.entries()]
+                            .sort((a, b) => a[1].fetchedAt - b[1].fetchedAt)[0];
+                        if (oldest) this._snapshotCache.delete(oldest[0]);
+                    }
+                    this._snapshotCache.set(_sUrl, { snap: _sSnap, fetchedAt: _cacheNow });
+                }
+            }
+        };
+
+        const _fetchBatch = async (batch) => {
+            const toFetch = batch.filter(r => !_prefetchedSnaps.has(r.link));
+            if (toFetch.length === 0) return;
+            let idx = 0;
+            const workers = Array.from(
+                { length: Math.min(5, toFetch.length) },
                 async () => {
-                    while (_fetchIdx < topResults.length) {
-                        const _r = topResults[_fetchIdx++];
+                    while (idx < toFetch.length) {
+                        const r = toFetch[idx++];
                         try {
-                            const snap = await ApiService.fetchPageSnapshot(_r.link, {
+                            const snap = await ApiService.fetchPageSnapshot(r.link, {
                                 timeoutMs: 6500,
                                 maxHtmlChars: 1500000,
                                 maxTextChars: 12000
                             });
-                            _prefetchedSnaps.set(_r.link, snap);
+                            _prefetchedSnaps.set(r.link, snap);
                         } catch (e) {
-                            _prefetchedSnaps.set(_r.link, null);
+                            _prefetchedSnaps.set(r.link, null);
                         }
                     }
                 }
             );
-            await Promise.all(_fetchWorkers);
-        }
-        console.log(`SearchService: Parallel fetch complete — ${_prefetchedSnaps.size}/${topResults.length} pages fetched`);
+            await Promise.all(workers);
+        };
 
+        // Batch 1: first 5 results
+        const batch1 = topResults.slice(0, _BATCH_SIZE);
+        const batch2 = topResults.slice(_BATCH_SIZE);
+        if (typeof onStatus === 'function') {
+            const cached = batch1.filter(r => _prefetchedSnaps.has(r.link)).length;
+            const fetching = batch1.length - cached;
+            onStatus(fetching > 0 ? `Fetching batch 1/${batch2.length > 0 ? '2' : '1'} (${fetching} sources${cached > 0 ? `, ${cached} cached` : ''})...` : `Analyzing ${batch1.length} cached sources...`);
+        }
+        await _fetchBatch(batch1);
+        _storeFetchInCache();
+        console.log(`SearchService: Batch 1 fetch complete — ${_prefetchedSnaps.size} pages ready (${_cacheHits} from cache)`);
+
+        let _batch2Fetched = batch2.length === 0;
         for (const result of topResults) {
+            // Batch 2 trigger: after analyzing batch 1, check if we need more sources
+            if (!_batch2Fetched && runStats.analyzed >= _BATCH_SIZE) {
+                const { bestLetter, votes } = this._computeVotesAndState(sources);
+                const topVote = bestLetter ? (votes[bestLetter] || 0) : 0;
+                if (bestLetter && topVote >= 4.0) {
+                    console.log(`SearchService: ⚡ Batch 1 sufficient — skipping batch 2 (votes[${bestLetter}]=${topVote.toFixed(1)})`);
+                    _batch2Fetched = true; // skip fetch, but still mark as handled
+                    break; // exit analysis loop early
+                }
+                // Need more evidence — fetch batch 2
+                console.log(`SearchService: Batch 1 insufficient (topVote=${topVote.toFixed(1)}) — fetching batch 2 (${batch2.length} sources)...`);
+                if (typeof onStatus === 'function') {
+                    onStatus(`Fetching batch 2 (${batch2.length} more sources)...`);
+                }
+                await _fetchBatch(batch2);
+                _storeFetchInCache();
+                console.log(`SearchService: Batch 2 fetch complete — ${_prefetchedSnaps.size} total pages ready`);
+                _batch2Fetched = true;
+            }
+
             try {
                 const snippet = result.snippet || '';
                 const title = result.title || '';
@@ -3402,6 +3733,43 @@ export const SearchService = {
                     }
                     extracted = this._extractPdfLikeHighlightLetterFromHtml(snap?.html || '', questionStem, originalOptionsMap, originalOptions);
                     console.log(`  📄 PDF-highlight result: letter=${extracted?.letter || 'none'} method=${extracted?.method || 'none'} confidence=${extracted?.confidence || 0} evidence="${extracted?.evidence || 'none'}"`);
+
+                    // AI-HTML fallback: when ff1-highlight couldn't find the answer,
+                    // send a chunk of raw HTML to AI so it can detect visual highlights
+                    // using any CSS pattern (not just hardcoded ff1/ff4).
+                    if (!extracted?.letter && snap?.html && snap.html.length > 5000 && aiHtmlExtractionCount < 2) {
+                        const reconstructedQ = questionStem + '\n' + (originalOptions || []).join('\n');
+                        const optTokensForHtml = this._extractOptionTokens(reconstructedQ);
+                        const htmlSnippet = this._extractHtmlAroundQuestion(snap.html, questionStem, optTokensForHtml, 12000);
+                        if (htmlSnippet && htmlSnippet.length > 500) {
+                            console.log(`  🤖 [AI-HTML] Attempting AI HTML extraction (host=${hostHint}, snippetLen=${htmlSnippet.length})`);
+                            if (typeof onStatus === 'function') {
+                                onStatus(`AI analyzing HTML from ${hostHint}...`);
+                            }
+                            const aiHtmlResult = await ApiService.aiExtractFromHtml(htmlSnippet, questionForInference, hostHint);
+                            aiHtmlExtractionCount++;
+                            if (aiHtmlResult?.letter) {
+                                console.log(`  🤖 [AI-HTML] Found letter=${aiHtmlResult.letter} via ${aiHtmlResult.method}`);
+                                extracted = {
+                                    letter: aiHtmlResult.letter,
+                                    confidence: aiHtmlResult.confidence || 0.85,
+                                    method: aiHtmlResult.method || 'ai-html-extraction',
+                                    evidence: aiHtmlResult.evidence || ''
+                                };
+                            } else {
+                                console.log(`  🤖 [AI-HTML] No letter found`);
+                                if (aiHtmlResult?.knowledge) {
+                                    aiKnowledgePool.push({
+                                        host: hostHint,
+                                        knowledge: aiHtmlResult.knowledge,
+                                        topicSim: topicSimBase,
+                                        link, title
+                                    });
+                                }
+                            }
+                        }
+                    }
+
                     if (extracted?.letter) {
                         console.log(`  📄 PDF-highlight raw letter: ${extracted.letter} — attempting remap via scopedCombinedText (len=${scopedCombinedText.length})...`);
                         // Remap letter if source has shuffled options
@@ -3593,10 +3961,10 @@ export const SearchService = {
 
                 // 3.5) AI per-page deep extraction: when regex/DOM extractors all failed,
                 // send the page text to AI for a "pente fino" — finds answers that patterns miss.
-                // Truncating to 3500 chars drastically cuts prompt tokens while maintaining context.
-                if (aiExtractionCount < 1 && topicSimBase >= 0.35 && !obfuscation?.isObfuscated && scopedCombinedText.length >= 250) {
-                    const aiScopedText = this._buildQuestionScopedText(combinedText, questionForInference, 3500);
-                    console.log(`  🤖 [AI-EXTRACT] Attempting AI page extraction (call ${aiExtractionCount + 1}/1, topicSim=${topicSimBase.toFixed(3)}, textLen=${aiScopedText.length}, host=${hostHint})`);
+                // Truncating to 6000 chars (up from 3500) gives AI more context for multi-question pages.
+                if (aiExtractionCount < 3 && topicSimBase >= 0.35 && !obfuscation?.isObfuscated && scopedCombinedText.length >= 250) {
+                    const aiScopedText = this._buildQuestionScopedText(combinedText, questionForInference, 6000);
+                    console.log(`  🤖 [AI-EXTRACT] Attempting AI page extraction (call ${aiExtractionCount + 1}/3, topicSim=${topicSimBase.toFixed(3)}, textLen=${aiScopedText.length}, host=${hostHint})`);
                     if (typeof onStatus === 'function') {
                         onStatus(`AI analyzing ${hostHint || 'source'} (${runStats.analyzed}/${topResults.length})...`);
                     }
@@ -3630,8 +3998,8 @@ export const SearchService = {
                         const stemHits = stemTokens.filter(t => evNorm.includes(t)).length;
                         const stemRatio = stemTokens.length > 0 ? stemHits / stemTokens.length : 1;
                         console.log(`  🤖 [AI-EXTRACT] Cross-Q check: claimedHits=${claimedHits}/${claimedTokens.length} (${claimedRatio.toFixed(2)}) stemHits=${stemHits}/${stemTokens.length} (${stemRatio.toFixed(2)})`);
-                        if (claimedRatio < 0.25 && stemRatio < 0.4) {
-                            console.log(`  🤖 [AI-EXTRACT] ❌ Cross-question REJECTED: evidence relates to a different question on the page`);
+                        if ((claimedRatio < 0.38 && stemRatio < 0.25) || claimedRatio < 0.15) {
+                            console.log(`  🤖 [AI-EXTRACT] ❌ Cross-question REJECTED: evidence relates to a different question on the page (claimRatio < 0.38 & stemRatio < 0.25, or claimRatio < 0.15)`);
                             console.log(`  🤖 [AI-EXTRACT] Keeping knowledge but discarding letter ${aiExtracted.letter}`);
                             aiExtracted.letter = null;
                             // Strip misleading letter/resultado from knowledge so it
@@ -3651,7 +4019,7 @@ export const SearchService = {
                         console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
                         const baseWeight = getDomainWeight(link);
                         const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
-                        const weight = baseWeight + 2.2 + (quality * 0.35);
+                        const weight = baseWeight + 0.85 + (quality * 0.35);
                         const sourceId = `${hostHint || 'source'}:${sources.length + 1}`;
                         const evidenceBlock = this._buildEvidenceBlock({
                             questionFingerprint,
@@ -3917,7 +4285,7 @@ export const SearchService = {
                     if (riskyCombinedHosts.has(host) || e.obfuscated || e.paywalled) return false;
 
                     const mediumCoverage = hasMediumOptionCoverage(coverage);
-                    return isTrustedCombinedHost(host) && mediumCoverage && topicSim >= 0.45;
+                    return mediumCoverage && topicSim >= 0.45;
                 })
                 .slice(0, 5);
 
@@ -3947,9 +4315,10 @@ export const SearchService = {
             });
             console.log(`desperateMode=false | hasStrongExplicit=${hasStrongExplicit} | hasReliableOptionAligned=${hasReliableOptionAlignedSource} | minRelevantSources=${minRelevantSources}`);
 
-            if (hasOptions && (!hasReliableOptionAlignedSource || relevant.length < minRelevantSources)) {
+            if (hasOptions && !hasReliableOptionAlignedSource && relevant.length < minRelevantSources) {
                 console.log(`⛔ AI combined SKIPPED: weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
                 console.log(`SearchService: AI combined skipped - weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
+                return [];
             }
             const strongRelevant = relevant.filter((e) => {
                 const host = String(e.hostHint || this._getHostHintFromLink(e.link)).toLowerCase();
@@ -3995,11 +4364,11 @@ export const SearchService = {
                         && corroboratingSnippetCount >= 1
                     )
                     || (
-                        // Path 3: very high topic-similarity source provides strong anchor
-                        // even without corroborating snippets (e.g. studocu 403 + passeidireto).
+                        // Path 3: high topic-similarity source provides strong anchor
+                        // even without corroborating snippets.
                         hasReliableOptionAlignedSource
                         && relevant.length >= 2
-                        && relevant.some(e => (e.topicSim || 0) >= 0.85)
+                        && relevant.some(e => (e.topicSim || 0) >= 0.55)
                         && relevant.filter(e => (e.topicSim || 0) >= 0.40 && e.optionsMatch).length >= 2
                     )
                 );
@@ -4171,7 +4540,7 @@ export const SearchService = {
             }
         }
 
-        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â PAGE-LEVEL GABARITO TIE-BREAKER Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        // ═══ PAGE-LEVEL GABARITO TIE-BREAKER ═══
         if (pageGabarito) {
             const pgLetter = (pageGabarito || '').toUpperCase().trim();
             if (/^[A-E]$/.test(pgLetter)) {
@@ -4302,7 +4671,7 @@ export const SearchService = {
             ? `Letra ${bestLetter}: ${answerText}`.trim()
             : (sources[0]?.answer || '').trim();
 
-        // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â Determine evidence tier Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
+        // ═══ Determine evidence tier ═══
         const isAiOnly = sources.every(s => s.evidenceType === 'ai' || s.evidenceType === 'ai-combined');
         const hasExplicitEvidence = sources.some(s => s.evidenceType && s.evidenceType !== 'ai' && s.evidenceType !== 'ai-combined');
         let evidenceTier = 'EVIDENCE_WEAK';
@@ -4375,11 +4744,12 @@ export const SearchService = {
             googleMetaSignals,
             overview
         }];
+
         logRunSummary(resultState);
         return finalPayload;
     },
 
-    async searchAndRefine(questionText, originalQuestionWithOptions = '') {
+    async searchAndRefine(questionText, originalQuestionWithOptions = '', onStatus = null) {
         const questionForInference = originalQuestionWithOptions || questionText;
         const questionFingerprint = await this._canonicalHash(questionForInference);
         const buildInconclusiveNoEvidence = (reason) => [{

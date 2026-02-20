@@ -524,9 +524,14 @@ export const PopupController = {
 
     try {
       let ok = false;
+      let failReason = '';
       if (provider === 'groq') ok = await this.testGroqKey(key);
       if (provider === 'serper') ok = await this.testSerperKey(key);
-      if (provider === 'gemini') ok = await this.testGeminiKey(key);
+      if (provider === 'gemini') {
+        const geminiCheck = await this.testGeminiKey(key);
+        ok = !!geminiCheck?.ok;
+        failReason = geminiCheck?.reason || '';
+      }
 
       if (ok) {
         this.view.setTestButtonLoading(provider, 'ok');
@@ -548,8 +553,18 @@ export const PopupController = {
         }
       } else {
         this.view.setTestButtonLoading(provider, 'fail');
-        this.view.setSetupStatus(provider, this.t('setup.status.error'), 'fail');
-        this.view.showToast(this.t('setup.toast.invalidKey'), 'error');
+        if (provider === 'gemini' && failReason === 'quota') {
+          const quotaMsg = 'Chave válida, mas o projeto Gemini está sem cota (HTTP 429). Trocar a chave no mesmo projeto não resolve.';
+          this.view.setSetupStatus(provider, quotaMsg, 'fail');
+          this.view.showToast(quotaMsg, 'warning');
+        } else if (provider === 'gemini' && failReason === 'rate_limit') {
+          const rateMsg = 'Gemini respondeu 429 por limite de taxa. Tente novamente em alguns segundos.';
+          this.view.setSetupStatus(provider, rateMsg, 'fail');
+          this.view.showToast(rateMsg, 'warning');
+        } else {
+          this.view.setSetupStatus(provider, this.t('setup.status.error'), 'fail');
+          this.view.showToast(this.t('setup.toast.invalidKey'), 'error');
+        }
         input.classList.remove('input-valid');
       }
     } catch (error) {
@@ -608,10 +623,33 @@ export const PopupController = {
 
   async testGeminiKey(key) {
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
-      return response.ok;
+      const url = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gemini-2.5-flash',
+          messages: [{ role: 'user', content: 'healthcheck' }],
+          max_tokens: 1,
+          temperature: 0
+        })
+      });
+
+      if (response.ok) return { ok: true };
+
+      const errText = await response.text().catch(() => '');
+      if (response.status === 429) {
+        if (/exceeded your current quota|plan and billing|quota/i.test(errText)) {
+          return { ok: false, reason: 'quota' };
+        }
+        return { ok: false, reason: 'rate_limit' };
+      }
+      return { ok: false, reason: `http_${response.status}` };
     } catch (_) {
-      return false;
+      return { ok: false, reason: 'network' };
     }
   },
 
@@ -1009,7 +1047,7 @@ export const PopupController = {
 
         // Ignored stop words that appear in both stems and option lists (not discriminating)
         const stopWords = new Set([
-          'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questao',
+          'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questão',
           'considere', 'para', 'como', 'quando', 'cada', 'qual', 'onde', 'quais',
           'entre', 'sobre', 'essa', 'esse', 'este', 'esta'
         ]);
@@ -1025,6 +1063,9 @@ export const PopupController = {
 
         const optBodies = optionLines.map(l => l.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim());
         const allOptTokens = normalizeTokens(optBodies.join(' ')).filter(t => !stopWords.has(t));
+        const stemContextTokens = normalizeTokens(stemLines.join(' '));
+        const acronymContextHints = new Set(['formato', 'arquivo', 'arquivos', 'extensao', 'documento', 'documentos', 'json', 'xml', 'bson', 'yaml', 'csv', 'dados']);
+        const hasAcronymContext = stemContextTokens.some((t) => acronymContextHints.has(t));
 
         // If options are ALL very short (≤6 chars each, e.g. BSON, XLS, XML),
         // they're likely acronyms from a completely different question domain.
@@ -1034,7 +1075,11 @@ export const PopupController = {
         if (allOptTokens.length === 0) {
           // All options are too short to produce tokens — might be all-acronym
           if (allAcronym) {
-            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym, no tokens). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+            if (optionLines.length >= 4 && hasAcronymContext) {
+              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (all-acronym, contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+              return true;
+            }
+            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym, no contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
             return false;
           }
           return true;
@@ -1047,7 +1092,11 @@ export const PopupController = {
         const overlapRatio = sharedTokens / allOptTokens.length;
 
         if (allAcronym && overlapRatio === 0) {
-          console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym with 0 stem overlap). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+          if (optionLines.length >= 4 && hasAcronymContext) {
+            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (all-acronym with contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+            return true;
+          }
+          console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym with 0 stem overlap and no contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
           return false;
         }
 
@@ -1423,7 +1472,7 @@ export const PopupController = {
                 };
 
                 const stop = new Set([
-                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questao',
+                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questão',
                   'considere', 'tabela', 'dados', 'produto', 'produtos', 'registro', 'registros',
                   'para', 'com', 'sem', 'dos', 'das', 'uma', 'de', 'da', 'do', 'e', 'o', 'a',
                   'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos'
@@ -1448,7 +1497,29 @@ export const PopupController = {
                   for (const tk of anchorTokens) if (norm.includes(tk)) hits += 1;
                   if (hits < 4) continue;
 
-                  const extracted = extractOptionLines(raw);
+                  // Find the line where the question stem starts to avoid extracting options from previous questions
+                  const rawLines = raw.split(/\n/);
+                  let bestLineIdx = 0;
+                  let maxLineHits = 0;
+
+                  for (let i = 0; i < rawLines.length; i++) {
+                    const lineNorm = normalize(rawLines[i]);
+                    if (!lineNorm) continue;
+                    let lineHits = 0;
+                    for (const tk of anchorTokens) if (lineNorm.includes(tk)) lineHits++;
+
+                    if (lineHits > maxLineHits) {
+                      maxLineHits = lineHits;
+                      bestLineIdx = i;
+                      // Strong match found in this line, stop to avoid matching a repeated stem later
+                      if (lineHits >= 4) break;
+                    }
+                  }
+
+                  // Crop text from just before the matched line downwards
+                  const croppedRaw = rawLines.slice(Math.max(0, bestLineIdx - 1)).join('\n');
+
+                  const extracted = extractOptionLines(croppedRaw);
                   if (extracted.length < 2) continue;
 
                   const codeCount = extracted.filter((line) => {
@@ -1472,7 +1543,7 @@ export const PopupController = {
             const anchoredRelated = optionsAreContextuallyRelated(stemForOptions || bestQuestion, anchoredText);
             if (anchoredCount >= 2 && !anchoredRelated) {
               console.log(`AnswerHunter: HTML_ANCHORED_OPTIONS rejected=${anchoredCount} (context mismatch)`);
-            } else if (anchoredCount >= 2 && anchoredCount > currentCount) {
+            } else if (anchoredCount >= 2 && (anchoredCount >= currentCount || usedVisionOcr)) {
               optionsText = anchoredText;
               console.log(`AnswerHunter: HTML_ANCHORED_OPTIONS used=${anchoredCount} (replaced previous=${currentCount})`);
             } else if (anchoredCount >= 2) {
@@ -1501,7 +1572,7 @@ export const PopupController = {
                 const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?/i.test(String(body || ''));
 
                 const stop = new Set([
-                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questao',
+                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questão',
                   'considere', 'tabela', 'dados', 'produto', 'produtos', 'registro', 'registros',
                   'para', 'com', 'sem', 'dos', 'das', 'uma', 'de', 'da', 'do', 'e', 'o', 'a',
                   'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos'
@@ -1906,6 +1977,7 @@ export const PopupController = {
         return;
       }
 
+      console.log('AnswerHunter: Final results to display:', finalResults);
       const withSaved = finalResults.map((item) => ({
         ...item,
         question: displayQuestion,
