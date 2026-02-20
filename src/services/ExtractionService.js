@@ -590,14 +590,18 @@ export const ExtractionService = {
                     raw = cleanText(btn.innerText || btn.textContent || '');
                 }
 
-                const body = cleanText(raw.replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim());
+                let body = cleanText(raw.replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim());
 
-                // Validate it is not a false positive (e.g. "A UX" is not an alternative)
-                // If body starts with very short word followed by uppercase, it's likely a statement
-                const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
-                const isQuestionLike = isLikelyQuestionBody(body);
+                const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+                const idx = body.search(noise);
+                if (idx > 1) body = body.slice(0, idx).trim();
+                body = body.replace(/[;:,\-.\s]+$/, '');
 
-                if (letter && body && body.length >= 5 && !seenLetters.has(letter) && !isFalsePositive && !isQuestionLike) {
+                const isFalsePositive = !body || /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
+                // Only flag as question-like if body is long enough to reliably match
+                const isQuestionLike = body.length >= 30 && isLikelyQuestionBody(body);
+
+                if (letter && body && body.length >= 1 && !seenLetters.has(letter) && !isFalsePositive && !isQuestionLike) {
                     options.push(`${letter}) ${body}`);
                     seenLetters.add(letter);
                 }
@@ -619,7 +623,8 @@ export const ExtractionService = {
                     const body = cleanText(m[2]);
                     // Validate it is not a false positive (e.g. "A UX" is not an alternative)
                     const isFalsePositive = /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body);
-                    const isQuestionLike = isLikelyQuestionBody(body);
+                    // Only reject as question-like if body is long enough to reliably classify
+                    const isQuestionLike = body.length >= 30 && isLikelyQuestionBody(body);
 
                     if (!isFalsePositive && !isQuestionLike) {
                         if (current) alternatives.push(current);
@@ -630,10 +635,26 @@ export const ExtractionService = {
                     current.body = cleanText(`${current.body} ${line}`);
                 }
             }
-            if (current && alternatives.length < 5) alternatives.push(current);
+
+            if (current) {
+                let body = cleanText(current.body || '');
+                const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+                const idx = body.search(noise);
+                if (idx > 1) body = body.slice(0, idx).trim();
+                body = body.replace(/[;:,\-.\s]+$/, '');
+                current.body = body;
+                if (body && alternatives.length < 5) alternatives.push(current);
+            }
+
+            for (const alt of alternatives) {
+                const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+                const idx = alt.body.search(noise);
+                if (idx > 1) alt.body = alt.body.slice(0, idx).trim();
+                alt.body = alt.body.replace(/[;:,\-.\s]+$/, '');
+            }
 
             let merged = alternatives
-                .filter(a => a.body && a.body.length >= 2)
+                .filter(a => a.body && a.body.length >= 1)
                 .slice(0, 5)
                 .map(a => `${a.letter}) ${a.body}`);
 
@@ -728,10 +749,10 @@ export const ExtractionService = {
             const qNorm = normalize(questionText).slice(0, 240);
 
             const patterns = [
-                { re: /resposta\\s+correta\\s*[:\\-]\\s*(?:letra\\s+)?([A-E])\\b/gi, confidence: 0.95, source: 'resposta-correta' },
-                { re: /gabarito\\s*[:\\-]\\s*(?:letra\\s+)?([A-E])\\b/gi, confidence: 0.95, source: 'gabarito' },
-                { re: /alternativa\\s+correta\\s*[:\\-]\\s*(?:letra\\s+)?([A-E])\\b/gi, confidence: 0.85, source: 'alternativa-correta' },
-                { re: /\\bletra\\s+([A-E])\\b\\s*(?:é|e|esta|est[aá])\\s*(?:a\\s+)?(?:correta|certa|verdadeira)\\b/gi, confidence: 0.75, source: 'letra-correta' }
+                { re: /resposta\s+correta\s*[:\-]\s*(?:letra\s+)?([A-E])\b/gi, confidence: 0.95, source: 'resposta-correta' },
+                { re: /gabarito\s*[:\-]\s*(?:letra\s+)?([A-E])\b/gi, confidence: 0.95, source: 'gabarito' },
+                { re: /alternativa\s+correta\s*[:\-]\s*(?:letra\s+)?([A-E])\b/gi, confidence: 0.85, source: 'alternativa-correta' },
+                { re: /\bletra\s+([A-E])\b\s*(?:é|e|esta|est[aá])\s*(?:a\s+)?(?:correta|certa|verdadeira)\b/gi, confidence: 0.75, source: 'letra-correta' }
             ];
 
             let best = null;
@@ -744,7 +765,7 @@ export const ExtractionService = {
 
                     const start = Math.max(0, m.index - 180);
                     const end = Math.min(raw.length, m.index + 220);
-                    const evidence = raw.substring(start, end).replace(/\\s+/g, ' ').trim();
+                    const evidence = raw.substring(start, end).replace(/\s+/g, ' ').trim();
 
                     let conf = p.confidence;
                     if (qNorm && qNorm.length >= 40) {

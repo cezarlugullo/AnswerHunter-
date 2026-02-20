@@ -19,7 +19,7 @@ export const SettingsModel = {
         geminiApiKey: '',
         geminiApiUrl: 'https://generativelanguage.googleapis.com/v1beta',
         geminiModel: 'gemini-2.5-flash',
-        geminiModelSmart: 'gemini-2.5-pro',
+        geminiModelSmart: 'gemini-2.5-flash',
         primaryProvider: 'groq',
         setupCompleted: false,
         requiredProviders: {
@@ -102,6 +102,12 @@ export const SettingsModel = {
             chrome.storage.sync.get(['settings'], (result) => {
                 const stored = result.settings || {};
                 const merged = { ...this.defaults, ...stored };
+
+                // Force hot-migrate any old 'gemini-2.5-pro' to 'gemini-2.5-flash'
+                if (merged.geminiModelSmart === 'gemini-2.5-pro') {
+                    merged.geminiModelSmart = 'gemini-2.5-flash';
+                }
+
                 merged.language = this.normalizeLanguage(merged.language || this.getBrowserDefaultLanguage());
                 merged.requiredProviders = this.normalizeRequiredProviders(merged.requiredProviders);
                 merged.setupCompleted = this.computeSetupCompleted(merged);

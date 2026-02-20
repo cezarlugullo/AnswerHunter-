@@ -118,7 +118,7 @@ export const ApiService = {
     async _geminiConsensus(systemMsg, userPrompt, letterPattern, opts = {}) {
         const settings = await this._getSettings();
         const smartModel = opts.smart !== false
-            ? (settings.geminiModelSmart || 'gemini-2.5-flash')
+            ? (settings.geminiModelSmart || 'gemini-2.5-pro')
             : (settings.geminiModel || 'gemini-2.5-flash');
         const flashModel = settings.geminiModel || 'gemini-2.5-flash';
         const temps = [0.1, 0.4, 0.7];
@@ -305,7 +305,7 @@ export const ApiService = {
      */
     async _fetch(url, options) {
         const maxRetries = 3;
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
             try {
                 const response = await fetch(url, options);
                 if (response.ok) {
@@ -325,7 +325,7 @@ export const ApiService = {
                     }
 
                     // Short retry-after (< 30s): per-minute rate limit, wait once and retry
-                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 30) {
+                    if (attempt < maxRetries && retryAfter > 0 && retryAfter <= 30) {
                         const backoffMs = Math.ceil(retryAfter * 1000) + 500;
                         console.log(`AnswerHunter: Rate limit 429, aguardando ${backoffMs}ms (retry-after=${retryAfter}s, tentativa ${attempt + 1}/${maxRetries})...`);
                         await new Promise(resolve => setTimeout(resolve, backoffMs));
@@ -342,7 +342,7 @@ export const ApiService = {
             } catch (error) {
                 // Never retry quota-exhaustion — the flag is already set, retrying just wastes 429s
                 const isQuotaError = error.message?.includes('GROQ_QUOTA_EXHAUSTED');
-                if (attempt < maxRetries - 1 && !isQuotaError && !error.message?.includes('HTTP Error')) {
+                if (attempt < maxRetries && !isQuotaError && !error.message?.includes('HTTP Error')) {
                     const jitter = 500 + Math.random() * 500;
                     await new Promise(resolve => setTimeout(resolve, jitter));
                     continue;
@@ -553,14 +553,14 @@ Analise o texto passo a passo e responda no formato acima:`;
                 return null;
             }
             try {
-                console.log(`  🔬 [aiExtract] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
+                console.log(`  🔬 [aiExtract] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-pro'})...`);
                 const result = await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
                 ], {
                     temperature: 0.05,
-                    max_tokens: 300,
-                    model: 'gemini-2.5-flash' // Force fast model for heavy extraction loop
+                    max_tokens: 600,
+                    model: settings.geminiModelSmart || 'gemini-2.5-pro'
                 });
                 console.log(`  🔬 [aiExtract] Gemini response: ${result ? result.length + ' chars' : 'null'}`);
                 if (result) console.log(`  🔬 [aiExtract] Gemini preview: "${result.substring(0, 200)}"`);
@@ -591,7 +591,7 @@ Analise o texto passo a passo e responda no formato acima:`;
                         model: groqModelSmart,
                         messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
                         temperature: 0.05,
-                        max_tokens: 300
+                        max_tokens: 600
                     })
                 }));
                 const result = data?.choices?.[0]?.message?.content?.trim() || null;
@@ -604,35 +604,21 @@ Analise o texto passo a passo e responda no formato acima:`;
             }
         };
 
-        /* ---------- Rotate Execution with Rate Limit Awareness ---------- */
-        let content = null;
-        const fallbackChain = [];
-
-        if (settings.geminiApiKey) fallbackChain.push({ name: 'gemini', fn: tryGemini });
-
-        // Only append Groq if it has an API key AND isn't completely exhausted
-        if (settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) {
-            fallbackChain.push({ name: 'groq', fn: tryGroq });
-        }
-
-        // We will randomly shuffle the chain if we have more than 1 available provider
-        // but heavily weight Gemini to be primary due to the 15 RPM / 1M TPM free limits.
+        /* ---------- Execute with provider routing ---------- */
         const geminiPrimary = await this._isGeminiPrimary();
-        if (!geminiPrimary && fallbackChain.length > 1) {
-            // Groq primary => reverse order
-            fallbackChain.reverse();
-        }
-
-        for (const provider of fallbackChain) {
-            content = await provider.fn();
-
-            // If the provider returned a valid text and it wasn't a hard NAO_ENCONTRADO, keep it.
-            if (content && content.length >= 10 && !/^RESULTADO:\s*NAO_ENCONTRADO/im.test(content)) {
-                break;
+        let content = null;
+        if (geminiPrimary) {
+            content = await tryGemini();
+            if (!content || /^RESULTADO:\s*NAO_ENCONTRADO/im.test(content)) {
+                const groqContent = await tryGroq();
+                if (groqContent && !/^RESULTADO:\s*NAO_ENCONTRADO/im.test(groqContent)) content = groqContent;
             }
-            // If provider returned null (likely quota error or crash) or explicitly NAO_ENCONTRADO,
-            // we loop to the next provider in the chain.
-            console.log(`  🔬 [aiExtract] ${provider.name} failed or NAO_ENCONTRADO, trying next fallback...`);
+        } else {
+            content = await tryGroq();
+            if (!content || /^RESULTADO:\s*NAO_ENCONTRADO/im.test(content)) {
+                const geminiContent = await tryGemini();
+                if (geminiContent && !/^RESULTADO:\s*NAO_ENCONTRADO/im.test(geminiContent)) content = geminiContent;
+            }
         }
 
         if (!content || content.length < 10) {
@@ -754,11 +740,11 @@ Letra B: TCP
         const tryGemini = async () => {
             if (!settings.geminiApiKey) return null;
             try {
-                console.log(`  🧠 [aiReflect] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
+                console.log(`  🧠 [aiReflect] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-pro'})...`);
                 return await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                ], { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-pro' });
             } catch (e) {
                 console.warn(`  🧠 [aiReflect] Gemini error:`, e?.message || e);
                 return null;
@@ -1751,7 +1737,7 @@ Letra B: TCP
 
         const byInline = () => {
             const options = [];
-            const inlinePattern = /(^|[\s])([A-E])\s*[\)\.\-:]\s*([^\n]*?)(?=(?:\s)[A-E]\s*[\)\.\-:]|$)/gi;
+            const inlinePattern = /(^|[\s])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:\s)[A-E]\s*[\)\.\-:]|$)/gi;
             let m;
             while ((m = inlinePattern.exec(normalized)) !== null) {
                 const letter = m[2].toUpperCase();
@@ -1813,7 +1799,7 @@ Letra B: TCP
             // Try to split by sentences that look like alternatives
             // Pattern: sentences starting with uppercase after dot/newline and having medium length
             const sentences = afterMarker
-                .split(/(?<=[.!])\s+(?=[A-Z])/)
+                .split(/(?<=[.!])\s+(?=[A-ZÀ-ÚÉ])/)
                 .map(s => s.trim())
                 .filter(s => {
                     // Filters sentences that look like valid alternatives
@@ -2081,7 +2067,7 @@ Se incerto: NAO_ENCONTRADO`
 
         const runGeminiConsensus = async () => {
             if (!settings.geminiApiKey) return [];
-            const geminiModel = settings.geminiModelSmart || 'gemini-2.5-flash';
+            const geminiModel = settings.geminiModelSmart || 'gemini-2.5-pro';
             const responses = [];
             for (let i = 0; i < Math.min(maxAttempts, prompts.length); i++) {
                 try {
@@ -2187,7 +2173,7 @@ INSTRUÇÕES:
                 const content = await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.1, max_tokens: 200, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                ], { temperature: 0.1, max_tokens: 200, model: settings.geminiModelSmart || 'gemini-2.5-pro' });
                 console.log('AnswerHunter: Resposta Gemini bruta:', content);
                 return parseResponse((content || '').trim());
             } catch (e) {
@@ -2347,7 +2333,7 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
         // ── Groq PRIMARY → Gemini fallback ──
         console.log('AnswerHunter: Inference via Groq (primary)...');
         const groqResult = await this._groqConsensus(systemMsg, basePrompt, letterPattern, { model: groqModelSmart });
-        if (groqResult.response && groqResult.attempts.length > 0) {
+        if (groqResult.response) {
             console.log('AnswerHunter: Groq primary inference votes:', groqResult.votes);
             return groqResult.response;
         }
@@ -2574,7 +2560,7 @@ Ou: NAO_ENCONTRADO`;
                 ], {
                     temperature: 0.10,
                     max_tokens: 600,
-                    model: settings.geminiModelSmart || 'gemini-2.5-flash'
+                    model: settings.geminiModelSmart || 'gemini-2.5-pro'
                 });
                 const c = r?.trim() || '';
                 if (isValid(c)) { console.log('AnswerHunter: Knowledge answer (Gemini):', c.substring(0, 120)); return c; }
@@ -2782,301 +2768,111 @@ REGRAS:
         }
 
         // Groq for open-ended (primary or fallback)
-        if (settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) {
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${groqApiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: groqModelSmart,
-                        messages: [
-                            { role: 'system', content: openSysMsg },
-                            { role: 'user', content: prompt }
-                        ],
-                        temperature: 0.15,
-                        max_tokens: 300
-                    })
-                }));
-                const content = data.choices?.[0]?.message?.content?.trim() || '';
-                if (content && content.length > 5 && !/^(NAO_ENCONTRADO|INCONCLUSIVO)/i.test(content)) return content;
-            } catch (error) {
-                console.warn('AnswerHunter: Groq open-ended failed:', error?.message || String(error));
-            }
+        try {
+            const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${groqApiKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: groqModelSmart,
+                    messages: [
+                        { role: 'system', content: openSysMsg },
+                        { role: 'user', content: prompt }
+                    ],
+                    temperature: 0.15,
+                    max_tokens: 300
+                })
+            }));
+            const content = data.choices?.[0]?.message?.content?.trim() || '';
+            if (content) return content;
+        } catch (error) {
+            console.warn('AnswerHunter: Groq open-ended failed:', error?.message || String(error));
         }
 
         // Final fallback for open-ended
-        console.log('AnswerHunter: Trying Gemini fallback for open-ended...');
-        const geminiOpenFallback = await this._callGemini([
-            { role: 'system', content: openSysMsg },
-            { role: 'user', content: prompt }
-        ], { temperature: 0.15, max_tokens: 300 });
-        if (geminiOpenFallback) return geminiOpenFallback;
-
+        if (!geminiPrimaryOpen) {
+            const geminiOpen = await this._callGemini([
+                { role: 'system', content: openSysMsg },
+                { role: 'user', content: prompt }
+            ], { temperature: 0.15, max_tokens: 300 });
+            if (geminiOpen) return geminiOpen;
+        }
         return null;
     },
 
     /**
-     * Define a term in context (contextual dictionary tooltip)
+     * Study Feature: Tutor Mode
+     * Explains the logic and reasoning behind the answer step-by-step.
+     * @param {string} question 
+     * @param {string} answer 
+     * @param {string} context - The knowledge/evidence
+     * @returns {Promise<string>}
      */
-    async defineTerm(term, contextText = '') {
+    async generateTutorExplanation(question, answer, context) {
         const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelFast } = settings;
+        const language = settings.language || 'en';
+        const isPtBr = language === 'pt-BR';
 
-        const systemMsg = 'Você é um dicionário educacional conciso. Defina termos de forma clara e breve (2-3 linhas).';
-        const prompt = contextText
-            ? `Defina o termo "${term}" considerando o seguinte contexto educacional:\n\n${contextText.slice(0, 500)}\n\nDefinição breve:`
-            : `Defina o termo "${term}" de forma breve e educacional. Definição:`;
+        const systemMsg = isPtBr
+            ? 'Você é um professor particular focado em ajudar estudantes. Você deve responder à pergunta de acompanhamento do aluno. Use APENAS o contexto fornecido (a Questão Original e a Resposta). Seja prestativo, claro e conciso.'
+            : "You are a private tutor focused on helping students. You must answer the student's follow-up question. Use ONLY the provided context (the Original Question and Answer). Be helpful, clear, and concise.";
+
+        let prompt = isPtBr
+            ? `# Questão Original\n"${question.substring(0, 500)}"\n\n# Resposta da Questão\n"${answer.substring(0, 500)}"\n\n# Contexto Adicional\n"${context.substring(0, 500)}"\n\nResponda as dúvidas do aluno baseando-se nestas informações.`
+            : `# Original Question\n"${question.substring(0, 500)}"\n\n# Question Answer\n"${answer.substring(0, 500)}"\n\n# Additional Context\n"${context.substring(0, 500)}"\n\nAnswer the student's doubts based on this information.`;
+
+        const messages = [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }];
+
+        // Append previous chat history
+        if (Array.isArray(history)) {
+            history.forEach(msg => {
+                if (msg.role === 'user' || msg.role === 'assistant') {
+                    messages.push(msg);
+                }
+            });
+        }
+
+        // Append current query
+        messages.push({ role: 'user', content: userQuery.substring(0, 500) });
 
         const tryGemini = async () => {
             if (!settings.geminiApiKey) return null;
-            try {
-                return await this._callGemini([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.2, max_tokens: 150, model: settings.geminiModel || 'gemini-2.5-flash' });
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini defineTerm error:', e?.message || e);
-                return null;
-            }
+            return await this._callGemini(messages, { temperature: 0.5, max_tokens: 600, model: settings.geminiModelFast || 'gemini-1.5-flash' });
         };
 
         const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            return await this._withGroqRateLimit(async () => {
+                const data = await this._fetch(settings.groqApiUrl, {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
+                    headers: { 'Authorization': \`Bearer \${settings.groqApiKey}\`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        model: groqModelFast,
-                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                        temperature: 0.2,
-                        max_tokens: 150
+                        model: settings.groqModelSmart || 'llama-3.3-70b-versatile',
+                        messages: messages,
+                        temperature: 0.5, max_tokens: 600
                     })
-                }));
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) {
-                console.warn('AnswerHunter: Groq defineTerm error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const geminiPrimary = await this._isGeminiPrimary();
-        let result = geminiPrimary ? await tryGemini() : await tryGroq();
-        if (!result) result = geminiPrimary ? await tryGroq() : await tryGemini();
-        return result || `Termo não encontrado: ${term}`;
-    },
-
-    /**
-     * Generate a step-by-step tutor explanation for a question and answer
-     */
-    async generateTutorExplanation(question, answer, context = '') {
-        const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
-
-        const systemMsg = 'Você é um tutor educacional especializado. Explique conceitos de forma didática, passo a passo.';
-        const prompt = `Explique de forma didática e passo a passo por que a resposta correta para a questão abaixo é a alternativa indicada.
-
-QUESTÃO:
-${question.slice(0, 1500)}
-
-RESPOSTA CORRETA:
-${answer.slice(0, 500)}
-
-${context ? `CONTEXTO ADICIONAL:\n${context.slice(0, 300)}\n` : ''}
-INSTRUÇÕES:
-- Use linguagem clara e acessível para estudantes
-- Explique o raciocínio por trás da resposta
-- Mencione por que as outras alternativas estão incorretas se possível
-- Use marcadores e parágrafos para facilitar a leitura
-- Seja objetivo (máximo 300 palavras)`;
-
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                return await this._callGemini([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.3, max_tokens: 600, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini generateTutorExplanation error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: groqModelSmart,
-                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                        temperature: 0.3,
-                        max_tokens: 600
-                    })
-                }));
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) {
-                console.warn('AnswerHunter: Groq generateTutorExplanation error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const geminiPrimary = await this._isGeminiPrimary();
-        let result = geminiPrimary ? await tryGemini() : await tryGroq();
-        if (!result) result = geminiPrimary ? await tryGroq() : await tryGemini();
-        return result || 'Não foi possível gerar a explicação. Tente novamente.';
-    },
-
-    /**
-     * Generate a similar multiple-choice question to test the user's knowledge
-     * Returns { questionText, optionsMap, answerLetter } or throws on failure
-     */
-    async generateSimilarQuestion(originalQuestion) {
-        const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
-
-        const systemMsg = 'Você cria questões de múltipla escolha educacionais. Responda APENAS em JSON válido, sem texto adicional.';
-        const prompt = `Com base na questão abaixo, crie UMA questão similar de múltipla escolha com 4 alternativas (A, B, C, D).
-
-QUESTÃO ORIGINAL:
-${originalQuestion.slice(0, 1000)}
-
-FORMATO DE RESPOSTA (JSON exato, sem markdown):
-{
-  "questionText": "enunciado da nova questão",
-  "optionsMap": {
-    "A": "texto da alternativa A",
-    "B": "texto da alternativa B",
-    "C": "texto da alternativa C",
-    "D": "texto da alternativa D"
-  },
-  "answerLetter": "A"
-}
-
-REGRAS:
-- A questão deve testar o mesmo conceito, mas com abordagem diferente
-- Apenas UMA alternativa deve ser correta
-- As alternativas incorretas devem ser plausíveis
-- Responda APENAS com o JSON, sem explicações adicionais`;
-
-        const parseResponse = (content) => {
-            if (!content) return null;
-            try {
-                const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-                const parsed = JSON.parse(cleaned);
-                if (!parsed.questionText || !parsed.optionsMap || !parsed.answerLetter) return null;
-                return parsed;
-            } catch (_) {
-                return null;
-            }
-        };
-
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                const content = await this._callGemini([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.5, max_tokens: 500, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-                return parseResponse(content);
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini generateSimilarQuestion error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: groqModelSmart,
-                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                        temperature: 0.5,
-                        max_tokens: 500
-                    })
-                }));
-                return parseResponse(data?.choices?.[0]?.message?.content?.trim() || '');
-            } catch (e) {
-                console.warn('AnswerHunter: Groq generateSimilarQuestion error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const geminiPrimary = await this._isGeminiPrimary();
-        let result = geminiPrimary ? await tryGemini() : await tryGroq();
-        if (!result) result = geminiPrimary ? await tryGroq() : await tryGemini();
-        if (!result) throw new Error('Não foi possível gerar uma questão similar.');
-        return result;
-    },
-
-    /**
-     * Answer a follow-up question from the user in the context of a previous question/answer
-     */
-    async answerFollowUp(originalQuestion, originalAnswer, context, userMessage, messageHistory = []) {
-        const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
-
-        const systemMsg = `Você é um tutor educacional. O estudante acabou de resolver uma questão e tem dúvidas.
-Questão original: ${originalQuestion.slice(0, 800)}
-Resposta correta: ${originalAnswer.slice(0, 300)}
-${context ? `Contexto: ${context.slice(0, 200)}` : ''}
-
-Responda de forma clara, didática e concisa (máximo 200 palavras). Não repita a questão inteira.`;
-
-        // Build message history for multi-turn context (cap at last 6 messages)
-        const recentHistory = messageHistory.slice(-6);
-        const messages = [
-            { role: 'system', content: systemMsg },
-            ...recentHistory.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: userMessage }
-        ];
-
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                return await this._callGemini(messages, {
-                    temperature: 0.3,
-                    max_tokens: 400,
-                    model: settings.geminiModel || 'gemini-2.5-flash'
                 });
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini answerFollowUp error:', e?.message || e);
-                return null;
-            }
+                return data?.choices?.[0]?.message?.content?.trim();
+            });
         };
 
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: groqModelSmart,
-                        messages,
-                        temperature: 0.3,
-                        max_tokens: 400
-                    })
-                }));
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) {
-                console.warn('AnswerHunter: Groq answerFollowUp error:', e?.message || e);
-                return null;
+        const isGeminiPrimary = await this._isGeminiPrimary();
+        let response = null;
+
+        try {
+            if (isGeminiPrimary) {
+                response = await tryGemini();
+                if (!response) response = await tryGroq();
+            } else {
+                response = await tryGroq();
+                if (!response) response = await tryGemini();
             }
-        };
+        } catch (err) {
+            console.warn('AnswerHunter Chat error:', err);
+        }
 
-        const geminiPrimary = await this._isGeminiPrimary();
-        let result = geminiPrimary ? await tryGemini() : await tryGroq();
-        if (!result) result = geminiPrimary ? await tryGroq() : await tryGemini();
-        return result || 'Não foi possível processar sua pergunta. Tente novamente.';
-    },
-
+        return response || (isPtBr ? 'Desculpe, não consegui processar sua dúvida.' : 'Sorry, I could not process your question.');
+    }
 };

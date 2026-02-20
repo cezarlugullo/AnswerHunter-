@@ -192,7 +192,7 @@ export const PopupController = {
 
       const selection = window.getSelection();
       const text = selection.toString().trim();
-      
+
       const existing = document.querySelector('.dict-tooltip');
       if (existing) existing.remove();
 
@@ -206,7 +206,7 @@ export const PopupController = {
             const tooltip = document.createElement('div');
             tooltip.className = 'dict-tooltip';
             tooltip.innerHTML = `<span class="material-symbols-rounded spin-loading" style="font-size:14px; vertical-align: middle;">sync</span> <span style="font-size:12px; margin-left:4px; vertical-align: middle;">Definindo...</span>`;
-            
+
             tooltip.style.position = 'absolute';
             tooltip.style.left = `${Math.max(10, rect.left + window.scrollX)}px`;
             tooltip.style.top = `${rect.bottom + window.scrollY + 5}px`;
@@ -344,7 +344,7 @@ export const PopupController = {
 
     // Set model selects (settings panel only)
     const groqModel = settings.groqModelSmart || 'llama-3.3-70b-versatile';
-    const geminiModel = settings.geminiModelSmart || 'gemini-2.5-pro';
+    const geminiModel = settings.geminiModelSmart || 'gemini-2.5-flash';
     if (this.view.elements.selectGroqModel) {
       this.view.elements.selectGroqModel.value = groqModel;
     }
@@ -427,7 +427,7 @@ export const PopupController = {
       this.updateProviderHint('groq');
     }
     const groqModel = this.view.elements.selectGroqModel?.value || 'llama-3.3-70b-versatile';
-    const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-pro';
+    const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-flash';
 
     await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel });
     console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}`);
@@ -949,11 +949,16 @@ export const PopupController = {
       const isValidOptionLine = (line) => {
         const m = String(line || '').trim().match(/^([A-E])\s*[\)\.\-:]\s*(.+)$/i);
         if (!m) return false;
-        const body = String(m[2] || '').replace(/\s+/g, ' ').trim();
-        if (!body || body.length < 8) return false;
+        let body = String(m[2] || '').replace(/\s+/g, ' ').trim();
+        const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+        const idx = body.search(noise);
+        if (idx > 1) body = body.slice(0, idx).trim();
+        body = body.replace(/[;:,\-.\s]+$/, '');
+
+        if (!body || body.length < 1) return false;
         if (/^[A-E]\s*[\)\.\-:]?\s*$/i.test(body)) return false;
         if (/^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(body)) return false;
-        if (/^(?:resposta|gabarito|alternativa\s+correta)\b/i.test(body)) return false;
+        if (/^(?:resposta|gabarito|alternativa\s+correta)\b/i.test(body) && body.length < 60) return false;
         return true;
       };
 
@@ -986,6 +991,67 @@ export const PopupController = {
         const codeCount = entries.filter((e) => e.codeLike).length;
         const codeRatio = entries.length > 0 ? (codeCount / entries.length) : 0;
         return { entries, letters, tokenSet, codeCount, codeRatio };
+      };
+
+      // Cross-question contamination guard:
+      // Returns false when extracted options look like they belong to a DIFFERENT question
+      // from the captured stem. This prevents options from a visible question below/above
+      // the target from being merged into the wrong stem.
+      const optionsAreContextuallyRelated = (stemText, optionsTextToCheck) => {
+        if (!stemText || !optionsTextToCheck) return true; // Can't determine—allow
+        const normalizeTokens = (s) => String(s || '')
+          .toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, ' ')
+          .trim()
+          .split(/\s+/)
+          .filter(t => t.length >= 4);
+
+        // Ignored stop words that appear in both stems and option lists (not discriminating)
+        const stopWords = new Set([
+          'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questao',
+          'considere', 'para', 'como', 'quando', 'cada', 'qual', 'onde', 'quais',
+          'entre', 'sobre', 'essa', 'esse', 'este', 'esta'
+        ]);
+
+        const stemLines = stemText.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]/i));
+        const stemNorm = normalizeTokens(stemLines.join(' ')).filter(t => !stopWords.has(t));
+        if (stemNorm.length < 5) return true; // Stem too short—allow
+
+        const stemSet = new Set(stemNorm);
+
+        const optionLines = optionsTextToCheck.split('\n').filter(l => l.trim().match(/^([A-E])\s*[\)\.\-:]/i));
+        if (optionLines.length < 2) return true;
+
+        const optBodies = optionLines.map(l => l.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim());
+        const allOptTokens = normalizeTokens(optBodies.join(' ')).filter(t => !stopWords.has(t));
+
+        // If options are ALL very short (≤6 chars each, e.g. BSON, XLS, XML),
+        // they're likely acronyms from a completely different question domain.
+        const avgOptLength = optBodies.reduce((sum, b) => sum + b.length, 0) / optBodies.length;
+        const allAcronym = avgOptLength <= 6 && optBodies.every(b => b.length <= 8);
+
+        if (allOptTokens.length === 0) {
+          // All options are too short to produce tokens — might be all-acronym
+          if (allAcronym) {
+            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym, no tokens). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+            return false;
+          }
+          return true;
+        }
+
+        let sharedTokens = 0;
+        for (const tk of allOptTokens) {
+          if (stemSet.has(tk)) sharedTokens++;
+        }
+        const overlapRatio = sharedTokens / allOptTokens.length;
+
+        if (allAcronym && overlapRatio === 0) {
+          console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym with 0 stem overlap). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+          return false;
+        }
+
+        return true;
       };
 
       let bestQuestion = '';
@@ -1187,6 +1253,25 @@ export const PopupController = {
         }
       }
 
+      // If OCR/DOM injected options from another visible question, drop them early.
+      {
+        const optionLinesFromBest = String(bestQuestion || '')
+          .split('\n')
+          .filter((line) => line.trim().match(/^([A-E])\s*[\)\.\-:]\s+/i));
+        if (optionLinesFromBest.length >= 2) {
+          const stemOnly = String(bestQuestion || '')
+            .split('\n')
+            .filter((line) => !line.trim().match(/^([A-E])\s*[\)\.\-:]\s+/i))
+            .join('\n')
+            .trim();
+          const optionsOnly = optionLinesFromBest.join('\n');
+          if (!optionsAreContextuallyRelated(stemOnly, optionsOnly)) {
+            bestQuestion = stemOnly || bestQuestion;
+            console.log('AnswerHunter: OPTIONS_CONTAMINATION_GUARD removed unrelated options from primary question text');
+          }
+        }
+      }
+
       let displayQuestion = bestQuestion;
       const existingOptionCount = countDistinctOptions(bestQuestion);
 
@@ -1211,21 +1296,57 @@ export const PopupController = {
           }
         }
 
+        const stemForOptions = String(domQuestion || bestQuestion || '')
+          .split('\n')
+          .filter((line) => !line.trim().match(/^([A-E])\s*[\)\.\-:]/i))
+          .join('\n')
+          .trim();
+        const stemTokenCount = normalizeOptionBody(stemForOptions)
+          .split(/\s+/)
+          .filter((t) => t.length >= 4)
+          .length;
+
         const pickBestOptionsText = (resultsArray) => {
-          let bestText = '';
-          let bestLocalScore = -1;
+          let bestAnyText = '';
+          let bestAnyScore = -1;
+          let bestContextText = '';
+          let bestContextScore = -1;
+
           (resultsArray || []).forEach((frameResult) => {
             const text = String(frameResult?.result || '');
             if (text.length < 10) return;
             const optCount = countDistinctOptions(text);
             if (optCount < 2) return;
-            const localScore = (optCount * 1000) + Math.min(text.length, 2500) / 10;
-            if (localScore > bestLocalScore) {
-              bestLocalScore = localScore;
-              bestText = text;
+
+            const lines = text
+              .split('\n')
+              .map((line) => String(line || '').trim())
+              .filter((line) => /^([A-E])\s*[\)\.\-:]\s+.+$/i.test(line));
+            const bodies = lines.map((line) => line.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim());
+            const avgBodyLen = bodies.length > 0
+              ? (bodies.reduce((sum, b) => sum + b.length, 0) / bodies.length)
+              : 0;
+            const acronymCluster = bodies.length >= 3 && avgBodyLen <= 6 && bodies.every((b) => b.length <= 8);
+
+            let localScore = (optCount * 1000) + Math.min(text.length, 2500) / 10;
+            if (acronymCluster && stemTokenCount >= 8) localScore -= 1200;
+
+            const contextOk = optionsAreContextuallyRelated(stemForOptions || bestQuestion, text);
+            if (localScore > bestAnyScore) {
+              bestAnyScore = localScore;
+              bestAnyText = text;
+            }
+            if (contextOk && localScore > bestContextScore) {
+              bestContextScore = localScore;
+              bestContextText = text;
             }
           });
-          return bestText;
+
+          if (bestContextText) return bestContextText;
+          if (bestAnyText && stemTokenCount >= 8 && !optionsAreContextuallyRelated(stemForOptions || bestQuestion, bestAnyText)) {
+            return '';
+          }
+          return bestAnyText;
         };
 
         let optionsText = pickBestOptionsText(optionsResults);
@@ -1267,12 +1388,17 @@ export const PopupController = {
                   const flush = () => {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
-                    const body = String(current.body || '').replace(/\s+/g, ' ').trim();
+                    let body = String(current.body || '').replace(/\s+/g, ' ').trim();
+                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+                    const idx = body.search(noise);
+                    if (idx > 1) body = body.slice(0, idx).trim();
+                    body = body.replace(/[;:,\-.\s]+$/, '');
+
                     if (!/^[A-E]$/.test(letter)) {
                       current = null;
                       return;
                     }
-                    if (!body || body.length < 8 || seen.has(letter)) {
+                    if (!body || body.length < 1 || seen.has(letter)) {
                       current = null;
                       return;
                     }
@@ -1343,7 +1469,10 @@ export const PopupController = {
             const anchoredText = String(anchoredResult?.result || '');
             const anchoredCount = countDistinctOptions(anchoredText);
             const currentCount = countDistinctOptions(optionsText || '');
-            if (anchoredCount >= 2 && anchoredCount > currentCount) {
+            const anchoredRelated = optionsAreContextuallyRelated(stemForOptions || bestQuestion, anchoredText);
+            if (anchoredCount >= 2 && !anchoredRelated) {
+              console.log(`AnswerHunter: HTML_ANCHORED_OPTIONS rejected=${anchoredCount} (context mismatch)`);
+            } else if (anchoredCount >= 2 && anchoredCount > currentCount) {
               optionsText = anchoredText;
               console.log(`AnswerHunter: HTML_ANCHORED_OPTIONS used=${anchoredCount} (replaced previous=${currentCount})`);
             } else if (anchoredCount >= 2) {
@@ -1398,12 +1527,17 @@ export const PopupController = {
                   const flush = () => {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
-                    const body = String(current.body || '').replace(/\s+/g, ' ').trim();
+                    let body = String(current.body || '').replace(/\s+/g, ' ').trim();
+                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+                    const idx = body.search(noise);
+                    if (idx > 1) body = body.slice(0, idx).trim();
+                    body = body.replace(/[;:,\-.\s]+$/, '');
+
                     if (!/^[A-E]$/.test(letter)) {
                       current = null;
                       return;
                     }
-                    if (!body || body.length < 8 || seen.has(letter)) {
+                    if (!body || body.length < 1 || seen.has(letter)) {
                       current = null;
                       return;
                     }
@@ -1515,7 +1649,10 @@ export const PopupController = {
             const scannedText = String(scannedResult?.result || '');
             const scannedCount = countDistinctOptions(scannedText);
             const currentCount = countDistinctOptions(optionsText || '');
-            if (scannedCount >= 2 && scannedCount > currentCount) {
+            const scannedRelated = optionsAreContextuallyRelated(stemForOptions || bestQuestion, scannedText);
+            if (scannedCount >= 2 && !scannedRelated) {
+              console.log(`AnswerHunter: AUTO_SCROLL_OPTIONS rejected=${scannedCount} (context mismatch)`);
+            } else if (scannedCount >= 2 && scannedCount > currentCount) {
               optionsText = scannedText;
               console.log(`AnswerHunter: AUTO_SCROLL_OPTIONS used=${scannedCount} (replaced previous=${currentCount})`);
             } else if (scannedCount >= 2) {
@@ -1552,8 +1689,12 @@ export const PopupController = {
 
         if (optionsText && optionsText.length > 10) {
           if (existingOptionCount < 2) {
-            // No real options in question text â€” just append all
-            displayQuestion = `${bestQuestion}\n${optionsText}`;
+            // No real options in question text — just append all (after contamination guard check)
+            if (optionsAreContextuallyRelated(bestQuestion, optionsText)) {
+              displayQuestion = `${bestQuestion}\n${optionsText}`;
+            } else {
+              console.log('AnswerHunter: OPTIONS_CONTAMINATION_GUARD blocked options append (existingOptionCount<2). Options likely from another question.');
+            }
           } else {
             let processedQuestion = bestQuestion;
             const domOptsCount = countDistinctOptions(optionsText);
@@ -1570,31 +1711,34 @@ export const PopupController = {
               });
 
               if (domLetters.size > 0) {
-                const lines = processedQuestion.split('\n');
-                let replacedCount = 0;
-
-                for (let i = 0; i < lines.length; i++) {
-                  const match = lines[i].trim().match(/^([A-E])\s*[\)\.\-:]/i);
-                  // Ensure we are operating on a line treated as an option
-                  if (match && isValidOptionLine(lines[i])) {
-                    const letter = match[1].toUpperCase();
-                    if (domLetters.has(letter)) {
-                      lines[i] = domLetters.get(letter);
-                      domLetters.delete(letter);
-                      replacedCount++;
-                    }
+                // Strip ALL option-looking lines from the OCR text first,
+                // then append the complete precise DOM options.
+                // This avoids duplicate entries when OCR captured wrong/extra alternatives.
+                const stemLines = processedQuestion.split('\n').filter(line => {
+                  const m = line.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i);
+                  return !m; // keep only lines that are NOT option-like
+                });
+                let stemText = stemLines.join('\n').trim();
+                if (!stemText) {
+                  const domStem = String(domQuestion || '')
+                    .split('\n')
+                    .filter(line => !line.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i))
+                    .join('\n')
+                    .trim();
+                  if (domStem.length >= 30) {
+                    stemText = domStem;
+                    console.log('AnswerHunter: OCR stem empty; recovered stem from DOM extraction');
                   }
                 }
-
-                processedQuestion = lines.join('\n');
-
-                if (domLetters.size > 0) {
-                  processedQuestion = `${processedQuestion}\n${Array.from(domLetters.values()).join('\n')}`;
+                const domOptionsText = Array.from(domLetters.values()).join('\n');
+                if (!optionsAreContextuallyRelated(stemText || bestQuestion || domQuestion || '', domOptionsText)) {
+                  console.log('AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected DOM replacement on OCR path');
+                } else {
+                  processedQuestion = stemText ? `${stemText}\n${domOptionsText}` : domOptionsText;
+                  displayQuestion = processedQuestion;
+                  console.log(`AnswerHunter: REBUILT question from stem + ${domLetters.size} precise DOM options (stripped OCR option lines)`);
+                  console.log(`AnswerHunter: OCR_DOM_REPLACE opts_before=${existingOptionCount} opts_after=${countDistinctOptions(displayQuestion)}`);
                 }
-
-                displayQuestion = processedQuestion;
-                console.log(`AnswerHunter: OVERWROTE ${replacedCount} OCR option(s) with precise DOM options; Added ${domLetters.size} missing DOM option(s)`);
-                console.log(`AnswerHunter: OCR_DOM_REPLACE opts_before=${existingOptionCount} opts_after=${countDistinctOptions(displayQuestion)}`);
               }
             } else {
               // Merge only MISSING options to avoid duplicates
@@ -1627,9 +1771,14 @@ export const PopupController = {
                 return true;
               });
               if (newLines.length > 0) {
-                displayQuestion = `${bestQuestion}\n${newLines.join('\n')}`;
-                console.log(`AnswerHunter: Merged ${newLines.length} missing option(s) from extractOptionsOnlyScript`);
-                console.log(`AnswerHunter: OCR_DOM_MERGE opts_before=${existingOptionCount} opts_added=${newLines.length} opts_after=${countDistinctOptions(displayQuestion)}`);
+                // Apply contamination guard before merging missing options
+                if (optionsAreContextuallyRelated(bestQuestion, newLines.join('\n'))) {
+                  displayQuestion = `${bestQuestion}\n${newLines.join('\n')}`;
+                  console.log(`AnswerHunter: Merged ${newLines.length} missing option(s) from extractOptionsOnlyScript`);
+                  console.log(`AnswerHunter: OCR_DOM_MERGE opts_before=${existingOptionCount} opts_added=${newLines.length} opts_after=${countDistinctOptions(displayQuestion)}`);
+                } else {
+                  console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected ${newLines.length} missing option(s) as cross-question contamination`);
+                }
               } else if (usedVisionOcr) {
                 console.log('AnswerHunter: OCR was used; CSS/HTML options scan executed with no new alternatives found');
                 console.log(`AnswerHunter: OCR_DOM_MERGE opts_before=${existingOptionCount} opts_added=0 opts_after=${countDistinctOptions(displayQuestion)}`);
@@ -1793,7 +1942,7 @@ export const PopupController = {
       return body.replace(/[;:,\-.\s]+$/g, '').trim();
     };
     const isUsableBody = (body) => {
-      if (!body || body.length < 8) return false;
+      if (!body || body.length < 1) return false;
       if (/^[A-E]\s*[\)\.\-:]?\s*$/i.test(body)) return false;
       if (/^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(body)) return false;
       return true;
@@ -2101,9 +2250,9 @@ export const PopupController = {
           .replace(/^# (.*$)/gim, '<strong>$1</strong>')
           .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
           .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-          .replace(/\n\n/g, '<br><br>')
-          .replace(/\n\+/g, '<br>• ')
-          .replace(/\n-/g, '<br>• ');
+          .replace(/\n\+/g, '\n• ') // prep list items before newline processing
+          .replace(/\n-/g, '\n• ')
+          .replace(/\n/g, '<br>');
 
         container.innerHTML = `<div class="study-tutor-explanation">${htmlExplanation}</div>`;
       } catch (err) {
@@ -2222,7 +2371,7 @@ export const PopupController = {
           try {
             const ApiServiceModule = (await import('../services/ApiService.js')).ApiService;
             const response = await ApiServiceModule.answerFollowUp(question, answer, context, userMsg, messageHistory);
-            
+
             messageHistory.push({ role: 'user', content: userMsg });
             messageHistory.push({ role: 'assistant', content: response });
 
@@ -2234,6 +2383,8 @@ export const PopupController = {
             const htmlResponse = safeResponse
               .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
               .replace(/\*(.*?)\*/g, '<em>$1</em>')
+              .replace(/\n\+/g, '\n• ') // prep list items before newline processing
+              .replace(/\n-/g, '\n• ')
               .replace(/\n/g, '<br>');
 
             history.insertAdjacentHTML('beforeend', `
@@ -2264,7 +2415,7 @@ export const PopupController = {
         input.addEventListener('keypress', (e) => {
           if (e.key === 'Enter') handleSend();
         });
-        
+
         input.focus();
       } else {
         container.classList.toggle('hidden');

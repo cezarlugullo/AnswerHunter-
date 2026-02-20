@@ -2035,7 +2035,12 @@ export const SearchService = {
         if (!html || html.length < 2000) return null;
         const tokens = this._extractKeyTokens(questionStem);
 
-        const { nodes } = this._parseHtmlDomWithEmbeddedFallback(html);
+        const { doc, nodes } = this._parseHtmlDomWithEmbeddedFallback(html);
+
+        console.log(`    [ff1-highlight] check: html_len=${html.length}`);
+        console.log(`    [ff1-highlight] check: 'class="t"' occurrences: ${(html.match(/class="[^"]*\bt\b[^"]*"/g) || []).length}`);
+        console.log(`    [ff1-highlight] check: 'ff4' occurrences: ${(html.match(/ff4/g) || []).length}`);
+        console.log(`    [ff1-highlight] check: 'div.t' nodes extracted: ${nodes.length}`);
 
         if (nodes.length < 50) return null;
 
@@ -2048,6 +2053,7 @@ export const SearchService = {
             }))
             .filter(f => f.text && f.text.length >= 1);
 
+        console.log(`    [ff1-highlight] check: frags_len=${frags.length}`);
         if (frags.length < 50) return null;
 
         // Find the best anchor position for the question block.
@@ -2318,7 +2324,9 @@ export const SearchService = {
                 }
             }
 
-            if (outliers.length === 1) {
+            const outlierLetters = [...new Set(outliers.map(o => o.letter))];
+
+            if (outlierLetters.length === 1) {
                 const outlier = outliers[0];
                 console.log(`SearchService: ff-outlier detected: letter=${outlier.letter} outlier_ff=${outlier.token} dominant_ff=${globalDominantFf}`);
                 const remappedOutlier = this._remapLetterToUserOptions(outlier.letter, sourceOptionsFromGroups, originalOptionsMap);
@@ -2372,7 +2380,7 @@ export const SearchService = {
 
         const sigMargin = sigBestScore - sigSecondScore;
         const sigFeat = featuresByLetter[sigBestLetter];
-        const hasReasonableSupport = sigFeat && sigFeat.fragCount >= 2;
+        const hasReasonableSupport = sigFeat && sigFeat.fragCount >= 1;
         const strongOutlier = sigBestScore >= 1.8 && sigMargin >= 0.8;
         const permissiveOutlier = sigBestScore >= 2.4 && sigMargin >= 0.5 && optionHits >= 1;
 
@@ -3585,10 +3593,10 @@ export const SearchService = {
 
                 // 3.5) AI per-page deep extraction: when regex/DOM extractors all failed,
                 // send the page text to AI for a "pente fino" — finds answers that patterns miss.
-                // Uses SMART model + sends up to 8000 chars for thorough analysis.
-                if (aiExtractionCount < 5 && topicSimBase >= 0.35 && !obfuscation?.isObfuscated && scopedCombinedText.length >= 250) {
-                    const aiScopedText = this._buildQuestionScopedText(combinedText, questionForInference, 8000);
-                    console.log(`  🤖 [AI-EXTRACT] Attempting AI page extraction (call ${aiExtractionCount + 1}/5, topicSim=${topicSimBase.toFixed(3)}, textLen=${aiScopedText.length}, host=${hostHint})`);
+                // Truncating to 3500 chars drastically cuts prompt tokens while maintaining context.
+                if (aiExtractionCount < 1 && topicSimBase >= 0.35 && !obfuscation?.isObfuscated && scopedCombinedText.length >= 250) {
+                    const aiScopedText = this._buildQuestionScopedText(combinedText, questionForInference, 3500);
+                    console.log(`  🤖 [AI-EXTRACT] Attempting AI page extraction (call ${aiExtractionCount + 1}/1, topicSim=${topicSimBase.toFixed(3)}, textLen=${aiScopedText.length}, host=${hostHint})`);
                     if (typeof onStatus === 'function') {
                         onStatus(`AI analyzing ${hostHint || 'source'} (${runStats.analyzed}/${topResults.length})...`);
                     }
