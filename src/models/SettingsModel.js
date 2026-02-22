@@ -20,6 +20,8 @@ export const SettingsModel = {
         geminiApiUrl: 'https://generativelanguage.googleapis.com/v1beta',
         geminiModel: 'gemini-2.5-flash',
         geminiModelSmart: 'gemini-2.5-flash',
+        openrouterApiKey: '',
+        openrouterModelSmart: 'deepseek/deepseek-r1:free',
         primaryProvider: 'groq',
         setupCompleted: false,
         requiredProviders: {
@@ -139,7 +141,8 @@ export const SettingsModel = {
         return {
             groqKey: settings.groqApiKey,
             serperKey: settings.serperApiKey,
-            geminiKey: settings.geminiApiKey
+            geminiKey: settings.geminiApiKey,
+            openrouterKey: settings.openrouterApiKey
         };
     }
 };

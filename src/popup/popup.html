@@ -44,6 +44,7 @@
           <div class="ob-dot"></div>
           <div class="ob-dot"></div>
           <div class="ob-dot"></div>
+          <div class="ob-dot"></div>
         </div>
       </div>
 
@@ -104,7 +105,8 @@
                 </div>
                 <div class="ob-tutorial-body">
                   <ol class="ob-steps">
-                    <li><a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" data-i18n="setup.openSiteAction">1. Open
+                    <li><a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer"
+                        data-i18n="setup.openSiteAction">1. Open
                         official site</a></li>
                     <li data-i18n="setup.groq.step2">On Groq, open "API Keys" and create a new key.</li>
                     <li data-i18n="setup.groq.step3">Copy the key, paste below, then click "Validate key".</li>
@@ -173,7 +175,8 @@
                 </div>
                 <div class="ob-tutorial-body">
                   <ol class="ob-steps">
-                    <li><a href="https://serper.dev/" target="_blank" rel="noopener noreferrer" data-i18n="setup.openSiteAction">1. Open official
+                    <li><a href="https://serper.dev/" target="_blank" rel="noopener noreferrer"
+                        data-i18n="setup.openSiteAction">1. Open official
                         site</a></li>
                     <li data-i18n="setup.serper.step2">Open your dashboard and locate your API Key.</li>
                     <li data-i18n="setup.serper.step3">Copy the key, paste below, then click "Validate key".</li>
@@ -307,8 +310,95 @@
               </div>
             </div>
           </div>
-          <!-- Slide 4: Preferences & Finish -->
+
+          <!-- Slide 4: OpenRouter -->
           <div class="ob-slide provider-slide" data-slide="4">
+            <div class="ob-slide-layout">
+              <div class="ob-tutorial-card">
+                <div class="ob-tutorial-header">
+                  <span class="material-symbols-rounded">language</span>
+                  <h3 data-i18n="setup.openrouter.title">Optional: set up OpenRouter backup</h3>
+                </div>
+                <div class="ob-tutorial-body">
+                  <ol class="ob-steps">
+                    <li><a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer"
+                        data-i18n="setup.openSiteAction">1. Open official site</a></li>
+                    <li data-i18n="setup.openrouter.step2">Click "Create Key".</li>
+                    <li data-i18n="setup.openrouter.step3">Copy the key, paste below, and validate it.</li>
+                  </ol>
+                  <p class="ob-hint" data-i18n="setup.openrouter.tagline">Access hundreds of open-source models, many
+                    for free.</p>
+                </div>
+              </div>
+
+              <div class="ob-form-card" style="border-top: 2px solid rgba(80,150,255,0.5);">
+                <div class="ob-provider-badge" style="color: #64b5f6;">
+                  <span class="material-symbols-rounded badge-icon">public</span>
+                  <span>OPENROUTER ENGINE</span>
+                </div>
+
+                <div class="ob-key-status-chip hidden" id="key-status-openrouter">
+                  <span class="material-symbols-rounded ob-key-status-icon">check_circle</span>
+                  <span class="ob-key-status-text" data-i18n="setup.keyStatus.configured">Configured</span>
+                </div>
+
+                <div class="ob-input-group">
+                  <label for="input-openrouter" data-i18n="setup.keyLabel">API key</label>
+                  <div class="ob-input-wrapper">
+                    <span class="material-symbols-rounded ob-input-icon">key</span>
+                    <input type="password" id="input-openrouter" class="ob-input" placeholder="sk-or-v1-..."
+                      spellcheck="false" autocomplete="off">
+                    <button type="button" class="visibility-toggle" data-target="input-openrouter"
+                      title="Toggle visibility">
+                      <span class="material-symbols-rounded">visibility</span>
+                    </button>
+                  </div>
+                  <div id="status-openrouter" class="ob-test-status"></div>
+                </div>
+
+                <!-- OpenRouter Model Selection -->
+                <div class="ob-input-group" style="margin-top: 15px;">
+                  <label for="select-openrouter-model" data-i18n="setup.openrouter.modelLabel"
+                    style="font-size: 0.8rem; color: rgba(255,255,255,0.9); margin-bottom: 5px; display: block;">Select
+                    Model</label>
+                  <select id="select-openrouter-model" class="ob-input"
+                    style="width: 100%; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: white; border-radius: 8px; padding: 10px;">
+                    <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free)</option>
+                    <option value="google/gemini-2.5-flash-free">Gemini 2.5 Flash (Free)</option>
+                    <option value="qwen/qwen-2.5-coder-32b-instruct:free">Qwen 2.5 Coder 32b (Free)</option>
+                    <option value="google/gemini-exp-1121:free">Gemini Pro Exp (Free)</option>
+                    <option value="zhipuai/glm-4-plus">GLM-4 Plus</option>
+                  </select>
+                </div>
+
+                <div class="ob-privacy-note">
+                  <span class="material-symbols-rounded">shield_lock</span>
+                  <span data-i18n="setup.privacy">Your keys are stored locally and never sent to our servers.</span>
+                </div>
+
+                <div class="ob-actions">
+                  <button id="prev-openrouter" class="ob-btn ob-btn-ghost"><span
+                      class="material-symbols-rounded">arrow_back</span></button>
+                  <button id="change-key-openrouter" class="ob-btn ob-btn-secondary hidden"
+                    data-i18n="setup.changeKey">Change Key</button>
+                  <button id="remove-key-openrouter" class="ob-btn ob-btn-secondary hidden"
+                    data-i18n="setup.removeOpenrouterKey">Remove key</button>
+                  <button id="test-openrouter" class="ob-btn ob-btn-secondary test-btn">
+                    <span class="material-symbols-rounded">wifi_tethering</span> <span class="test-btn-text"
+                      data-i18n="setup.validateAction">Validate key</span>
+                  </button>
+                  <button id="btn-next-openrouter" class="ob-btn ob-btn-primary">
+                    <span data-i18n="setup.next">Next</span> <span class="material-symbols-rounded">arrow_forward</span>
+                  </button>
+                  <button id="close-settings-openrouter" class="ob-btn ob-btn-primary hidden"
+                    data-i18n="setup.closeSettings">Done</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Slide 6: Preferences & Finish -->
+          <div class="ob-slide provider-slide" data-slide="5">
             <div class="ob-slide-layout">
               <div class="ob-form-card" style="border-top: 2px solid rgba(255,107,0,0.5); gap: 18px;">
 
@@ -326,22 +416,24 @@
                   <p data-i18n="setup.prefs.aiLabel"
                     style="font-size: 0.8rem; color: rgba(255,255,255,0.9); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">
                     Como a IA deve responder?</p>
-                  <div style="display: flex; gap: 8px;">
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between;">
+
                     <button class="ob-btn ob-provider-pill active" id="pill-groq-ob" data-provider="groq"
-                      style="flex: 1; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px;">
+                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
                       <span class="material-symbols-rounded" style="font-size: 20px;">bolt</span>
-                      <span data-i18n="setup.prefs.groqLabel" style="font-size: 0.82rem; font-weight: 600;">Mais
-                        rápido</span>
-                      <span data-i18n="setup.prefs.groqDesc"
-                        style="font-size: 0.72rem; opacity: 0.9; line-height: 1.3;">Responde em segundos</span>
+                      <span data-i18n="setup.prefs.groqLabel" style="font-size: 0.82rem; font-weight: 600;">Groq</span>
                     </button>
                     <button class="ob-btn ob-provider-pill" id="pill-gemini-ob" data-provider="gemini"
-                      style="flex: 1; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px;">
+                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
                       <span class="material-symbols-rounded" style="font-size: 20px;">psychology</span>
-                      <span data-i18n="setup.prefs.geminiLabel" style="font-size: 0.82rem; font-weight: 600;">Mais
-                        inteligente</span>
-                      <span data-i18n="setup.prefs.geminiDesc"
-                        style="font-size: 0.72rem; opacity: 0.9; line-height: 1.3;">Análise mais profunda</span>
+                      <span data-i18n="setup.prefs.geminiLabel"
+                        style="font-size: 0.82rem; font-weight: 600;">Gemini</span>
+                    </button>
+                    <button class="ob-btn ob-provider-pill" id="pill-openrouter-ob" data-provider="openrouter"
+                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
+                      <span class="material-symbols-rounded" style="font-size: 20px;">public</span>
+                      <span data-i18n="setup.prefs.openrouterLabel"
+                        style="font-size: 0.82rem; font-weight: 600;">OpenRouter</span>
                     </button>
                   </div>
                   <p id="provider-hint-ob" data-i18n="setup.prefs.hintGroq"
@@ -366,6 +458,7 @@
           <input id="provider-toggle" type="checkbox" />
           <span id="pill-groq"></span>
           <span id="pill-gemini"></span>
+          <span id="pill-openrouter"></span>
           <div id="provider-hint"></div>
           <select id="select-groq-model"></select>
           <select id="select-gemini-model"></select>

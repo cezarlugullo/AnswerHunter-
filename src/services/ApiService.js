@@ -581,6 +581,25 @@ Analise o texto passo a passo e responda no formato acima:`;
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, {
+                    temperature: 0.05,
+                    max_tokens: 300,
+                    model: 'gemini-2.5-flash' // Force fast model for heavy extraction loop
+                });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
         /* ---------- Try Groq (backup) ---------- */
         const tryGroq = async () => {
             const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
@@ -617,21 +636,26 @@ Analise o texto passo a passo e responda no formato acima:`;
         /* ---------- Rotate Execution with Rate Limit Awareness ---------- */
         let content = null;
         const fallbackChain = [];
-
         if (settings.geminiApiKey) fallbackChain.push({ name: 'gemini', fn: tryGemini });
-
-        // Only append Groq if it has an API key AND isn't completely exhausted
+        if (settings.openrouterApiKey && this._openRouterQuotaExhaustedUntil <= Date.now()) {
+            fallbackChain.push({ name: 'openrouter', fn: tryOpenRouter });
+        }
         if (settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) {
             fallbackChain.push({ name: 'groq', fn: tryGroq });
         }
 
-        // We will randomly shuffle the chain if we have more than 1 available provider
-        // but heavily weight Gemini to be primary due to the 15 RPM / 1M TPM free limits.
-        const geminiPrimary = await this._isGeminiPrimary();
-        if (!geminiPrimary && fallbackChain.length > 1) {
-            // Groq primary => reverse order
-            fallbackChain.reverse();
+        const primary = settings.primaryProvider || 'groq';
+        if (primary === 'gemini') {
+            const idx = fallbackChain.findIndex(p => p.name === 'gemini');
+            if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
+        } else if (primary === 'openrouter') {
+            const idx = fallbackChain.findIndex(p => p.name === 'openrouter');
+            if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
+        } else {
+            const idx = fallbackChain.findIndex(p => p.name === 'groq');
+            if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
         }
+
 
         for (const provider of fallbackChain) {
             content = await provider.fn();
@@ -783,6 +807,21 @@ Analise o HTML e responda:`;
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, { temperature: 0.05, max_tokens: 400, model: 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
         const tryGroq = async () => {
             if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
@@ -805,12 +844,18 @@ Analise o HTML e responda:`;
         };
 
         let content = null;
-        const geminiPrimary = await this._isGeminiPrimary();
-        if (geminiPrimary) {
+        const primary = settings.primaryProvider || 'groq';
+        if (primary === 'openrouter') {
+            content = await tryOpenRouter();
+            if (!content) content = await tryGroq();
+            if (!content) content = await tryGemini();
+        } else if (primary === 'gemini') {
             content = await tryGemini();
             if (!content) content = await tryGroq();
+            if (!content) content = await tryOpenRouter();
         } else {
             content = await tryGroq();
+            if (!content) content = await tryOpenRouter();
             if (!content) content = await tryGemini();
         }
 
@@ -931,6 +976,21 @@ Letra B: TCP
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
         const tryGroq = async () => {
             if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
@@ -1204,6 +1264,21 @@ Letra B: TCP
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 10, model: settings.geminiModel || 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
         const tryGroq = async () => {
             if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
@@ -2068,6 +2143,126 @@ Letra B: TCP
     },
 
     /**
+     * Extracts text from an image base64 dataUri using AI Vision
+     */
+    async aiExtractTextFromImage(dataUri) {
+        if (!dataUri || !dataUri.startsWith('data:image/')) return '';
+        const settings = await this._getSettings();
+        const { groqApiUrl, groqApiKey, groqModelVision } = settings;
+
+        const systemMsg = "Extraia rigorosamente o texto completo da imagem enviada. Responda APENAS com o texto, ignorando saudações.";
+
+        const visionMessages = [
+            { role: 'system', content: systemMsg },
+            {
+                role: 'user',
+                content: [
+                    { type: "text", text: "Transcrição fiel do conteúdo (preservando formato, alternativas, código, tabelas):" },
+                    { type: "image_url", image_url: { url: dataUri } }
+                ]
+            }
+        ];
+
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                const base64Data = dataUri.split(',')[1];
+                const mimeType = dataUri.split(';')[0].split(':')[1];
+                const content = await this._callGemini([
+                    { role: 'system', content: systemMsg },
+                    {
+                        role: 'user', content: [
+                            { inline_data: { mime_type: mimeType, data: base64Data } },
+                            { text: "Transcrição fiel do conteúdo:" }
+                        ]
+                    }
+                ], { temperature: 0.1, max_tokens: 1500, model: settings.geminiModel || 'gemini-2.5-flash' });
+                if (!content || content.length < 20) {
+                    console.warn('AnswerHunter: Gemini Vision OCR returned too little text:', (content || '').length);
+                    return null;
+                }
+                console.log(`AnswerHunter: Gemini Vision OCR success — ${content.length} chars extracted`);
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: Gemini Vision OCR failed:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                const content = await this._callOpenRouter(visionMessages, {
+                    temperature: 0.1,
+                    max_tokens: 1500,
+                    model
+                });
+                if (!content || content.length < 20) {
+                    return null;
+                }
+                return content;
+            } catch (e) {
+                return null;
+            }
+        };
+
+        const tryGroq = async () => {
+            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            const model = groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct';
+            try {
+                console.log(`AnswerHunter: Vision OCR — sending screenshot to Groq (${model})...`);
+                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${groqApiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model,
+                        messages: visionMessages,
+                        temperature: 0.1,
+                        max_tokens: 1500
+                    })
+                }));
+
+                const content = (data.choices?.[0]?.message?.content || '').trim();
+                if (content.length < 20) {
+                    console.warn('AnswerHunter: Groq Vision OCR returned too little text:', content.length);
+                    return null;
+                }
+                console.log(`AnswerHunter: Groq Vision OCR success — ${content.length} chars extracted`);
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: Groq Vision OCR failed:', e?.message || e);
+                return null;
+            }
+        };
+
+        try {
+            const primary = settings.primaryProvider || 'groq';
+            let result = null;
+            if (primary === 'openrouter') {
+                result = await tryOpenRouter();
+                if (!result) result = await tryGroq();
+                if (!result) result = await tryGemini();
+            } else if (primary === 'gemini') {
+                result = await tryGemini();
+                if (!result) result = await tryOpenRouter();
+                if (!result) result = await tryGroq();
+            } else {
+                result = await tryGroq();
+                if (!result) result = await tryOpenRouter();
+                if (!result) result = await tryGemini();
+            }
+            return result || '';
+        } catch (error) {
+            console.error('AnswerHunter: Vision OCR failed:', error);
+            return '';
+        }
+    },
+
+    /**
      * Prompt 1: Extract options (AI)
      * Uses FAST model (1000 t/s) - simple extraction task
      */
@@ -2108,6 +2303,21 @@ E) [texto da alternativa E se houver]`;
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 500, model: 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter extractOptions error:', e?.message || e);
+                return null;
+            }
+        };
+
         const tryGroq = async () => {
             if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
@@ -2135,13 +2345,19 @@ E) [texto da alternativa E se houver]`;
         };
 
         try {
-            const geminiPrimary = await this._isGeminiPrimary();
+            const primary = settings.primaryProvider || 'groq';
             let content = null;
-            if (geminiPrimary) {
+            if (primary === 'openrouter') {
+                content = await tryOpenRouter();
+                if (!content) content = await tryGroq();
+                if (!content) content = await tryGemini();
+            } else if (primary === 'gemini') {
                 content = await tryGemini();
                 if (!content) content = await tryGroq();
+                if (!content) content = await tryOpenRouter();
             } else {
                 content = await tryGroq();
+                if (!content) content = await tryOpenRouter();
                 if (!content) content = await tryGemini();
             }
 
@@ -2365,6 +2581,21 @@ INSTRUÇÕES:
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 200, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
         const tryGroq = async () => {
             if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
@@ -3012,6 +3243,25 @@ REGRAS:
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, {
+                    temperature: 0.10,
+                    max_tokens: 600,
+                    model: settings.geminiModelSmart || 'gemini-2.5-flash'
+                });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
         const tryGroq = async () => {
             if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
@@ -3032,9 +3282,25 @@ REGRAS:
             }
         };
 
-        const geminiPrimary = await this._isGeminiPrimary();
-        let result = geminiPrimary ? await tryGemini() : await tryGroq();
-        if (!result) result = geminiPrimary ? await tryGroq() : await tryGemini();
+
+        const geminiPrimary = false; // dummy for older vars
+        const settingsForFallback = await this._getSettings();
+        const primary = settingsForFallback.primaryProvider || 'groq';
+        let chain = [];
+        if (typeof tryOpenRouter !== 'undefined') {
+            chain = [tryGroq, tryOpenRouter, tryGemini];
+            if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
+            else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
+        } else {
+            chain = [tryGroq, tryGemini];
+            if (primary === 'gemini') chain = [tryGemini, tryGroq];
+        }
+        let result = null;
+        for (const fn of chain) {
+            result = await fn();
+            if (result) break;
+        }
+
         return result || `Termo não encontrado: ${term}`;
     },
 
@@ -3075,6 +3341,21 @@ INSTRUÇÕES:
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, { temperature: 0.3, max_tokens: 600, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
         const tryGroq = async () => {
             if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
@@ -3095,9 +3376,25 @@ INSTRUÇÕES:
             }
         };
 
-        const geminiPrimary = await this._isGeminiPrimary();
-        let result = geminiPrimary ? await tryGemini() : await tryGroq();
-        if (!result) result = geminiPrimary ? await tryGroq() : await tryGemini();
+
+        const geminiPrimary = false; // dummy for older vars
+        const settingsForFallback = await this._getSettings();
+        const primary = settingsForFallback.primaryProvider || 'groq';
+        let chain = [];
+        if (typeof tryOpenRouter !== 'undefined') {
+            if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
+            else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
+            else chain = [tryGroq, tryOpenRouter, tryGemini];
+        } else {
+            if (primary === 'gemini') chain = [tryGemini, tryGroq];
+            else chain = [tryGroq, tryGemini];
+        }
+        let result = null;
+        for (const fn of chain) {
+            result = await fn();
+            if (result) break;
+        }
+
         return result || 'Não foi possível gerar a explicação. Tente novamente.';
     },
 
@@ -3159,6 +3456,21 @@ REGRAS:
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, { temperature: 0.5, max_tokens: 500, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
         const tryGroq = async () => {
             if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
@@ -3179,9 +3491,25 @@ REGRAS:
             }
         };
 
-        const geminiPrimary = await this._isGeminiPrimary();
-        let result = geminiPrimary ? await tryGemini() : await tryGroq();
-        if (!result) result = geminiPrimary ? await tryGroq() : await tryGemini();
+
+        const geminiPrimary = false; // dummy for older vars
+        const settingsForFallback = await this._getSettings();
+        const primary = settingsForFallback.primaryProvider || 'groq';
+        let chain = [];
+        if (typeof tryOpenRouter !== 'undefined') {
+            if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
+            else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
+            else chain = [tryGroq, tryOpenRouter, tryGemini];
+        } else {
+            if (primary === 'gemini') chain = [tryGemini, tryGroq];
+            else chain = [tryGroq, tryGemini];
+        }
+        let result = null;
+        for (const fn of chain) {
+            result = await fn();
+            if (result) break;
+        }
+
         if (!result) throw new Error('Não foi possível gerar uma questão similar.');
         return result;
     },
@@ -3242,9 +3570,25 @@ Responda de forma clara, didática e concisa (máximo 200 palavras). Não repita
             }
         };
 
-        const geminiPrimary = await this._isGeminiPrimary();
-        let result = geminiPrimary ? await tryGemini() : await tryGroq();
-        if (!result) result = geminiPrimary ? await tryGroq() : await tryGemini();
+
+        const geminiPrimary = false; // dummy for older vars
+        const settingsForFallback = await this._getSettings();
+        const primary = settingsForFallback.primaryProvider || 'groq';
+        let chain = [];
+        if (typeof tryOpenRouter !== 'undefined') {
+            if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
+            else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
+            else chain = [tryGroq, tryOpenRouter, tryGemini];
+        } else {
+            if (primary === 'gemini') chain = [tryGemini, tryGroq];
+            else chain = [tryGroq, tryGemini];
+        }
+        let result = null;
+        for (const fn of chain) {
+            result = await fn();
+            if (result) break;
+        }
+
         return result || 'Não foi possível processar sua pergunta. Tente novamente.';
     },
 

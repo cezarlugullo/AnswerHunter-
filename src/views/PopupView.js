@@ -82,7 +82,18 @@ export const PopupView = {
       testSerper: document.getElementById('test-serper'),
       testGemini: document.getElementById('test-gemini'),
 
-      // Status
+      // OpenRouter elements
+      btnNextOpenrouter: document.getElementById('btn-next-openrouter'),
+      prevOpenrouter: document.getElementById('prev-openrouter'),
+      inputOpenrouter: document.getElementById('input-openrouter'),
+      testOpenrouter: document.getElementById('test-openrouter'),
+      statusOpenrouter: document.getElementById('status-openrouter'),
+      pillOpenrouterOb: document.getElementById('pill-openrouter-ob'),
+      selectOpenrouterModel: document.getElementById('select-openrouter-model'),
+      keyStatusOpenrouter: document.getElementById('key-status-openrouter'),
+      changeKeyOpenrouter: document.getElementById('change-key-openrouter'),
+      removeKeyOpenrouter: document.getElementById('remove-key-openrouter'),
+      closeSettingsOpenrouter: document.getElementById('close-settings-openrouter'),// Status
       statusGroq: document.getElementById('status-groq'),
       statusSerper: document.getElementById('status-serper'),
       statusGemini: document.getElementById('status-gemini'),
@@ -232,7 +243,7 @@ export const PopupView = {
 
   updateProgressBar(stepNumber) {
     // 0 -> 10%, 1 -> 30%, 2 -> 50%, 3 -> 75%, 4 -> 100%
-    const percents = [10, 30, 50, 75, 100];
+    const percents = [10, 25, 40, 55, 70, 85, 100];
     const percent = percents[stepNumber] ?? 10;
 
     if (this.elements.progressBar) {
@@ -476,7 +487,7 @@ export const PopupView = {
       this.elements.onboardingView.classList.toggle('ob-reopen-mode', !!isReopen);
     }
 
-    const providers = ['groq', 'serper', 'gemini'];
+    const providers = ['groq', 'serper', 'gemini', 'openrouter'];
     providers.forEach(p => {
       const cap = p.charAt(0).toUpperCase() + p.slice(1);
       const changeBtn = this.elements[`changeKey${cap}`];
@@ -486,6 +497,10 @@ export const PopupView = {
     });
     if (this.elements.removeKeyGemini) {
       this.elements.removeKeyGemini.classList.toggle('hidden', !isReopen);
+    }
+    
+    if (this.elements.removeKeyOpenrouter) {
+      this.elements.removeKeyOpenrouter.classList.toggle('hidden', !isReopen);
     }
     if (this.elements.removeKeySerper) {
       this.elements.removeKeySerper.classList.toggle('hidden', !isReopen);

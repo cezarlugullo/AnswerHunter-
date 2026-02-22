@@ -55,7 +55,9 @@ export const PopupController = {
     this.view.elements.prevGemini?.addEventListener('click', () => this.goToSetupStep(2));
 
     this.view.elements.btnNextGemini?.addEventListener('click', () => this.goToSetupStep(4));
-    this.view.elements.prevPrefs?.addEventListener('click', () => this.goToSetupStep(3));
+    this.view.elements.btnNextOpenrouter?.addEventListener('click', () => this.goToSetupStep(5));
+    this.view.elements.prevOpenrouter?.addEventListener('click', () => this.goToSetupStep(3));
+    this.view.elements.prevPrefs?.addEventListener('click', () => this.goToSetupStep(4));
 
     this.view.elements.saveSetupBtn?.addEventListener('click', () => this.handleSaveSetup());
     this.view.elements.setupSkipBtn?.addEventListener('click', () => this.handleSaveSetup());
@@ -72,6 +74,7 @@ export const PopupController = {
     // AI Provider & Model Config (Settings tab)
     this.view.elements.pillGroq?.addEventListener('click', () => { this.setProviderPill('groq'); });
     this.view.elements.pillGemini?.addEventListener('click', () => { this.setProviderPill('gemini'); });
+    this.view.elements.pillOpenrouterOb?.addEventListener('click', () => { this.setProviderPill('openrouter'); });
 
     // AI Provider Config (Onboarding Tab)
     this.view.elements.pillGroqOb?.addEventListener('click', () => { this.setProviderPill('groq'); });
@@ -79,6 +82,7 @@ export const PopupController = {
 
     this.view.elements.selectGroqModel?.addEventListener('change', () => this.persistAiConfig());
     this.view.elements.selectGeminiModel?.addEventListener('change', () => this.persistAiConfig());
+    this.view.elements.selectOpenrouterModel?.addEventListener('change', () => this.persistAiConfig());
 
     this.view.elements.extractBtn?.addEventListener('click', () => this.handleExtract());
     this.view.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
@@ -123,6 +127,8 @@ export const PopupController = {
     bindProviderTestButton(this.view.elements.testGroq, 'groq');
     bindProviderTestButton(this.view.elements.testSerper, 'serper');
     bindProviderTestButton(this.view.elements.testGemini, 'gemini');
+    bindProviderTestButton(this.view.elements.testOpenrouter, 'openrouter');
+
 
     // Backwards compatibility with old onboarding markup.
     document.querySelectorAll('.ob-btn-test, .test-btn').forEach((button) => {
@@ -137,7 +143,9 @@ export const PopupController = {
     [
       { input: this.view.elements.inputGroq, provider: 'groq', prefix: 'gsk_' },
       { input: this.view.elements.inputSerper, provider: 'serper', prefix: '' },
-      { input: this.view.elements.inputGemini, provider: 'gemini', prefix: 'AIza' }
+      { input: this.view.elements.inputGemini, provider: 'gemini', prefix: 'AIza' },
+      { input: this.view.elements.inputOpenrouter, provider: 'openrouter', prefix: 'sk-or' },
+
     ].forEach(({ input, provider, prefix }) => {
       if (!input) return;
 
@@ -154,7 +162,7 @@ export const PopupController = {
         this.saveDraftKeys();
         this.resetProviderValidation(provider);
         this.view.updateKeyFormatHint(provider, input.value,
-          provider === 'groq' ? 'gsk_' : provider === 'gemini' ? 'AIza' : '');
+          provider === 'groq' ? 'gsk_' : provider === 'gemini' ? 'AIza' : provider === 'openrouter' ? 'sk-or' : '');
       });
     });
 
@@ -167,7 +175,7 @@ export const PopupController = {
     });
 
     // Change Key Buttons (settings reopen mode)
-    ['groq', 'serper', 'gemini'].forEach(provider => {
+    ['groq', 'serper', 'gemini', 'openrouter'].forEach(provider => {
       const cap = provider.charAt(0).toUpperCase() + provider.slice(1);
       const changeBtn = this.view.elements[`changeKey${cap}`];
       if (changeBtn) {
@@ -180,6 +188,7 @@ export const PopupController = {
     });
     this.view.elements.removeKeySerper?.addEventListener('click', () => this.handleRemoveSerperKey());
     this.view.elements.removeKeyGemini?.addEventListener('click', () => this.handleRemoveGeminiKey());
+    this.view.elements.removeKeyOpenrouter?.addEventListener('click', () => this.handleRemoveOpenrouterKey());
 
     // Binder CTA: Go to Search
     this.view.elements.binderGoToSearch?.addEventListener('click', () => {
@@ -316,6 +325,9 @@ export const PopupController = {
     if (this.view.elements.inputSerper) {
       this.view.elements.inputSerper.value = keys.serperKey || this.view.elements.inputSerper.value || '';
     }
+    if (this.view.elements.inputOpenrouter) {
+      this.view.elements.inputOpenrouter.value = keys.openrouterKey || this.view.elements.inputOpenrouter.value || '';
+    }
     if (this.view.elements.inputGemini) {
       this.view.elements.inputGemini.value = keys.geminiKey || this.view.elements.inputGemini.value || '';
     }
@@ -333,9 +345,11 @@ export const PopupController = {
   restoreAiConfig(settings) {
     const provider = settings.primaryProvider || 'groq';
     // Set pill active state without saving
-    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini];
+    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini, this.view.elements.pillOpenrouter];
     pills.forEach(p => p?.classList.remove('active'));
-    if (provider === 'gemini') {
+    if (provider === 'openrouter') {
+      this.view.elements.pillOpenrouter?.classList.add('active');
+    } else if (provider === 'gemini') {
       this.view.elements.pillGemini?.classList.add('active');
     } else {
       this.view.elements.pillGroq?.classList.add('active');
@@ -355,13 +369,21 @@ export const PopupController = {
   },
 
   syncObPills(provider) {
-    const obPills = [this.view.elements.pillGroqOb, this.view.elements.pillGeminiOb];
+    const obPills = [this.view.elements.pillGroqOb, this.view.elements.pillGeminiOb, this.view.elements.pillOpenrouterOb];
     obPills.forEach(p => p?.classList.remove('active'));
     if (provider === 'gemini') {
       this.view.elements.pillGeminiOb?.classList.add('active');
+    } else if (provider === 'openrouter') {
+      this.view.elements.pillOpenrouterOb?.classList.add('active');
     } else {
       this.view.elements.pillGroqOb?.classList.add('active');
     }
+  },
+
+
+  hasOpenrouterKey() {
+
+    return SettingsModel.isPresent(this.sanitizeKey(this.view.elements.inputOpenrouter?.value));
   },
 
   hasGeminiKey() {
@@ -371,6 +393,11 @@ export const PopupController = {
   /** Handle provider pill click */
   setProviderPill(provider) {
     let effectiveProvider = provider;
+    if (provider === 'openrouter' && !this.hasOpenrouterKey()) {
+      effectiveProvider = 'groq';
+      this.view.showToast(this.t('setup.toast.noOpenrouterKeySaved') || 'OpenRouter key missing', 'warning');
+      this.view.setSetupStatus('openrouter', 'Missing OpenRouter key', 'error');
+    }
     if (provider === 'gemini' && !this.hasGeminiKey()) {
       effectiveProvider = 'groq';
       this.view.showToast(this.t('setup.toast.noGeminiKeySaved'), 'warning');
@@ -379,7 +406,9 @@ export const PopupController = {
 
     const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini];
     pills.forEach(p => p?.classList.remove('active'));
-    if (effectiveProvider === 'gemini') {
+    if (effectiveProvider === 'openrouter') {
+      this.view.elements.pillOpenrouter?.classList.add('active');
+    } else if (effectiveProvider === 'gemini') {
       this.view.elements.pillGemini?.classList.add('active');
     } else {
       this.view.elements.pillGroq?.classList.add('active');
@@ -415,9 +444,20 @@ export const PopupController = {
 
   /** Persist the current AI config selections to storage */
   async persistAiConfig() {
+    const isOpenrouter = this.view.elements.pillOpenrouter?.classList.contains('active') || this.view.elements.pillOpenrouterOb?.classList.contains('active');
     const isGemini = this.view.elements.pillGemini?.classList.contains('active')
       || this.view.elements.pillGeminiOb?.classList.contains('active');
-    let primaryProvider = isGemini ? 'gemini' : 'groq';
+    let primaryProvider = (isOpenrouter ? 'openrouter' : (isGemini ? 'gemini' : 'groq'));
+
+    if (primaryProvider === 'openrouter' && !this.hasOpenrouterKey()) {
+
+      primaryProvider = 'groq';
+      this.view.elements.pillOpenrouter?.classList.remove('active');
+      this.view.elements.pillOpenrouterOb?.classList.remove('active');
+      this.view.elements.pillGroq?.classList.add('active');
+      this.view.elements.pillGroqOb?.classList.add('active');
+      this.updateProviderHint('groq');
+    }
     if (primaryProvider === 'gemini' && !this.hasGeminiKey()) {
       primaryProvider = 'groq';
       this.view.elements.pillGemini?.classList.remove('active');
@@ -428,9 +468,11 @@ export const PopupController = {
     }
     const groqModel = this.view.elements.selectGroqModel?.value || 'llama-3.3-70b-versatile';
     const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-flash';
+    const openrouterModelSmart = this.view.elements.selectOpenrouterModel?.value || 'deepseek/deepseek-r1:free';
 
-    await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel });
-    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}`);
+
+    await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart });
+    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}`);
   },
 
   handleWelcomeStart() {
@@ -476,13 +518,15 @@ export const PopupController = {
     const settings = await SettingsModel.getSettings();
     if (!SettingsModel.isPresent(settings.groqApiKey)) return 1;
     if (!SettingsModel.isPresent(settings.serperApiKey)) return 2;
-    return 3;
+    if (!SettingsModel.isPresent(settings.geminiApiKey)) return 3;
+    if (!SettingsModel.isPresent(settings.openrouterApiKey)) return 4;
+    return 5;
   },
 
   goToSetupStep(step) {
     let normalizedStep = Number(step);
     if (normalizedStep < 0) normalizedStep = 0;
-    if (normalizedStep > 4) normalizedStep = 4;
+    if (normalizedStep > 5) normalizedStep = 5;
 
     this.currentSetupStep = normalizedStep;
     this.view.showSetupStep(normalizedStep);
@@ -490,6 +534,10 @@ export const PopupController = {
       // Gemini is optional; allow continuing to preferences without validation.
       this.view.enableNextButton('gemini');
     }
+    if (normalizedStep === 4) {
+      this.view.enableNextButton('openrouter');
+    }
+
     // this.updateStepperState(); // Not needed in new design or handled by view logic
   },
 
@@ -527,6 +575,12 @@ export const PopupController = {
       let failReason = '';
       if (provider === 'groq') ok = await this.testGroqKey(key);
       if (provider === 'serper') ok = await this.testSerperKey(key);
+
+      if (provider === 'openrouter') {
+        const orCheck = await this.testOpenrouterKey(key);
+        ok = !!orCheck?.ok;
+        failReason = orCheck?.reason || '';
+      }
       if (provider === 'gemini') {
         const geminiCheck = await this.testGeminiKey(key);
         ok = !!geminiCheck?.ok;
@@ -653,6 +707,29 @@ export const PopupController = {
     }
   },
 
+  async testOpenrouterKey(key) {
+    try {
+      const url = 'https://openrouter.ai/api/v1/chat/completions';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'deepseek/deepseek-r1:free',
+          messages: [{ role: 'user', content: 'healthcheck' }],
+          max_tokens: 1
+        })
+      });
+
+      if (response.ok) return { ok: true };
+      return { ok: false, reason: 'invalid' };
+    } catch (_) {
+      return { ok: false, reason: 'network' };
+    }
+  },
+
   /**
    * Handle "Change this key" button click in settings reopen mode.
    * Reveals the input card, hides the key status chip, focuses the input.
@@ -708,6 +785,38 @@ export const PopupController = {
     this.view.showToast(this.t('setup.toast.serperKeyRemoved'), 'success');
   },
 
+
+
+
+
+  async handleRemoveOpenrouterKey() {
+    if (this.view.elements.inputOpenrouter) {
+      this.view.elements.inputOpenrouter.value = '';
+      this.view.elements.inputOpenrouter.type = 'password';
+    }
+
+    const settings = await SettingsModel.getSettings();
+    const forceGroq = settings.primaryProvider === 'openrouter';
+    const payload = { openrouterApiKey: '' };
+    if (forceGroq) payload.primaryProvider = 'groq';
+    await SettingsModel.saveSettings(payload);
+
+    this.resetProviderValidation('openrouter');
+    this.view.showKeyStatus('openrouter', false);
+    this.saveDraftKeys();
+
+    if (forceGroq) {
+      this.view.elements.pillOpenrouter?.classList.remove('active');
+      this.view.elements.pillOpenrouterOb?.classList.remove('active');
+      this.view.elements.pillGroq?.classList.add('active');
+      this.view.elements.pillGroqOb?.classList.add('active');
+      this.updateProviderHint('groq');
+    }
+
+    this.view.setSetupStatus('openrouter', 'OpenRouter missing', 'error');
+    this.view.showToast('OpenRouter key removed', 'success');
+  },
+
   async handleRemoveGeminiKey() {
     if (this.view.elements.inputGemini) {
       this.view.elements.inputGemini.value = '';
@@ -739,6 +848,7 @@ export const PopupController = {
   async handleSaveSetup() {
     const groqApiKey = this.sanitizeKey(this.view.elements.inputGroq?.value);
     const serperApiKey = this.sanitizeKey(this.view.elements.inputSerper?.value);
+    const openrouterApiKey = this.sanitizeKey(this.view.elements.inputOpenrouter?.value);
     const geminiApiKey = this.sanitizeKey(this.view.elements.inputGemini?.value);
     const providerConfig = this.getSearchProviderConfig(this.getSelectedSearchProvider());
 
@@ -753,6 +863,7 @@ export const PopupController = {
         serperApiKey,
         serperApiUrl: providerConfig.apiUrl,
         geminiApiKey,
+        openrouterApiKey,
         requiredProviders: {
           groq: true,
           serper: false,

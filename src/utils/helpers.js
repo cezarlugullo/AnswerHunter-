@@ -86,7 +86,7 @@ export function formatQuestionText(text) {
         const lines = raw.split('\n');
         const result = [];
         let altCount = 0;
-        const altRe = /^([A-E])\s*[\)\.\-:]/i;
+        const altRe = /^([A-E])\s*(?:[\)\.\-:]|->>|->|=>)/i;
         const newQuestionRe = /^\d+\s*[\.\):]?\s*(Marcar para|Quest[ãa]o|\(.*\/\d{4})/i;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -116,7 +116,7 @@ export function formatQuestionText(text) {
 
     const rawTrimmed = trimGlobalNoise(text);
     let normalized = rawTrimmed.replace(/\r\n/g, '\n');
-    const inlineAltBreakRe = /(?:^|\s)([A-E])\s*[\)\.\-:](?=\s*\S)/gi;
+    const inlineAltBreakRe = /(?:^|\s)([A-E])\s*(?:[\)\.\-:]|->>|->|=>)(?=\s*\S)/gi;
     const inlineAltMatches = normalized.match(inlineAltBreakRe) || [];
     if (inlineAltMatches.length >= 2) {
         normalized = normalized.replace(inlineAltBreakRe, (_m, letter) => `\n${letter.toUpperCase()}) `);
@@ -173,8 +173,8 @@ export function formatQuestionText(text) {
         const enunciadoParts = [];
         let currentAlt = null;
         const altStartRe = allowLoose
-            ? /^([A-E])\s*(?:[\)\.\-:]\s*|\s+)(.+)$/i
-            : /^([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+            ? /^([A-E])\s*(?:(?:[\)\.\-:]|->>|->|=>)\s*|\s+)(.+)$/i
+            : /^([A-E])\s*(?:[\)\.\-:]|->>|->|=>)\s*(.+)$/i;
         const altSoloRe = /^([A-E])$/i;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -242,7 +242,7 @@ export function formatQuestionText(text) {
     }
 
     // Fallback for single line alternatives (avoids false positives like "software)")
-    const inlinePattern = /(^|[\s])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:\s)[A-E]\s*[\)\.\-:]|$)/gi;
+    const inlinePattern = /(^|[\s])([A-E])\s*(?:[\)\.\-:]|->>|->|=>)\s*([^]*?)(?=(?:\s)[A-E]\s*(?:[\)\.\-:]|->>|->|=>)|$)/gi;
     const alternatives = [];
     let firstIndex = null;
     let m;
