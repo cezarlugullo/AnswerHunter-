@@ -1,4 +1,5 @@
 import { SettingsModel } from '../models/SettingsModel.js';
+import { ChatGPTAuthService } from './ChatGPTAuthService.js';
 
 /**
  * ApiService.js
@@ -10,6 +11,8 @@ export const ApiService = {
     // When Groq returns retry-after > 90s, the quota is depleted at hourly/daily level.
     // All subsequent Groq calls should fail fast instead of hanging for minutes.
     _groqQuotaExhaustedUntil: 0,
+    _openRouterQuotaExhaustedUntil: 0,
+    _chatgptQuotaExhaustedUntil: 0,
 
     /**
      * Call Gemini via its OpenAI-compatible endpoint.
@@ -93,6 +96,249 @@ export const ApiService = {
         }
 
         return null;
+    },
+
+    /**
+     * Call OpenRouter via OpenAI-compatible chat completions endpoint.
+     * @param {Array<{role:string,content:any}>} messages
+     * @param {{model?:string, temperature?:number, max_tokens?:number}} opts
+     * @returns {Promise<string|null>}
+     */
+    async _callOpenRouter(messages, opts = {}) {
+        const settings = await this._getSettings();
+        const { openrouterModelSmart } = settings;
+        // Trim + strip accidental "Bearer " prefix that a user might have pasted
+        const openrouterApiKey = (settings.openrouterApiKey || '').trim().replace(/^bearer\s+/i, '');
+        if (!openrouterApiKey) return null;
+
+        if (this._openRouterQuotaExhaustedUntil > Date.now()) {
+            const waitMin = Math.ceil((this._openRouterQuotaExhaustedUntil - Date.now()) / 60000);
+            console.warn(`AnswerHunter: OpenRouter temporarily unavailable (~${waitMin}min left)`);
+            return null;
+        }
+
+        const model = opts.model || openrouterModelSmart || 'deepseek/deepseek-r1:free';
+        const url = 'https://openrouter.ai/api/v1/chat/completions';
+
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${openrouterApiKey}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'https://answerhunter.local',
+                    'X-Title': 'AnswerHunter'
+                },
+                body: JSON.stringify({
+                    model,
+                    messages,
+                    temperature: opts.temperature ?? 0.1,
+                    max_tokens: opts.max_tokens ?? 700
+                })
+            });
+
+            if (!response.ok) {
+                const errText = await response.text().catch(() => '');
+                if (response.status === 429) {
+                    const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
+                    const cooldownMs = retryAfter > 0 ? Math.ceil(retryAfter * 1000) : 120000;
+                    this._openRouterQuotaExhaustedUntil = Date.now() + cooldownMs;
+                    console.warn(`AnswerHunter: OpenRouter rate-limited (429), cooldown=${cooldownMs}ms`);
+                    return null;
+                }
+                if (response.status === 402 || /insufficient|credit|quota/i.test(errText)) {
+                    this._openRouterQuotaExhaustedUntil = Date.now() + 10 * 60 * 1000;
+                    console.warn('AnswerHunter: OpenRouter insufficient credits/quota (402-like)');
+                    return null;
+                }
+                console.warn(`AnswerHunter: OpenRouter HTTP ${response.status}: ${errText.slice(0, 220)}`);
+                return null;
+            }
+
+            const data = await response.json().catch(() => null);
+            const msg = data?.choices?.[0]?.message;
+
+            // OpenRouter may return plain string or structured parts.
+            let content = typeof msg?.content === 'string'
+                ? msg.content.trim()
+                : '';
+
+            if (!content && Array.isArray(msg?.content)) {
+                content = msg.content
+                    .map((part) => {
+                        if (typeof part === 'string') return part;
+                        if (part && typeof part.text === 'string') return part.text;
+                        return '';
+                    })
+                    .join('\n')
+                    .trim();
+            }
+
+            if (!content) return null;
+            return content;
+        } catch (err) {
+            console.warn('AnswerHunter: OpenRouter request error:', err?.message || String(err));
+            return null;
+        }
+    },
+
+    /**
+     * Call ChatGPT via the Codex backend (uses ChatGPT subscription credits).
+     * Requires OAuth authentication via ChatGPTAuthService.
+     * Uses the OpenAI Responses API format.
+     * @param {Array<{role:string,content:string}>} messages
+     * @param {{model?:string, temperature?:number, max_tokens?:number}} opts
+     * @returns {Promise<string|null>} The assistant message content, or null on failure
+     */
+    async _callChatGPT(messages, opts = {}) {
+        // Fast-fail if quota exhausted
+        if (this._chatgptQuotaExhaustedUntil > Date.now()) {
+            const waitMin = Math.ceil((this._chatgptQuotaExhaustedUntil - Date.now()) / 60000);
+            console.warn(`AnswerHunter: ChatGPT temporarily unavailable (~${waitMin}min left)`);
+            return null;
+        }
+
+        // Check if user is authenticated
+        const auth = await ChatGPTAuthService.getAuth();
+        if (!auth || !auth.accessToken || !auth.accountId) {
+            return null; // Not logged in — silently skip
+        }
+
+        const settings = await this._getSettings();
+        const model = opts.model || settings.chatgptModel || 'gpt-5.2';
+
+        // Get a valid (possibly refreshed) access token
+        const accessToken = await ChatGPTAuthService.getValidToken();
+        if (!accessToken) return null;
+
+        // Re-read auth to get possibly-updated accountId after refresh
+        const currentAuth = await ChatGPTAuthService.getAuth();
+        const accountId = currentAuth?.accountId || auth.accountId;
+
+        // Convert Chat Completions format → Responses API format
+        const systemMsgs = messages.filter(m => m.role === 'system');
+        const inputMsgs = messages.filter(m => m.role !== 'system');
+
+        const body = {
+            model,
+            input: inputMsgs.map(m => ({ role: m.role, content: m.content })),
+            stream: true,
+            store: false
+        };
+
+        if (systemMsgs.length > 0) {
+            body.instructions = systemMsgs.map(m => m.content).join('\n');
+        }
+        // Note: Codex Responses API does not support temperature or max_output_tokens
+
+        try {
+            const response = await fetch('https://chatgpt.com/backend-api/codex/responses', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                    'chatgpt-account-id': accountId
+                },
+                body: JSON.stringify(body)
+            });
+
+            if (response.status === 401) {
+                // Token expired — try refresh and retry once
+                if (!opts._retried) {
+                    console.log('AnswerHunter: ChatGPT 401 — refreshing token...');
+                    const refreshed = await ChatGPTAuthService.refreshToken();
+                    if (refreshed) {
+                        return this._callChatGPT(messages, { ...opts, _retried: true });
+                    }
+                }
+                console.warn('AnswerHunter: ChatGPT auth failed after retry');
+                return null;
+            }
+
+            if (response.status === 429) {
+                const retryAfter = parseFloat(response.headers.get('retry-after') || '60');
+                this._chatgptQuotaExhaustedUntil = Date.now() + (retryAfter * 1000);
+                console.warn(`AnswerHunter: ChatGPT rate-limited (429), cooldown=${retryAfter}s`);
+                return null;
+            }
+
+            if (!response.ok) {
+                const errText = await response.text().catch(() => '');
+                console.warn(`AnswerHunter: ChatGPT HTTP ${response.status}: ${errText.slice(0, 300)}`);
+                return null;
+            }
+
+            // Parse SSE streaming response
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let collectedText = '';
+            let completedData = null;
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                // Process complete lines
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || ''; // keep incomplete last line
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    const jsonStr = line.slice(6).trim();
+                    if (!jsonStr || jsonStr === '[DONE]') continue;
+
+                    try {
+                        const event = JSON.parse(jsonStr);
+
+                        // Collect text deltas
+                        if (event.type === 'response.output_text.delta' && event.delta) {
+                            collectedText += event.delta;
+                        }
+
+                        // response.completed has the full final response
+                        if (event.type === 'response.completed' && event.response) {
+                            completedData = event.response;
+                        }
+                    } catch (_) {
+                        // skip malformed JSON lines
+                    }
+                }
+            }
+
+            // Try to extract from completed response first
+            if (completedData) {
+                const output = completedData.output || [];
+                const msgOutput = output.find(o => o.type === 'message');
+                if (msgOutput) {
+                    const contentParts = msgOutput.content || [];
+                    const finalText = contentParts
+                        .filter(c => c.type === 'output_text')
+                        .map(c => c.text)
+                        .join('\n')
+                        .trim();
+                    if (finalText) {
+                        console.log(`AnswerHunter: ChatGPT success (model=${model}, ${finalText.length} chars)`);
+                        return finalText;
+                    }
+                }
+            }
+
+            // Fallback: use collected deltas
+            const trimmed = collectedText.trim();
+            if (trimmed) {
+                console.log(`AnswerHunter: ChatGPT success via deltas (model=${model}, ${trimmed.length} chars)`);
+                return trimmed;
+            }
+
+            console.warn('AnswerHunter: ChatGPT — empty text in streaming response');
+            return null;
+
+        } catch (err) {
+            console.warn('AnswerHunter: ChatGPT request error:', err?.message || String(err));
+            return null;
+        }
     },
 
     async _getSettings() {
@@ -252,12 +498,14 @@ export const ApiService = {
                 attempts.push(content);
                 const m = content.match(letterPattern);
                 if (m) {
-                    const letter = m[1].toUpperCase();
-                    votes[letter] = (votes[letter] || 0) + 1;
-                    if (!responses[letter] || content.length > responses[letter].length) {
-                        responses[letter] = content;
+                    const letter = (m[1] || m[2] || '').toUpperCase();
+                    if (letter) {
+                        votes[letter] = (votes[letter] || 0) + 1;
+                        if (!responses[letter] || content.length > responses[letter].length) {
+                            responses[letter] = content;
+                        }
+                        if (votes[letter] >= 2) break; // early consensus
                     }
-                    if (votes[letter] >= 2) break; // early consensus
                 }
             } catch (err) {
                 const errMsg = err?.message || String(err);
@@ -633,6 +881,26 @@ Analise o texto passo a passo e responda no formato acima:`;
             }
         };
 
+        const tryChatGPT = async () => {
+            if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                console.log(`  🔬 [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.2'})...`);
+                const result = await this._callChatGPT([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], {
+                    temperature: 0.05,
+                    max_tokens: 300,
+                    model: settings.chatgptModel || 'gpt-5.2'
+                });
+                console.log(`  🔬 [aiExtract] ChatGPT response: ${result ? result.length + ' chars' : 'null'}`);
+                return result;
+            } catch (e) {
+                console.warn('  🔬 [aiExtract] ChatGPT error:', e?.message || e);
+                return null;
+            }
+        };
+
         /* ---------- Rotate Execution with Rate Limit Awareness ---------- */
         let content = null;
         const fallbackChain = [];
@@ -643,9 +911,16 @@ Analise o texto passo a passo e responda no formato acima:`;
         if (settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) {
             fallbackChain.push({ name: 'groq', fn: tryGroq });
         }
+        // ChatGPT: only added if user is authenticated (checked inside _callChatGPT)
+        if (this._chatgptQuotaExhaustedUntil <= Date.now()) {
+            fallbackChain.push({ name: 'chatgpt', fn: tryChatGPT });
+        }
 
         const primary = settings.primaryProvider || 'groq';
-        if (primary === 'gemini') {
+        if (primary === 'chatgpt') {
+            const idx = fallbackChain.findIndex(p => p.name === 'chatgpt');
+            if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
+        } else if (primary === 'gemini') {
             const idx = fallbackChain.findIndex(p => p.name === 'gemini');
             if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
         } else if (primary === 'openrouter') {
@@ -1308,6 +1583,7 @@ Letra B: TCP
         try {
             const geminiPrimary = await this._isGeminiPrimary();
             let content = null;
+
             if (geminiPrimary) {
                 content = await tryGemini();
                 if (content == null) content = await tryGroq();
@@ -2725,6 +3001,22 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
         const systemMsg = 'Você infere respostas de questões educacionais com base em evidências de fontes. Analise textos explicativos, justificativas e definições nas fontes para encontrar qual alternativa responde ao ASPECTO ESPECÍFICO do enunciado. Não se limite a verificar se uma alternativa é "verdadeira" — ela precisa responder ao que o enunciado PERGUNTA. Formato final: "Letra X: [texto]" ou NAO_ENCONTRADO.';
         const letterPattern = /(?:Letra|Letter)\s*([A-E])[:\s\)]/i;
         const geminiPrimary = await this._isGeminiPrimary();
+        const chatgptPrimaryInfer = settings.primaryProvider === 'chatgpt'
+            && this._chatgptQuotaExhaustedUntil <= Date.now();
+
+        if (chatgptPrimaryInfer) {
+            // ── ChatGPT PRIMARY for inference ──
+            console.log(`AnswerHunter: Inference via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2'})...`);
+            const chatgptResult = await this._callChatGPT([
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: basePrompt }
+            ], { model: settings.chatgptModel || 'gpt-5.2' });
+            if (chatgptResult) {
+                console.log(`AnswerHunter: ChatGPT inference success (${chatgptResult.length} chars)`);
+                return chatgptResult;
+            }
+            console.log('AnswerHunter: ChatGPT inference failed — trying Groq fallback...');
+        }
 
         if (geminiPrimary) {
             // ── Gemini PRIMARY → Groq fallback ──
@@ -3083,7 +3375,14 @@ REGRAS:
         if (hasOptions) {
             const mcSystemMsg = 'Você é um especialista em análise de questões de múltipla escolha. Seja conservador: quando faltar evidência clara, responda INCONCLUSIVO em vez de chutar.';
             const mcLetterPattern = /[*_]{0,2}(?:Letra|Letter|Alternativa|Resposta\s+(?:correta|final))[:\s*_]{0,4}[*_]{0,2}\s*([A-E])\b|\b([A-E])\s*[).]\s*(?:V\b|verdadeira|correta)/i;
+            // Detects AI responses that refuse to answer due to missing code/image context
+            const CANT_ANSWER_RE = /\b(não\s+(pode(mos)?|é\s+possível)\s+(ser\s+)?respondida?|sem\s+o\s+código|preciso\s+(do\s+)?código|código.{0,50}(não\s+está|ausente|faltando|não\s+foi\s+fornecido)|contexto\s+(adicional|visual)\s+necessário|imagem\s+(não|sem)|necessário\s+ver\s+o\s+código|não\s+tenho\s+acesso\s+ao\s+código|código\s+sql.{0,30}não|without\s+the\s+(code|image)|cannot\s+answer\s+without)\b/i;
             const geminiPrimary = await this._isGeminiPrimary();
+            const openrouterPrimary = settings.primaryProvider === 'openrouter'
+                && !!settings.openrouterApiKey
+                && this._openRouterQuotaExhaustedUntil <= Date.now();
+            const chatgptPrimary = settings.primaryProvider === 'chatgpt'
+                && this._chatgptQuotaExhaustedUntil <= Date.now();
 
             /** Parse MC attempts into votes using the existing parseAttemptDecision logic */
             const tabulateGroqAttempts = (attempts) => {
@@ -3098,8 +3397,13 @@ REGRAS:
                     const lines = normalized.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
                     const lastLine = lines.length > 0 ? lines[lines.length - 1] : normalized.trim();
 
-                    let match = lastLine.match(/(?:^|\b)(?:resposta\s+final\s*[:\-]\s*)?(?:letra|letter)\s*([A-E])\b/i);
-                    if (!match) match = normalized.match(/(?:^|\b)(?:letra|letter)\s*([A-E])\b/i);
+                    // Broad letter extraction — works for all AI providers
+                    let match = lastLine.match(/(?:^|\b)(?:resposta\s+final|resposta\s+correta|resposta)\s*[:\-–]\s*(?:letra\s*)?[*_]*([A-E])[*_]*/i);
+                    if (!match) match = lastLine.match(/(?:^|\b)(?:letra|letter|alternativa)\s*[*_]*([A-E])\b/i);
+                    if (!match) match = normalized.match(/(?:resposta\s+final|resposta\s+correta|resposta)\s*[:\-–]\s*(?:letra\s*)?[*_]*([A-E])[*_]*/i);
+                    if (!match) match = normalized.match(/(?:letra|letter|alternativa)\s*[*_]*([A-E])\b/i);
+                    if (!match) match = normalized.match(/\*\*([A-E])\*\*/);
+                    if (!match) match = normalized.match(/\b([A-E])\s*\)\s*(?:é\s+)?(?:a\s+)?(?:incorreta|correta|errada|falsa|verdadeira)/i);
                     if (!match) continue;
 
                     // Ambiguity guard
@@ -3118,7 +3422,13 @@ REGRAS:
                     }
                 }
 
-                if (validVoteCount === 0) return null;
+                if (validVoteCount === 0) {
+                    // Debug: show first 200 chars of each attempt for troubleshooting
+                    for (let i = 0; i < attempts.length; i++) {
+                        if (attempts[i]) console.log(`AnswerHunter: MC attempt[${i}] preview (${attempts[i].length} chars): "${attempts[i].slice(0, 200)}"`);
+                    }
+                    return null;
+                }
                 const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1]);
                 const [winnerLetter, winnerCount] = sorted[0];
                 const secondCount = sorted[1]?.[1] || 0;
@@ -3127,8 +3437,28 @@ REGRAS:
                     console.log(`AnswerHunter: MC consensus → Letter ${winnerLetter} (${winnerCount}/${validVoteCount})`);
                     return fullResponses[winnerLetter];
                 }
-                return null; // no robust consensus
+                // Soft-winner: at least one valid vote but no robust consensus
+                console.log(`AnswerHunter: MC soft-winner → Letter ${winnerLetter} (${winnerCount}/${validVoteCount}, low confidence)`);
+                return fullResponses[winnerLetter];
             };
+
+            if (chatgptPrimary) {
+                // ── ChatGPT PRIMARY for MC ──
+                console.log(`AnswerHunter: MC via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2'})...`);
+                const chatgptAttempts = [];
+                for (let i = 0; i < 2; i++) {
+                    const content = await this._callChatGPT([
+                        { role: 'system', content: mcSystemMsg },
+                        { role: 'user', content: prompt }
+                    ], { model: settings.chatgptModel || 'gpt-5.2' });
+                    if (content) chatgptAttempts.push(content);
+                }
+                if (chatgptAttempts.length > 0) {
+                    const tabulated = tabulateGroqAttempts(chatgptAttempts);
+                    if (tabulated) return tabulated;
+                }
+                console.log('AnswerHunter: ChatGPT MC failed — trying Groq fallback...');
+            }
 
             if (geminiPrimary) {
                 // ── Gemini PRIMARY for MC ──
@@ -3136,6 +3466,11 @@ REGRAS:
                 const gResult = await this._geminiConsensus(mcSystemMsg, prompt, mcLetterPattern, { smart: true });
                 if (gResult.response) {
                     console.log('AnswerHunter: Gemini primary MC votes:', gResult.votes);
+                    // If no letter extracted AND response signals missing code/context, return clean INCONCLUSIVO
+                    if (!gResult.winner && CANT_ANSWER_RE.test(gResult.response)) {
+                        console.log('AnswerHunter: Gemini primary MC — missing context detected, returning INCONCLUSIVO');
+                        return 'INCONCLUSIVO: código ou contexto visual não disponível para resolver a questão.';
+                    }
                     return gResult.response;
                 }
                 // Fallback to Groq
@@ -3146,8 +3481,34 @@ REGRAS:
                 if (groqResult.attempts.length > 0) {
                     const tabulated = tabulateGroqAttempts(groqResult.attempts);
                     if (tabulated) return tabulated;
+                    // Soft fallback: use Groq's consensus winner even without robust 2-vote agreement
+                    if (groqResult.winner && groqResult.response) {
+                        console.log(`AnswerHunter: Groq MC soft-winner (Gemini-primary fallback) → Letter ${groqResult.winner} (single vote)`);
+                        return groqResult.response;
+                    }
                 }
                 return 'INCONCLUSIVO: sem consenso confiável entre tentativas da IA.';
+            }
+
+            if (openrouterPrimary) {
+                console.log('AnswerHunter: MC via OpenRouter (primary)...');
+                const openrouterAttempts = [];
+                for (const temp of [0.12, 0.28]) {
+                    const content = await this._callOpenRouter([
+                        { role: 'system', content: mcSystemMsg },
+                        { role: 'user', content: prompt }
+                    ], {
+                        model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                        temperature: temp,
+                        max_tokens: 700
+                    });
+                    if (content) openrouterAttempts.push(content);
+                }
+                if (openrouterAttempts.length > 0) {
+                    const tabulated = tabulateGroqAttempts(openrouterAttempts);
+                    if (tabulated) return tabulated;
+                }
+                console.log('AnswerHunter: OpenRouter MC failed — trying Groq fallback...');
             }
 
             // ── Groq PRIMARY for MC ──
@@ -3157,12 +3518,22 @@ REGRAS:
             if (groqResult.attempts.length > 0) {
                 const tabulated = tabulateGroqAttempts(groqResult.attempts);
                 if (tabulated) return tabulated;
+                // Soft fallback: use Groq's consensus winner even without robust 2-vote agreement
+                if (groqResult.winner && groqResult.response) {
+                    console.log(`AnswerHunter: Groq MC soft-winner → Letter ${groqResult.winner} (single vote, low confidence)`);
+                    return groqResult.response;
+                }
             }
             // Groq failed → Gemini fallback
             console.log('AnswerHunter: Groq MC failed — trying Gemini fallback...');
             const gResult = await this._geminiConsensus(mcSystemMsg, prompt, mcLetterPattern, { smart: true });
             if (gResult.response) {
                 console.log('AnswerHunter: Gemini MC fallback votes:', gResult.votes);
+                // If no letter extracted AND response signals missing code/context, return clean INCONCLUSIVO
+                if (!gResult.winner && CANT_ANSWER_RE.test(gResult.response)) {
+                    console.log('AnswerHunter: Gemini MC fallback — missing context detected, returning INCONCLUSIVO');
+                    return 'INCONCLUSIVO: código ou contexto visual não disponível para resolver a questão.';
+                }
                 return gResult.response;
             }
             return 'INCONCLUSIVO: sem evidência suficiente para marcar alternativa.';
@@ -3170,7 +3541,34 @@ REGRAS:
 
         // For open-ended questions, single attempt with provider routing
         const geminiPrimaryOpen = await this._isGeminiPrimary();
+        const openrouterPrimaryOpen = settings.primaryProvider === 'openrouter'
+            && !!settings.openrouterApiKey
+            && this._openRouterQuotaExhaustedUntil <= Date.now();
+        const chatgptPrimaryOpen = settings.primaryProvider === 'chatgpt'
+            && this._chatgptQuotaExhaustedUntil <= Date.now();
         const openSysMsg = 'Você é um assistente que responde questões com objetividade.';
+
+        if (chatgptPrimaryOpen) {
+            console.log(`AnswerHunter: Open-ended via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2'})...`);
+            const chatgptOpen = await this._callChatGPT([
+                { role: 'system', content: openSysMsg },
+                { role: 'user', content: prompt }
+            ], { model: settings.chatgptModel || 'gpt-5.2' });
+            if (chatgptOpen) return chatgptOpen;
+            console.log('AnswerHunter: ChatGPT open-ended failed — trying Groq fallback...');
+        }
+
+        if (openrouterPrimaryOpen) {
+            const openrouterOpen = await this._callOpenRouter([
+                { role: 'system', content: openSysMsg },
+                { role: 'user', content: prompt }
+            ], {
+                model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                temperature: 0.15,
+                max_tokens: 300
+            });
+            if (openrouterOpen) return openrouterOpen;
+        }
 
         if (geminiPrimaryOpen) {
             // Gemini first for open-ended

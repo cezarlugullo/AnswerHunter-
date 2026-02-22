@@ -6,12 +6,14 @@ import { StorageModel } from '../models/StorageModel.js';
 import { SettingsModel } from '../models/SettingsModel.js';
 import { I18nService } from '../i18n/I18nService.js';
 import { isLikelyQuestion } from '../utils/helpers.js';
+import { ChatGPTAuthService } from '../services/ChatGPTAuthService.js';
 
 export const PopupController = {
   view: null,
   currentSetupStep: 1,
   onboardingFlags: { welcomed: false, setupDone: false },
   _isReopenMode: false,
+  _settingsCache: null,
 
   async init(view) {
     this.view = view;
@@ -36,10 +38,29 @@ export const PopupController = {
     // Clear draft keys when popup closes without completing setup,
     // so stale plaintext keys don't persist in storage indefinitely.
     window.addEventListener('pagehide', () => { this.clearDraftKeys(); }, { once: true });
+
+    // Check ChatGPT auth state and update UI
+    await this.refreshChatGPTAuthUI();
+
+    // Listen for auth success from background service worker
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg.type === 'CHATGPT_AUTH_SUCCESS') {
+        this.refreshChatGPTAuthUI();
+        this.view.showToast('ChatGPT connected!', 'success');
+      } else if (msg.type === 'CHATGPT_AUTH_FAILED') {
+        const statusEl = document.getElementById('chatgpt-login-status');
+        if (statusEl) statusEl.textContent = msg.error || 'Login failed';
+        this.view.showToast('ChatGPT login failed', 'error');
+      }
+    });
   },
 
   setupEventListeners() {
     this.view.elements.settingsBtn?.addEventListener('click', () => this.toggleSetupPanel());
+    // ChatGPT header button
+    document.getElementById('chatgptBtn')?.addEventListener('click', () => {
+      document.getElementById('chatgpt-auth-section')?.classList.remove('hidden');
+    });
     // remove closeSetupBtn as we don't have a close button in full screen onboarding
 
     // New Onboarding Bindings
@@ -70,19 +91,45 @@ export const PopupController = {
       });
     });
 
+    const bindProviderPillButton = (button, fallbackProvider = '') => {
+      if (!button || button.dataset.providerBound === '1') return;
+      const providerCandidate = (button.dataset.provider || fallbackProvider || button.id?.replace(/^pill-/, '').replace(/-ob$/, '') || '')
+        .toLowerCase()
+        .trim();
+      if (!['groq', 'gemini', 'openrouter', 'chatgpt'].includes(providerCandidate)) return;
 
-    // AI Provider & Model Config (Settings tab)
-    this.view.elements.pillGroq?.addEventListener('click', () => { this.setProviderPill('groq'); });
-    this.view.elements.pillGemini?.addEventListener('click', () => { this.setProviderPill('gemini'); });
-    this.view.elements.pillOpenrouterOb?.addEventListener('click', () => { this.setProviderPill('openrouter'); });
+      button.dataset.providerBound = '1';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log(`[AnswerHunter] provider pill click: ${providerCandidate}`);
+        this.setProviderPill(providerCandidate);
+      });
+    };
 
-    // AI Provider Config (Onboarding Tab)
-    this.view.elements.pillGroqOb?.addEventListener('click', () => { this.setProviderPill('groq'); });
-    this.view.elements.pillGeminiOb?.addEventListener('click', () => { this.setProviderPill('gemini'); });
+    // Provider pills (robust binding + fallback over all onboarding buttons)
+    bindProviderPillButton(this.view.elements.pillGroq, 'groq');
+    bindProviderPillButton(this.view.elements.pillGemini, 'gemini');
+    bindProviderPillButton(this.view.elements.pillOpenrouter, 'openrouter');
+    bindProviderPillButton(this.view.elements.pillGroqOb, 'groq');
+    bindProviderPillButton(this.view.elements.pillGeminiOb, 'gemini');
+    bindProviderPillButton(this.view.elements.pillOpenrouterOb, 'openrouter');
+    bindProviderPillButton(document.getElementById('pill-chatgpt-ob'), 'chatgpt');
+    document.querySelectorAll('.ob-provider-pill[data-provider]').forEach((button) => {
+      bindProviderPillButton(button);
+    });
 
     this.view.elements.selectGroqModel?.addEventListener('change', () => this.persistAiConfig());
     this.view.elements.selectGeminiModel?.addEventListener('change', () => this.persistAiConfig());
     this.view.elements.selectOpenrouterModel?.addEventListener('change', () => this.persistAiConfig());
+
+    // ChatGPT Auth buttons
+    document.getElementById('chatgpt-login-btn')?.addEventListener('click', () => this.handleChatGPTLogin());
+    document.getElementById('chatgpt-logout-btn')?.addEventListener('click', () => this.handleChatGPTLogout());
+    document.getElementById('chatgpt-auth-close')?.addEventListener('click', () => {
+      document.getElementById('chatgpt-auth-section')?.classList.add('hidden');
+    });
+    document.getElementById('select-chatgpt-model')?.addEventListener('change', () => this.persistAiConfig());
 
     this.view.elements.extractBtn?.addEventListener('click', () => this.handleExtract());
     this.view.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
@@ -115,7 +162,7 @@ export const PopupController = {
         .toLowerCase()
         .trim();
 
-      if (!['groq', 'serper', 'gemini'].includes(providerCandidate)) return;
+      if (!['groq', 'serper', 'gemini', 'openrouter'].includes(providerCandidate)) return;
 
       button.dataset.testBound = '1';
       button.addEventListener('click', (event) => {
@@ -317,6 +364,7 @@ export const PopupController = {
 
   async fillInputsFromSettings() {
     const settings = await SettingsModel.getSettings();
+    this._settingsCache = settings;
     const keys = await SettingsModel.getApiKeys();
 
     if (this.view.elements.inputGroq) {
@@ -345,9 +393,11 @@ export const PopupController = {
   restoreAiConfig(settings) {
     const provider = settings.primaryProvider || 'groq';
     // Set pill active state without saving
-    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini, this.view.elements.pillOpenrouter];
+    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini, this.view.elements.pillOpenrouter, document.getElementById('pill-chatgpt')];
     pills.forEach(p => p?.classList.remove('active'));
-    if (provider === 'openrouter') {
+    if (provider === 'chatgpt') {
+      document.getElementById('pill-chatgpt')?.classList.add('active');
+    } else if (provider === 'openrouter') {
       this.view.elements.pillOpenrouter?.classList.add('active');
     } else if (provider === 'gemini') {
       this.view.elements.pillGemini?.classList.add('active');
@@ -359,19 +409,26 @@ export const PopupController = {
     // Set model selects (settings panel only)
     const groqModel = settings.groqModelSmart || 'llama-3.3-70b-versatile';
     const geminiModel = settings.geminiModelSmart || 'gemini-2.5-flash';
+    const chatgptModel = settings.chatgptModel || 'gpt-5.2';
     if (this.view.elements.selectGroqModel) {
       this.view.elements.selectGroqModel.value = groqModel;
     }
     if (this.view.elements.selectGeminiModel) {
       this.view.elements.selectGeminiModel.value = geminiModel;
     }
+    const chatgptModelSelect = document.getElementById('select-chatgpt-model');
+    if (chatgptModelSelect) {
+      chatgptModelSelect.value = chatgptModel;
+    }
     this.syncObPills(provider);
   },
 
   syncObPills(provider) {
-    const obPills = [this.view.elements.pillGroqOb, this.view.elements.pillGeminiOb, this.view.elements.pillOpenrouterOb];
+    const obPills = [this.view.elements.pillGroqOb, this.view.elements.pillGeminiOb, this.view.elements.pillOpenrouterOb, document.getElementById('pill-chatgpt-ob')];
     obPills.forEach(p => p?.classList.remove('active'));
-    if (provider === 'gemini') {
+    if (provider === 'chatgpt') {
+      document.getElementById('pill-chatgpt-ob')?.classList.add('active');
+    } else if (provider === 'gemini') {
       this.view.elements.pillGeminiOb?.classList.add('active');
     } else if (provider === 'openrouter') {
       this.view.elements.pillOpenrouterOb?.classList.add('active');
@@ -382,20 +439,42 @@ export const PopupController = {
 
 
   hasOpenrouterKey() {
-
-    return SettingsModel.isPresent(this.sanitizeKey(this.view.elements.inputOpenrouter?.value));
+    const inputKey = this.sanitizeKey(this.view.elements.inputOpenrouter?.value);
+    if (SettingsModel.isPresent(inputKey)) return true;
+    const savedKey = this.sanitizeKey(this._settingsCache?.openrouterApiKey);
+    return SettingsModel.isPresent(savedKey);
   },
 
   hasGeminiKey() {
-    return SettingsModel.isPresent(this.sanitizeKey(this.view.elements.inputGemini?.value));
+    const inputKey = this.sanitizeKey(this.view.elements.inputGemini?.value);
+    if (SettingsModel.isPresent(inputKey)) return true;
+    const savedKey = this.sanitizeKey(this._settingsCache?.geminiApiKey);
+    return SettingsModel.isPresent(savedKey);
   },
 
   /** Handle provider pill click */
-  setProviderPill(provider) {
+  async setProviderPill(provider) {
     let effectiveProvider = provider;
+    const hasOpenrouterInputKey = SettingsModel.isPresent(this.sanitizeKey(this.view.elements.inputOpenrouter?.value));
+    const hasOpenrouterSavedKey = SettingsModel.isPresent(this.sanitizeKey(this._settingsCache?.openrouterApiKey));
+    const hasGeminiInputKey = SettingsModel.isPresent(this.sanitizeKey(this.view.elements.inputGemini?.value));
+    const hasGeminiSavedKey = SettingsModel.isPresent(this.sanitizeKey(this._settingsCache?.geminiApiKey));
+    console.log(
+      `[AnswerHunter] setProviderPill request=${provider} ` +
+      `orInput=${hasOpenrouterInputKey} orSaved=${hasOpenrouterSavedKey} ` +
+      `gmInput=${hasGeminiInputKey} gmSaved=${hasGeminiSavedKey}`
+    );
+
     if (provider === 'openrouter' && !this.hasOpenrouterKey()) {
       effectiveProvider = 'groq';
-      this.view.showToast(this.t('setup.toast.noOpenrouterKeySaved') || 'OpenRouter key missing', 'warning');
+      console.warn('[AnswerHunter] OpenRouter selection blocked: key not present in input or saved settings');
+      const noOpenrouterKeyMsg = this.t('setup.toast.noOpenrouterKeySaved');
+      this.view.showToast(
+        noOpenrouterKeyMsg === 'setup.toast.noOpenrouterKeySaved'
+          ? 'OpenRouter key is not saved yet.'
+          : noOpenrouterKeyMsg,
+        'warning'
+      );
       this.view.setSetupStatus('openrouter', 'Missing OpenRouter key', 'error');
     }
     if (provider === 'gemini' && !this.hasGeminiKey()) {
@@ -403,10 +482,21 @@ export const PopupController = {
       this.view.showToast(this.t('setup.toast.noGeminiKeySaved'), 'warning');
       this.view.setSetupStatus('gemini', this.t('setup.status.geminiMissing'), 'error');
     }
+    if (provider === 'chatgpt') {
+      // ChatGPT uses OAuth, not API keys — check login status synchronously
+      const loggedIn = await ChatGPTAuthService.isLoggedIn();
+      if (!loggedIn) {
+        effectiveProvider = 'groq';
+        this.view.showToast('Login to ChatGPT first', 'warning');
+        document.getElementById('chatgpt-auth-section')?.classList.remove('hidden');
+      }
+    }
 
-    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini];
+    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini, this.view.elements.pillOpenrouter, document.getElementById('pill-chatgpt')];
     pills.forEach(p => p?.classList.remove('active'));
-    if (effectiveProvider === 'openrouter') {
+    if (effectiveProvider === 'chatgpt') {
+      document.getElementById('pill-chatgpt')?.classList.add('active');
+    } else if (effectiveProvider === 'openrouter') {
       this.view.elements.pillOpenrouter?.classList.add('active');
     } else if (effectiveProvider === 'gemini') {
       this.view.elements.pillGemini?.classList.add('active');
@@ -415,6 +505,7 @@ export const PopupController = {
     }
     this.syncObPills(effectiveProvider);
     this.updateProviderHint(effectiveProvider);
+    console.log(`[AnswerHunter] setProviderPill effective=${effectiveProvider}`);
     this.persistAiConfig();
     return effectiveProvider;
   },
@@ -423,11 +514,16 @@ export const PopupController = {
   updateProviderHint(provider) {
     const hint = this.view.elements.providerHint;
     if (hint) {
-      const key = provider === 'gemini'
-        ? 'setup.aiConfig.hintGeminiPrimary'
-        : 'setup.aiConfig.hintGroqPrimary';
-      const text = this.view.t(key);
-      if (text) {
+      const key = provider === 'chatgpt'
+        ? 'setup.aiConfig.hintChatgptPrimary'
+        : provider === 'openrouter'
+          ? 'setup.aiConfig.hintOpenrouterPrimary'
+          : provider === 'gemini'
+            ? 'setup.aiConfig.hintGeminiPrimary'
+            : 'setup.aiConfig.hintGroqPrimary';
+      let text = this.view.t(key);
+      if (!text || text === key) text = provider === 'chatgpt' ? 'Using your ChatGPT subscription credits' : null;
+      if (text && text !== key) {
         const textSpan = hint.querySelector('span:last-child') || hint;
         textSpan.textContent = text;
       }
@@ -435,22 +531,33 @@ export const PopupController = {
     // Also update the onboarding hint
     const obHint = document.getElementById('provider-hint-ob');
     if (obHint) {
-      const key = provider === 'gemini'
-        ? 'setup.prefs.hintGemini'
-        : 'setup.prefs.hintGroq';
-      obHint.textContent = this.view.t(key) || obHint.textContent;
+      const key = provider === 'chatgpt'
+        ? 'setup.prefs.hintChatgpt'
+        : provider === 'openrouter'
+          ? 'setup.prefs.hintOpenrouter'
+          : provider === 'gemini'
+            ? 'setup.prefs.hintGemini'
+            : 'setup.prefs.hintGroq';
+      let text = this.view.t(key);
+      if (!text || text === key) text = provider === 'chatgpt' ? 'Uses your ChatGPT Plus/Pro subscription credits' : null;
+      obHint.textContent = text || (this.view.t('setup.prefs.hintGroq') || obHint.textContent);
     }
   },
 
   /** Persist the current AI config selections to storage */
   async persistAiConfig() {
+    const isChatgpt = document.getElementById('pill-chatgpt')?.classList.contains('active') || document.getElementById('pill-chatgpt-ob')?.classList.contains('active');
     const isOpenrouter = this.view.elements.pillOpenrouter?.classList.contains('active') || this.view.elements.pillOpenrouterOb?.classList.contains('active');
     const isGemini = this.view.elements.pillGemini?.classList.contains('active')
       || this.view.elements.pillGeminiOb?.classList.contains('active');
-    let primaryProvider = (isOpenrouter ? 'openrouter' : (isGemini ? 'gemini' : 'groq'));
+    let primaryProvider = (isChatgpt ? 'chatgpt' : (isOpenrouter ? 'openrouter' : (isGemini ? 'gemini' : 'groq')));
+    console.log(
+      `[AnswerHunter] persistAiConfig pre-check primary=${primaryProvider} ` +
+      `isChatgpt=${isChatgpt} isOpenrouter=${isOpenrouter} hasOpenrouter=${this.hasOpenrouterKey()} ` +
+      `isGemini=${isGemini} hasGemini=${this.hasGeminiKey()}`
+    );
 
     if (primaryProvider === 'openrouter' && !this.hasOpenrouterKey()) {
-
       primaryProvider = 'groq';
       this.view.elements.pillOpenrouter?.classList.remove('active');
       this.view.elements.pillOpenrouterOb?.classList.remove('active');
@@ -469,10 +576,88 @@ export const PopupController = {
     const groqModel = this.view.elements.selectGroqModel?.value || 'llama-3.3-70b-versatile';
     const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-flash';
     const openrouterModelSmart = this.view.elements.selectOpenrouterModel?.value || 'deepseek/deepseek-r1:free';
+    const chatgptModel = document.getElementById('select-chatgpt-model')?.value || 'gpt-5.2';
 
+    await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel });
+    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}, chatgpt=${chatgptModel}`);
+  },
 
-    await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart });
-    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}`);
+  // ─── ChatGPT Auth Handlers ───
+
+  async handleChatGPTLogin() {
+    const statusEl = document.getElementById('chatgpt-login-status');
+    const loginBtn = document.getElementById('chatgpt-login-btn');
+
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="material-symbols-rounded spin-loading" style="font-size:14px;">sync</span> Opening login page...';
+    }
+    if (loginBtn) loginBtn.disabled = true;
+
+    try {
+      await ChatGPTAuthService.startLogin();
+      if (statusEl) {
+        statusEl.innerHTML = '<span class="material-symbols-rounded spin-loading" style="font-size:14px;">sync</span> Waiting for authentication...';
+      }
+      // The background service worker will handle the callback
+      // and send CHATGPT_AUTH_SUCCESS message
+    } catch (err) {
+      console.error('ChatGPT login error:', err);
+      if (statusEl) statusEl.textContent = 'Login failed: ' + (err.message || String(err));
+      if (loginBtn) loginBtn.disabled = false;
+    }
+  },
+
+  async handleChatGPTLogout() {
+    await ChatGPTAuthService.logout();
+    await this.refreshChatGPTAuthUI();
+
+    // If ChatGPT was the primary provider, switch back to groq
+    const settings = await SettingsModel.getSettings();
+    if (settings.primaryProvider === 'chatgpt') {
+      this.setProviderPill('groq');
+    }
+
+    this.view.showToast('ChatGPT disconnected', 'info');
+  },
+
+  async refreshChatGPTAuthUI() {
+    const loggedIn = await ChatGPTAuthService.isLoggedIn();
+    const loggedOutEl = document.getElementById('chatgpt-logged-out');
+    const loggedInEl = document.getElementById('chatgpt-logged-in');
+    const loginBtn = document.getElementById('chatgpt-login-btn');
+    const statusEl = document.getElementById('chatgpt-login-status');
+    const emailEl = document.getElementById('chatgpt-user-email');
+
+    if (loggedIn) {
+      const auth = await ChatGPTAuthService.getAuth();
+      loggedOutEl?.classList.add('hidden');
+      loggedInEl?.classList.remove('hidden');
+      if (emailEl) emailEl.textContent = auth?.email || 'ChatGPT account';
+      if (loginBtn) loginBtn.disabled = false;
+      if (statusEl) statusEl.textContent = '';
+
+      // Restore model selection
+      const settings = await SettingsModel.getSettings();
+      const modelSelect = document.getElementById('select-chatgpt-model');
+      if (modelSelect && settings.chatgptModel) {
+        modelSelect.value = settings.chatgptModel;
+      }
+    } else {
+      loggedOutEl?.classList.remove('hidden');
+      loggedInEl?.classList.add('hidden');
+      if (loginBtn) loginBtn.disabled = false;
+      if (statusEl) statusEl.textContent = '';
+    }
+
+    // Update header dot indicator
+    const dot = document.getElementById('chatgpt-status-dot');
+    if (dot) {
+      if (loggedIn) {
+        dot.classList.remove('hidden');
+      } else {
+        dot.classList.add('hidden');
+      }
+    }
   },
 
   handleWelcomeStart() {
@@ -498,9 +683,12 @@ export const PopupController = {
         // Show reopen UX: key status chips, change-key buttons, close-settings buttons
         this.view.setSettingsReopenMode(true);
         const settings = await SettingsModel.getSettings();
+        // Refresh cache so hasOpenrouterKey() / hasGeminiKey() reflect stored values
+        this._settingsCache = settings;
         this.view.showKeyStatus('groq', SettingsModel.isPresent(settings.groqApiKey));
         this.view.showKeyStatus('serper', SettingsModel.isPresent(settings.serperApiKey));
         this.view.showKeyStatus('gemini', SettingsModel.isPresent(settings.geminiApiKey));
+        this.view.showKeyStatus('openrouter', SettingsModel.isPresent(settings.openrouterApiKey));
       } else {
         this.view.setSettingsReopenMode(false);
       }
@@ -615,6 +803,14 @@ export const PopupController = {
           const rateMsg = 'Gemini respondeu 429 por limite de taxa. Tente novamente em alguns segundos.';
           this.view.setSetupStatus(provider, rateMsg, 'fail');
           this.view.showToast(rateMsg, 'warning');
+        } else if (provider === 'openrouter' && failReason === 'quota') {
+          const quotaMsg = 'OpenRouter key valid, but account has no credit/quota.';
+          this.view.setSetupStatus(provider, quotaMsg, 'fail');
+          this.view.showToast(quotaMsg, 'warning');
+        } else if (provider === 'openrouter' && failReason === 'rate_limit') {
+          const rateMsg = 'OpenRouter returned 429 rate limit. Try again in a few seconds.';
+          this.view.setSetupStatus(provider, rateMsg, 'fail');
+          this.view.showToast(rateMsg, 'warning');
         } else {
           this.view.setSetupStatus(provider, this.t('setup.status.error'), 'fail');
           this.view.showToast(this.t('setup.toast.invalidKey'), 'error');
@@ -709,22 +905,25 @@ export const PopupController = {
 
   async testOpenrouterKey(key) {
     try {
-      const url = 'https://openrouter.ai/api/v1/chat/completions';
+      const url = 'https://openrouter.ai/api/v1/models';
       const response = await fetch(url, {
-        method: 'POST',
+        method: 'GET',
         headers: {
           Authorization: `Bearer ${key}`,
           'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'deepseek/deepseek-r1:free',
-          messages: [{ role: 'user', content: 'healthcheck' }],
-          max_tokens: 1
-        })
+        }
       });
 
       if (response.ok) return { ok: true };
-      return { ok: false, reason: 'invalid' };
+      const errText = await response.text().catch(() => '');
+      if (response.status === 429) return { ok: false, reason: 'rate_limit' };
+      if (response.status === 402 || /insufficient|credit|quota/i.test(errText)) {
+        return { ok: false, reason: 'quota' };
+      }
+      if (response.status === 401 || response.status === 403) {
+        return { ok: false, reason: 'invalid' };
+      }
+      return { ok: false, reason: `http_${response.status}` };
     } catch (_) {
       return { ok: false, reason: 'network' };
     }
@@ -741,10 +940,14 @@ export const PopupController = {
     // Show the key card (ensure it's visible)
     const keyCard = this.view.elements[`input${cap}`]?.closest('.ob-key-card');
     if (keyCard) keyCard.style.display = '';
-    // Focus the input
+    // Reveal the key and sync the visibility toggle icon
     const input = this.view.elements[`input${cap}`];
     if (input) {
       input.type = 'text'; // Show the key
+      // Sync the eye-icon so it shows "visibility_off" (key is now visible)
+      const wrapper = input.closest('.ob-input-wrapper');
+      const toggle = wrapper?.querySelector('.visibility-toggle .material-symbols-rounded');
+      if (toggle) toggle.textContent = 'visibility_off';
       input.focus();
       input.select();
     }
@@ -800,6 +1003,7 @@ export const PopupController = {
     const payload = { openrouterApiKey: '' };
     if (forceGroq) payload.primaryProvider = 'groq';
     await SettingsModel.saveSettings(payload);
+    this._settingsCache = { ...(this._settingsCache || {}), ...payload };
 
     this.resetProviderValidation('openrouter');
     this.view.showKeyStatus('openrouter', false);
@@ -828,6 +1032,7 @@ export const PopupController = {
     const payload = { geminiApiKey: '' };
     if (forceGroq) payload.primaryProvider = 'groq';
     await SettingsModel.saveSettings(payload);
+    this._settingsCache = { ...(this._settingsCache || {}), ...payload };
 
     this.resetProviderValidation('gemini');
     this.view.showKeyStatus('gemini', false);
@@ -870,6 +1075,13 @@ export const PopupController = {
           gemini: false
         }
       });
+      this._settingsCache = {
+        ...(this._settingsCache || {}),
+        groqApiKey,
+        serperApiKey,
+        geminiApiKey,
+        openrouterApiKey
+      };
 
       this.onboardingFlags.setupDone = true;
       this.onboardingFlags.welcomed = true;
@@ -898,6 +1110,7 @@ export const PopupController = {
         groq: this.view.elements.inputGroq?.value || '',
         serper: this.view.elements.inputSerper?.value || '',
         gemini: this.view.elements.inputGemini?.value || '',
+        openrouter: this.view.elements.inputOpenrouter?.value || '',
         searchProvider: this.getSelectedSearchProvider()
       };
       await chrome.storage.local.set({ _draftApiKeys: payload });
@@ -922,6 +1135,9 @@ export const PopupController = {
 
       if (this.view.elements.inputGemini && !this.view.elements.inputGemini.value && drafts.gemini) {
         this.view.elements.inputGemini.value = drafts.gemini;
+      }
+      if (this.view.elements.inputOpenrouter && !this.view.elements.inputOpenrouter.value && drafts.openrouter) {
+        this.view.elements.inputOpenrouter.value = drafts.openrouter;
       }
       if (drafts.searchProvider) {
         this.applySearchProviderSelection(drafts.searchProvider, {

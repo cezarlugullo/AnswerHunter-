@@ -3,17 +3,23 @@
   "name": "AnswerHunter",
   "version": "1.3.0",
   "description": "Educational answer hunter: extract questions, search evidence, and suggest answers with AI",
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
     "clipboardWrite",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "tabs"
   ],
   "host_permissions": [
     "https://api.groq.com/*",
     "https://google.serper.dev/*",
     "https://generativelanguage.googleapis.com/*",
+    "https://openrouter.ai/*",
     "<all_urls>"
   ],
   "declarative_net_request": {

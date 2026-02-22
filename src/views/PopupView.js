@@ -102,6 +102,7 @@ export const PopupView = {
       providerToggle: document.getElementById('provider-toggle'),
       pillGroq: document.getElementById('pill-groq'),
       pillGemini: document.getElementById('pill-gemini'),
+      pillOpenrouter: document.getElementById('pill-openrouter'),
       pillGroqOb: document.getElementById('pill-groq-ob'),
       pillGeminiOb: document.getElementById('pill-gemini-ob'),
       providerHint: document.getElementById('provider-hint'),

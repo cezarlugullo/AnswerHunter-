@@ -7319,6 +7319,8 @@ input:focus {
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
+  z-index: 1;
+  pointer-events: auto;
   overflow: hidden;
 }
 
@@ -7353,6 +7355,28 @@ input:focus {
 
 .ob-provider-pill.active[data-provider="gemini"] .material-symbols-rounded {
   color: #4285f4;
+}
+
+.ob-provider-pill.active[data-provider="openrouter"] {
+  border-color: rgba(20, 184, 166, 0.6);
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.24) 0%, rgba(20, 184, 166, 0.08) 100%);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(20, 184, 166, 0.16), inset 0 0 20px rgba(20, 184, 166, 0.05);
+}
+
+.ob-provider-pill.active[data-provider="openrouter"] .material-symbols-rounded {
+  color: #2dd4bf;
+}
+
+.ob-provider-pill.active[data-provider="chatgpt"] {
+  border-color: rgba(139, 92, 246, 0.6);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(139, 92, 246, 0.08) 100%);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(139, 92, 246, 0.18), inset 0 0 20px rgba(139, 92, 246, 0.05);
+}
+
+.ob-provider-pill.active[data-provider="chatgpt"] .material-symbols-rounded {
+  color: #a78bfa;
 }
 
 /* Pill Badge */
@@ -8075,6 +8099,31 @@ input:focus {
   color: #ffffff;
 }
 
+/* ── Lock dark styling for inputs inside the dark ob-form-card.
+   Must come AFTER all light-theme .ob-input:focus rules to win the
+   same-specificity tie-breaker via file order.
+   .ob-form-card .ob-input-wrapper .ob-input:focus  → specificity 0,4,0
+   = same as .ob-slide:not([data-slide='0']) .ob-input:focus but later. ── */
+.ob-form-card .ob-input-wrapper .ob-input {
+  background: rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ob-form-card .ob-input-wrapper .ob-input:focus {
+  outline: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.07);
+}
+
+.ob-form-card .ob-input-wrapper .ob-input.input-valid {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(74, 222, 128, 0.65);
+  color: #ffffff;
+}
+
 .visibility-toggle {
   position: absolute;
   right: 12px;
@@ -8279,11 +8328,11 @@ input:focus {
   text-align: center;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.015);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.015);
 }
 
 .study-action-btn:hover:not(:disabled) {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .study-action-btn:disabled {
@@ -8344,7 +8393,7 @@ input:focus {
   font-size: 13px;
   line-height: 1.6;
   color: var(--ah-text);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .study-loading-placeholder {
@@ -8584,4 +8633,79 @@ input:focus {
   color: #d32f2f;
   background-color: #ffebee;
   border-color: #ffcdd2;
+}
+
+/* ===== ChatGPT Auth Section ===== */
+.chatgpt-auth-section {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(6px);
+  animation: fadeIn 0.25s ease;
+}
+
+.chatgpt-auth-section.hidden {
+  display: none;
+}
+
+.chatgpt-auth-card {
+  background: linear-gradient(145deg, #1a1f2e, #161b28);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 16px;
+  padding: 20px;
+  width: 90%;
+  max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 40px rgba(139, 92, 246, 0.1);
+  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.chatgpt-auth-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chatgpt-auth-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.chatgpt-auth-body.hidden {
+  display: none;
+}
+
+/* ChatGPT header dot indicator */
+.chatgpt-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  border: 1.5px solid #1A1A2E;
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.6);
+}
+
+.chatgpt-dot.hidden {
+  display: none;
 }

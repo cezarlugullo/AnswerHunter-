@@ -22,6 +22,7 @@ export const SettingsModel = {
         geminiModelSmart: 'gemini-2.5-flash',
         openrouterApiKey: '',
         openrouterModelSmart: 'deepseek/deepseek-r1:free',
+        chatgptModel: 'gpt-5.2',
         primaryProvider: 'groq',
         setupCompleted: false,
         requiredProviders: {

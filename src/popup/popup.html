@@ -435,6 +435,11 @@
                       <span data-i18n="setup.prefs.openrouterLabel"
                         style="font-size: 0.82rem; font-weight: 600;">OpenRouter</span>
                     </button>
+                    <button class="ob-btn ob-provider-pill" id="pill-chatgpt-ob" data-provider="chatgpt"
+                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
+                      <span class="material-symbols-rounded" style="font-size: 20px;">smart_toy</span>
+                      <span style="font-size: 0.82rem; font-weight: 600;">ChatGPT</span>
+                    </button>
                   </div>
                   <p id="provider-hint-ob" data-i18n="setup.prefs.hintGroq"
                     style="font-size: 0.76rem; color: rgba(255,255,255,0.7); margin: 10px 0 0; text-align: center;">Você
@@ -459,6 +464,7 @@
           <span id="pill-groq"></span>
           <span id="pill-gemini"></span>
           <span id="pill-openrouter"></span>
+          <span id="pill-chatgpt"></span>
           <div id="provider-hint"></div>
           <select id="select-groq-model"></select>
           <select id="select-gemini-model"></select>
@@ -474,6 +480,86 @@
   </div>
 
   <!-- ===== TOAST CONTAINER ===== -->
+  <!-- ===== ChatGPT Login Section (accessible from settings) ===== -->
+  <div id="chatgpt-auth-section" class="chatgpt-auth-section hidden">
+    <div class="chatgpt-auth-card">
+      <div class="chatgpt-auth-header">
+        <span class="material-symbols-rounded" style="font-size: 28px; color: #a78bfa;">smart_toy</span>
+        <div>
+          <h3 style="margin: 0; font-size: 1rem; color: #ffffff;">ChatGPT Subscription</h3>
+          <p style="margin: 2px 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.7);">Use your ChatGPT Plus/Pro
+            credits</p>
+        </div>
+        <button id="chatgpt-auth-close" class="ob-btn ob-btn-ghost" style="margin-left: auto; padding: 4px;">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- Not logged in state -->
+      <div id="chatgpt-logged-out" class="chatgpt-auth-body">
+        <p style="font-size: 0.82rem; color: rgba(255,255,255,0.85); margin: 0 0 12px; line-height: 1.5;">
+          Login with your ChatGPT account to use your subscription credits (Plus/Pro/Team).
+          No API key needed — uses the same auth as the Codex CLI.
+        </p>
+        <div
+          style="background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 16px; color: #a78bfa;">shield_lock</span>
+            <span style="font-size: 0.78rem; font-weight: 600; color: #a78bfa;">100% Local &amp; Private</span>
+          </div>
+          <p style="font-size: 0.72rem; color: rgba(255,255,255,0.65); margin: 0; line-height: 1.4;">
+            Your tokens are stored only on this device and sent exclusively to OpenAI's servers.
+            This project is open source — no secrets are hardcoded.
+          </p>
+        </div>
+        <button id="chatgpt-login-btn" class="ob-btn ob-btn-primary"
+          style="width: 100%; background: linear-gradient(135deg, #8b5cf6, #7c3aed); border: none; gap: 8px;">
+          <span class="material-symbols-rounded">login</span>
+          <span>Login with ChatGPT</span>
+        </button>
+        <div id="chatgpt-login-status" class="ob-test-status" style="margin-top: 8px;"></div>
+      </div>
+
+      <!-- Logged in state -->
+      <div id="chatgpt-logged-in" class="chatgpt-auth-body hidden">
+        <div
+          style="display: flex; align-items: center; gap: 10px; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 10px; padding: 12px;">
+          <span class="material-symbols-rounded" style="font-size: 24px; color: #a78bfa;">check_circle</span>
+          <div>
+            <p style="margin: 0; font-size: 0.88rem; font-weight: 600; color: #a78bfa;">Connected</p>
+            <p id="chatgpt-user-email" style="margin: 2px 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.7);"></p>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <select id="select-chatgpt-model" class="ob-input"
+            style="flex: 1; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: white; border-radius: 8px; padding: 8px;">
+            <optgroup label="★ Recommended">
+              <option value="gpt-5.3-codex">GPT-5.3 Codex (newest)</option>
+              <option value="gpt-5.2">GPT-5.2</option>
+            </optgroup>
+            <optgroup label="⚡ Reasoning">
+              <option value="o4-mini">o4-mini (fast reasoning)</option>
+              <option value="o3">o3 (advanced reasoning)</option>
+            </optgroup>
+            <optgroup label="GPT-4.1">
+              <option value="gpt-4.1">GPT-4.1</option>
+              <option value="gpt-4.1-mini">GPT-4.1 Mini (fast)</option>
+              <option value="gpt-4.1-nano">GPT-4.1 Nano (fastest)</option>
+            </optgroup>
+            <optgroup label="GPT-4o">
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
+            </optgroup>
+          </select>
+          <button id="chatgpt-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
+            <span class="material-symbols-rounded" style="font-size: 16px;">logout</span>
+            <span>Logout</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
   <!-- ===== MAIN CONTAINER (Hidden during onboarding) ===== -->
@@ -527,6 +613,10 @@
 
             </button>
           </div>
+          <button id="chatgptBtn" class="settings-btn" title="ChatGPT Login" style="position: relative;">
+            <span class="material-symbols-rounded" style="color: #a78bfa;">smart_toy</span>
+            <span id="chatgpt-status-dot" class="chatgpt-dot hidden"></span>
+          </button>
           <button id="settingsBtn" class="settings-btn" data-i18n-title="app.settings">
             <span class="material-symbols-rounded">settings</span>
           </button>
