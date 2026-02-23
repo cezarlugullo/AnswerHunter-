@@ -133,6 +133,95 @@ export const OptionsMatchService = {
         return Math.min(1.0, topicScore * 0.6 + coverageScore * 0.4) * 3;
     },
 
+    /**
+     * Maps a free-form answer body to the closest user option body.
+     * Returns null when confidence is weak or the match is ambiguous.
+     */
+    matchAnswerTextToOptions(answerText, optionsMap) {
+        if (!answerText || !optionsMap || Object.keys(optionsMap).length < 2) return null;
+
+        const normalizedAnswer = QuestionParser.normalizeOption(String(answerText || ''));
+        if (!normalizedAnswer || normalizedAnswer.length < 12) return null;
+
+        const stop = new Set([
+            'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'resposta',
+            'dados', 'banco', 'bancos', 'modelo', 'modelos', 'sobre', 'qual', 'quais',
+            'como', 'para', 'com', 'sem', 'uma', 'um', 'de', 'da', 'do', 'das', 'dos',
+            'na', 'no', 'nas', 'nos', 'ao', 'aos', 'as', 'os', 'e', 'ou', 'em'
+        ]);
+        const answerTokens = normalizedAnswer.split(/\s+/).map(t => t.trim()).filter(t => t.length >= 4 && !stop.has(t));
+        const normalizedAnswerCompact = normalizedAnswer.replace(/\s+/g, '');
+
+        const scored = [];
+        for (const [letterRaw, bodyRaw] of Object.entries(optionsMap || {})) {
+            const letter = String(letterRaw || '').toUpperCase();
+            if (!/^[A-E]$/.test(letter)) continue;
+
+            const body = QuestionParser.stripOptionTailNoise(bodyRaw);
+            const normalizedBody = QuestionParser.normalizeOption(body);
+            if (!normalizedBody || normalizedBody.length < 8) continue;
+
+            const bodyTokens = normalizedBody.split(/\s+/).map(t => t.trim()).filter(t => t.length >= 4 && !stop.has(t));
+            const normalizedBodyCompact = normalizedBody.replace(/\s+/g, '');
+            const contains = normalizedAnswer.includes(normalizedBody)
+                || (normalizedBodyCompact.length >= 16 && normalizedAnswerCompact.includes(normalizedBodyCompact));
+            const reverseContains = (normalizedAnswer.length >= 20 && normalizedBody.includes(normalizedAnswer))
+                || (normalizedAnswerCompact.length >= 16 && normalizedBodyCompact.includes(normalizedAnswerCompact));
+
+            let tokenRatio = 0;
+            let tokenHits = 0;
+            if (answerTokens.length > 0 && bodyTokens.length > 0) {
+                const bodyTokenSet = new Set(bodyTokens);
+                for (const tk of answerTokens) {
+                    if (bodyTokenSet.has(tk)) tokenHits += 1;
+                }
+                tokenRatio = tokenHits / Math.max(1, Math.min(answerTokens.length, bodyTokens.length));
+            }
+
+            const dice = QuestionParser.diceSimilarity(normalizedAnswer, normalizedBody);
+            const semanticScore = tokenRatio * 0.72 + dice * 0.28;
+            const score = contains ? 1.0 : reverseContains ? 0.95 : semanticScore;
+            scored.push({
+                letter,
+                body,
+                score,
+                tokenRatio,
+                tokenHits,
+                dice,
+                contains,
+                reverseContains,
+                method: contains || reverseContains ? 'text-containment' : 'text-semantic'
+            });
+        }
+
+        if (scored.length === 0) return null;
+        scored.sort((a, b) => b.score - a.score);
+        const top = scored[0];
+        const second = scored[1] || null;
+        const margin = top.score - (second?.score || 0);
+        const topStrong = top.contains || top.reverseContains;
+        const topGoodSemantic = !topStrong && top.score >= 0.68 && top.tokenRatio >= 0.42 && top.tokenHits >= 2;
+        const secondStrong = !!second && (second.contains || second.reverseContains || second.score >= 0.62);
+        const ambiguous = !!second && secondStrong && margin < (topStrong ? 0.12 : 0.10);
+
+        if (!topStrong && !topGoodSemantic) return null;
+        if (ambiguous) return null;
+
+        return {
+            letter: top.letter,
+            confidence: topStrong ? 0.92 : Math.max(0.70, Math.min(0.90, top.score)),
+            score: top.score,
+            margin,
+            method: top.method,
+            matchedBody: top.body
+        };
+    },
+
+    findLetterByAnswerText(answerText, optionsMap) {
+        const match = this.matchAnswerTextToOptions(answerText, optionsMap);
+        return match?.letter || null;
+    },
+
     // ── Source option map ─────────────────────────────────────────────────────
 
     /**

@@ -2170,14 +2170,18 @@ Letra B: TCP
                 }
             };
 
-            // Initial pass: strongest query templates first.
+            // Initial pass: strongest query templates first — fired IN PARALLEL.
             if (hasSerperKey) {
-                for (const task of plan.slice(0, 4)) {
-                    if (seenQueries.has(task.q)) continue;
+                const initialTasks = plan.slice(0, 4).filter(task => {
+                    if (seenQueries.has(task.q)) return false;
                     seenQueries.add(task.q);
-                    const data = await runSerper(task.q, task.num);
+                    return true;
+                });
+                const initialResults = await Promise.all(initialTasks.map(task => runSerper(task.q, task.num)));
+                for (let _i = 0; _i < initialTasks.length; _i++) {
+                    const data = initialResults[_i];
                     captureSerperMeta(data);
-                    pushScored(data?.organic || [], task.boost, providerMode === 'serpapi' ? 'serpapi' : 'serper');
+                    pushScored(data?.organic || [], initialTasks[_i].boost, providerMode === 'serpapi' ? 'serpapi' : 'serper');
                     serperCalls += 1;
                 }
             }
@@ -3404,6 +3408,23 @@ REGRAS:
                     if (!match) match = normalized.match(/(?:letra|letter|alternativa)\s*[*_]*([A-E])\b/i);
                     if (!match) match = normalized.match(/\*\*([A-E])\*\*/);
                     if (!match) match = normalized.match(/\b([A-E])\s*\)\s*(?:é\s+)?(?:a\s+)?(?:incorreta|correta|errada|falsa|verdadeira)/i);
+
+                    // V/F inference fallback: when the AI classifies each option as V or F
+                    // but forgets to write the final "Letra X:" line.
+                    // Pattern: "X) V" or "X) F" — pick the single V (correct) or single F (incorrect).
+                    if (!match) {
+                        const vfMatches2 = [...normalized.matchAll(/\b([A-E])\s*\)\s*[*_]*\s*([VF])\b/gi)];
+                        if (vfMatches2.length >= 2) {
+                            const targetMark = asksIncorrect ? 'F' : 'V';
+                            const targetEntries = vfMatches2.filter(m => String(m[2]).toUpperCase() === targetMark);
+                            if (targetEntries.length === 1) {
+                                const inferredLetter = String(targetEntries[0][1]).toUpperCase();
+                                match = [null, inferredLetter]; // synthetic match for letter extraction below
+                                console.log(`AnswerHunter: MC V/F inference → Letter ${inferredLetter} (single ${targetMark} found)`);
+                            }
+                        }
+                    }
+
                     if (!match) continue;
 
                     // Ambiguity guard

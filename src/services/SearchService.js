@@ -4,6 +4,7 @@ import { OptionsMatchService } from './search/OptionsMatchService.js';
 import { HtmlExtractorService } from './search/HtmlExtractorService.js';
 import { EvidenceService } from './search/EvidenceService.js';
 import { SearchCacheService } from './search/SearchCacheService.js';
+import { FreeTextAnswerService } from './search/FreeTextAnswerService.js';
 
 // SearchService
 // Coordinates (1) direct extraction and (2) web search + evidence-based refinement.
@@ -58,6 +59,16 @@ export const SearchService = {
     const optionLineMatches = [...text.matchAll(/(?:^|\n)\s*([A-E])\s*[\)\.\-:]\s+/gim)].map(m => (m[1] || '').toUpperCase()).filter(Boolean);
     const uniqueOptionLines = [...new Set(optionLineMatches)];
     if (uniqueOptionLines.length === 1) return uniqueOptionLines[0];
+
+    // V/F inference: AI wrote "X) V" / "X) F" but no explicit final answer line
+    // Pick the single V (correct) or F (incorrect question)
+    const asksIncorrect = /\b(incorreta|falsa|exceto|n[aã]o\s+[eé]|errada)\b/i.test(text);
+    const vfAll = [...text.matchAll(/\b([A-E])\s*\)\s*[*_]*\s*([VF])\b/gi)];
+    if (vfAll.length >= 2) {
+      const targetMark = asksIncorrect ? 'F' : 'V';
+      const targets = vfAll.filter(m => String(m[2]).toUpperCase() === targetMark);
+      if (targets.length === 1) return String(targets[0][1]).toUpperCase();
+    }
 
     // Bare letter in last line (very short conclusion line)
     if (lines.length > 0) {
@@ -770,7 +781,8 @@ export const SearchService = {
       'passeidireto.com': 1.4,
       'studocu.com': 1.3,
       'brainly.com.br': 0.9,
-      'brainly.com': 0.9
+      'brainly.com': 0.9,
+      'brainly.lat': 0.9
     };
     const riskyCombinedHosts = new Set(['passeidireto.com', 'brainly.com.br', 'brainly.com', 'scribd.com', 'pt.scribd.com']);
     const trustedCombinedHosts = new Set(['qconcursos.com', 'qconcursos.com.br', 'google', 'studocu.com']);
@@ -802,11 +814,118 @@ export const SearchService = {
         return 1.0;
       }
     };
+    const extractExplicitAnswerTextCandidates = rawText => {
+      if (!rawText) return [];
+      const lines = String(rawText || '').replace(/\r/g, '\n').split('\n').map(l => String(l || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      const candidates = [];
+      const seen = new Set();
+      const addCandidate = value => {
+        let cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+        cleaned = cleaned.replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, '').trim();
+        cleaned = cleaned.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim();
+        if (cleaned.length < 18) return;
+        const key = QuestionParser.normalizeOption(cleaned);
+        if (!key || key.length < 12 || seen.has(key)) return;
+        seen.add(key);
+        candidates.push(cleaned);
+      };
+      const isNoiseLine = line => /^(?:\d+\s+pessoas?\b|aluno\b|entrar\b|anuncio\b|bloqueador\b|avaliacao\b|coment[aá]rio\b|novas?\s+perguntas\b|ainda\s+tem\s+perguntas\b|para\s+estudantes\b|para\s+pais\b|codigo\s+de\s+conduta\b|resposta\s*:?\s*$|explica[cç][aã]o\s*:?\s*$)$/i.test(String(line || '').trim());
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line) continue;
+
+        const inlineMatch = line.match(/^(?:resposta|resposta\s+correta|alternativa\s+correta)\s*[:\-]\s*(.+)$/i);
+        if (inlineMatch?.[1]) addCandidate(inlineMatch[1]);
+
+        const markerOnly = /^(?:resposta|resposta\s+correta|alternativa\s+correta)\s*[:\-]?\s*$/i.test(line);
+        if (markerOnly) {
+          for (let j = i + 1; j < Math.min(lines.length, i + 9); j++) {
+            const nextLine = lines[j];
+            if (!nextLine || isNoiseLine(nextLine)) continue;
+            if (/^(?:pergunta|quest[aã]o)\b/i.test(nextLine)) break;
+            addCandidate(nextLine);
+            break;
+          }
+        }
+      }
+      return candidates.slice(0, 5);
+    };
+    const tryMapTextAnswerCandidate = (candidateText, hostHint, topicSim) => {
+      if (!hasOptions || !candidateText || !originalOptionsMap || Object.keys(originalOptionsMap).length < 2) return null;
+      const host = String(hostHint || '').toLowerCase();
+      const risky = riskyCombinedHosts.has(host);
+      const minTopicSim = risky ? 0.72 : 0.58;
+      if ((topicSim || 0) < minTopicSim) return null;
+
+      const mapped = OptionsMatchService.matchAnswerTextToOptions(candidateText, originalOptionsMap);
+      if (!mapped?.letter) return null;
+
+      const minConfidence = risky ? 0.86 : 0.72;
+      const minMargin = risky ? 0.14 : 0.10;
+      if ((mapped.confidence || 0) < minConfidence) return null;
+      if ((mapped.margin || 0) < minMargin) return null;
+      return mapped;
+    };
+    const addTextMappedSource = ({
+      title,
+      link,
+      hostHint,
+      sourceType,
+      topicSim,
+      obfuscation,
+      mapped,
+      evidenceText,
+      methodTag
+    }) => {
+      const baseWeight = getDomainWeight(link);
+      const risky = riskyCombinedHosts.has(String(hostHint || '').toLowerCase());
+      const weight = baseWeight + (risky ? 0.95 : 1.25) + (mapped.confidence || 0.7) * 0.35;
+      const sourceId = `${hostHint || 'source'}:${sources.length + 1}`;
+      const evidenceBlock = EvidenceService.buildEvidenceBlock({
+        questionFingerprint,
+        sourceId,
+        sourceLink: link,
+        hostHint,
+        evidenceText: evidenceText || mapped.matchedBody || '',
+        originalOptionsMap,
+        explicitLetter: mapped.letter,
+        confidenceLocal: mapped.confidence || 0.75,
+        evidenceType: 'textual-answer-map'
+      });
+      sources.push({
+        title,
+        link,
+        letter: mapped.letter,
+        weight,
+        evidenceType: 'textual-answer-map',
+        questionPolarity,
+        matchQuality: Math.min(10, Math.round((mapped.score || 0) * 10)),
+        hostHint,
+        sourceId,
+        evidenceBlock
+      });
+      runStats.acceptedForVotes += 1;
+      this._logSourceDiagnostic({
+        phase: 'decision',
+        hostHint,
+        type: sourceType,
+        topicSim,
+        optionsMatch: false,
+        obfuscation,
+        decision: 'use-textual-answer-map',
+        method: methodTag || mapped.method || 'textual-answer-map',
+        letter: mapped.letter
+      });
+      console.log(`  ✅ [TEXT-MAP] accepted letter=${mapped.letter} via ${methodTag || mapped.method} conf=${(mapped.confidence || 0).toFixed(2)} margin=${(mapped.margin || 0).toFixed(2)} weight=${weight.toFixed(2)}`);
+    };
     const aiEvidence = [];
     const collectedForCombined = [];
     let aiExtractionCount = 0; // max AI per-page extraction calls per search run
     let aiHtmlExtractionCount = 0; // max AI HTML extraction calls per search run
     const aiKnowledgePool = []; // Accumulated knowledge from AI extraction (partial + full)
+    // Mismatch sources deferred for post-loop AI extraction (avoids blocking the main analysis loop)
+    const _pendingMismatchAI = [];
     const runStats = {
       analyzed: 0,
       acceptedForVotes: 0,
@@ -958,7 +1077,7 @@ export const SearchService = {
           const r = toFetch[idx++];
           try {
             const snap = await ApiService.fetchPageSnapshot(r.link, {
-              timeoutMs: 6500,
+              timeoutMs: 4500,
               maxHtmlChars: 1500000,
               maxTextChars: 12000
             });
@@ -991,7 +1110,7 @@ export const SearchService = {
           votes
         } = EvidenceService.computeVotesAndState(sources);
         const topVote = bestLetter ? votes[bestLetter] || 0 : 0;
-        if (bestLetter && topVote >= 4.0) {
+        if (bestLetter && topVote >= 5.5) {
           console.log(`SearchService: ⚡ Batch 1 sufficient — skipping batch 2 (votes[${bestLetter}]=${topVote.toFixed(1)})`);
           _batch2Fetched = true; // skip fetch, but still mark as handled
           break; // exit analysis loop early
@@ -1192,40 +1311,95 @@ export const SearchService = {
             }
           }
 
-          // AI knowledge extraction for mismatch sources with high topic relevance.
-          // Even though options don't match, the page may contain relevant knowledge
-          // about the topic that can help in the combined reflection step.
-          if (aiExtractionCount < 5 && topicSimBase >= 0.50 && !obfuscation?.isObfuscated && scopedCombinedText.length >= 300) {
-            const aiScopedText = EvidenceService.buildQuestionScopedText(combinedText, questionForInference, 8000);
-            console.log(`  🤖 [AI-MISMATCH] Attempting knowledge extraction from mismatch source (call ${aiExtractionCount + 1}/5, topicSim=${topicSimBase.toFixed(3)}, textLen=${aiScopedText.length}, host=${hostHint})`);
-            if (typeof onStatus === 'function') {
-              onStatus(`AI extracting knowledge from ${hostHint || 'source'}...`);
+          // Additional style: map explicit textual answers (e.g. "Resposta: ...")
+          // directly to the user's options when the letter itself is unreliable.
+          const plainAnswerCandidates = extractExplicitAnswerTextCandidates(scopedCombinedText);
+          if (plainAnswerCandidates.length > 0) {
+            console.log(`  🧩 [TEXT-MAP] explicit answer candidates found=${plainAnswerCandidates.length} host=${hostHint}`);
+            let mappedFromPlain = null;
+            let mappedCandidateText = '';
+            for (const candidate of plainAnswerCandidates) {
+              const mapped = tryMapTextAnswerCandidate(candidate, hostHint, topicSimBase);
+              if (!mapped) continue;
+              mappedFromPlain = mapped;
+              mappedCandidateText = candidate;
+              break;
             }
+            if (mappedFromPlain) {
+              addTextMappedSource.call(this, {
+                title,
+                link,
+                hostHint,
+                sourceType,
+                topicSim: topicSimBase,
+                obfuscation,
+                mapped: mappedFromPlain,
+                evidenceText: mappedCandidateText,
+                methodTag: 'textual-answer-plain'
+              });
+              console.groupEnd();
+              continue;
+            }
+          }
+
+          // ── FreeText extraction for Brainly and similar free-answer sources ──
+          // When the page has a natural-language answer (e.g. "Resposta: texto..."),
+          // try to map it to the user's options even when options don't appear verbatim.
+          const isFreeTextHost = hostHint === 'brainly.com.br' || hostHint === 'brainly.com' || hostHint === 'brainly.lat';
+          if (isFreeTextHost && hasOptions && topicSimBase >= 0.28 && !obfuscation?.isObfuscated) {
+            console.log(`  🗒️ [FREETEXT] Attempting FreeTextAnswerService for ${hostHint} (topicSim=${topicSimBase.toFixed(3)})`);
             try {
-              const aiExtracted = await ApiService.aiExtractFromPage(aiScopedText, questionForInference, hostHint);
-              aiExtractionCount++;
-              if (aiExtracted?.knowledge) {
-                // Strip letter/resultado claims from knowledge — the letter is
-                // from a different question set and would poison reflection
-                const cleanKnowledge = aiExtracted.knowledge.replace(/^RESULTADO:\s*ENCONTRADO\s*$/gim, '').replace(/^Letra\s+[A-E]\b.*$/gim, '').trim();
-                aiKnowledgePool.push({
-                  host: hostHint,
-                  knowledge: cleanKnowledge,
-                  topicSim: topicSimBase,
-                  link,
+              const ftResult = await FreeTextAnswerService.extractAnswerFromFreeText(pageText, originalOptionsMap, questionStem);
+              if (ftResult?.letter) {
+                console.log(`  🗒️ [FREETEXT] Found letter=${ftResult.letter} method=${ftResult.method} confidence=${ftResult.confidence.toFixed(3)}`);
+                const domainWeight = getDomainWeight(link);
+                const ftWeight = Math.min(1.0, (ftResult.confidence || 0.70) * domainWeight * 0.95);
+                sources.push({
                   title,
-                  origin: 'mismatch'
+                  link,
+                  letter: ftResult.letter,
+                  weight: ftWeight,
+                  evidenceType: ftResult.method,
+                  hostHint,
+                  sourceId: `${hostHint}:freetext`,
+                  evidenceBlock: ftResult.snippet || '',
+                  matchQuality: topicSimBase,
+                  questionPolarity
                 });
-                console.log(`  🤖 [AI-MISMATCH] Knowledge collected: ${cleanKnowledge.length} chars (pool size=${aiKnowledgePool.length})`);
+                runStats.acceptedViaFreeText = (runStats.acceptedViaFreeText || 0) + 1;
+                this._logSourceDiagnostic({
+                  phase: 'decision',
+                  hostHint,
+                  type: sourceType,
+                  topicSim: topicSimBase,
+                  optionsMatch: false,
+                  obfuscation,
+                  decision: 'accept',
+                  reason: ftResult.method
+                });
+                console.groupEnd();
+                continue;
               }
-              // Even if AI finds a letter, we DON'T use it for voting because
-              // options don't match — the letter may correspond to a different set of options.
-              if (aiExtracted?.letter) {
-                console.log(`  🤖 [AI-MISMATCH] Letter ${aiExtracted.letter} found but IGNORED (options mismatch — cannot map to user's options)`);
-              }
-            } catch (e) {
-              console.warn(`  🤖 [AI-MISMATCH] Extraction failed:`, e?.message || e);
+            } catch (ftErr) {
+              console.warn(`  🗒️ [FREETEXT] FreeTextAnswerService failed:`, ftErr?.message || ftErr);
             }
+          }
+
+          // AI knowledge extraction for mismatch sources — DEFERRED to post-loop.
+          // Queuing here avoids blocking the main analysis loop (each Groq call
+          // takes 2.5s queue-wait + 4-8s inference). Sources with direct answers
+          // (qconcursos, passeidireto) now process without waiting for mismatch AI.
+          if (aiExtractionCount < 5 && topicSimBase >= 0.50 && !obfuscation?.isObfuscated && scopedCombinedText.length >= 300) {
+            _pendingMismatchAI.push({
+              aiScopedText: EvidenceService.buildQuestionScopedText(combinedText, questionForInference, 8000),
+              hostHint,
+              sourceType,
+              title,
+              link,
+              topicSim: topicSimBase,
+              obfuscation
+            });
+            console.log(`  🤖 [AI-MISMATCH] Deferred to post-loop (topicSim=${topicSimBase.toFixed(3)}, host=${hostHint}) — queue size=${_pendingMismatchAI.length}`);
           }
           runStats.blockedOptionsMismatch += 1;
           this._logSourceDiagnostic({
@@ -1246,6 +1420,9 @@ export const SearchService = {
 
         // 0) Structured extractors by page signature (PDF-like, AnswerCard, anchored gabarito).
         const structured = HtmlExtractorService.extractStructuredEvidence(htmlText, hostHint, questionForInference, questionStem, originalOptionsMap, originalOptions, {
+          extractExplicitGabarito: (text, q) => EvidenceService.extractExplicitGabarito(text, q),
+          extractExplicitLetterFromText: (text, stem, opts) => EvidenceService.extractExplicitLetterFromText(text, stem, opts)
+        }, {
           parsed: parsedForDiag,
           type: sourceType,
           obfuscation,
@@ -1858,6 +2035,60 @@ export const SearchService = {
     }
 
     // Merge aiEvidence + collectedForCombined, sorted by topic similarity
+
+    // ═══ DEFERRED AI-MISMATCH EXTRACTION ═══
+    // Process mismatch sources that were queued during the main loop.
+    // Only runs if we still lack strong explicit evidence — skip entirely when
+    // direct sources already produced sufficient votes (saves 5-15s in typical cases).
+    if (_pendingMismatchAI.length > 0) {
+      const { bestLetter: _midLetter, votes: _midVotes } = EvidenceService.computeVotesAndState(sources);
+      const _midTopVote = _midLetter ? (_midVotes[_midLetter] || 0) : 0;
+      if (_midTopVote < 5.5) {
+        console.log(`SearchService: 🤖 Processing ${_pendingMismatchAI.length} deferred mismatch AI sources (midTopVote=${_midTopVote.toFixed(1)})...`);
+        const toProcess = _pendingMismatchAI.slice(0, 3); // cap at 3 to limit latency
+        for (const pending of toProcess) {
+          if (aiExtractionCount >= 5) break;
+          const { aiScopedText, hostHint: ph, sourceType: pst, title: pt, link: pl, topicSim: ptopicSim, obfuscation: pobf } = pending;
+          if (typeof onStatus === 'function') onStatus(`AI extracting knowledge from ${ph || 'source'}...`);
+          try {
+            const aiExtracted = await ApiService.aiExtractFromPage(aiScopedText, questionForInference, ph);
+            aiExtractionCount++;
+            if (aiExtracted?.knowledge) {
+              const cleanKnowledge = aiExtracted.knowledge.replace(/^RESULTADO:\s*ENCONTRADO\s*$/gim, '').replace(/^Letra\s+[A-E]\b.*$/gim, '').trim();
+              aiKnowledgePool.push({ host: ph, knowledge: cleanKnowledge, topicSim: ptopicSim, link: pl, title: pt, origin: 'mismatch' });
+              console.log(`  🤖 [AI-MISMATCH-DEFERRED] Knowledge collected: ${cleanKnowledge.length} chars (pool=${aiKnowledgePool.length})`);
+            }
+            // Try to map AI evidence/knowledge to an answer letter
+            const aiTextCandidates = [];
+            if (aiExtracted?.evidence) aiTextCandidates.push({ text: aiExtracted.evidence, tag: 'ai-evidence' });
+            if (aiExtracted?.knowledge) {
+              const parsedFromKnowledge = this._parseAnswerText(aiExtracted.knowledge);
+              if (parsedFromKnowledge && parsedFromKnowledge.length >= 18) aiTextCandidates.push({ text: parsedFromKnowledge, tag: 'ai-knowledge-answer' });
+            }
+            let mappedFromAiText = null;
+            let mappedAiEvidenceText = '';
+            for (const candidate of aiTextCandidates) {
+              const mapped = tryMapTextAnswerCandidate(candidate.text, ph, ptopicSim);
+              if (!mapped) continue;
+              mappedFromAiText = { mapped, methodTag: candidate.tag };
+              mappedAiEvidenceText = candidate.text;
+              break;
+            }
+            if (mappedFromAiText) {
+              runStats.acceptedViaAiExtraction += 1;
+              addTextMappedSource.call(this, { title: pt, link: pl, hostHint: ph, sourceType: pst, topicSim: ptopicSim, obfuscation: pobf, mapped: mappedFromAiText.mapped, evidenceText: mappedAiEvidenceText, methodTag: mappedFromAiText.methodTag });
+            }
+            if (aiExtracted?.letter && !mappedFromAiText) {
+              console.log(`  [AI-MISMATCH-DEFERRED] Letter ${aiExtracted.letter} found but IGNORED (options mismatch without validated textual mapping)`);
+            }
+          } catch (e) {
+            console.warn(`  🤖 [AI-MISMATCH-DEFERRED] Extraction failed:`, e?.message || e);
+          }
+        }
+      } else {
+        console.log(`SearchService: ⚡ Skipping deferred AI-mismatch (midTopVote=${_midTopVote.toFixed(1)} ≥ 5.5 — sufficient evidence)`);
+      }
+    }
 
     // ═══ SNIPPET-LEVEL GABARITO EXTRACTION ═══
     // When no direct sources found, try to extract explicit gabarito from Serper
@@ -2598,3 +2829,4 @@ export const SearchService = {
     return refined;
   }
 };
+

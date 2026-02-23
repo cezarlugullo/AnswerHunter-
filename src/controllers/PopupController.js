@@ -1358,6 +1358,59 @@ export const PopupController = {
         return { entries, letters, tokenSet, codeCount, codeRatio };
       };
 
+      const buildOptionBodyMap = (text) => {
+        const map = new Map();
+        const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
+        const re = /^["']?\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+        for (const line of lines) {
+          const m = line.match(re);
+          if (!m) continue;
+          const letter = (m[1] || '').toUpperCase();
+          const body = String(m[2] || '').replace(/\s+/g, ' ').trim();
+          if (!isValidOptionLine(`${letter}) ${body}`)) continue;
+          if (!map.has(letter) || body.length > String(map.get(letter) || '').length) {
+            map.set(letter, body);
+          }
+        }
+        return map;
+      };
+
+      const compareOptionsByLetter = (baseText, candidateText) => {
+        const baseMap = buildOptionBodyMap(baseText);
+        const candidateMap = buildOptionBodyMap(candidateText);
+        let shared = 0;
+        let matched = 0;
+
+        for (const [letter, baseBody] of baseMap.entries()) {
+          if (!candidateMap.has(letter)) continue;
+
+          const baseTokenSet = new Set(optionTokens(baseBody));
+          const candidateTokens = optionTokens(candidateMap.get(letter));
+          if (baseTokenSet.size === 0 || candidateTokens.length === 0) continue;
+          shared += 1;
+
+          let overlap = 0;
+          candidateTokens.forEach((tk) => {
+            if (baseTokenSet.has(tk)) overlap += 1;
+          });
+          const minLen = Math.max(1, Math.min(baseTokenSet.size, candidateTokens.length));
+          const overlapRatio = overlap / minLen;
+          if (overlap >= 2 || overlapRatio >= 0.45) {
+            matched += 1;
+          }
+        }
+
+        const ratio = shared > 0 ? (matched / shared) : 0;
+        return {
+          baseSize: baseMap.size,
+          candidateSize: candidateMap.size,
+          shared,
+          matched,
+          ratio,
+          consistent: shared < 3 || ratio >= 0.6
+        };
+      };
+
       // Cross-question contamination guard:
       // Returns false when extracted options look like they belong to a DIFFERENT question
       // from the captured stem. This prevents options from a visible question below/above
@@ -1482,8 +1535,16 @@ export const PopupController = {
       let usedVisionOcr = false;
       let ocrVisionText = null; // Store OCR text for option fallback
 
-      const domIsSufficient = domOptionCount >= 4 && (domQuestion || '').length >= 100 && isLikelyQuestion(domQuestion);
-      console.log(`AnswerHunter: OCR_PRIORITY mode=conditional frame=${bestFrameIndex} dom_len=${(domQuestion || '').length} opts_dom=${domOptionCount} dom_sufficient=${domIsSufficient}`);
+      // Also count inline options (A) ... B) ... on same line, no preceding \n)
+      const _domInlineRe = /\b([A-Ea-e])\s*[\)\.\-:]\s*\S/g;
+      const _domInlineLetters = new Set();
+      let _dim;
+      while ((_dim = _domInlineRe.exec(domQuestion || '')) !== null) _domInlineLetters.add(_dim[1].toUpperCase());
+      const domOptionCountInline = _domInlineLetters.size;
+      const domEffectiveOptCount = Math.max(domOptionCount, domOptionCountInline);
+
+      const domIsSufficient = domEffectiveOptCount >= 4 && (domQuestion || '').length >= 100 && isLikelyQuestion(domQuestion);
+      console.log(`AnswerHunter: OCR_PRIORITY mode=conditional frame=${bestFrameIndex} dom_len=${(domQuestion || '').length} opts_dom=${domOptionCount} opts_dom_inline=${domOptionCountInline} dom_sufficient=${domIsSufficient}`);
 
       if (domIsSufficient) {
         console.log('AnswerHunter: OCR_PRIORITY decision=skipped (DOM already sufficient)');
@@ -1498,7 +1559,7 @@ export const PopupController = {
               const visionText = await ApiService.extractTextFromScreenshot(base64);
               if (visionText && visionText.length >= 30) {
                 const visionOpts = countDistinctOptions(visionText);
-                const domOptCount = domOptionCount;
+                const domOptCount = domEffectiveOptCount;
                 console.log(`AnswerHunter: OCR_COMPARE opts_ocr=${visionOpts} opts_dom=${domOptCount} len_ocr=${visionText.length} len_dom=${(domQuestion || '').length}`);
                 console.log(`AnswerHunter: Vision OCR returned ${visionText.length} chars, ${visionOpts} options`);
 
@@ -1653,7 +1714,8 @@ export const PopupController = {
 
       // Always try to extract options separately when we have fewer than 5,
       // so we don't miss any alternatives (e.g. option E on a different DOM element).
-      if (usedVisionOcr || existingOptionCount < 5) {
+      const shouldScanDomOptions = existingOptionCount < 5;
+      if (shouldScanDomOptions) {
         if (usedVisionOcr) {
           console.log(`AnswerHunter: OCR_PRIORITY post-step=dom_options_scan force=true opts_current=${existingOptionCount}`);
         }
@@ -2104,7 +2166,15 @@ export const PopupController = {
               domLines.forEach(line => {
                 const match = line.trim().match(/^([A-E])\s*[\)\.\-:]/i);
                 if (match) {
-                  domLetters.set(match[1].toUpperCase(), line.trim());
+                  const letter = match[1].toUpperCase();
+                  const body = String(line || '')
+                    .replace(/^([A-E])\s*[\)\.\-:]\s*/i, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                  if (!body || !isValidOptionLine(`${letter}) ${body}`)) return;
+                  if (!domLetters.has(letter) || body.length > String(domLetters.get(letter) || '').length) {
+                    domLetters.set(letter, body);
+                  }
                 }
               });
 
@@ -2128,8 +2198,16 @@ export const PopupController = {
                     console.log('AnswerHunter: OCR stem empty; recovered stem from DOM extraction');
                   }
                 }
-                const domOptionsText = Array.from(domLetters.values()).join('\n');
-                if (!optionsAreContextuallyRelated(stemText || bestQuestion || domQuestion || '', domOptionsText)) {
+                const orderedLetters = ['A', 'B', 'C', 'D', 'E'];
+                const domOptionsText = orderedLetters
+                  .filter((letter) => domLetters.has(letter))
+                  .map((letter) => `${letter}) ${domLetters.get(letter)}`)
+                  .join('\n');
+                const alignment = compareOptionsByLetter(bestQuestion, domOptionsText);
+                const shouldEnforceAlignment = existingOptionCount >= 4 && domLetters.size >= 4 && alignment.baseSize >= 4;
+                if (shouldEnforceAlignment && !alignment.consistent) {
+                  console.log(`AnswerHunter: OCR_DOM_CONSISTENCY rejected replacement shared=${alignment.shared} matched=${alignment.matched} ratio=${alignment.ratio.toFixed(2)}`);
+                } else if (!optionsAreContextuallyRelated(stemText || bestQuestion || domQuestion || '', domOptionsText)) {
                   console.log('AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected DOM replacement on OCR path');
                 } else {
                   processedQuestion = stemText ? `${stemText}\n${domOptionsText}` : domOptionsText;
@@ -2184,6 +2262,8 @@ export const PopupController = {
             }
           }
         }
+      } else if (usedVisionOcr) {
+        console.log(`AnswerHunter: OCR_PRIORITY post-step=dom_options_scan skipped opts_current=${existingOptionCount} (OCR already has full option set)`);
       }
 
       // 0) Cache: if we already captured the official gabarito for this exact question, return immediately.
