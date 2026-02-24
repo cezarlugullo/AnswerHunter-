@@ -785,7 +785,7 @@ export const SearchService = {
       'brainly.lat': 0.9
     };
     const riskyCombinedHosts = new Set(['passeidireto.com', 'brainly.com.br', 'brainly.com', 'scribd.com', 'pt.scribd.com']);
-    const trustedCombinedHosts = new Set(['qconcursos.com', 'qconcursos.com.br', 'google', 'studocu.com']);
+    const trustedCombinedHosts = new Set(['qconcursos.com', 'qconcursos.com.br', 'google', 'studocu.com', 'meuguru.com']);
     const isTrustedCombinedHost = host => {
       const h = String(host || '').toLowerCase();
       if (!h) return false;
@@ -1420,6 +1420,7 @@ export const SearchService = {
 
         // 0) Structured extractors by page signature (PDF-like, AnswerCard, anchored gabarito).
         const structured = HtmlExtractorService.extractStructuredEvidence(htmlText, hostHint, questionForInference, questionStem, originalOptionsMap, originalOptions, {
+          findQuestionBlock: (text, stem) => EvidenceService.findQuestionBlock(text, stem),
           extractExplicitGabarito: (text, q) => EvidenceService.extractExplicitGabarito(text, q),
           extractExplicitLetterFromText: (text, stem, opts) => EvidenceService.extractExplicitLetterFromText(text, stem, opts)
         }, {
@@ -2256,7 +2257,8 @@ export const SearchService = {
         // the search returns a related question whose explanation contains the key
         // concept needed to answer the user's actual question.
         // Requirements: high topicSim, substantial text, NOT a snippet, origin is mismatch.
-        if (origin === 'mismatch' && topicSim >= 0.62 && (e.text || '').length >= 500 && hasMediumOptionCoverage(coverage) && !riskyCombinedHosts.has(host) && !e.obfuscated && !e.paywalled && isTrustedCombinedHost(host)) {
+        const veryHighSimLowCoverageOk = topicSim >= 0.85 && (coverage.hits || 0) >= 1 && isTrustedCombinedHost(host) && !e.obfuscated && !e.paywalled;
+        if (origin === 'mismatch' && topicSim >= 0.62 && (e.text || '').length >= 500 && (hasMediumOptionCoverage(coverage) || veryHighSimLowCoverageOk) && !riskyCombinedHosts.has(host) && !e.obfuscated && !e.paywalled && isTrustedCombinedHost(host)) {
           console.log(`    ✅ Cross-question evidence ADMITTED: host=${host} topicSim=${topicSim.toFixed(2)} textLen=${(e.text || '').length}`);
           console.log(`SearchService: Cross-question evidence admitted for AI combined: host=${host} topicSim=${topicSim.toFixed(2)} textLen=${(e.text || '').length}`);
           return true;

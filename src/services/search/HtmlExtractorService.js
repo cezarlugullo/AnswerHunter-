@@ -114,8 +114,11 @@ export const HtmlExtractorService = {
         }
         const junkRatio = noVowelWords / Math.max(1, relevantWords.length);
         const consonantRunRatio = relevantWords.length > 0 ? longConsonantRuns / relevantWords.length : 0;
+        // Rescue: pages with substantial readable vocabulary (e.g. DB-acronym-heavy tech content)
+        // should not be classified as obfuscated even if acronyms inflate consonant-run metrics.
+        const consonantRunRescue = relevantWords.length >= 150 && junkRatio < 0.25;
         const isObfuscated = (vowelRatio < 0.24 && junkRatio >= 0.28)
-            || (longConsonantRuns >= 8 && vowelRatio < 0.34 && consonantRunRatio >= 0.10);
+            || (longConsonantRuns >= 8 && vowelRatio < 0.34 && consonantRunRatio >= 0.10 && !consonantRunRescue);
         return { isObfuscated, vowelRatio, junkRatio, longConsonantRuns, consonantRunRatio, relevantWordCount: relevantWords.length };
     },
 
