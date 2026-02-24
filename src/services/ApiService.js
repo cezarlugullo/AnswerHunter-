@@ -53,7 +53,7 @@ export const ApiService = {
                             { model, temperature: opts.temperature, max_tokens: opts.max_tokens }
                         );
                         if (cliResult && typeof cliResult === 'string') {
-                            console.log(`AnswerHunter: Gemini CLI success (model=${model}, ${cliResult.length} chars)`);
+                            console.log(`%c[AH] ✅ Gemini CLI success (model=${model}, ${cliResult.length} chars, project=${projectId})`, 'color:#0f0;font-weight:bold');
                             return cliResult;
                         }
                         if (cliResult?.error && cliResult.status === 429) {
@@ -134,7 +134,7 @@ export const ApiService = {
                     console.warn(`AnswerHunter: Gemini empty content (model=${callModel}, finish=${finishReason}, msgKeys=[${msgKeys}])`);
                     return null;
                 }
-                console.log(`AnswerHunter: Gemini success (model=${callModel}, auth=${authSource}, ${content.length} chars)`);
+                console.log(`%c[AH] ✅ Gemini API success (model=${callModel}, auth=${authSource}, ${content.length} chars)`, 'color:#34a853');
                 return content;
             } catch (err) {
                 console.warn(`AnswerHunter: Gemini error (model=${callModel}):`, err?.message || String(err));
@@ -276,6 +276,7 @@ export const ApiService = {
             }
 
             if (!content) return null;
+            console.log(`%c[AH] ✅ OpenRouter success (model=${model}, ${content.length} chars)`, 'color:#f59e0b');
             return content;
         } catch (err) {
             console.warn('AnswerHunter: OpenRouter request error:', err?.message || String(err));
@@ -343,7 +344,10 @@ export const ApiService = {
             ));
 
             const content = data?.choices?.[0]?.message?.content;
-            if (typeof content === 'string') return content.trim() || null;
+            if (typeof content === 'string' && content.trim()) {
+                console.log(`%c[AH] ✅ Groq success (model=${model}, ${content.trim().length} chars)`, 'color:#22c55e');
+                return content.trim();
+            }
             return null;
         } catch (err) {
             console.warn(`AnswerHunter: Groq request error (model=${model}):`, err?.message || String(err));
@@ -501,7 +505,7 @@ export const ApiService = {
                         .join('\n')
                         .trim();
                     if (finalText) {
-                        console.log(`AnswerHunter: ChatGPT success (model=${model}, ${finalText.length} chars)`);
+                        console.log(`%c[AH] ✅ ChatGPT success (model=${model}, ${finalText.length} chars)`, 'color:#a78bfa');
                         return finalText;
                     }
                 }
@@ -510,7 +514,7 @@ export const ApiService = {
             // Fallback: use collected deltas
             const trimmed = collectedText.trim();
             if (trimmed) {
-                console.log(`AnswerHunter: ChatGPT success via deltas (model=${model}, ${trimmed.length} chars)`);
+                console.log(`%c[AH] ✅ ChatGPT success via deltas (model=${model}, ${trimmed.length} chars)`, 'color:#a78bfa');
                 return trimmed;
             }
 
@@ -3230,7 +3234,7 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
                 { role: 'user', content: basePrompt }
             ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
             if (chatgptResult) {
-                console.log(`AnswerHunter: ChatGPT inference success (${chatgptResult.length} chars)`);
+                console.log(`%c[AH] \ud83c\udfaf inferAnswerFromEvidence \u2192 ChatGPT (${chatgptResult.length} chars)`, 'color:#0ff;font-weight:bold');
                 return chatgptResult;
             }
             console.log('AnswerHunter: ChatGPT inference failed — trying Groq fallback...');
@@ -3241,14 +3245,14 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
             console.log('AnswerHunter: Inference via Gemini (primary)...');
             const gResult = await this._geminiConsensus(systemMsg, basePrompt, letterPattern, { smart: true });
             if (gResult.response) {
-                console.log('AnswerHunter: Gemini primary inference votes:', gResult.votes);
+                console.log(`%c[AH] \ud83c\udfaf inferAnswerFromEvidence \u2192 Gemini (primary, votes: ${JSON.stringify(gResult.votes)})`, 'color:#0ff;font-weight:bold');
                 return gResult.response;
             }
             // Gemini failed → try Groq fallback
             console.log('AnswerHunter: Gemini primary failed — trying Groq fallback...');
             const groqResult = await this._groqConsensus(systemMsg, basePrompt, letterPattern, { model: groqModelSmart });
             if (groqResult.response) {
-                console.log('AnswerHunter: Groq fallback inference votes:', groqResult.votes);
+                console.log(`%c[AH] \ud83c\udfaf inferAnswerFromEvidence \u2192 Groq (fallback, votes: ${JSON.stringify(groqResult.votes)})`, 'color:#0ff;font-weight:bold');
                 return groqResult.response;
             }
             return null;
@@ -3258,14 +3262,14 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
         console.log('AnswerHunter: Inference via Groq (primary)...');
         const groqResult = await this._groqConsensus(systemMsg, basePrompt, letterPattern, { model: groqModelSmart });
         if (groqResult.response && groqResult.attempts.length > 0) {
-            console.log('AnswerHunter: Groq primary inference votes:', groqResult.votes);
+            console.log(`%c[AH] \ud83c\udfaf inferAnswerFromEvidence \u2192 Groq (primary, votes: ${JSON.stringify(groqResult.votes)})`, 'color:#0ff;font-weight:bold');
             return groqResult.response;
         }
         // Groq failed → try Gemini fallback
         console.log('AnswerHunter: Groq primary failed — trying Gemini fallback...');
         const geminiResult = await this._geminiConsensus(systemMsg, basePrompt, letterPattern, { smart: true });
         if (geminiResult.response) {
-            console.log('AnswerHunter: Gemini fallback inference votes:', geminiResult.votes);
+            console.log(`%c[AH] \ud83c\udfaf inferAnswerFromEvidence \u2192 Gemini (fallback, votes: ${JSON.stringify(geminiResult.votes)})`, 'color:#0ff;font-weight:bold');
             return geminiResult.response;
         }
         return null;
@@ -3470,7 +3474,7 @@ Ou: NAO_ENCONTRADO`;
                     })
                 }));
                 const c = data?.choices?.[0]?.message?.content?.trim() || '';
-                if (isValid(c)) { console.log('AnswerHunter: Knowledge answer (Groq):', c.substring(0, 120)); return c; }
+                if (isValid(c)) { console.log(`%c[AH] \ud83c\udfaf generateKnowledgeAnswer \u2192 Groq`, 'color:#0ff;font-weight:bold'); return c; }
             } catch (e) { console.warn('AnswerHunter: Knowledge Groq failed:', e); }
             return null;
         };
@@ -3487,7 +3491,7 @@ Ou: NAO_ENCONTRADO`;
                     model: settings.geminiModelSmart || 'gemini-2.5-flash'
                 });
                 const c = r?.trim() || '';
-                if (isValid(c)) { console.log('AnswerHunter: Knowledge answer (Gemini):', c.substring(0, 120)); return c; }
+                if (isValid(c)) { console.log(`%c[AH] \ud83c\udfaf generateKnowledgeAnswer \u2192 Gemini`, 'color:#0ff;font-weight:bold'); return c; }
             } catch (e) { console.warn('AnswerHunter: Knowledge Gemini failed:', e); }
             return null;
         };
@@ -3932,7 +3936,10 @@ REGRAS:
         let result = null;
         for (const fn of chain) {
             result = await fn();
-            if (result) break;
+            if (result) {
+                console.log(`%c[AH] 🎯 defineTerm → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
+                break;
+            }
         }
 
         return result || `Termo não encontrado: ${term}`;
@@ -4041,7 +4048,10 @@ REGRAS:
         let result = null;
         for (const fn of chain) {
             result = await fn();
-            if (result) break;
+            if (result) {
+                console.log(`%c[AH] 🎯 generateTutorExplanation → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
+                break;
+            }
         }
 
         return result || 'Não foi possível gerar a explicação. Tente novamente.';
@@ -4153,7 +4163,10 @@ REGRAS:
         let result = null;
         for (const fn of chain) {
             result = await fn();
-            if (result) break;
+            if (result) {
+                console.log(`%c[AH] 🎯 generateReviewCard → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
+                break;
+            }
         }
 
         return result || 'Não foi possível gerar a ficha de revisão. Tente novamente.';
@@ -4268,7 +4281,10 @@ REGRAS:
         let result = null;
         for (const fn of chain) {
             result = await fn();
-            if (result) break;
+            if (result) {
+                console.log(`%c[AH] 🎯 generateSimilarQuestion → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
+                break;
+            }
         }
 
         if (!result) throw new Error('Não foi possível gerar uma questão similar.');
@@ -4347,7 +4363,10 @@ Responda de forma clara, didática e concisa (máximo 200 palavras). Não repita
         let result = null;
         for (const fn of chain) {
             result = await fn();
-            if (result) break;
+            if (result) {
+                console.log(`%c[AH] 🎯 answerFollowUp → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
+                break;
+            }
         }
 
         return result || 'Não foi possível processar sua pergunta. Tente novamente.';
@@ -4472,6 +4491,7 @@ REGRAS:
             if (!fn) continue;
             const tags = await fn();
             if (Array.isArray(tags) && tags.length > 0) {
+                console.log(`%c[AH] 🎯 generateTags → ${provider}`, 'color:#0ff;font-weight:bold');
                 return tags;
             }
         }

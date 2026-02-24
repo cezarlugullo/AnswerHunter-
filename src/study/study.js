@@ -2667,6 +2667,10 @@ function resetPomodoro() {
   _pom.running = false;
   _pom.isBreak = false;
   _pom.remaining = POM_WORK;
+  document.getElementById('pomPlayIcon').textContent = 'play_arrow';
+  updatePomDisplay();
+}
+
 // ══ #14 Mapa Mental ══════════════════════════════════════════════════════════
 
 const mindMapOverlay  = document.getElementById('mindMapOverlay');
@@ -2754,10 +2758,6 @@ mindMapOverlay.addEventListener('click', e => { if (e.target === mindMapOverlay)
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && mindMapOverlay.classList.contains('open')) closeMindMap();
 });
-
-  document.getElementById('pomPlayIcon').textContent = 'play_arrow';
-  updatePomDisplay();
-}
 
 document.getElementById('btnPomodoro').addEventListener('click', () => {
   const widget = document.getElementById('pomodoroWidget');
