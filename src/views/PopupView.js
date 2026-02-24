@@ -639,10 +639,9 @@ export const PopupView = {
       // Only show vote pills when 2+ alternatives were scored (AI-only fallback has just one)
       const votesEntries = item.votes ? Object.entries(item.votes) : [];
       const showVotes = votesEntries.length >= 2;
-      const aiOverviewStatusText = item.googleMetaSignals
-        ? this.t('result.meta.aiOverview', {
-          status: this.t(item.googleMetaSignals.aiOverview ? 'result.meta.captured' : 'result.meta.absent')
-        })
+      // Only surface the AI Overview badge when it was actually captured — "absent" is internal debug noise
+      const aiOverviewStatusText = item.googleMetaSignals?.aiOverview
+        ? this.t('result.meta.aiOverview', { status: this.t('result.meta.captured') })
         : '';
       const providerText = item.googleMetaSignals?.provider
         ? ` (${escapeHtml(this.t(item.googleMetaSignals.provider === 'serpapi' ? 'provider.serpapi' : 'provider.serper'))})`
@@ -667,6 +666,9 @@ export const PopupView = {
             <span class="qa-card-title">${escapeHtml(item.title || this.t('result.title'))}</span>
             <button class="action-btn save-btn ${saveClass}" data-content="${dataContent}" title="${escapeHtml(this.t('result.save'))}">
               <span class="material-symbols-rounded ${iconClass}">${saveIcon}</span>
+            </button>
+            <button class="action-btn review-later-btn btn-review-later ${reviewClass}" data-content="${dataContent}" title="${escapeHtml(this.t('result.reviewLater.title'))}">
+              <span class="material-symbols-rounded">${reviewIcon}</span>
             </button>
           </div>
 
@@ -753,10 +755,6 @@ export const PopupView = {
             </div>` : ''}
 
             <div class="study-actions-container">
-              <button class="study-action-btn btn-review-later ${reviewClass}" type="button" data-content="${dataContent}" title="${escapeHtml(this.t('result.reviewLater.title'))}">
-                <span class="material-symbols-rounded">${reviewIcon}</span>
-                <span>${escapeHtml(this.t('result.reviewLater.btn'))}</span>
-              </button>
               <button class="study-action-btn btn-tutor" type="button" data-question="${encodeURIComponent(item.question)}" data-answer="${encodeURIComponent(item.answer || '')}" data-context="${encodeURIComponent(overviewSummary || Object.values(item.optionsMap || {}).join(' '))}" title="${escapeHtml(this.t('result.tutor.title'))}">
                 <span class="material-symbols-rounded">school</span>
                 <span>${escapeHtml(this.t('result.tutor.btn'))}</span>
@@ -877,21 +875,34 @@ export const PopupView = {
   },
 
   setSaveButtonState(button, saved) {
+    if (!button) return;
+    const changed = button.classList.contains('saved') !== !!saved;
     const icon = button.querySelector('.material-symbols-rounded');
     button.classList.toggle('saved', !!saved);
     if (icon) {
       icon.textContent = saved ? 'bookmark' : 'bookmark_border';
       icon.classList.toggle('filled', !!saved);
     }
+    if (changed) this._triggerActionPulse(button);
   },
 
   setReviewLaterButtonState(button, active) {
     if (!button) return;
+    const changed = button.classList.contains('active') !== !!active;
     const icon = button.querySelector('.material-symbols-rounded');
     button.classList.toggle('active', !!active);
+    button.title = this.t('result.reviewLater.title');
     if (icon) {
       icon.textContent = active ? 'bookmark' : 'bookmark_add';
     }
+    if (changed) this._triggerActionPulse(button);
+  },
+
+  _triggerActionPulse(button) {
+    if (!button) return;
+    button.classList.remove('action-bump');
+    void button.offsetWidth;
+    button.classList.add('action-bump');
   },
 
   resetAllSaveButtons() {
