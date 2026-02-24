@@ -2409,6 +2409,28 @@ footer .material-symbols-rounded {
   flex-shrink: 0;
 }
 
+/* === AI ACCOUNT BUTTONS (inside settings panel) === */
+.ob-ai-account-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.85);
+  transition: all 0.2s ease;
+  box-shadow: none;
+}
+
+.ob-ai-account-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
 /* === WELCOME OVERLAY === */
 .welcome-overlay {
   position: fixed;
