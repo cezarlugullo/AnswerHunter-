@@ -153,10 +153,13 @@ export const EvidenceService = {
         if (!text) return null;
         const questionPolarity = QuestionParser.detectQuestionPolarity(questionText);
         const patterns = [
-            { re: /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])\b/gi, label: 'gab-explicito', confidence: 0.95 },
-            { re: /(?:^|\b)(?:a\s+resposta\s+correta\s+[eé]|a\s+alternativa\s+correta\s+[eé])\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/gi, label: 'resposta-correta', confidence: 0.92 },
+            { re: /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])(?=[)\s.,;:\n]|$)/gi, label: 'gab-explicito', confidence: 0.95 },
+            // Pattern 2: "a resposta/alternativa correta é (a) (letra/alternativa) D"
+            // NOTE: (?:a\s+)? + (?:(?:letra|alternativa)\s+)? consumes "a alternativa " so the
+            // regex does NOT backtrack and capture the Portuguese article 'a' as letter A.
+            { re: /(?:^|\b)(?:a\s+resposta\s+correta\s+[eé]|a\s+alternativa\s+correta\s+[eé])\s*(?:a\s+)?(?:(?:letra|alternativa)\s+)?([A-E])(?=[)\s.,;:\n]|$)/gi, label: 'resposta-correta', confidence: 0.92 },
             { re: /(?:^|\b)(?:letra|alternativa)\s+([A-E])\s*(?:[eé]\s+(?:a\s+)?(?:correta|certa|resposta))/gi, label: 'gab-letra', confidence: 0.9 },
-            { re: /(?:^|\b)gab(?:arito)?\.?\s*[:\-]?\s*([A-E])\b/gi, label: 'gab-abrev', confidence: 0.88 }
+            { re: /(?:^|\b)gab(?:arito)?\.?\s*[:\-]?\s*([A-E])(?=[)\s.,;:\n]|$)/gi, label: 'gab-abrev', confidence: 0.88 }
         ];
         const matches = [];
         for (const { re, label, confidence } of patterns) {
@@ -180,8 +183,8 @@ export const EvidenceService = {
         const tokens = QuestionParser.extractKeyTokens(questionStem);
 
         const patterns = [
-            /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])\b/i,
-            /(?:^|\b)(?:a\s+resposta\s+correta\s+e|a\s+alternativa\s+correta\s+e)\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/i
+            /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])(?=[)\s.,;:\n]|$)/i,
+            /(?:^|\b)(?:a\s+resposta\s+correta\s+[eé]|a\s+alternativa\s+correta\s+[eé])\s*(?:a\s+)?(?:(?:letra|alternativa)\s+)?([A-E])(?=[)\s.,;:\n]|$)/i
         ];
 
         if (polarity === 'INCORRECT' || polarity === 'UNKNOWN') {
