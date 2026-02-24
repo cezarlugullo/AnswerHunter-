@@ -2312,7 +2312,11 @@ export const SearchService = {
           hasEnoughOptions: false
         };
         const snipStrongCoverage = !hasOptions || snipCoverage.ratio >= 0.60 || snipCoverage.hits >= Math.min(3, snipCoverage.total || 3);
-        if (hasOptions && (!snipStrongCoverage || snipSim < 0.32)) continue;
+        // High topicSim bypass: when the snippet clearly describes the exact same question
+        // (topicSim >= 0.90), admit it even without option coverage — the snippet may be
+        // truncated (e.g. webcache rate-limited, only question stem visible in SERP).
+        const snipHighTopicSimBypass = snipSim >= 0.90 && !snipStrongCoverage;
+        if (hasOptions && (!snipStrongCoverage || snipSim < 0.32) && !snipHighTopicSimBypass) continue;
         snippetEvidence.push({
           title: result.title || '',
           link: result.link || '',
@@ -2394,7 +2398,9 @@ export const SearchService = {
           }
         }
         if (origin === 'snippet') {
-          if (!strongCoverage) return false;
+          // High topicSim bypass: snippets describing the exact same question can feed
+          // the AI even without option coverage (e.g. when only SERP stem is available).
+          if (!strongCoverage && topicSim < 0.90) return false;
           if (topicSim < 0.30) return false;
           // Allow risky-host snippets when they have strong option coverage
           // (snippets are just title + SERP text — no cross-question risk).
@@ -2504,15 +2510,29 @@ export const SearchService = {
         };
         return hasStrongOptionCoverage(coverage) && (e.topicSim || 0) >= 0.30;
       }).length;
+      // Path 4 prerequisite: count high-confidence snippet stems whose topicSim
+      // indicates they describe the exact same question (even without option text).
+      const highConfidenceSnippetStems = relevant.filter(e =>
+        String(e.origin || '') === 'snippet' && (e.topicSim || 0) >= 0.90
+      );
+      const highConfidenceSnippetDomains = new Set(
+        highConfidenceSnippetStems.map(e => String(e.hostHint || '').toLowerCase()).filter(Boolean)
+      ).size;
       const canProceedAISynthesisOnly = sources.length === 0 && hasOptions && (strongRelevant.length >= 3 && strongRelevantDomainCount >= 2 && hasVeryStrongAlignedSource || hasEliteAnchoredEvidence && hasReliableOptionAlignedSource && relevant.length >= 2 && corroboratingSnippetCount >= 1 ||
       // Path 3: high topic-similarity source provides strong anchor
       // even without corroborating snippets.
-      hasReliableOptionAlignedSource && relevant.length >= 2 && relevant.some(e => (e.topicSim || 0) >= 0.55) && relevant.filter(e => (e.topicSim || 0) >= 0.40 && e.optionsMatch).length >= 2);
+      hasReliableOptionAlignedSource && relevant.length >= 2 && relevant.some(e => (e.topicSim || 0) >= 0.55) && relevant.filter(e => (e.topicSim || 0) >= 0.40 && e.optionsMatch).length >= 2 ||
+      // Path 4: multiple high-confidence snippet stems — the SERP snippets clearly
+      // describe the exact same question even though full pages couldn't be fetched
+      // (e.g. webcache rate-limited). The snippets carry the correct question text
+      // (SQL operators, code fragments, etc.) that the AI can use to infer the answer.
+      highConfidenceSnippetStems.length >= 2 && highConfidenceSnippetDomains >= 1);
+      const isSnippetStemSynthesis = canProceedAISynthesisOnly && highConfidenceSnippetStems.length >= 2;
       const canProceedAI = relevant.length > 0 && sources.length > 0 && (!hasOptions || hasReliableOptionAlignedSource && relevant.length >= minRelevantSources) || canProceedAISynthesisOnly;
       console.log(`canProceedAI=${canProceedAI}`);
       if (canProceedAISynthesisOnly) {
         console.log(`✅ AI synthesis-only mode enabled: strongRelevant=${strongRelevant.length}, domainDiversity=${strongRelevantDomainCount}`);
-        console.log(`   anchorMode=${hasEliteAnchoredEvidence} corroboratingSnippets=${corroboratingSnippetCount}`);
+        console.log(`   anchorMode=${hasEliteAnchoredEvidence} corroboratingSnippets=${corroboratingSnippetCount} snippetStems=${highConfidenceSnippetStems.length} snippetDomains=${highConfidenceSnippetDomains}`);
       }
       if (!canProceedAI) {
         console.log('❌ AI combined will NOT run');
@@ -2533,7 +2553,10 @@ export const SearchService = {
             if (aiLetter) console.log(`SearchService: AI combined letter recovered via text match => ${aiLetter}`);
           }
           if (aiLetter) {
-            if (canProceedAISynthesisOnly && hasOptions && originalOptionsMap) {
+            // Skip evidence-support guard for snippet-stem synthesis: the snippets contain
+            // only the question stem (no answer/option text), so lexical overlap between
+            // evidence corpus and option bodies is meaningless. Trust the AI inference.
+            if (canProceedAISynthesisOnly && !isSnippetStemSynthesis && hasOptions && originalOptionsMap) {
               const evidenceCorpus = QuestionParser.normalizeOption(relevant.map(e => String(e.text || '').slice(0, 2200)).join(' '));
               const optionEntries = Object.entries(originalOptionsMap).filter(([letter]) => /^[A-E]$/.test(String(letter || '').toUpperCase())).map(([letter, text]) => {
                 const norm = QuestionParser.normalizeOption(String(text || ''));

@@ -54,9 +54,16 @@ export const EvidenceService = {
 
         if (hasOptionTokens) {
             const minOptionHits = Math.max(1, Math.floor(optionTokens.length * 0.25));
-            if (bestOptHits < minOptionHits) {
+            // When the source text is very short (snippet-only, e.g. webcache rate-limited),
+            // the entire text IS the question stem — option tokens simply aren't present.
+            // If stemHits are very high (≥80%), accept the block as a valid stem-only match.
+            const isShortStemOnly = sourceText.length < 600 && bestStemHits >= Math.floor(stemTokens.length * 0.80);
+            if (bestOptHits < minOptionHits && !isShortStemOnly) {
                 console.log(`    [find-block] REJECTED: only ${bestOptHits}/${optionTokens.length} option tokens found. Wrong question block.`);
                 return null;
+            }
+            if (isShortStemOnly && bestOptHits < minOptionHits) {
+                console.log(`    [find-block] ACCEPTED (short-stem-only): stemHits=${bestStemHits}/${stemTokens.length} textLen=${sourceText.length} — snippet with strong stem match`);
             }
         }
 
