@@ -1,4 +1,4 @@
-import { ExtractionService } from '../services/ExtractionService.js';
+﻿import { ExtractionService } from '../services/ExtractionService.js';
 import { SearchService } from '../services/SearchService.js';
 import { ApiService } from '../services/ApiService.js';
 import { BinderController } from './BinderController.js';
@@ -34,6 +34,7 @@ export const PopupController = {
     await this.syncLanguageSelector();
     await this.ensureSetupReady();
     await this.restoreLastResults({ clear: false });
+    await this._resumePendingBackgroundSearch();
 
     // Clear draft keys when popup closes without completing setup,
     // so stale plaintext keys don't persist in storage indefinitely.
@@ -2365,47 +2366,46 @@ export const PopupController = {
 
       console.log('AnswerHunter: displayQuestion sent to search â†’', displayQuestion.substring(0, 200));
 
-      this.view.showStatus('loading', this.t('status.searchingGoogle'));
+      // ── Phase 2: dispatch the slow network work to the background service worker ──
+      // The SW runs searchOnly + refineFromResults and stores the result in
+      // chrome.storage.local, so the search survives popup closure.
+      const requestId = `srch_${Date.now()}`;
 
-      const searchResults = await SearchService.searchOnly(displayQuestion);
-      if (!searchResults || searchResults.length === 0) {
-        this.view.showStatus('loading', this.t('status.noSourcesAskAi'));
-        await this.renderAiFallback(displayQuestion, displayQuestion);
+      // Persist context so the popup can resume polling when it reopens.
+      await chrome.storage.local.set({
+        ah_pending_search: { requestId, displayQuestion, bestQuestion }
+      });
+
+      let bgDispatched = false;
+      try {
+        await chrome.runtime.sendMessage({
+          type: 'SEARCH_PHASE2',
+          requestId,
+          question: bestQuestion,
+          displayQuestion
+        });
+        bgDispatched = true;
+      } catch (_bgErr) {
+        console.warn('AnswerHunter: BG dispatch failed — running search inline:', _bgErr?.message);
+      }
+
+      if (!bgDispatched) {
+        // Inline fallback (background SW unavailable)
+        await chrome.storage.local.remove('ah_pending_search');
+        const _sr = await SearchService.searchOnly(displayQuestion);
+        if (!_sr?.length) {
+          this.view.showStatus('loading', this.t('status.noSourcesAskAi'));
+          await this.renderAiFallback(displayQuestion, displayQuestion);
+          return;
+        }
+        this.view.showStatus('loading', this.t('status.foundAndAnalyzing', { count: _sr.length }));
+        const _fr = await SearchService.refineFromResults(bestQuestion, _sr, displayQuestion, (m) => this.view.showStatus('loading', m));
+        await this._finishBackgroundSearch(_fr, displayQuestion, bestQuestion);
         return;
       }
 
-      this.view.showStatus('loading', this.t('status.foundAndAnalyzing', { count: searchResults.length }));
-
-      const finalResults = await SearchService.refineFromResults(
-        bestQuestion,
-        searchResults,
-        displayQuestion,
-        (message) => this.view.showStatus('loading', message)
-      );
-
-      if (!finalResults || finalResults.length === 0) {
-        this.view.showStatus('loading', this.t('status.noSourceAnswerAskAi'));
-        await this.renderAiFallback(displayQuestion, displayQuestion);
-        return;
-      }
-
-      // If search returned results but they're inconclusive (no answer letter),
-      // fall back to AI knowledge to attempt a direct answer
-      const firstResult = finalResults[0];
-      if (!firstResult?.answerLetter && firstResult?.resultState === 'inconclusive') {
-        this.view.showStatus('loading', this.t('status.noSourceAnswerAskAi'));
-        await this.renderAiFallback(displayQuestion, displayQuestion);
-        return;
-      }
-
-      console.log('AnswerHunter: Final results to display:', finalResults);
-      const withSaved = this._decorateWithSavedMeta(finalResults, displayQuestion);
-
-      this.view.appendResults(withSaved);
-      await this.saveLastResults(withSaved);
-      this.view.showStatus('success', this.t('status.answersFound', { count: finalResults.length }));
-      this.view.toggleViewSection('view-search');
-      this.view.setButtonDisabled('copyBtn', false);
+      this.view.showStatus('loading', this.t('status.searchingBackground'));
+      this._startPollBackgroundSearch(requestId, displayQuestion, bestQuestion);
     } catch (error) {
       console.error('Search flow error:', error);
       const message = error?.message === 'SETUP_REQUIRED'
@@ -2421,6 +2421,115 @@ export const PopupController = {
     }
   },
 
+  // ── Background search helpers ────────────────────────────────────────────────
+
+  /**
+   * Processes the array of finalResults from a background search and
+   * updates the UI exactly as the old inline handleSearch() code did.
+   */
+  async _finishBackgroundSearch(finalResults, displayQuestion, bestQuestion) {
+    if (!finalResults || finalResults.length === 0) {
+      this.view.showStatus('loading', this.t('status.noSourceAnswerAskAi'));
+      await this.renderAiFallback(displayQuestion, displayQuestion);
+      return;
+    }
+
+    const firstResult = finalResults[0] || {};
+    const resolvedLetter = String(firstResult.answerLetter || firstResult.bestLetter || '').trim().toUpperCase();
+    const hasResolvedLetter = /^[A-E]$/.test(resolvedLetter);
+    const hasSources = Array.isArray(firstResult.sources) && firstResult.sources.length > 0;
+    const hasVotes = !!(firstResult.votes && typeof firstResult.votes === 'object' && Object.keys(firstResult.votes).length > 0);
+    const shouldFallbackToAi = firstResult.resultState === 'inconclusive' && !hasResolvedLetter && !hasSources && !hasVotes;
+
+    if (shouldFallbackToAi) {
+      this.view.showStatus('loading', this.t('status.noSourceAnswerAskAi'));
+      await this.renderAiFallback(displayQuestion, displayQuestion);
+      return;
+    }
+
+    console.log('AnswerHunter: Final results to display:', finalResults);
+    const withSaved = this._decorateWithSavedMeta(finalResults, displayQuestion);
+    this.view.appendResults(withSaved);
+    await this.saveLastResults(withSaved);
+    this.view.showStatus('success', this.t('status.answersFound', { count: finalResults.length }));
+    this.view.toggleViewSection('view-search');
+    this.view.setButtonDisabled('copyBtn', false);
+    this.view.setButtonDisabled('searchBtn', false);
+  },
+
+  /**
+   * Polls chrome.storage.local for the background search result every 600 ms.
+   * Updates the status bar with progress messages and calls _finishBackgroundSearch
+   * (or renderAiFallback) when the background SW signals completion.
+   */
+  _startPollBackgroundSearch(requestId, displayQuestion, bestQuestion) {
+    if (this._bgSearchPoller) clearInterval(this._bgSearchPoller);
+
+    const key = `ah_bg_search_${requestId}`;
+    const statusKey = `${key}_status`;
+    let lastStatus = '';
+
+    this._bgSearchPoller = setInterval(async () => {
+      try {
+        const data = await chrome.storage.local.get([key, statusKey]);
+        const entry = data[key];
+        const statusMsg = data[statusKey];
+
+        // Mirror progress messages in popup status bar
+        if (statusMsg && statusMsg !== lastStatus) {
+          lastStatus = statusMsg;
+          this.view.showStatus('loading', statusMsg);
+        }
+
+        if (!entry || entry.state === 'running') return;
+
+        // Reached a terminal state — clear the poller and storage entries
+        clearInterval(this._bgSearchPoller);
+        this._bgSearchPoller = null;
+        await chrome.storage.local.remove(['ah_pending_search', key, statusKey]).catch(() => {});
+
+        if (entry.state === 'done') {
+          await this._finishBackgroundSearch(entry.results, displayQuestion, bestQuestion);
+        } else if (entry.state === 'no_results') {
+          this.view.showStatus('loading', this.t('status.noSourcesAskAi'));
+          await this.renderAiFallback(displayQuestion, displayQuestion);
+        } else if (entry.state === 'error') {
+          this.view.showStatus('error', this.t('status.searchError', { message: entry.error || 'unknown' }));
+          this.view.setButtonDisabled('searchBtn', false);
+        }
+      } catch (pollErr) {
+        console.warn('AnswerHunter: BG search poll error:', pollErr);
+      }
+    }, 600);
+  },
+
+  /**
+   * Called from init() — if the popup is reopened while a background search is
+   * already running (or just finished), resume showing progress / display results.
+   */
+  async _resumePendingBackgroundSearch() {
+    try {
+      const { ah_pending_search: pending } = await chrome.storage.local.get('ah_pending_search');
+      if (!pending?.requestId) return;
+
+      const key = `ah_bg_search_${pending.requestId}`;
+      const { [key]: entry } = await chrome.storage.local.get(key);
+
+      if (!entry) {
+        // Job not started or storage already cleared — discard stale pending marker
+        await chrome.storage.local.remove('ah_pending_search').catch(() => {});
+        return;
+      }
+
+      // Regardless of whether the job is still running or already done,
+      // (re-)attach the poller — it will handle all terminal states immediately.
+      this.view.showStatus('loading', this.t('status.searchingBackground'));
+      this.view.setButtonDisabled('searchBtn', true);
+      this._startPollBackgroundSearch(pending.requestId, pending.displayQuestion, pending.bestQuestion);
+    } catch (err) {
+      console.warn('AnswerHunter: Error resuming pending background search:', err);
+    }
+  },
   _extractOptionsMap(text) {
     const map = {};
     const cleanOptionBody = (raw) => {

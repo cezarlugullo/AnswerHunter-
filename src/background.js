@@ -11,6 +11,7 @@
  */
 
 import { ChatGPTAuthService } from './services/ChatGPTAuthService.js';
+import { SearchService } from './services/SearchService.js';
 
 const CALLBACK_PATTERN = 'http://localhost:1455/auth/callback';
 
@@ -74,3 +75,66 @@ chrome.storage.local.get(['chatgpt_pkce_pending'], (result) => {
         console.log('ChatGPTAuth BG: PKCE session pending — monitoring tabs for callback');
     }
 });
+
+// ─── Background Search Phase 2 ───────────────────────────────────────────────
+// Receives { type: 'SEARCH_PHASE2', requestId, question, displayQuestion }
+// Runs the slow network work (SearchService.searchOnly + refineFromResults)
+// in the service worker so the search survives popup closure.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg.type !== 'SEARCH_PHASE2') return false;
+    _runPhase2Search(msg.requestId, msg.question, msg.displayQuestion).catch(console.error);
+    sendResponse({ ack: true });
+    return false; // no async response channel needed
+});
+
+async function _runPhase2Search(requestId, question, displayQuestion) {
+    const key = `ah_bg_search_${requestId}`;
+
+    // Ping a Chrome API every 20 s to prevent the MV3 service worker from being
+    // terminated mid-search (Chrome's idle timer is ~30 s).
+    const keepAlive = setInterval(() => {
+        chrome.runtime.getPlatformInfo(() => {});
+    }, 20000);
+
+    try {
+        await chrome.storage.local.set({ [key]: { state: 'running', startedAt: Date.now() } });
+
+        const searchResults = await SearchService.searchOnly(displayQuestion);
+
+        if (!searchResults || searchResults.length === 0) {
+            await chrome.storage.local.set({ [key]: { state: 'no_results', completedAt: Date.now() } });
+            return;
+        }
+
+        await chrome.storage.local.set({
+            [`${key}_status`]: `Analisando ${searchResults.length} fontes...`
+        });
+
+        const finalResults = await SearchService.refineFromResults(
+            question,
+            searchResults,
+            displayQuestion,
+            async (message) => {
+                try { await chrome.storage.local.set({ [`${key}_status`]: message }); } catch (_) {}
+            }
+        );
+
+        if (!finalResults || finalResults.length === 0) {
+            await chrome.storage.local.set({ [key]: { state: 'no_results', completedAt: Date.now() } });
+            return;
+        }
+
+        await chrome.storage.local.set({
+            [key]: { state: 'done', results: finalResults, completedAt: Date.now() }
+        });
+    } catch (err) {
+        console.error('AnswerHunter BG: Phase 2 search error:', err);
+        try {
+            await chrome.storage.local.set({
+                [key]: { state: 'error', error: String(err?.message || err), completedAt: Date.now() }
+            });
+        } catch (_) {}
+    } finally {
+        clearInterval(keepAlive);
+    }
+}

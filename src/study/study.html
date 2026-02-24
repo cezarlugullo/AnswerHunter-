@@ -35,6 +35,7 @@
       color: var(--text);
       min-height: 100vh;
       scrollbar-gutter: stable;
+      overflow-x: hidden;
     }
 
     /* ── Header ── */
@@ -88,7 +89,7 @@
       padding: 12px 32px;
     }
     .toolbar {
-      max-width: 860px;
+      max-width: 1120px;
       margin: 0 auto;
       display: flex;
       gap: 10px;
@@ -166,9 +167,118 @@
     .tool-btn:hover { background: var(--bg); border-color: var(--muted); }
     .tool-btn .icon { font-size: 16px; color: var(--muted); }
 
+    /* App shell and sidebar */
+    .study-shell {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 0;
+      min-height: calc(100vh - var(--header-sticky-offset));
+    }
+    .study-sidebar {
+      position: sticky;
+      top: var(--header-sticky-offset);
+      align-self: start;
+      height: calc(100vh - var(--header-sticky-offset));
+      overflow-y: auto;
+      background: linear-gradient(180deg, #FFFFFF 0%, #F9FBFF 100%);
+      border-right: 1px solid var(--border);
+      padding: 16px 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .sidebar-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+      padding: 12px;
+    }
+    .sidebar-title {
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .sidebar-metric {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px dashed #ECEFF4;
+    }
+    .sidebar-metric:last-child { border-bottom: none; }
+    .sidebar-metric-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .sidebar-metric-value {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--text);
+      text-align: right;
+    }
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sidebar-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border: 1px solid transparent;
+      transition: all 0.15s;
+    }
+    .sidebar-link:hover {
+      background: #FFF5EF;
+      color: var(--primary);
+      border-color: #FFD8BF;
+    }
+    .sidebar-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    .sidebar-action-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 9px;
+      padding: 8px 10px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: left;
+      font-family: 'Inter', sans-serif;
+    }
+    .sidebar-action-btn:hover {
+      border-color: var(--primary);
+      background: #FFF8F2;
+      color: var(--primary);
+    }
+    .sidebar-action-btn .icon { font-size: 16px; }
+    .study-main-area { min-width: 0; }
+
     /* ── Progress ── */
     .progress-wrap {
-      max-width: 860px;
+      max-width: 1120px;
       margin: 0 auto 0;
       padding: 10px 32px 14px;
     }
@@ -207,7 +317,7 @@
 
     /* ── Main / Cards ── */
     main {
-      max-width: 860px;
+      max-width: 1120px;
       margin: 0 auto 60px;
       padding: 20px 32px;
       display: flex;
@@ -1931,16 +2041,33 @@
     }
 
     /* ── Responsive ── */
+    @media (max-width: 1100px) {
+      .study-shell {
+        grid-template-columns: 1fr;
+      }
+      .study-sidebar {
+        position: static;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        padding: 12px 16px;
+      }
+      .sidebar-card { margin: 0; }
+    }
     @media (max-width: 640px) {
       header, .toolbar-wrap { padding-left: 16px; padding-right: 16px; }
       main { padding: 14px 16px; }
       .progress-wrap { padding-left: 16px; padding-right: 16px; }
+      .study-sidebar { grid-template-columns: 1fr; }
     }
 
     /* ── Print ── */
     @media print {
       body { background: #fff; color: #000; }
-      header, .toolbar-wrap, .progress-wrap, .reveal-btn, .card-actions { display: none !important; }
+      header, .study-sidebar, .toolbar-wrap, .progress-wrap, .reveal-btn, .card-actions { display: none !important; }
       main { max-width: 100%; padding: 0; margin: 0; }
       .card {
         box-shadow: none;
@@ -2084,7 +2211,42 @@
   </div>
 </header>
 
-<div class="toolbar-wrap">
+<div class="study-shell">
+  <aside class="study-sidebar">
+    <div class="sidebar-card">
+      <div class="sidebar-title">Visão da Sessão</div>
+      <div class="sidebar-metric">
+        <span class="sidebar-metric-label"><span class="icon">menu_book</span> Questões</span>
+        <span class="sidebar-metric-value" id="sideCounterText">0 questões</span>
+      </div>
+      <div class="sidebar-metric">
+        <span class="sidebar-metric-label"><span class="icon">task_alt</span> Progresso</span>
+        <span class="sidebar-metric-value" id="sideProgressText">0 de 0 respondidas</span>
+      </div>
+    </div>
+
+    <div class="sidebar-card">
+      <div class="sidebar-title">Navegação</div>
+      <div class="sidebar-nav">
+        <a class="sidebar-link" href="#studyControls"><span class="icon">tune</span> Controles</a>
+        <a class="sidebar-link" href="#studyProgress"><span class="icon">insights</span> Progresso</a>
+        <a class="sidebar-link" href="#cardList"><span class="icon">quiz</span> Questões</a>
+      </div>
+    </div>
+
+    <div class="sidebar-card">
+      <div class="sidebar-title">Atalhos</div>
+      <div class="sidebar-actions">
+        <button class="sidebar-action-btn" data-proxy-click="chipHideAnswered"><span class="icon">visibility_off</span> Ocultar respondidas</button>
+        <button class="sidebar-action-btn" data-proxy-click="chipReviewOnly"><span class="icon">bookmark</span> Somente revisão</button>
+        <button class="sidebar-action-btn" data-proxy-click="chipRevealAll"><span class="icon">lock_open</span> Revelar todas</button>
+        <button class="sidebar-action-btn" data-proxy-click="btnDashboard"><span class="icon">insights</span> Dashboard</button>
+      </div>
+    </div>
+  </aside>
+
+  <section class="study-main-area">
+<div class="toolbar-wrap" id="studyControls">
   <div class="toolbar">
     <div class="search-wrap">
       <span class="icon icon-search">search</span>
@@ -2133,7 +2295,7 @@
   </div>
 </div>
 
-<div class="progress-wrap">
+<div class="progress-wrap" id="studyProgress">
   <div class="progress-row">
     <span id="progressLabel">0 de 0 respondidas</span>
     <div class="progress-track">
@@ -2151,6 +2313,8 @@
 </main>
 
 <footer id="footer"></footer>
+  </section>
+</div>
 
 <!-- ══ Dashboard de Desempenho Modal ══ -->
 <div id="dashOverlay" class="dash-overlay" role="dialog" aria-modal="true" aria-labelledby="dashTitle" hidden>
@@ -2260,6 +2424,34 @@
   </div>
 </div>
 
+<script>
+  document.addEventListener('click', (event) => {
+    const proxyBtn = event.target.closest('[data-proxy-click]');
+    if (!proxyBtn) return;
+    const targetId = proxyBtn.getAttribute('data-proxy-click');
+    const target = targetId ? document.getElementById(targetId) : null;
+    if (!target) return;
+    target.click();
+  });
+
+  const syncSidebarSessionInfo = () => {
+    const counterEl = document.getElementById('counterEl');
+    const progressEl = document.getElementById('progressLabel');
+    const sideCounter = document.getElementById('sideCounterText');
+    const sideProgress = document.getElementById('sideProgressText');
+    if (counterEl && sideCounter) sideCounter.textContent = counterEl.textContent || '0 questões';
+    if (progressEl && sideProgress) sideProgress.textContent = progressEl.textContent || '0 de 0 respondidas';
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    syncSidebarSessionInfo();
+    const counterEl = document.getElementById('counterEl');
+    const progressEl = document.getElementById('progressLabel');
+    const obs = new MutationObserver(syncSidebarSessionInfo);
+    if (counterEl) obs.observe(counterEl, { childList: true, characterData: true, subtree: true });
+    if (progressEl) obs.observe(progressEl, { childList: true, characterData: true, subtree: true });
+  });
+</script>
 <script src="study.js" type="module"></script>
 </body>
 </html>

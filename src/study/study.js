@@ -2196,6 +2196,94 @@ function resetPomodoro() {
   _pom.running = false;
   _pom.isBreak = false;
   _pom.remaining = POM_WORK;
+// ══ #14 Mapa Mental ══════════════════════════════════════════════════════════
+
+const mindMapOverlay  = document.getElementById('mindMapOverlay');
+const mindMapCloseBtn = document.getElementById('mindMapCloseBtn');
+const mindMapBody     = document.getElementById('mindMapBody');
+
+function openMindMap() {
+  mindMapOverlay.classList.add('open');
+  renderMindMap();
+}
+function closeMindMap() {
+  mindMapOverlay.classList.remove('open');
+}
+
+async function renderMindMap() {
+  mindMapBody.innerHTML = `<div class="quiz-loading"><span class="icon spin-icon">autorenew</span><p>Construindo mapa…</p></div>`;
+
+  const sm2Data = await loadSm2Data();
+  const visible = allQuestions.filter(q => {
+    const el = document.querySelector(`.card[data-qid="${q.id}"]`);
+    return el && !el.classList.contains('hidden-card');
+  });
+
+  if (!visible.length) {
+    mindMapBody.innerHTML = `<div class="mindmap-empty"><span class="icon" style="font-size:32px;display:block;margin-bottom:8px">search_off</span>Nenhuma questão visível para mapear.</div>`;
+    return;
+  }
+
+  // Group by tags; fallback to "Geral"
+  const map = new Map(); // tag → [{q, idx}]
+  visible.forEach((q, i) => {
+    const tags = sm2Data[q.id]?.tags;
+    if (tags && tags.length > 0) {
+      tags.forEach(tag => {
+        if (!map.has(tag)) map.set(tag, []);
+        map.get(tag).push({ q, i });
+      });
+    } else {
+      const bucket = 'Geral';
+      if (!map.has(bucket)) map.set(bucket, []);
+      map.get(bucket).push({ q, i });
+    }
+  });
+
+  // Sort topics: most questions first; "Geral" last
+  const topics = [...map.entries()].sort((a, b) => {
+    if (a[0] === 'Geral') return 1;
+    if (b[0] === 'Geral') return -1;
+    return b[1].length - a[1].length;
+  });
+
+  const topicPillColors = [
+    '#4f46e5','#0284c7','#16a34a','#d97706','#dc2626',
+    '#7c3aed','#0891b2','#65a30d','#ca8a04','#db2777'
+  ];
+
+  const legendHtml = topics.slice(0, 6).map(([ tag ], i) =>
+    `<span class="mindmap-legend-pill" style="background:${topicPillColors[i % topicPillColors.length]}22;color:${topicPillColors[i % topicPillColors.length]}">${escH(tag)}</span>`
+  ).join('');
+
+  const blocksHtml = topics.map(([tag, items], ti) => {
+    const color = topicPillColors[ti % topicPillColors.length];
+    const nodesHtml = items.slice(0, 8).map(({ q, i }) => {
+      const text = sanitizeQuestionText(q.question || '').slice(0, 90);
+      return `<div class="mindmap-node"><span class="node-num">#${i + 1}</span>${escH(text)}${text.length >= 90 ? '…' : ''}</div>`;
+    }).join('');
+    const extra = items.length > 8 ? `<div class="mindmap-node" style="color:var(--muted);font-style:italic">+${items.length - 8} questões</div>` : '';
+    return `
+      <div class="mindmap-topic-block">
+        <div class="mindmap-topic-pill" style="background:${color}">${escH(tag)}<br><small style="font-weight:400;font-size:0.72rem;opacity:.8">${items.length}q</small></div>
+        <div class="mindmap-connector"></div>
+        <div class="mindmap-nodes">${nodesHtml}${extra}</div>
+      </div>`;
+  }).join('');
+
+  mindMapBody.innerHTML = `
+    <div class="mindmap-legend">${legendHtml.length ? '<span>Tópicos:</span>' + legendHtml : ''}</div>
+    <div class="mindmap-root">${blocksHtml}</div>
+  `;
+}
+
+document.getElementById('btnMindMap').addEventListener('click', openMindMap);
+mindMapCloseBtn.addEventListener('click', closeMindMap);
+mindMapOverlay.addEventListener('click', e => { if (e.target === mindMapOverlay) closeMindMap(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && mindMapOverlay.classList.contains('open')) closeMindMap();
+});
+
   document.getElementById('pomPlayIcon').textContent = 'play_arrow';
   updatePomDisplay();
 }
