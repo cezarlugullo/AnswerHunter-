@@ -674,13 +674,24 @@ export const PopupController = {
   // --- Google / Gemini Auth Handlers ---
 
   openGeminiAuthPanel() {
-    const redirectUri = GeminiAuthService.getRedirectURL();
-    const uriEl = document.getElementById('gemini-redirect-uri');
-    if (uriEl) uriEl.textContent = redirectUri;
+    try {
+      const uriEl = document.getElementById('gemini-redirect-uri');
+      if (uriEl) {
+        const redirectUri = GeminiAuthService.getRedirectURL();
+        uriEl.textContent = redirectUri;
+      }
+    } catch (_) {
+      const statusEl = document.getElementById('gemini-login-status');
+      if (statusEl) {
+        statusEl.textContent = 'OAuth indisponível. Recarregue a extensão para aplicar permissões.';
+      }
+    }
+
     GeminiAuthService.getClientId().then(id => {
       const inp = document.getElementById('gemini-client-id-input');
       if (inp && id) inp.value = id;
     });
+
     document.getElementById('gemini-auth-section')?.classList.remove('hidden');
   },
 
@@ -694,16 +705,42 @@ export const PopupController = {
   async handleGeminiLogin() {
     const btn = document.getElementById('gemini-login-btn');
     const statusEl = document.getElementById('gemini-login-status');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-rounded spin-loading">sync</span> Entrando...'; }
+    const detailsEl = document.getElementById('gemini-setup-details');
+    const clientIdInput = document.getElementById('gemini-client-id-input');
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="material-symbols-rounded spin-loading">sync</span> Entrando...';
+    }
     if (statusEl) statusEl.textContent = '';
-    const result = await GeminiAuthService.startLogin();
-    if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-symbols-rounded">login</span> <span>Entrar com Google</span>'; }
-    if (result.success) {
-      await this.refreshGeminiAuthUI();
-      this.view.showToast(`Google conectado: ${result.email || ''}`, 'success');
-    } else {
-      if (statusEl) statusEl.textContent = result.error || 'Erro ao fazer login';
-      this.view.showToast('Falha no login Google', 'error');
+
+    try {
+      const clientId = await GeminiAuthService.getClientId();
+      if (!clientId) {
+        if (detailsEl) detailsEl.open = true;
+        if (statusEl) statusEl.textContent = 'Configure o OAuth Client ID antes de entrar com Google.';
+        if (clientIdInput) clientIdInput.focus();
+        this.view.showToast('Falta configurar o Client ID do Google OAuth', 'error');
+        return;
+      }
+
+      const result = await GeminiAuthService.startLogin();
+      if (result.success) {
+        await this.refreshGeminiAuthUI();
+        this.view.showToast(`Google conectado: ${result.email || ''}`, 'success');
+      } else {
+        if (statusEl) statusEl.textContent = result.error || 'Erro ao fazer login';
+        this.view.showToast(result.error || 'Falha no login Google', 'error');
+      }
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (statusEl) statusEl.textContent = message;
+      this.view.showToast(`Erro no login Google: ${message}`, 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-rounded">login</span> <span>Entrar com Google</span>';
+      }
     }
   },
 
