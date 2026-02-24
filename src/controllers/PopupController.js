@@ -1328,6 +1328,14 @@ export const PopupController = {
       };
 
       const looksLikeCodeOptionBody = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
+      const isCompactOptionBody = (body) => {
+        const value = String(body || '').trim();
+        if (!value) return false;
+        const words = value.split(/\s+/).filter(Boolean);
+        if (words.length > 2) return false;
+        if (value.length > 14) return false;
+        return words.every((w) => /^[a-z0-9._+\-/#]+$/i.test(w));
+      };
       const normalizeOptionBody = (body) => String(body || '')
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -1401,13 +1409,17 @@ export const PopupController = {
         }
 
         const ratio = shared > 0 ? (matched / shared) : 0;
+        const denseProfiles = baseMap.size >= 3 && candidateMap.size >= 3;
+        const consistent = denseProfiles
+          ? (shared >= 2 && ratio >= 0.5)
+          : (shared < 3 || ratio >= 0.6);
         return {
           baseSize: baseMap.size,
           candidateSize: candidateMap.size,
           shared,
           matched,
           ratio,
-          consistent: shared < 3 || ratio >= 0.6
+          consistent
         };
       };
 
@@ -1446,6 +1458,11 @@ export const PopupController = {
         const stemContextTokens = normalizeTokens(stemLines.join(' '));
         const acronymContextHints = new Set(['formato', 'arquivo', 'arquivos', 'extensao', 'documento', 'documentos', 'json', 'xml', 'bson', 'yaml', 'csv', 'dados']);
         const hasAcronymContext = stemContextTokens.some((t) => acronymContextHints.has(t));
+        const dbTechHints = new Set(['postgresql', 'nosql', 'modelo', 'chave', 'valor', 'json', 'jsonb', 'hstore', 'xml', 'csv', 'banco', 'dados']);
+        const dbTechHits = stemContextTokens.reduce((sum, tk) => sum + (dbTechHints.has(tk) ? 1 : 0), 0);
+        const hasDbTechContext = dbTechHits >= 2 || stemContextTokens.includes('postgresql');
+        const compactAtomicCount = optBodies.filter((body) => isCompactOptionBody(body)).length;
+        const compactAtomicSet = optionLines.length >= 3 && compactAtomicCount / optionLines.length >= 0.8;
 
         // If options are ALL very short (≤6 chars each, e.g. BSON, XLS, XML),
         // they're likely acronyms from a completely different question domain.
@@ -1455,8 +1472,8 @@ export const PopupController = {
         if (allOptTokens.length === 0) {
           // All options are too short to produce tokens — might be all-acronym
           if (allAcronym) {
-            if (optionLines.length >= 4 && hasAcronymContext) {
-              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (all-acronym, contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+            if (optionLines.length >= 3 && (hasAcronymContext || hasDbTechContext || compactAtomicSet)) {
+              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (compact acronym set with contextual match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
               return true;
             }
             console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym, no contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
@@ -1472,7 +1489,7 @@ export const PopupController = {
         const overlapRatio = sharedTokens / allOptTokens.length;
 
         if (allAcronym && overlapRatio === 0) {
-          if (optionLines.length >= 4 && hasAcronymContext) {
+          if (optionLines.length >= 3 && (hasAcronymContext || hasDbTechContext || compactAtomicSet)) {
             console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (all-acronym with contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
             return true;
           }
@@ -2204,8 +2221,14 @@ export const PopupController = {
                   .map((letter) => `${letter}) ${domLetters.get(letter)}`)
                   .join('\n');
                 const alignment = compareOptionsByLetter(bestQuestion, domOptionsText);
-                const shouldEnforceAlignment = existingOptionCount >= 4 && domLetters.size >= 4 && alignment.baseSize >= 4;
-                if (shouldEnforceAlignment && !alignment.consistent) {
+                const shouldEnforceAlignment = existingOptionCount >= 3 && domLetters.size >= 3 && alignment.baseSize >= 3;
+                const ocrProfile = buildOptionsProfile(bestQuestion);
+                const domProfile = buildOptionsProfile(domOptionsText);
+                const ocrCompactSet = ocrProfile.entries.length >= 3 && ocrProfile.entries.every((entry) => isCompactOptionBody(entry.body));
+                const domVerboseSet = domProfile.entries.length >= 3 && domProfile.entries.some((entry) => entry.body.length >= 22 || entry.body.split(/\s+/).length >= 4);
+                if (ocrCompactSet && domVerboseSet) {
+                  console.log('AnswerHunter: OCR_DOM_SHAPE_GUARD rejected DOM replacement (compact OCR options vs verbose DOM options)');
+                } else if (shouldEnforceAlignment && !alignment.consistent) {
                   console.log(`AnswerHunter: OCR_DOM_CONSISTENCY rejected replacement shared=${alignment.shared} matched=${alignment.matched} ratio=${alignment.ratio.toFixed(2)}`);
                 } else if (!optionsAreContextuallyRelated(stemText || bestQuestion || domQuestion || '', domOptionsText)) {
                   console.log('AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected DOM replacement on OCR path');

@@ -1535,7 +1535,102 @@
       background: linear-gradient(135deg, #FDE68A, #FDBA74);
       border-color: #F59E0B;
     }
-    footer {
+
+    /* ── Revisão Espaçada SM-2 ── */
+    .sm2-rating-bar {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      padding: 14px 0 4px;
+      border-top: 1px solid var(--border);
+      margin-top: 12px;
+    }
+    .sm2-rating-bar.show { display: flex; }
+    .sm2-rating-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .sm2-rating-label .icon { font-size: 14px; }
+    .sm2-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .sm2-btn {
+      flex: 1;
+      min-width: 70px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+      border: 2px solid transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      min-height: 56px;
+    }
+    .sm2-btn .icon { font-size: 18px; }
+    .sm2-btn .sm2-next { font-size: 0.68rem; font-weight: 500; opacity: 0.8; }
+    .sm2-btn.again { background: #FEF2F2; border-color: #FECACA; color: #B91C1C; }
+    .sm2-btn.again:hover { background: #FEE2E2; }
+    .sm2-btn.hard { background: #FFF7ED; border-color: #FED7AA; color: #C2410C; }
+    .sm2-btn.hard:hover { background: #FFEDD5; }
+    .sm2-btn.good { background: var(--green-bg); border-color: var(--green-border); color: #15803D; }
+    .sm2-btn.good:hover { background: #DCFCE7; }
+    .sm2-btn.easy { background: var(--indigo-bg); border-color: #C7D2FE; color: #4338CA; }
+    .sm2-btn.easy:hover { background: #E0E7FF; }
+    .sm2-btn.rated {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .sm2-done-badge {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: var(--green-bg);
+      border: 1px solid var(--green-border);
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #15803D;
+    }
+    .sm2-done-badge.show { display: flex; }
+    .sm2-done-badge .icon { font-size: 16px; }
+
+    /* Due-today badge on card */
+    .card-due-badge {
+      display: none;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: #EFF6FF;
+      border: 1px solid #BFDBFE;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #1D4ED8;
+    }
+    .card-due-badge.show { display: inline-flex; }
+    .card-due-badge .icon { font-size: 12px; }
+
+    /* SM2 chip in toolbar */
+    .chip.sm2-chip { color: #4338CA; }
+    .chip.sm2-chip.active {
+      background: var(--indigo-bg);
+      border-color: #C7D2FE;
+      color: #4338CA;
+    }
       text-align: center;
       padding: 20px;
       font-size: 0.75rem;
@@ -1609,7 +1704,10 @@
         <span class="icon">visibility_off</span> Ocultar respondidas
       </button>
       <button class="chip" id="chipReviewOnly">
-        <span class="icon">bookmark</span> <span class="chip-label">Somente revisÃ£o</span>
+        <span class="icon">bookmark</span> <span class="chip-label">Somente revisão</span>
+      </button>
+      <button class="chip sm2-chip" id="chipSm2Due">
+        <span class="icon">event_repeat</span> Revisão de hoje <span id="sm2DueCount" style="display:none;background:#4338CA;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.7rem;margin-left:2px"></span>
       </button>
       <button class="chip active" id="chipRevealAll" data-state="hide">
         <span class="icon">lock_open</span> Revelar todas

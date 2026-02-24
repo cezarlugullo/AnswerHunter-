@@ -509,6 +509,36 @@ function buildCard(q, index) {
       </div>
       
       ${q.source ? `<div class="answer-source"><span class="icon">link</span> ${escH(q.source)}</div>` : ''}
+
+      <div class="sm2-rating-bar" id="sm2Bar_${escH(q.id || '')}">
+        <div class="sm2-rating-label"><span class="icon">event_repeat</span> Revisão espaçada — como foi?</div>
+        <div class="sm2-buttons">
+          <button class="sm2-btn again" data-quality="0" type="button">
+            <span class="icon">replay</span>
+            Não lembrei
+            <span class="sm2-next"></span>
+          </button>
+          <button class="sm2-btn hard" data-quality="1" type="button">
+            <span class="icon">sentiment_dissatisfied</span>
+            Difícil
+            <span class="sm2-next"></span>
+          </button>
+          <button class="sm2-btn good" data-quality="2" type="button">
+            <span class="icon">sentiment_satisfied</span>
+            Bom
+            <span class="sm2-next"></span>
+          </button>
+          <button class="sm2-btn easy" data-quality="3" type="button">
+            <span class="icon">sentiment_very_satisfied</span>
+            Fácil
+            <span class="sm2-next"></span>
+          </button>
+        </div>
+        <div class="sm2-done-badge" id="sm2Done_${escH(q.id || '')}">
+          <span class="icon">check_circle</span>
+          <span class="sm2-done-text"></span>
+        </div>
+      </div>
     </div>
     ${fmtDate(q.createdAt) ? `<div class="card-date">Salvo em ${fmtDate(q.createdAt)}</div>` : ''}
   `;
@@ -762,6 +792,17 @@ function buildCard(q, index) {
     });
   });
 
+  // SM-2 rating buttons
+  const sm2Bar = article.querySelector('.sm2-rating-bar');
+  if (sm2Bar && q.id) {
+    sm2Bar.querySelectorAll('.sm2-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const quality = parseInt(btn.dataset.quality);
+        rateSm2(q.id, quality, sm2Bar, article.querySelector(`#sm2Done_${q.id}`));
+      });
+    });
+  }
+
   return article;
 }
 
@@ -769,6 +810,23 @@ function revealCard(card) {
   card.querySelector('.reveal-btn').hidden = true;
   card.querySelector('.card-answer').hidden = false;
   card.classList.add('answered');
+  // Show SM-2 rating bar if not already rated today
+  const sm2Bar = card.querySelector('.sm2-rating-bar');
+  if (sm2Bar) {
+    const qid = card.dataset.qid;
+    loadSm2Data().then(data => {
+      const entry = data[qid];
+      const todayStr = todayISO();
+      if (entry && entry.lastRated === todayStr) {
+        // Already rated today - show done badge instead
+        showSm2DoneBadge(sm2Bar, card.querySelector('[id^="sm2Done_"]'), entry);
+      } else {
+        sm2Bar.classList.add('show');
+        // Populate "next review" labels
+        updateSm2Labels(sm2Bar, entry);
+      }
+    });
+  }
   updateProgress();
 }
 
@@ -817,15 +875,19 @@ function filterCards() {
   const q = document.getElementById('searchInput').value.toLowerCase().trim();
   const hideAnswered = document.getElementById('chipHideAnswered').classList.contains('active');
   const onlyReview = document.getElementById('chipReviewOnly').classList.contains('active');
+  const onlySm2Due = document.getElementById('chipSm2Due')?.classList.contains('active');
 
   document.querySelectorAll('.card').forEach(card => {
     const text = card.querySelector('.card-question').textContent.toLowerCase();
     const isAnswered = card.classList.contains('answered');
     const isReviewLater = card.classList.contains('for-review');
+    const qid = card.dataset.qid;
+    const isDue = onlySm2Due ? sm2IsDue(_sm2Cache[qid]) : true;
     const matchesSearch = !q || text.includes(q);
     const hiddenByFilter = hideAnswered && isAnswered;
     const hiddenByReviewFilter = onlyReview && !isReviewLater;
-    card.classList.toggle('hidden-card', !matchesSearch || hiddenByFilter || hiddenByReviewFilter);
+    const hiddenBySm2Filter = onlySm2Due && !isDue;
+    card.classList.toggle('hidden-card', !matchesSearch || hiddenByFilter || hiddenByReviewFilter || hiddenBySm2Filter);
   });
 
   updateProgress();
@@ -854,6 +916,8 @@ function init(questions) {
 
   updateReviewChipCounter();
   updateProgress();
+  // Initialize SM-2 due badge
+  setTimeout(() => updateSm2DueBadge(), 300);
 
   document.getElementById('footer').textContent =
     `AnswerHunter — ${total} questão${total !== 1 ? 'ões' : ''} · gerado em ${new Date().toLocaleString('pt-BR')}`;
@@ -1023,6 +1087,134 @@ function showSyncToast(msg) {
   clearTimeout(toast._timer);
   toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 3000);
 }
+
+// ══ Revisão Espaçada SM-2 ════════════════════════════════════════════════════
+
+const SM2_STORAGE_KEY = 'ah_sm2Data';
+let _sm2Cache = {};
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+}
+
+function addDays(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function sm2Calculate(entry, quality) {
+  // quality: 0=Again, 1=Hard, 2=Good, 3=Easy
+  let { interval = 1, repetition = 0, ef = 2.5 } = entry || {};
+
+  if (quality === 0) {
+    // Forgot: reset
+    repetition = 0;
+    interval = 1;
+  } else {
+    if (repetition === 0) interval = 1;
+    else if (repetition === 1) interval = 6;
+    else interval = Math.round(interval * ef);
+    repetition++;
+  }
+  // Update EF: clamp between 1.3 and 3.0
+  ef = Math.max(1.3, Math.min(3.0, ef + 0.1 - (3 - quality) * (0.08 + (3 - quality) * 0.02)));
+
+  const today = todayISO();
+  const nextReview = addDays(today, interval);
+  return { interval, repetition, ef, nextReview, lastRated: today };
+}
+
+function sm2IsDue(entry) {
+  if (!entry || !entry.nextReview) return true; // never reviewed = due
+  return entry.nextReview <= todayISO();
+}
+
+function sm2NextLabel(entry, quality) {
+  const next = sm2Calculate(entry, quality);
+  if (next.interval === 1) return 'amanhã';
+  if (next.interval < 7) return `${next.interval} dias`;
+  if (next.interval < 30) return `${Math.round(next.interval / 7)}sem`;
+  return `${Math.round(next.interval / 30)}mês`;
+}
+
+function updateSm2Labels(bar, entry) {
+  const buttons = bar.querySelectorAll('.sm2-btn');
+  buttons.forEach(btn => {
+    const q = parseInt(btn.dataset.quality);
+    const label = btn.querySelector('.sm2-next');
+    if (label) label.textContent = sm2NextLabel(entry, q);
+  });
+}
+
+function showSm2DoneBadge(bar, doneEl, entry) {
+  bar.classList.add('show');
+  bar.querySelector('.sm2-buttons').style.display = 'none';
+  if (doneEl) {
+    doneEl.classList.add('show');
+    const interval = entry.interval || 1;
+    const label = interval === 1 ? 'amanhã' : `em ${interval} dia${interval !== 1 ? 's' : ''}`;
+    doneEl.querySelector('.sm2-done-text').textContent = `Avaliado hoje — próxima revisão ${label}`;
+  }
+}
+
+async function loadSm2Data() {
+  return new Promise(resolve => {
+    chrome.storage.local.get([SM2_STORAGE_KEY], result => {
+      const data = result[SM2_STORAGE_KEY] || {};
+      _sm2Cache = data;
+      resolve(data);
+    });
+  });
+}
+
+async function saveSm2Data(data) {
+  _sm2Cache = data;
+  return new Promise(resolve => {
+    chrome.storage.local.set({ [SM2_STORAGE_KEY]: data }, resolve);
+  });
+}
+
+async function rateSm2(qid, quality, sm2Bar, doneEl) {
+  const data = await loadSm2Data();
+  const entry = data[qid] || {};
+  const newEntry = sm2Calculate(entry, quality);
+  data[qid] = newEntry;
+  await saveSm2Data(data);
+
+  // Update UI
+  showSm2DoneBadge(sm2Bar, doneEl, newEntry);
+  updateSm2DueBadge();
+}
+
+async function updateSm2DueBadge() {
+  const data = await loadSm2Data();
+  const dueCount = allQuestions.filter(q => sm2IsDue(data[q.id])).length;
+  const countEl = document.getElementById('sm2DueCount');
+  const chip = document.getElementById('chipSm2Due');
+  if (countEl) {
+    countEl.textContent = dueCount;
+    countEl.style.display = dueCount > 0 ? 'inline' : 'none';
+  }
+  if (chip) chip.title = `${dueCount} questões para revisar hoje`;
+  return dueCount;
+}
+
+// SM-2 chip filter
+const chipSm2Due = document.getElementById('chipSm2Due');
+if (chipSm2Due) {
+  chipSm2Due.addEventListener('click', async function () {
+    this.classList.toggle('active');
+    await loadSm2Data(); // refresh cache
+    filterCards();
+  });
+}
+
+// Initialize SM-2 badge when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  if (allQuestions.length > 0) updateSm2DueBadge();
+});
+// Also update after init is called (via `init` setting allQuestions first)
 
 // ══ Chat de Dúvida helpers ════════════════════════════════════════════════════
 
