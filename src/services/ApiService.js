@@ -3,6 +3,8 @@ import { ChatGPTAuthService } from './ChatGPTAuthService.js';
 import { GeminiAuthService } from './GeminiAuthService.js';
 import { GeminiCLIAuthService } from './GeminiCLIAuthService.js';
 import { GeminiCLIApiAdapter } from './GeminiCLIApiAdapter.js';
+import { CopilotAuthService } from './CopilotAuthService.js';
+import { CopilotApiAdapter } from './CopilotApiAdapter.js';
 
 /**
  * ApiService.js
@@ -17,6 +19,7 @@ export const ApiService = {
     _openRouterQuotaExhaustedUntil: 0,
     _chatgptQuotaExhaustedUntil: 0,
     _geminiQuotaExhaustedUntil: 0,
+    _copilotQuotaExhaustedUntil: 0,
     // Models confirmed to NOT work with the ChatGPT Codex backend (backend-api/codex/responses).
     // Non-codex models (gpt-4.1, gpt-4o, etc.) consistently return 400 "not supported when using Codex".
     _chatgptUnsupportedCodexModels: {},
@@ -523,6 +526,68 @@ export const ApiService = {
 
         } catch (err) {
             console.warn('AnswerHunter: ChatGPT request error:', err?.message || String(err));
+            return null;
+        }
+    },
+
+    /**
+     * Call GitHub Copilot via the Copilot API (uses Copilot subscription credits).
+     * Requires Device Flow authentication via CopilotAuthService.
+     * Uses the OpenAI-compatible Chat Completions format.
+     * @param {Array<{role:string,content:string}>} messages
+     * @param {{model?:string, temperature?:number, max_tokens?:number}} opts
+     * @returns {Promise<string|null>} The assistant message content, or null on failure
+     */
+    async _callCopilot(messages, opts = {}) {
+        // Fast-fail if quota exhausted
+        if (this._copilotQuotaExhaustedUntil > Date.now()) {
+            const waitMin = Math.ceil((this._copilotQuotaExhaustedUntil - Date.now()) / 60000);
+            console.warn(`AnswerHunter: Copilot temporarily unavailable (~${waitMin}min left)`);
+            return null;
+        }
+
+        // Check if user is authenticated
+        const loggedIn = await CopilotAuthService.isLoggedIn();
+        if (!loggedIn) return null; // Not logged in — silently skip
+
+        const settings = await this._getSettings();
+        const model = opts.model || settings.copilotModel || 'gpt-4o';
+
+        // Get a valid Copilot token (auto-refreshes the 30-min token)
+        const copilotToken = await CopilotAuthService.getValidToken();
+        if (!copilotToken) return null;
+
+        const apiUrl = await CopilotAuthService.getApiUrl();
+
+        try {
+            const result = await CopilotApiAdapter.chatCompletion(
+                copilotToken, apiUrl, messages,
+                { model, temperature: opts.temperature, max_tokens: opts.max_tokens }
+            );
+
+            if (result && typeof result === 'string') {
+                console.log(`%c[AH] ✅ Copilot success (model=${model}, ${result.length} chars)`, 'color:#79c0ff;font-weight:bold');
+                return result;
+            }
+
+            if (result?.error) {
+                if (result.status === 401) {
+                    // Token expired — will refresh on next call
+                    console.warn('AnswerHunter: Copilot 401 — token will refresh on next call');
+                    return null;
+                }
+                if (result.status === 429) {
+                    const cooldownMs = 120000;
+                    this._copilotQuotaExhaustedUntil = Date.now() + cooldownMs;
+                    console.warn(`AnswerHunter: Copilot rate-limited (429), cooldown=${cooldownMs}ms`);
+                    return null;
+                }
+                console.warn(`AnswerHunter: Copilot failed (${result.status})`);
+            }
+
+            return null;
+        } catch (err) {
+            console.warn('AnswerHunter: Copilot request error:', err?.message || String(err));
             return null;
         }
     },
@@ -1087,6 +1152,26 @@ Analise o texto passo a passo e responda no formato acima:`;
             }
         };
 
+        const tryCopilot = async () => {
+            if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                console.log(`  🔬 [aiExtract] Trying Copilot (${settings.copilotModel || 'gpt-4o'})...`);
+                const result = await this._callCopilot([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], {
+                    temperature: 0.05,
+                    max_tokens: 300,
+                    model: settings.copilotModel || 'gpt-4o'
+                });
+                console.log(`  🔬 [aiExtract] Copilot response: ${result ? result.length + ' chars' : 'null'}`);
+                return result;
+            } catch (e) {
+                console.warn('  🔬 [aiExtract] Copilot error:', e?.message || e);
+                return null;
+            }
+        };
+
         /* ---------- Rotate Execution with Rate Limit Awareness ---------- */
         let content = null;
         const fallbackChain = [];
@@ -1101,9 +1186,16 @@ Analise o texto passo a passo e responda no formato acima:`;
         if (this._chatgptQuotaExhaustedUntil <= Date.now()) {
             fallbackChain.push({ name: 'chatgpt', fn: tryChatGPT });
         }
+        // Copilot: only added if user is authenticated (checked inside _callCopilot)
+        if (this._copilotQuotaExhaustedUntil <= Date.now()) {
+            fallbackChain.push({ name: 'copilot', fn: tryCopilot });
+        }
 
         const primary = settings.primaryProvider || 'groq';
-        if (primary === 'chatgpt') {
+        if (primary === 'copilot') {
+            const idx = fallbackChain.findIndex(p => p.name === 'copilot');
+            if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
+        } else if (primary === 'chatgpt') {
             const idx = fallbackChain.findIndex(p => p.name === 'chatgpt');
             if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
         } else if (primary === 'gemini') {
@@ -3225,6 +3317,22 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
         const geminiPrimary = await this._isGeminiPrimary();
         const chatgptPrimaryInfer = settings.primaryProvider === 'chatgpt'
             && this._chatgptQuotaExhaustedUntil <= Date.now();
+        const copilotPrimaryInfer = settings.primaryProvider === 'copilot'
+            && this._copilotQuotaExhaustedUntil <= Date.now();
+
+        if (copilotPrimaryInfer) {
+            // ── Copilot PRIMARY for inference ──
+            console.log(`AnswerHunter: Inference via Copilot (primary, model=${settings.copilotModel || 'gpt-4o'})...`);
+            const copilotResult = await this._callCopilot([
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: basePrompt }
+            ], { model: settings.copilotModel || 'gpt-4o' });
+            if (copilotResult) {
+                console.log(`%c[AH] \ud83c\udfaf inferAnswerFromEvidence \u2192 Copilot (${copilotResult.length} chars)`, 'color:#79c0ff;font-weight:bold');
+                return copilotResult;
+            }
+            console.log('AnswerHunter: Copilot inference failed — trying fallbacks...');
+        }
 
         if (chatgptPrimaryInfer) {
             // ── ChatGPT PRIMARY for inference ──
@@ -3606,6 +3714,8 @@ REGRAS:
                 && this._openRouterQuotaExhaustedUntil <= Date.now();
             const chatgptPrimary = settings.primaryProvider === 'chatgpt'
                 && this._chatgptQuotaExhaustedUntil <= Date.now();
+            const copilotPrimary = settings.primaryProvider === 'copilot'
+                && this._copilotQuotaExhaustedUntil <= Date.now();
 
             /** Parse MC attempts into votes using the existing parseAttemptDecision logic */
             const tabulateGroqAttempts = (attempts) => {
@@ -3681,6 +3791,24 @@ REGRAS:
                 console.log(`AnswerHunter: MC soft-winner → Letter ${winnerLetter} (${winnerCount}/${validVoteCount}, low confidence)`);
                 return fullResponses[winnerLetter];
             };
+
+            if (copilotPrimary) {
+                // ── Copilot PRIMARY for MC ──
+                console.log(`AnswerHunter: MC via Copilot (primary, model=${settings.copilotModel || 'gpt-4o'})...`);
+                const copilotAttempts = [];
+                for (let i = 0; i < 2; i++) {
+                    const content = await this._callCopilot([
+                        { role: 'system', content: mcSystemMsg },
+                        { role: 'user', content: prompt }
+                    ], { model: settings.copilotModel || 'gpt-4o' });
+                    if (content) copilotAttempts.push(content);
+                }
+                if (copilotAttempts.length > 0) {
+                    const tabulated = tabulateGroqAttempts(copilotAttempts);
+                    if (tabulated) return tabulated;
+                }
+                console.log('AnswerHunter: Copilot MC failed — trying fallbacks...');
+            }
 
             if (chatgptPrimary) {
                 // ── ChatGPT PRIMARY for MC ──
@@ -3786,7 +3914,19 @@ REGRAS:
             && this._openRouterQuotaExhaustedUntil <= Date.now();
         const chatgptPrimaryOpen = settings.primaryProvider === 'chatgpt'
             && this._chatgptQuotaExhaustedUntil <= Date.now();
+        const copilotPrimaryOpen = settings.primaryProvider === 'copilot'
+            && this._copilotQuotaExhaustedUntil <= Date.now();
         const openSysMsg = 'Você é um assistente que responde questões com objetividade.';
+
+        if (copilotPrimaryOpen) {
+            console.log(`AnswerHunter: Open-ended via Copilot (primary, model=${settings.copilotModel || 'gpt-4o'})...`);
+            const copilotOpen = await this._callCopilot([
+                { role: 'system', content: openSysMsg },
+                { role: 'user', content: prompt }
+            ], { model: settings.copilotModel || 'gpt-4o' });
+            if (copilotOpen) return copilotOpen;
+            console.log('AnswerHunter: Copilot open-ended failed — trying fallbacks...');
+        }
 
         if (chatgptPrimaryOpen) {
             console.log(`AnswerHunter: Open-ended via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
@@ -4470,7 +4610,26 @@ REGRAS:
             }
         };
 
+        const tryCopilot = async () => {
+            if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const content = await this._callCopilot([
+                    { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
+                    { role: 'user', content: prompt }
+                ], {
+                    temperature: 0.3,
+                    max_tokens: 100,
+                    model: settings.copilotModel || 'gpt-4o'
+                });
+                return parseResponse(content);
+            } catch (e) {
+                console.warn('AnswerHunter: Copilot generateTags error:', e?.message || e);
+                return null;
+            }
+        };
+
         const providerFns = {
+            copilot: tryCopilot,
             chatgpt: tryChatGPT,
             openrouter: tryOpenRouter,
             gemini: tryGemini,
@@ -4478,13 +4637,15 @@ REGRAS:
         };
 
         const primary = settings.primaryProvider || 'groq';
-        const preferredOrder = primary === 'chatgpt'
-            ? ['chatgpt', 'openrouter', 'gemini', 'groq']
-            : primary === 'openrouter'
-                ? ['openrouter', 'chatgpt', 'gemini', 'groq']
-                : primary === 'gemini'
-                    ? ['gemini', 'openrouter', 'chatgpt', 'groq']
-                    : ['groq', 'openrouter', 'chatgpt', 'gemini'];
+        const preferredOrder = primary === 'copilot'
+            ? ['copilot', 'chatgpt', 'openrouter', 'gemini', 'groq']
+            : primary === 'chatgpt'
+                ? ['chatgpt', 'copilot', 'openrouter', 'gemini', 'groq']
+                : primary === 'openrouter'
+                    ? ['openrouter', 'copilot', 'chatgpt', 'gemini', 'groq']
+                    : primary === 'gemini'
+                        ? ['gemini', 'openrouter', 'copilot', 'chatgpt', 'groq']
+                        : ['groq', 'openrouter', 'copilot', 'chatgpt', 'gemini'];
 
         for (const provider of preferredOrder) {
             const fn = providerFns[provider];

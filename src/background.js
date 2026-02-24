@@ -12,10 +12,56 @@
 
 import { ChatGPTAuthService } from './services/ChatGPTAuthService.js';
 import { GeminiCLIAuthService } from './services/GeminiCLIAuthService.js';
+import { CopilotAuthService } from './services/CopilotAuthService.js';
 import { SearchService } from './services/SearchService.js';
 
 const CHATGPT_CALLBACK_PATTERN = 'http://localhost:1455/auth/callback';
 const GEMINI_CLI_CALLBACK_PATTERN = 'http://localhost:11235/auth/callback';
+const COPILOT_OAUTH_ALARM = 'copilot_oauth_poll_alarm';
+
+async function _isCopilotPendingOAuth() {
+    return await new Promise(resolve => {
+        chrome.storage.local.get([CopilotAuthService.PENDING_OAUTH_KEY], data => {
+            const pending = data?.[CopilotAuthService.PENDING_OAUTH_KEY];
+            resolve(!!(pending?.deviceCode && pending?.expiresAt && pending.expiresAt > Date.now()));
+        });
+    });
+}
+
+async function _syncCopilotPollingAlarm() {
+    const hasPending = await _isCopilotPendingOAuth();
+    if (hasPending) {
+        chrome.alarms.create(COPILOT_OAUTH_ALARM, { periodInMinutes: 1 });
+    } else {
+        chrome.alarms.clear(COPILOT_OAUTH_ALARM);
+    }
+}
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm?.name !== COPILOT_OAUTH_ALARM) return;
+    try {
+        const result = await CopilotAuthService.checkPendingAuthorizationOnce();
+        if (result.status === 'success' || result.status === 'expired' || result.status === 'denied' || result.status === 'none') {
+            chrome.alarms.clear(COPILOT_OAUTH_ALARM);
+        }
+    } catch (err) {
+        console.warn('CopilotAuth BG: alarm poll failed:', err?.message || err);
+    }
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+    _syncCopilotPollingAlarm().catch(() => {});
+});
+
+chrome.runtime.onStartup.addListener(() => {
+    _syncCopilotPollingAlarm().catch(() => {});
+});
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'local') return;
+    if (!Object.prototype.hasOwnProperty.call(changes, CopilotAuthService.PENDING_OAUTH_KEY)) return;
+    _syncCopilotPollingAlarm().catch(() => {});
+});
 
 /**
  * Listen for tab URL changes to capture the OAuth callback.
@@ -72,6 +118,8 @@ chrome.storage.local.get(['chatgpt_pkce_pending', 'gemini_cli_pkce_pending'], (r
         console.log('GeminiCLIAuth BG: PKCE session pending — monitoring tabs for callback');
     }
 });
+
+_syncCopilotPollingAlarm().catch(() => {});
 
 // ─── Background Search Phase 2 ───────────────────────────────────────────────
 // Receives { type: 'SEARCH_PHASE2', requestId, question, displayQuestion }

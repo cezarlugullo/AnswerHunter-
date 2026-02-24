@@ -442,6 +442,14 @@
                       <span style="font-size: 0.82rem; font-weight: 600;">ChatGPT</span>
                       <span style="font-size: 0.62rem; color: rgba(255,255,255,0.5); line-height: 1.2;">Plus/Pro</span>
                     </button>
+                    <button class="ob-btn ob-provider-pill" id="pill-copilot-ob" data-provider="copilot"
+                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
+                      <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" class="copilot-pill-icon" style="flex-shrink:0;">
+                        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                      </svg>
+                      <span style="font-size: 0.82rem; font-weight: 600;">Copilot</span>
+                      <span style="font-size: 0.62rem; color: rgba(255,255,255,0.5); line-height: 1.2;">GitHub</span>
+                    </button>
                   </div>
                   <p id="provider-hint-ob" data-i18n="setup.prefs.hintGroq"
                     style="font-size: 0.76rem; color: rgba(255,255,255,0.7); margin: 10px 0 0; text-align: center;">Você
@@ -451,10 +459,10 @@
                 <!-- AI Account Logins -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 16px;">
                   <p style="font-size: 0.8rem; color: rgba(255,255,255,0.9); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Contas de IA</p>
-                  <div style="display: flex; gap: 8px;">
+                  <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                     <button id="chatgptBtn" class="ob-ai-account-btn" style="border-color: rgba(139,92,246,0.4);">
                       <span class="material-symbols-rounded" style="font-size: 18px; color: #a78bfa;">smart_toy</span>
-                      <span style="font-size: 0.82rem; font-weight: 600;">ChatGPT</span>
+                      <span style="font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ChatGPT</span>
                       <span id="chatgpt-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto;"></span>
                     </button>
                     <button id="geminiAuthBtn" class="ob-ai-account-btn" style="border-color: rgba(66,133,244,0.4);">
@@ -464,8 +472,15 @@
                         <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
                         <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
                       </svg>
-                      <span style="font-size: 0.82rem; font-weight: 600; color: #4285F4;">Google AI</span>
+                      <span style="font-size: 0.78rem; font-weight: 600; color: #4285F4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Google AI</span>
                       <span id="gemini-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto; background: #4285F4; box-shadow: 0 0 4px #4285F4;"></span>
+                    </button>
+                    <button id="copilotBtn" class="ob-ai-account-btn" style="border-color: rgba(121,192,255,0.4);">
+                      <svg viewBox="0 0 16 16" width="16" height="16" fill="#f0f6fc" style="flex-shrink:0;">
+                        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                      </svg>
+                      <span style="font-size: 0.78rem; font-weight: 600; color: #f0f6fc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">GitHub</span>
+                      <span id="copilot-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto; background: #3fb950; box-shadow: 0 0 4px #3fb950;"></span>
                     </button>
                   </div>
                 </div>
@@ -489,6 +504,7 @@
           <span id="pill-gemini"></span>
           <span id="pill-openrouter"></span>
           <span id="pill-chatgpt"></span>
+          <span id="pill-copilot"></span>
           <div id="provider-hint"></div>
           <select id="select-groq-model"></select>
           <select id="select-gemini-model"></select>
@@ -640,6 +656,132 @@
             </optgroup>
           </select>
           <button id="gemini-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
+            <span class="material-symbols-rounded" style="font-size: 16px;">logout</span>
+            <span>Sair</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== GitHub Copilot Auth Section ===== -->
+  <div id="copilot-auth-section" class="chatgpt-auth-section hidden">
+    <div class="chatgpt-auth-card">
+      <div class="chatgpt-auth-header">
+        <svg viewBox="0 0 16 16" width="26" height="26" fill="#f0f6fc" style="flex-shrink:0;">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        <div>
+          <h3 style="margin: 0; font-size: 1rem; color: #ffffff;">GitHub Copilot</h3>
+          <p style="margin: 2px 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.7);">Use seus créditos de assinatura do Copilot</p>
+        </div>
+        <button id="copilot-auth-close" class="ob-btn ob-btn-ghost" style="margin-left: auto; padding: 4px;">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- Not logged in state -->
+      <div id="copilot-logged-out" class="chatgpt-auth-body">
+        <p style="font-size: 0.82rem; color: rgba(255,255,255,0.85); margin: 0 0 12px; line-height: 1.5;">
+          Faça login com sua conta GitHub para usar sua assinatura do Copilot
+          (Individual, Business, Enterprise). Nenhuma API key necessária.
+        </p>
+        <div
+          style="background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+            <span class="material-symbols-rounded" style="font-size: 16px; color: #3fb950;">shield_lock</span>
+            <span style="font-size: 0.78rem; font-weight: 600; color: #3fb950;">100% Local &amp; Privado</span>
+          </div>
+          <p style="font-size: 0.72rem; color: rgba(255,255,255,0.65); margin: 0; line-height: 1.4;">
+            Tokens armazenados apenas neste dispositivo. Token GitHub enviado apenas ao GitHub, token Copilot enviado apenas para api.githubcopilot.com.
+          </p>
+        </div>
+
+        <!-- Device code display (hidden until login starts) -->
+        <div id="copilot-code-section" class="hidden"
+          style="background: rgba(13,17,23,0.9); border: 2px solid rgba(63,185,80,0.6); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; text-align: center;">
+          <p style="margin: 0 0 10px; font-size: 0.75rem; color: rgba(255,255,255,0.7);">Cole este código em <strong style="color:#f0f6fc;">github.com/login/device</strong>:</p>
+          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px;">
+            <p id="copilot-user-code"
+              style="margin: 0; font-size: 2.2rem; font-weight: 800; letter-spacing: 0.25em; color: #f0f6fc; font-family: 'Courier New', monospace; background: rgba(63,185,80,0.15); border-radius: 8px; padding: 10px 18px; display: inline-block; border: 1px solid rgba(63,185,80,0.3);">
+              --------</p>
+            <button id="copilot-copy-code-btn" title="Copiar código"
+              style="background: rgba(63,185,80,0.15); border: 1px solid rgba(63,185,80,0.4); border-radius: 8px; padding: 10px; cursor: pointer; color: #3fb950; display: flex; align-items: center; transition: background 0.15s; flex-shrink: 0;">
+              <span class="material-symbols-rounded" style="font-size: 20px;">content_copy</span>
+            </button>
+          </div>
+          <p id="copilot-copy-feedback" style="margin: 0 0 10px; font-size: 0.72rem; color: #3fb950; height: 16px;"></p>
+          <a id="copilot-open-github-link" href="https://github.com/login/device" target="_blank"
+            style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 9px; background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.35); border-radius: 8px; color: #3fb950; font-size: 0.8rem; font-weight: 600; text-decoration: none; cursor: pointer; box-sizing: border-box;">
+            <span class="material-symbols-rounded" style="font-size: 16px;">open_in_new</span>
+            Abrir github.com/login/device
+          </a>
+        </div>
+
+        <button id="copilot-login-btn" class="ob-btn ob-btn-primary"
+          style="width: 100%; background: linear-gradient(135deg, #238636, #2ea043); border: none; gap: 8px;">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="#ffffff" style="flex-shrink:0;">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <span>Login com GitHub</span>
+        </button>
+        <div id="copilot-login-status" class="ob-test-status" style="margin-top: 8px;"></div>
+      </div>
+
+      <!-- Logged in state -->
+      <div id="copilot-logged-in" class="chatgpt-auth-body hidden">
+        <div
+          style="display: flex; align-items: center; gap: 10px; background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.3); border-radius: 10px; padding: 12px;">
+          <svg viewBox="0 0 16 16" width="22" height="22" fill="#3fb950" style="flex-shrink:0;">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          <div style="flex: 1; min-width: 0;">
+            <p style="margin: 0; font-size: 0.88rem; font-weight: 600; color: #3fb950;">Conectado ao GitHub</p>
+            <p id="copilot-user-name" style="margin: 2px 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></p>
+          </div>
+          <button id="copilot-test-btn" title="Testar conexão"
+            style="background: transparent; border: 1px solid rgba(63,185,80,0.4); border-radius: 7px; padding: 5px 8px; cursor: pointer; color: #3fb950; font-size: 0.7rem; white-space: nowrap; display: flex; align-items: center; gap: 3px; transition: background 0.15s;">
+            <span class="material-symbols-rounded" style="font-size: 14px;">bolt</span>
+            Testar
+          </button>
+        </div>
+
+        <!-- Token info row -->
+        <div id="copilot-token-info"
+          style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; margin-top: 8px; background: rgba(0,0,0,0.2); border-radius: 7px; font-size: 0.72rem; color: rgba(255,255,255,0.5);">
+          <span id="copilot-plan-badge" style="background: rgba(121,192,255,0.15); color: #79c0ff; border-radius: 4px; padding: 2px 6px; font-weight: 600; font-size: 0.68rem;"></span>
+          <span id="copilot-token-expiry" style="font-size: 0.7rem;"></span>
+        </div>
+
+        <div id="copilot-test-result" style="font-size: 0.75rem; color: rgba(255,255,255,0.7); margin-top: 6px; min-height: 18px; text-align: center;"></div>
+
+        <div style="display: flex; gap: 8px; margin-top: 10px;">
+          <select id="select-copilot-model" class="ob-input"
+            style="flex: 1; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: white; border-radius: 8px; padding: 8px; font-size: 0.8rem;">
+            <optgroup label="★ Recomendado">
+              <option value="gpt-4o">GPT-4o (equilibrado)</option>
+              <option value="gpt-4o-mini">GPT-4o Mini (rápido)</option>
+              <option value="gpt-4.1">GPT-4.1 (qualidade)</option>
+              <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+            </optgroup>
+            <optgroup label="Raciocínio">
+              <option value="o3">o3 (raciocínio forte)</option>
+              <option value="o3-mini">o3-mini (raciocínio)</option>
+              <option value="o1">o1 (complexo)</option>
+            </optgroup>
+            <optgroup label="Claude">
+              <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
+              <option value="claude-sonnet-4">Claude Sonnet 4</option>
+              <option value="claude-3.7-sonnet">Claude 3.7 Sonnet</option>
+              <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+            </optgroup>
+            <optgroup label="Gemini">
+              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            </optgroup>
+          </select>
+          <button id="copilot-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
             <span class="material-symbols-rounded" style="font-size: 16px;">logout</span>
             <span>Sair</span>
           </button>

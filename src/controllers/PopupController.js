@@ -8,6 +8,7 @@ import { I18nService } from '../i18n/I18nService.js';
 import { isLikelyQuestion } from '../utils/helpers.js';
 import { ChatGPTAuthService } from '../services/ChatGPTAuthService.js';
 import { GeminiCLIAuthService } from '../services/GeminiCLIAuthService.js';
+import { CopilotAuthService } from '../services/CopilotAuthService.js';
 
 export const PopupController = {
   view: null,
@@ -46,6 +47,8 @@ export const PopupController = {
     await this.refreshChatGPTAuthUI();
     // Check Google/Gemini auth state and update UI
     await this.refreshGeminiAuthUI();
+    // Check GitHub Copilot auth state and update UI
+    await this.refreshCopilotAuthUI();
 
     // Listen for auth success from background service worker
     chrome.runtime.onMessage.addListener((msg) => {
@@ -69,6 +72,17 @@ export const PopupController = {
         if (loginBtn2) { loginBtn2.disabled = false; loginBtn2.innerHTML = '<span class="material-symbols-rounded">login</span> <span>Entrar com Google</span>'; }
         if (statusEl3) statusEl3.textContent = msg.error || 'Falha no login Google';
         this.view.showToast('Falha no login Google', 'error');
+      } else if (msg.type === 'COPILOT_AUTH_SUCCESS') {
+        chrome.storage.local.remove(['copilot_pending_code']);
+        this.refreshCopilotAuthUI();
+        this.view.showToast('GitHub Copilot conectado!', 'success');
+      } else if (msg.type === 'COPILOT_AUTH_FAILED') {
+        chrome.storage.local.remove(['copilot_pending_code']);
+        const copilotLoginBtn = document.getElementById('copilot-login-btn');
+        const copilotStatusEl = document.getElementById('copilot-login-status');
+        if (copilotLoginBtn) { copilotLoginBtn.disabled = false; copilotLoginBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="#ffffff" style="flex-shrink:0;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>Login com GitHub</span>'; }
+        if (copilotStatusEl) copilotStatusEl.textContent = msg.error || 'Login falhou';
+        this.view.showToast('GitHub Copilot: login falhou', 'error');
       }
     });
   },
@@ -114,7 +128,7 @@ export const PopupController = {
       const providerCandidate = (button.dataset.provider || fallbackProvider || button.id?.replace(/^pill-/, '').replace(/-ob$/, '') || '')
         .toLowerCase()
         .trim();
-      if (!['groq', 'gemini', 'openrouter', 'chatgpt'].includes(providerCandidate)) return;
+      if (!['groq', 'gemini', 'openrouter', 'chatgpt', 'copilot'].includes(providerCandidate)) return;
 
       button.dataset.providerBound = '1';
       button.addEventListener('click', (event) => {
@@ -157,6 +171,19 @@ export const PopupController = {
     document.getElementById('gemini-login-btn')?.addEventListener('click', () => this.handleGeminiLogin());
     document.getElementById('gemini-logout-btn')?.addEventListener('click', () => this.handleGeminiLogout());
     document.getElementById('select-gemini-oauth-model')?.addEventListener('change', () => this.persistAiConfig());
+
+    // Copilot (GitHub) Auth buttons
+    document.getElementById('copilotBtn')?.addEventListener('click', () => {
+      document.getElementById('copilot-auth-section')?.classList.remove('hidden');
+    });
+    document.getElementById('copilot-auth-close')?.addEventListener('click', () => {
+      document.getElementById('copilot-auth-section')?.classList.add('hidden');
+    });
+    document.getElementById('copilot-login-btn')?.addEventListener('click', () => this.handleCopilotLogin());
+    document.getElementById('copilot-logout-btn')?.addEventListener('click', () => this.handleCopilotLogout());
+    document.getElementById('copilot-test-btn')?.addEventListener('click', () => this.handleCopilotTestConnection());
+    document.getElementById('copilot-copy-code-btn')?.addEventListener('click', () => this.handleCopilotCopyCode());
+    document.getElementById('select-copilot-model')?.addEventListener('change', () => this.persistAiConfig());
 
     this.view.elements.extractBtn?.addEventListener('click', () => this.handleExtract());
     this.view.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
@@ -531,10 +558,21 @@ export const PopupController = {
         document.getElementById('chatgpt-auth-section')?.classList.remove('hidden');
       }
     }
+    if (provider === 'copilot') {
+      // Copilot uses GitHub Device Flow OAuth
+      const loggedIn = await CopilotAuthService.isLoggedIn();
+      if (!loggedIn) {
+        effectiveProvider = 'groq';
+        this.view.showToast('Login to GitHub Copilot first', 'warning');
+        document.getElementById('copilot-auth-section')?.classList.remove('hidden');
+      }
+    }
 
-    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini, this.view.elements.pillOpenrouter, document.getElementById('pill-chatgpt')];
+    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini, this.view.elements.pillOpenrouter, document.getElementById('pill-chatgpt'), document.getElementById('pill-copilot')];
     pills.forEach(p => p?.classList.remove('active'));
-    if (effectiveProvider === 'chatgpt') {
+    if (effectiveProvider === 'copilot') {
+      document.getElementById('pill-copilot')?.classList.add('active');
+    } else if (effectiveProvider === 'chatgpt') {
       document.getElementById('pill-chatgpt')?.classList.add('active');
     } else if (effectiveProvider === 'openrouter') {
       this.view.elements.pillOpenrouter?.classList.add('active');
@@ -554,15 +592,17 @@ export const PopupController = {
   updateProviderHint(provider) {
     const hint = this.view.elements.providerHint;
     if (hint) {
-      const key = provider === 'chatgpt'
-        ? 'setup.aiConfig.hintChatgptPrimary'
-        : provider === 'openrouter'
-          ? 'setup.aiConfig.hintOpenrouterPrimary'
-          : provider === 'gemini'
-            ? 'setup.aiConfig.hintGeminiPrimary'
-            : 'setup.aiConfig.hintGroqPrimary';
+      const key = provider === 'copilot'
+        ? 'setup.aiConfig.hintCopilotPrimary'
+        : provider === 'chatgpt'
+          ? 'setup.aiConfig.hintChatgptPrimary'
+          : provider === 'openrouter'
+            ? 'setup.aiConfig.hintOpenrouterPrimary'
+            : provider === 'gemini'
+              ? 'setup.aiConfig.hintGeminiPrimary'
+              : 'setup.aiConfig.hintGroqPrimary';
       let text = this.view.t(key);
-      if (!text || text === key) text = provider === 'chatgpt' ? 'Using your ChatGPT subscription credits' : null;
+      if (!text || text === key) text = provider === 'copilot' ? 'Using your GitHub Copilot subscription credits' : provider === 'chatgpt' ? 'Using your ChatGPT subscription credits' : null;
       if (text && text !== key) {
         const textSpan = hint.querySelector('span:last-child') || hint;
         textSpan.textContent = text;
@@ -571,15 +611,17 @@ export const PopupController = {
     // Also update the onboarding hint
     const obHint = document.getElementById('provider-hint-ob');
     if (obHint) {
-      const key = provider === 'chatgpt'
-        ? 'setup.prefs.hintChatgpt'
-        : provider === 'openrouter'
-          ? 'setup.prefs.hintOpenrouter'
-          : provider === 'gemini'
-            ? 'setup.prefs.hintGemini'
-            : 'setup.prefs.hintGroq';
+      const key = provider === 'copilot'
+        ? 'setup.prefs.hintCopilot'
+        : provider === 'chatgpt'
+          ? 'setup.prefs.hintChatgpt'
+          : provider === 'openrouter'
+            ? 'setup.prefs.hintOpenrouter'
+            : provider === 'gemini'
+              ? 'setup.prefs.hintGemini'
+              : 'setup.prefs.hintGroq';
       let text = this.view.t(key);
-      if (!text || text === key) text = provider === 'chatgpt' ? 'Uses your ChatGPT Plus/Pro subscription credits' : null;
+      if (!text || text === key) text = provider === 'copilot' ? 'Uses your GitHub Copilot subscription credits' : provider === 'chatgpt' ? 'Uses your ChatGPT Plus/Pro subscription credits' : null;
       obHint.textContent = text || (this.view.t('setup.prefs.hintGroq') || obHint.textContent);
     }
   },
@@ -587,13 +629,14 @@ export const PopupController = {
   /** Persist the current AI config selections to storage */
   async persistAiConfig() {
     const isChatgpt = document.getElementById('pill-chatgpt')?.classList.contains('active') || document.getElementById('pill-chatgpt-ob')?.classList.contains('active');
+    const isCopilot = document.getElementById('pill-copilot')?.classList.contains('active') || document.getElementById('pill-copilot-ob')?.classList.contains('active');
     const isOpenrouter = this.view.elements.pillOpenrouter?.classList.contains('active') || this.view.elements.pillOpenrouterOb?.classList.contains('active');
     const isGemini = this.view.elements.pillGemini?.classList.contains('active')
       || this.view.elements.pillGeminiOb?.classList.contains('active');
-    let primaryProvider = (isChatgpt ? 'chatgpt' : (isOpenrouter ? 'openrouter' : (isGemini ? 'gemini' : 'groq')));
+    let primaryProvider = (isCopilot ? 'copilot' : (isChatgpt ? 'chatgpt' : (isOpenrouter ? 'openrouter' : (isGemini ? 'gemini' : 'groq'))));
     console.log(
       `[AnswerHunter] persistAiConfig pre-check primary=${primaryProvider} ` +
-      `isChatgpt=${isChatgpt} isOpenrouter=${isOpenrouter} hasOpenrouter=${this.hasOpenrouterKey()} ` +
+      `isCopilot=${isCopilot} isChatgpt=${isChatgpt} isOpenrouter=${isOpenrouter} hasOpenrouter=${this.hasOpenrouterKey()} ` +
       `isGemini=${isGemini} hasGemini=${this.hasGeminiKey()}`
     );
 
@@ -617,9 +660,10 @@ export const PopupController = {
     const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-flash';
     const openrouterModelSmart = this.view.elements.selectOpenrouterModel?.value || 'deepseek/deepseek-r1:free';
     const chatgptModel = document.getElementById('select-chatgpt-model')?.value || 'gpt-5.2-codex';
+    const copilotModel = document.getElementById('select-copilot-model')?.value || 'gpt-4o';
 
-    await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel });
-    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}, chatgpt=${chatgptModel}`);
+    await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel, copilotModel });
+    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}, chatgpt=${chatgptModel}, copilot=${copilotModel}`);
   },
 
   // --- ChatGPT Auth Handlers ---
@@ -746,6 +790,240 @@ export const PopupController = {
     if (isLoggedIn && auth?.email) {
       const emailEl = document.getElementById('gemini-user-email');
       if (emailEl) emailEl.textContent = auth.email;
+    }
+  },
+
+  // --- GitHub Copilot Auth Handlers ---
+
+  async handleCopilotLogin() {
+    const statusEl = document.getElementById('copilot-login-status');
+    const loginBtn = document.getElementById('copilot-login-btn');
+    const codeDisplay = document.getElementById('copilot-user-code');
+
+    if (loginBtn) loginBtn.disabled = true;
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="material-symbols-rounded spin-loading" style="font-size:14px;">sync</span> Obtendo código...';
+    }
+
+    try {
+      const { user_code, verification_uri } = await CopilotAuthService.startLogin();
+
+      // Persist code in storage so it survives popup close/reopen
+      await new Promise(r => chrome.storage.local.set({
+        copilot_pending_code: { user_code, expiresAt: Date.now() + 15 * 60 * 1000 }
+      }, r));
+
+      this._showCopilotCode(user_code);
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (statusEl) statusEl.textContent = 'Erro: ' + message;
+      if (loginBtn) loginBtn.disabled = false;
+      this.view.showToast(`Copilot login error: ${message}`, 'error');
+    }
+  },
+
+  _showCopilotCode(user_code) {
+    const codeDisplay = document.getElementById('copilot-user-code');
+    const codeSection = document.getElementById('copilot-code-section');
+    const statusEl = document.getElementById('copilot-login-status');
+    const loginBtn = document.getElementById('copilot-login-btn');
+
+    if (codeDisplay) codeDisplay.textContent = user_code;
+    codeSection?.classList.remove('hidden');
+    if (loginBtn) {
+      loginBtn.disabled = false;
+      loginBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">refresh</span><span>Gerar novo código</span>';
+    }
+    if (statusEl) {
+      statusEl.innerHTML = 'Insira o código acima em <strong>github.com/login/device</strong> e autorize.';
+    }
+  },
+
+  async handleCopilotLogout() {
+    await CopilotAuthService.logout();
+    await new Promise(r => chrome.storage.local.remove(['copilot_pending_code'], r));
+    await this.refreshCopilotAuthUI();
+
+    // If Copilot was the primary provider, switch back to groq
+    const settings = await SettingsModel.getSettings();
+    if (settings.primaryProvider === 'copilot') {
+      this.setProviderPill('groq');
+    }
+
+    this.view.showToast('GitHub Copilot desconectado', 'info');
+  },
+
+  async refreshCopilotAuthUI() {
+    const isLoggedIn = await CopilotAuthService.isLoggedIn();
+    const auth = isLoggedIn ? await CopilotAuthService.getAuth() : null;
+
+    const loggedOutEl = document.getElementById('copilot-logged-out');
+    const loggedInEl = document.getElementById('copilot-logged-in');
+    const loginBtn = document.getElementById('copilot-login-btn');
+    const statusEl = document.getElementById('copilot-login-status');
+    const usernameEl = document.getElementById('copilot-user-name');
+    const codeSection = document.getElementById('copilot-code-section');
+    const planBadgeEl = document.getElementById('copilot-plan-badge');
+    const tokenExpiryEl = document.getElementById('copilot-token-expiry');
+
+    if (isLoggedIn) {
+      loggedOutEl?.classList.add('hidden');
+      loggedInEl?.classList.remove('hidden');
+      if (usernameEl) {
+        const name = auth?.username || auth?.email || 'GitHub account';
+        usernameEl.textContent = `@${name}`;
+      }
+      if (loginBtn) loginBtn.disabled = false;
+      if (statusEl) statusEl.textContent = '';
+      codeSection?.classList.add('hidden');
+
+      // Populate token info (plan + expiry)
+      try {
+        const storedToken = await new Promise(r =>
+          chrome.storage.local.get([CopilotAuthService.COPILOT_TOKEN_KEY], d => r(d[CopilotAuthService.COPILOT_TOKEN_KEY]))
+        );
+        if (planBadgeEl) {
+          const sku = storedToken?.sku;
+          let planLabel = 'Copilot';
+          if (sku) {
+            if (sku.includes('enterprise')) planLabel = 'Enterprise';
+            else if (sku.includes('business')) planLabel = 'Business';
+            else if (sku.includes('individual') || sku.includes('pro')) planLabel = 'Individual';
+          }
+          planBadgeEl.textContent = `✦ ${planLabel}`;
+        }
+        if (tokenExpiryEl && storedToken?.expiresAt) {
+          const expiresIn = Math.max(0, Math.round((storedToken.expiresAt - Date.now()) / 60000));
+          tokenExpiryEl.textContent = expiresIn > 0 ? `Token válido por ~${expiresIn}min` : 'Token expirado (será renovado)';
+        } else if (tokenExpiryEl) {
+          tokenExpiryEl.textContent = '';
+        }
+      } catch (_) { /* non-critical */ }
+
+    } else {
+      loggedOutEl?.classList.remove('hidden');
+      loggedInEl?.classList.add('hidden');
+
+      // Restore pending device code if popup was closed mid-auth
+      try {
+        const stored = await new Promise(r =>
+          chrome.storage.local.get(['copilot_pending_code'], d => r(d.copilot_pending_code))
+        );
+        if (stored?.user_code && stored.expiresAt > Date.now()) {
+          this._showCopilotCode(stored.user_code);
+
+          const resume = await CopilotAuthService.checkPendingAuthorizationOnce();
+          if (resume.status === 'success') {
+            await new Promise(r => chrome.storage.local.remove(['copilot_pending_code'], r));
+            await this.refreshCopilotAuthUI();
+            return;
+          }
+
+          if (resume.status === 'expired' || resume.status === 'denied') {
+            await new Promise(r => chrome.storage.local.remove(['copilot_pending_code'], r));
+            if (loginBtn) {
+              loginBtn.disabled = false;
+              loginBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="#ffffff" style="flex-shrink:0;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>Login com GitHub</span>';
+            }
+            if (statusEl) {
+              statusEl.textContent = resume.status === 'expired'
+                ? 'Código expirado. Clique em Login com GitHub novamente.'
+                : 'Autorização negada. Tente novamente.';
+            }
+            codeSection?.classList.add('hidden');
+          }
+        } else {
+          // No pending code — reset to clean state
+          if (loginBtn) { loginBtn.disabled = false; loginBtn.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" fill="#ffffff" style="flex-shrink:0;"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>Login com GitHub</span>'; }
+          if (statusEl) statusEl.textContent = '';
+          codeSection?.classList.add('hidden');
+        }
+      } catch (_) {
+        if (loginBtn) loginBtn.disabled = false;
+        codeSection?.classList.add('hidden');
+      }
+    }
+
+    // Update header dot indicator
+    const dot = document.getElementById('copilot-status-dot');
+    if (dot) dot.classList.toggle('hidden', !isLoggedIn);
+  },
+
+  /** Copy the device code to clipboard with visual feedback */
+  handleCopilotCopyCode() {
+    const codeEl = document.getElementById('copilot-user-code');
+    const feedbackEl = document.getElementById('copilot-copy-feedback');
+    const code = codeEl?.textContent?.trim();
+    if (!code || code === '--------') return;
+
+    navigator.clipboard.writeText(code).then(() => {
+      if (feedbackEl) {
+        feedbackEl.textContent = 'Copiado!';
+        setTimeout(() => { if (feedbackEl) feedbackEl.textContent = ''; }, 2000);
+      }
+      const btn = document.getElementById('copilot-copy-code-btn');
+      if (btn) {
+        btn.style.background = 'rgba(63,185,80,0.35)';
+        setTimeout(() => { if (btn) btn.style.background = 'rgba(63,185,80,0.15)'; }, 1200);
+      }
+    }).catch(() => {
+      if (feedbackEl) feedbackEl.textContent = 'Erro ao copiar';
+    });
+  },
+
+  /** Send a test message to the Copilot API and show the result */
+  async handleCopilotTestConnection() {
+    const resultEl = document.getElementById('copilot-test-result');
+    const btn = document.getElementById('copilot-test-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="material-symbols-rounded spin-loading" style="font-size:14px;">sync</span> Testando...';
+    }
+    if (resultEl) resultEl.textContent = '';
+
+    try {
+      const token = await CopilotAuthService.getValidToken();
+      if (!token) {
+        if (resultEl) resultEl.innerHTML = '<span style="color:#ff7b72;">❌ Sem token válido. Faça login novamente.</span>';
+        return;
+      }
+
+      const apiUrl = await CopilotAuthService.getApiUrl();
+      const response = await fetch(`${apiUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Editor-Version': 'vscode/1.100.0',
+          'Editor-Plugin-Version': 'copilot/1.300.0',
+          'Copilot-Integration-Id': 'vscode-chat'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          max_tokens: 10,
+          messages: [{ role: 'user', content: 'Reply with OK' }]
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const reply = data.choices?.[0]?.message?.content?.trim() || '✅';
+        if (resultEl) resultEl.innerHTML = `<span style="color:#3fb950;">✅ Conectado! Modelo respondeu: "${reply.slice(0, 40)}"</span>`;
+        // Refresh token info since it may have been refreshed
+        await this.refreshCopilotAuthUI();
+      } else {
+        const errText = await response.text().catch(() => '');
+        const snippet = errText.slice(0, 120);
+        if (resultEl) resultEl.innerHTML = `<span style="color:#ff7b72;">❌ HTTP ${response.status}: ${snippet}</span>`;
+      }
+    } catch (err) {
+      if (resultEl) resultEl.innerHTML = `<span style="color:#ff7b72;">❌ ${err.message || String(err)}</span>`;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-rounded" style="font-size:14px;">bolt</span> Testar';
+      }
     }
   },
 
