@@ -411,6 +411,9 @@ function buildCard(q, index) {
   article.dataset.idx = index;
   if (q.id) article.dataset.qid = q.id;
 
+  const subject = getQuestionSubject(q);
+  article.dataset.subject = subject;
+
   const showFolder = q.folderPath && q.folderPath !== 'Raiz';
   const cleanQuestion = sanitizeQuestionText(q.question);
   const cleanAnswer = sanitizeAnswerText(q.answer);
@@ -421,6 +424,7 @@ function buildCard(q, index) {
     <div class="card-meta">
       <span class="card-num">#${index + 1}</span>
       ${showFolder ? `<span class="card-folder"><span class="icon">folder</span> ${escH(q.folderPath)}</span>` : ''}
+      <span class="card-subject"><span class="icon">account_tree</span> ${escH(subject)}</span>
       <span class="review-flag${q.reviewLater ? ' visible' : ''}">
         <span class="icon">bookmark</span> Revisar depois
       </span>
@@ -852,26 +856,8 @@ function buildCard(q, index) {
     });
 
     btnTags.addEventListener('click', async () => {
-      btnTags.classList.add('loading');
-      btnTags.innerHTML = '<span class="icon" style="animation:spin 1s linear infinite">autorenew</span> Gerando...';
-      try {
-        const tags = await ApiService.generateTags(cleanQuestion);
-        if (tags && tags.length > 0) {
-          renderCardTags(tagsContainer, tags);
-          btnTags.style.display = 'none';
-          // Cache tags in SM-2 data
-          const data = await loadSm2Data();
-          if (!data[q.id]) data[q.id] = {};
-          data[q.id].tags = tags;
-          saveSm2Data(data);
-        } else {
-          btnTags.classList.remove('loading');
-          btnTags.innerHTML = '<span class="icon">local_offer</span> Tags IA';
-        }
-      } catch (err) {
-        btnTags.classList.remove('loading');
-        btnTags.innerHTML = '<span class="icon">local_offer</span> Tags IA';
-      }
+      const ok = await generateTagsForCardElement(article);
+      if (ok) refreshSubjectOrganizationAfterTags();
     });
   }
 
@@ -959,6 +945,72 @@ function hideCard(card) {
 
 let total = 0;
 let allQuestions = [];
+let _originalOrder = []; // preserve insertion order for "default"
+
+const SUBJECT_KEYWORDS = {
+  'Direito Constitucional': ['constituicao', 'constitucional', 'direitos fundamentais', 'controle de constitucionalidade'],
+  'Direito Administrativo': ['administrativo', 'licitacao', 'improbidade', 'servidor publico', 'ato administrativo'],
+  'Direito Penal': ['penal', 'crime', 'pena', 'tipicidade', 'ilicitude'],
+  'Direito Processual': ['processo', 'processual', 'competencia', 'recurso', 'jurisdicao'],
+  'Português': ['portugues', 'gramatica', 'acentuacao', 'sintaxe', 'morfologia'],
+  'Matemática': ['matematica', 'algebra', 'geometria', 'probabilidade', 'estatistica'],
+  'Informática': ['informatica', 'computador', 'algoritmo', 'programacao', 'software', 'hardware'],
+  'Redação': ['redacao', 'dissertativa', 'argumentacao', 'texto'],
+  'Atualidades': ['atualidades', 'geopolitica', 'sociedade', 'economia', 'politica internacional'],
+  'Biologia': ['biologia', 'celula', 'genetica', 'ecologia', 'fisiologia'],
+  'Química': ['quimica', 'reacao', 'molecula', 'atomo', 'ligacao quimica'],
+  'Física': ['fisica', 'cinematica', 'dinamica', 'energia', 'termodinamica']
+};
+
+const GENERIC_SUBJECT_TAGS = new Set(['geral', 'outros', 'misc', 'varios', 'sem categoria']);
+
+function normText(value = '') {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function normalizeSubject(value = '') {
+  return String(value || '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function inferSubjectFromText(question = '', answer = '') {
+  const haystack = `${normText(question)} ${normText(answer)}`;
+  if (!haystack.trim()) return 'Geral';
+
+  let best = { subject: 'Geral', score: 0 };
+  for (const [subject, terms] of Object.entries(SUBJECT_KEYWORDS)) {
+    const score = terms.reduce((acc, term) => acc + (haystack.includes(normText(term)) ? 1 : 0), 0);
+    if (score > best.score) best = { subject, score };
+  }
+  return best.score > 0 ? best.subject : 'Geral';
+}
+
+function getQuestionSubject(q) {
+  if (!q) return 'Geral';
+
+  const explicit = normalizeSubject(q.subject || q.topic || q.discipline || q.area || '');
+  if (explicit) return explicit;
+
+  const sm2Tags = _sm2Cache?.[q.id]?.tags;
+  if (Array.isArray(sm2Tags) && sm2Tags.length) {
+    const tag = normalizeSubject(sm2Tags[0]);
+    if (tag && !GENERIC_SUBJECT_TAGS.has(normText(tag))) return tag;
+  }
+
+  const folder = normalizeSubject(q.folderPath || '');
+  if (folder && folder !== 'Raiz') {
+    const firstFolder = folder.split('/')[0]?.trim();
+    if (firstFolder && !GENERIC_SUBJECT_TAGS.has(normText(firstFolder))) return firstFolder;
+  }
+
+  return inferSubjectFromText(q.question || '', q.answer || '');
+}
 
 function syncStickyOffsets() {
   const header = document.querySelector('header');
@@ -1024,6 +1076,7 @@ function updateProgress() {
 
 function filterCards() {
   const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  const selectedSubject = document.getElementById('subjectSelect')?.value || 'all';
   const hideAnswered = document.getElementById('chipHideAnswered').classList.contains('active');
   const onlyReview = document.getElementById('chipReviewOnly').classList.contains('active');
   const onlySm2Due = document.getElementById('chipSm2Due')?.classList.contains('active');
@@ -1038,18 +1091,173 @@ function filterCards() {
     const isDue = onlySm2Due ? sm2IsDue(sm2Entry) : true;
     const hasErrors = onlyErrors ? (sm2Entry && (sm2Entry.errors || 0) > 0) : true;
     const matchesSearch = !q || text.includes(q);
+    const matchesSubject = selectedSubject === 'all' || card.dataset.subject === selectedSubject;
     const hiddenByFilter = hideAnswered && isAnswered;
     const hiddenByReviewFilter = onlyReview && !isReviewLater;
     const hiddenBySm2Filter = onlySm2Due && !isDue;
     const hiddenByErrorFilter = onlyErrors && !hasErrors;
-    card.classList.toggle('hidden-card', !matchesSearch || hiddenByFilter || hiddenByReviewFilter || hiddenBySm2Filter || hiddenByErrorFilter);
+    card.classList.toggle('hidden-card', !matchesSearch || !matchesSubject || hiddenByFilter || hiddenByReviewFilter || hiddenBySm2Filter || hiddenByErrorFilter);
+  });
+
+  document.querySelectorAll('.subject-group-header').forEach(header => {
+    const subject = header.dataset.subject || '';
+    const visibleInGroup = document.querySelectorAll(`.card[data-subject="${CSS.escape(subject)}"]:not(.hidden-card)`).length;
+    header.style.display = visibleInGroup > 0 ? 'flex' : 'none';
   });
 
   updateProgress();
 }
 
+/* ═══ Sorting ═══════════════════════════════════════════════════════════════ */
+
+function getSortedQuestions(questions, mode) {
+  const sorted = [...questions];
+  switch (mode) {
+    case 'subject':
+    case 'subject_grouped':
+      sorted.sort((a, b) => {
+        const sa = getQuestionSubject(a);
+        const sb = getQuestionSubject(b);
+        if (sa !== sb) return sa.localeCompare(sb, 'pt-BR', { sensitivity: 'base' });
+        return (a.question || '').localeCompare(b.question || '', 'pt-BR', { sensitivity: 'base' });
+      });
+      break;
+    case 'newest':
+      sorted.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      break;
+    case 'oldest':
+      sorted.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      break;
+    case 'az':
+      sorted.sort((a, b) => (a.question || '').localeCompare(b.question || '', 'pt-BR', { sensitivity: 'base' }));
+      break;
+    case 'za':
+      sorted.sort((a, b) => (b.question || '').localeCompare(a.question || '', 'pt-BR', { sensitivity: 'base' }));
+      break;
+    case 'folder':
+      sorted.sort((a, b) => (a.folderPath || '').localeCompare(b.folderPath || '', 'pt-BR'));
+      break;
+    case 'difficulty': {
+      sorted.sort((a, b) => {
+        const efA = _sm2Cache[a.id] ? _sm2Cache[a.id].ef : 2.5;
+        const efB = _sm2Cache[b.id] ? _sm2Cache[b.id].ef : 2.5;
+        return efA - efB; // lower EF = harder → shown first
+      });
+      break;
+    }
+    case 'due': {
+      sorted.sort((a, b) => {
+        const entryA = _sm2Cache[a.id];
+        const entryB = _sm2Cache[b.id];
+        const dueA = entryA && entryA.nextReview ? entryA.nextReview : '9999-12-31';
+        const dueB = entryB && entryB.nextReview ? entryB.nextReview : '9999-12-31';
+        return dueA.localeCompare(dueB);
+      });
+      break;
+    }
+    default: // 'default' — original insertion order
+      return _originalOrder.length ? [..._originalOrder] : sorted;
+  }
+  return sorted;
+}
+
+function populateSubjectSelect(questions) {
+  const subjectSelect = document.getElementById('subjectSelect');
+  if (!subjectSelect) return;
+
+  const current = subjectSelect.value || 'all';
+  const counts = new Map();
+  questions.forEach(q => {
+    const subject = getQuestionSubject(q);
+    counts.set(subject, (counts.get(subject) || 0) + 1);
+  });
+
+  const subjects = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR', { sensitivity: 'base' }));
+
+  subjectSelect.innerHTML = '<option value="all">Todos os assuntos</option>' + subjects
+    .map(([subject, count]) => `<option value="${escH(subject)}">${escH(subject)} (${count})</option>`)
+    .join('');
+
+  subjectSelect.value = [...subjectSelect.options].some(opt => opt.value === current) ? current : 'all';
+}
+
+function buildSubjectHeader(subject, count) {
+  const header = document.createElement('div');
+  header.className = 'subject-group-header';
+  header.dataset.subject = subject;
+  header.innerHTML = `
+    <span class="left"><span class="icon">account_tree</span>${escH(subject)}</span>
+    <span class="count">${count} questão${count !== 1 ? 'ões' : ''}</span>
+  `;
+  return header;
+}
+
+function rebuildCardList(questions, mode = 'default') {
+  const cardList = document.getElementById('cardList');
+
+  // Save answered and review state
+  const answeredIds = new Set();
+  const reviewIds = new Set();
+  document.querySelectorAll('.card').forEach(c => {
+    const qid = c.dataset.qid;
+    if (c.classList.contains('answered')) answeredIds.add(qid);
+    if (c.classList.contains('for-review')) reviewIds.add(qid);
+  });
+
+  cardList.innerHTML = '';
+  const fragment = document.createDocumentFragment();
+
+  let groupCounts = null;
+  let renderedBySubject = null;
+  if (mode === 'subject_grouped') {
+    groupCounts = questions.reduce((acc, q) => {
+      const subject = getQuestionSubject(q);
+      acc.set(subject, (acc.get(subject) || 0) + 1);
+      return acc;
+    }, new Map());
+    renderedBySubject = new Set();
+  }
+
+  questions.forEach((q, i) => {
+    const subject = getQuestionSubject(q);
+    if (mode === 'subject_grouped' && !renderedBySubject.has(subject)) {
+      fragment.appendChild(buildSubjectHeader(subject, groupCounts.get(subject) || 0));
+      renderedBySubject.add(subject);
+    }
+
+    const card = buildCard(q, i);
+    if (answeredIds.has(q.id)) {
+      card.querySelector('.reveal-btn').hidden = true;
+      card.querySelector('.card-answer').hidden = false;
+      card.classList.add('answered');
+    }
+    if (reviewIds.has(q.id)) {
+      applyReviewLaterState(card, true);
+    }
+    fragment.appendChild(card);
+  });
+  cardList.appendChild(fragment);
+
+  updateReviewChipCounter();
+  filterCards();
+  setTimeout(() => updateSm2DueBadge(), 100);
+}
+
+function applySortFromSelect() {
+  const select = document.getElementById('sortSelect');
+  if (!select) return;
+  const mode = select.value;
+  const sorted = getSortedQuestions(_originalOrder, mode);
+  allQuestions = sorted;
+  rebuildCardList(sorted, mode);
+  // Persist preference
+  try { chrome.storage.local.set({ ah_sortMode: mode }); } catch (e) {}
+}
+
 function init(questions) {
   allQuestions = questions;
+  _originalOrder = [...questions];
   total = questions.length;
 
   const counterEl = document.getElementById('counterEl');
@@ -1069,6 +1277,7 @@ function init(questions) {
   const fragment = document.createDocumentFragment();
   questions.forEach((q, i) => fragment.appendChild(buildCard(q, i)));
   cardList.appendChild(fragment);
+  populateSubjectSelect(questions);
 
   updateReviewChipCounter();
   updateProgress();
@@ -1080,6 +1289,52 @@ function init(questions) {
 
   // Search
   document.getElementById('searchInput').addEventListener('input', filterCards);
+
+  // Subject filter
+  const subjectSelect = document.getElementById('subjectSelect');
+  if (subjectSelect) {
+    subjectSelect.addEventListener('change', () => {
+      filterCards();
+      try { chrome.storage.local.set({ ah_subjectFilter: subjectSelect.value }); } catch (_) {}
+    });
+  }
+
+  const btnTagAllVisible = document.getElementById('btnTagAllVisible');
+  if (btnTagAllVisible) {
+    btnTagAllVisible.addEventListener('click', () => {
+      generateTagsForVisibleCards().catch(() => {
+        showSyncToast('Falha ao gerar tags em lote.');
+      });
+    });
+  }
+
+  // Sort
+  const sortSelect = document.getElementById('sortSelect');
+  if (sortSelect) {
+    sortSelect.addEventListener('change', applySortFromSelect);
+  }
+
+  // Restore saved preferences
+  chrome.storage.local.get(['ah_sortMode', 'ah_subjectFilter'], (res) => {
+    if (subjectSelect && res.ah_subjectFilter) {
+      subjectSelect.value = res.ah_subjectFilter;
+    }
+    const saved = res.ah_sortMode;
+    if (sortSelect && saved && saved !== 'default') {
+      sortSelect.value = saved;
+      applySortFromSelect();
+      return;
+    }
+    filterCards();
+  });
+
+  loadSm2Data().then(() => {
+    populateSubjectSelect(_originalOrder);
+    const mode = sortSelect ? sortSelect.value : 'default';
+    const sorted = getSortedQuestions(_originalOrder, mode);
+    allQuestions = sorted;
+    rebuildCardList(sorted, mode);
+  }).catch(() => {});
 
   // Hide answered chip
   document.getElementById('chipHideAnswered').addEventListener('click', function () {
@@ -1116,6 +1371,9 @@ function init(questions) {
     chipReveal.innerHTML = '<span class="icon">lock_open</span> Revelar todas';
     document.getElementById('chipHideAnswered').classList.remove('active');
     document.getElementById('chipReviewOnly').classList.remove('active');
+    const subjectSelect = document.getElementById('subjectSelect');
+    if (subjectSelect) subjectSelect.value = 'all';
+    try { chrome.storage.local.set({ ah_subjectFilter: 'all' }); } catch (_) {}
     filterCards();
   });
 
@@ -1169,39 +1427,21 @@ chrome.storage.local.get(['binderStructure'], (result) => {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.binderStructure) return;
   const data = changes.binderStructure.newValue;
-  const questions = Array.isArray(data) ? collectQuestions(data) : [];
+  let questions = Array.isArray(data) ? collectQuestions(data) : [];
+  _originalOrder = [...questions];
+
+  // Apply current sort
+  const sortSelect = document.getElementById('sortSelect');
+  const sortMode = sortSelect ? sortSelect.value : 'default';
+  questions = getSortedQuestions(questions, sortMode);
   allQuestions = questions;
+  populateSubjectSelect(_originalOrder);
 
   // Show toast notification
   const prev = document.querySelectorAll('.card').length;
   const next = questions.length;
   const diff = next - prev;
-
-  // Rebuild card list preserving answered state
-  const answeredIds = new Set(
-    [...document.querySelectorAll('.card.answered')]
-      .map(c => c.dataset.qid)
-      .filter(Boolean)
-  );
-
-  const cardList = document.getElementById('cardList');
-  cardList.innerHTML = '';
-
-  if (questions.length === 0) {
-    cardList.innerHTML = '<div class="empty-state"><span class="icon">folder_open</span><p>Nenhuma questão salva.</p></div>';
-  } else {
-    const fragment = document.createDocumentFragment();
-    questions.forEach((q, i) => {
-      const card = buildCard(q, i);
-      if (answeredIds.has(q.id)) {
-        card.querySelector('.reveal-btn').hidden = true;
-        card.querySelector('.card-answer').hidden = false;
-        card.classList.add('answered');
-      }
-      fragment.appendChild(card);
-    });
-    cardList.appendChild(fragment);
-  }
+  rebuildCardList(questions, sortMode);
 
   total = questions.length;
   document.getElementById('counterEl').textContent =
@@ -1210,9 +1450,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     `AnswerHunter — ${total} questão${total !== 1 ? 'ões' : ''} · atualizado em ${new Date().toLocaleString('pt-BR')}`;
 
   // Re-apply current filter
-  updateReviewChipCounter();
   filterCards();
-  updateProgress();
   syncSidebarSessionInfo();
 
   // Show inline sync toast
@@ -2132,6 +2370,103 @@ function renderCardTags(container, tags) {
   container.innerHTML = tags.map(tag =>
     `<span class="card-tag"><span class="icon">local_offer</span>${escH(tag)}</span>`
   ).join('');
+}
+
+function refreshSubjectOrganizationAfterTags() {
+  populateSubjectSelect(_originalOrder);
+  const sortMode = document.getElementById('sortSelect')?.value || 'default';
+  if (sortMode === 'subject' || sortMode === 'subject_grouped') {
+    const sorted = getSortedQuestions(_originalOrder, sortMode);
+    allQuestions = sorted;
+    rebuildCardList(sorted, sortMode);
+  } else {
+    filterCards();
+  }
+}
+
+async function generateTagsForCardElement(cardEl, sharedSm2Data = null) {
+  if (!cardEl) return false;
+  const qid = cardEl.dataset.qid;
+  if (!qid) return false;
+
+  const btnTags = cardEl.querySelector('.btn-tags');
+  const tagsContainer = cardEl.querySelector('.card-tags');
+  if (!btnTags || !tagsContainer) return false;
+
+  const originalBtnHtml = btnTags.innerHTML;
+  btnTags.classList.add('loading');
+  btnTags.innerHTML = '<span class="icon" style="animation:spin 1s linear infinite">autorenew</span> Gerando...';
+
+  try {
+    const questionText = sanitizeQuestionText(cardEl.querySelector('.card-question')?.innerText || '');
+    if (!questionText) throw new Error('no-question-text');
+
+    const tags = await ApiService.generateTags(questionText);
+    if (!Array.isArray(tags) || tags.length === 0) throw new Error('no-tags');
+
+    renderCardTags(tagsContainer, tags);
+    btnTags.style.display = 'none';
+
+    if (sharedSm2Data) {
+      if (!sharedSm2Data[qid]) sharedSm2Data[qid] = {};
+      sharedSm2Data[qid].tags = tags;
+    } else {
+      const data = await loadSm2Data();
+      if (!data[qid]) data[qid] = {};
+      data[qid].tags = tags;
+      await saveSm2Data(data);
+    }
+
+    const subject = getQuestionSubject({ id: qid, question: questionText, answer: '' });
+    cardEl.dataset.subject = subject;
+    const subjectBadge = cardEl.querySelector('.card-subject');
+    if (subjectBadge) {
+      subjectBadge.innerHTML = `<span class="icon">account_tree</span> ${escH(subject)}`;
+    }
+
+    return true;
+  } catch (err) {
+    btnTags.classList.remove('loading');
+    btnTags.innerHTML = originalBtnHtml;
+    return false;
+  }
+}
+
+async function generateTagsForVisibleCards() {
+  const batchBtn = document.getElementById('btnTagAllVisible');
+  if (!batchBtn) return;
+
+  const visibleCards = [...document.querySelectorAll('.card:not(.hidden-card)')];
+  const targetCards = visibleCards.filter(card => {
+    const hasTags = card.querySelector('.card-tag');
+    const btnTags = card.querySelector('.btn-tags');
+    return card.dataset.qid && !hasTags && btnTags;
+  });
+
+  if (!targetCards.length) {
+    showSyncToast('Todas as questões visíveis já têm tags.');
+    return;
+  }
+
+  const original = batchBtn.innerHTML;
+  batchBtn.disabled = true;
+  batchBtn.innerHTML = '<span class="icon" style="animation:spin 1s linear infinite">autorenew</span> Tagueando...';
+
+  let success = 0;
+  let failed = 0;
+  const sm2Data = await loadSm2Data();
+  for (const card of targetCards) {
+    const ok = await generateTagsForCardElement(card, sm2Data);
+    if (ok) success += 1;
+    else failed += 1;
+  }
+  await saveSm2Data(sm2Data);
+
+  refreshSubjectOrganizationAfterTags();
+  showSyncToast(`${success} questão${success !== 1 ? 'ões' : ''} tagueada${success !== 1 ? 's' : ''}${failed ? ` · ${failed} falharam` : ''}`);
+
+  batchBtn.disabled = false;
+  batchBtn.innerHTML = original;
 }
 
 // ══ Exportar para Anki ═══════════════════════════════════════════════════════
