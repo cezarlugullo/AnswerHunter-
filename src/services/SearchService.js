@@ -2462,7 +2462,15 @@ export const SearchService = {
       if (hasOptions && !hasReliableOptionAlignedSource && relevant.length < minRelevantSources) {
         console.log(`⛔ AI combined SKIPPED: weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
         console.log(`SearchService: AI combined skipped - weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
-        return [];
+        // Only bail out completely when we have no direct evidence at all.
+        // When sources[] already contains snippet-gabarito or other direct hits,
+        // skip the AI combined pass but let the vote computation below use them.
+        if (sources.length === 0) {
+          console.groupEnd();
+          return [];
+        }
+        console.log(`SearchService: AI combined skipped but ${sources.length} direct source(s) remain — continuing to vote computation`);
+        console.groupEnd();
       }
       const strongRelevant = relevant.filter(e => {
         const host = String(e.hostHint || this._getHostHintFromLink(e.link)).toLowerCase();
