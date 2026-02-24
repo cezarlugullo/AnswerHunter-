@@ -684,13 +684,43 @@ export const ExtractionService = {
 
         let targetSection = null;
 
+        if (!targetSection) {
+            const viewportCenterY = window.innerHeight / 2;
+            const questionBlocks = Array.from(document.querySelectorAll('[data-testid^="question-"]'))
+                .filter(el => isOnScreen(el));
+
+            let bestBlock = null;
+            let bestScore = -Infinity;
+
+            for (const block of questionBlocks) {
+                const rect = block.getBoundingClientRect();
+                const visibleArea = getVisibleArea(rect);
+                if (visibleArea <= 0) continue;
+
+                const blockCenterY = rect.top + (rect.height / 2);
+                const distCenter = Math.abs(blockCenterY - viewportCenterY);
+                const optionsCount = extractFromSection(block).length;
+
+                const score = (optionsCount * 220) + (visibleArea / 900) - (distCenter * 1.6);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestBlock = block;
+                }
+            }
+
+            if (bestBlock) {
+                targetSection = bestBlock;
+                console.log('AnswerHunter: extractOptionsOnlyScript - usando bloco data-testid question-*');
+            }
+        }
+
         if (reviewButtons.length > 0) {
             reviewButtons.sort((a, b) => {
                 const topA = Math.abs(a.getBoundingClientRect().top - window.innerHeight * 0.2);
                 const topB = Math.abs(b.getBoundingClientRect().top - window.innerHeight * 0.2);
                 return topA - topB;
             });
-            targetSection = reviewButtons[0].closest('[data-section="section_cms-atividade"]');
+            targetSection = targetSection || reviewButtons[0].closest('[data-section="section_cms-atividade"]');
         }
 
         if (!targetSection) {

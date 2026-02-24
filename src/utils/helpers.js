@@ -116,6 +116,14 @@ export function formatQuestionText(text) {
 
     const rawTrimmed = trimGlobalNoise(text);
     let normalized = rawTrimmed.replace(/\r\n/g, '\n');
+
+    // Handle compact inline alternatives like "... JSON.B ..." or "...:A ..."
+    const compactInlineAltRe = /([:;?.!])\s*([A-E])\s+(?=[A-Za-z\u00C0-\u00FF])/g;
+    const compactInlineAltMatches = normalized.match(compactInlineAltRe) || [];
+    if (compactInlineAltMatches.length >= 2) {
+        normalized = normalized.replace(compactInlineAltRe, (_m, punct, letter) => `${punct}\n${letter.toUpperCase()}) `);
+    }
+
     const inlineAltBreakRe = /(?:^|\s)([A-E])\s*(?:[\)\.\-:]|->>|->|=>)(?=\s*\S)/gi;
     const inlineAltMatches = normalized.match(inlineAltBreakRe) || [];
     if (inlineAltMatches.length >= 2) {
@@ -220,7 +228,7 @@ export function formatQuestionText(text) {
     }
 
     // Fallback: inline alternatives (no line break), after punctuation
-    const inlineAltPattern = /(^|[\\n:;?.!]\\s+)([A-E])\\s+(?=[A-Za-z])/g;
+    const inlineAltPattern = /(^|[\n:;?.!]\s*)([A-E])\s+(?=[A-Za-z\u00C0-\u00FF])/g;
     const inlineAltLetters = new Set();
     normalized.replace(inlineAltPattern, (_m, _prefix, letter) => {
         inlineAltLetters.add(letter.toUpperCase());
@@ -260,7 +268,7 @@ export function formatQuestionText(text) {
     }
 
     // Extra fallback: alternatives without punctuation (e.g. "A Text. B Text.")
-    const plainAltPattern = /(?:^|[.!?]\\s+)([A-E])\\s+([A-Za-z][^]*?)(?=(?:[.!?]\\s+)[A-E]\\s+[A-Za-z]|$)/g;
+    const plainAltPattern = /(?:^|[.!?:]\s*)([A-E])\s+([A-Za-z\u00C0-\u00FF][^]*?)(?=(?:[.!?:]\s*)[A-E]\s+[A-Za-z\u00C0-\u00FF]|$)/g;
     const plainAlternatives = [];
     let plainFirstIndex = null;
     let pm;
@@ -272,7 +280,7 @@ export function formatQuestionText(text) {
         if (body) plainAlternatives.push({ letter, body });
     }
 
-    if (plainAlternatives.length >= 2) {
+    if (plainAlternatives.length >= 3) {
         const enunciado = plainFirstIndex !== null ? clean(normalized.substring(0, plainFirstIndex)) : '';
         return render(enunciado, plainAlternatives);
     }

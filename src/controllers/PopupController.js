@@ -1700,11 +1700,8 @@ export const PopupController = {
         const optBodies = optionLines.map(l => l.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim());
         const allOptTokens = normalizeTokens(optBodies.join(' ')).filter(t => !stopWords.has(t));
         const stemContextTokens = normalizeTokens(stemLines.join(' '));
-        const acronymContextHints = new Set(['formato', 'arquivo', 'arquivos', 'extensao', 'documento', 'documentos', 'json', 'xml', 'bson', 'yaml', 'csv', 'dados']);
+        const acronymContextHints = new Set(['formato', 'arquivo', 'arquivos', 'extensao', 'documento', 'documentos', 'json', 'xml', 'bson', 'yaml', 'csv']);
         const hasAcronymContext = stemContextTokens.some((t) => acronymContextHints.has(t));
-        const dbTechHints = new Set(['postgresql', 'nosql', 'modelo', 'chave', 'valor', 'json', 'jsonb', 'hstore', 'xml', 'csv', 'banco', 'dados']);
-        const dbTechHits = stemContextTokens.reduce((sum, tk) => sum + (dbTechHints.has(tk) ? 1 : 0), 0);
-        const hasDbTechContext = dbTechHits >= 2 || stemContextTokens.includes('postgresql');
         const compactAtomicCount = optBodies.filter((body) => isCompactOptionBody(body)).length;
         const compactAtomicSet = optionLines.length >= 3 && compactAtomicCount / optionLines.length >= 0.8;
 
@@ -1716,7 +1713,7 @@ export const PopupController = {
         if (allOptTokens.length === 0) {
           // All options are too short to produce tokens — might be all-acronym
           if (allAcronym) {
-            if (optionLines.length >= 3 && (hasAcronymContext || hasDbTechContext || compactAtomicSet)) {
+            if (optionLines.length >= 3 && hasAcronymContext && compactAtomicSet) {
               console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (compact acronym set with contextual match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
               return true;
             }
@@ -1733,7 +1730,7 @@ export const PopupController = {
         const overlapRatio = sharedTokens / allOptTokens.length;
 
         if (allAcronym && overlapRatio === 0) {
-          if (optionLines.length >= 3 && (hasAcronymContext || hasDbTechContext || compactAtomicSet)) {
+          if (optionLines.length >= 3 && hasAcronymContext && compactAtomicSet) {
             console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (all-acronym with contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
             return true;
           }
