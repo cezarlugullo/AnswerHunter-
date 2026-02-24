@@ -104,6 +104,13 @@ export const GeminiAuthService = {
      * Returns { success, email } or { success: false, error }.
      */
     async startLogin() {
+        if (!chrome?.identity?.launchWebAuthFlow) {
+            return {
+                success: false,
+                error: 'chrome.identity indisponível. Recarregue a extensão em chrome://extensions e tente novamente.'
+            };
+        }
+
         const clientId = await this.getClientId();
         if (!clientId) {
             return {
@@ -140,21 +147,29 @@ export const GeminiAuthService = {
         const authUrl = `${this.AUTH_URL}?${params.toString()}`;
 
         return new Promise(resolve => {
-            chrome.identity.launchWebAuthFlow(
-                { url: authUrl, interactive: true },
-                async (responseUrl) => {
-                    if (chrome.runtime.lastError || !responseUrl) {
-                        await new Promise(r =>
-                            chrome.storage.local.remove([this.PKCE_KEY], r)
-                        );
-                        const msg = chrome.runtime.lastError?.message || 'Login cancelado';
-                        resolve({ success: false, error: msg });
-                        return;
+            try {
+                chrome.identity.launchWebAuthFlow(
+                    { url: authUrl, interactive: true },
+                    async (responseUrl) => {
+                        if (chrome.runtime.lastError || !responseUrl) {
+                            await new Promise(r =>
+                                chrome.storage.local.remove([this.PKCE_KEY], r)
+                            );
+                            const msg = chrome.runtime.lastError?.message || 'Login cancelado';
+                            resolve({ success: false, error: msg });
+                            return;
+                        }
+                        const result = await this._handleCallback(responseUrl);
+                        resolve(result);
                     }
-                    const result = await this._handleCallback(responseUrl);
-                    resolve(result);
-                }
-            );
+                );
+            } catch (err) {
+                console.error('GeminiAuth: launchWebAuthFlow failed:', err);
+                resolve({
+                    success: false,
+                    error: 'Falha ao abrir login Google. Recarregue a extensão e verifique permissões OAuth.'
+                });
+            }
         });
     },
 
