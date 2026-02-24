@@ -204,17 +204,19 @@ export const EvidenceService = {
         }
 
         for (const re of patterns) {
-            const m = text.match(re);
-            if (!m) continue;
-            const letter = (m[1] || '').toUpperCase();
-            if (!letter) continue;
-            const idx = m.index || 0;
-            const start = Math.max(0, idx - 600);
-            const end = Math.min(text.length, idx + 900);
-            const window = text.slice(start, end);
-            if (tokens.length > 0 && QuestionParser.countTokenHits(window, tokens) < Math.min(2, tokens.length)) continue;
-            if (originalOptions?.length >= 2 && !OptionsMatchService.optionsMatchInFreeText(originalOptions, window)) continue;
-            return { letter, confidence: 0.9, evidence: window };
+            const globalRe = new RegExp(re.source, re.flags + (re.flags.includes('g') ? '' : 'g'));
+            let m;
+            while ((m = globalRe.exec(text)) !== null) {
+                const letter = (m[1] || '').toUpperCase();
+                if (!letter) continue;
+                const idx = m.index || 0;
+                const start = Math.max(0, idx - 600);
+                const end = Math.min(text.length, idx + 900);
+                const window = text.slice(start, end);
+                if (tokens.length > 0 && QuestionParser.countTokenHits(window, tokens) < Math.min(2, tokens.length)) continue;
+                if (originalOptions?.length >= 2 && !OptionsMatchService.optionsMatchInFreeText(originalOptions, window)) continue;
+                return { letter, confidence: 0.9, evidence: window };
+            }
         }
         return null;
     },
