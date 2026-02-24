@@ -737,7 +737,77 @@ export const ExtractionService = {
      * Extracts answer key displayed on page (post-answer), when it exists.
      * Returns { letter, confidence, source, evidence } or null.
      */
-    extractGabaritoFromPageScript: function (questionText = '') {
+    
+
+  extractPasseiDiretoExplicitAnswerScript: function (questionText = '') {
+    const normalize = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+    const text = normalize(document?.body?.innerText || '');
+    if (!text) return null;
+
+    const patterns = [
+      { re: /portanto,?\s*a\s*alternativa\s*correta\s*(?:é|e)\s*[:-]?\s*([A-E])\s*[).-:]/i, confidence: 0.97, source: 'pd-portanto' },
+      { re: /alternativa\s*correta\s*(?:é|e)\s*[:-]?\s*([A-E])\s*[).-:]/i, confidence: 0.94, source: 'pd-alternativa-correta' },
+      { re: /resposta\s*correta\s*(?:é|e)?\s*[:-]?\s*([A-E])\s*[).-:]/i, confidence: 0.92, source: 'pd-resposta-correta' },
+      { re: /gabarito\s*[:-]?\s*([A-E])\b/i, confidence: 0.90, source: 'pd-gabarito' },
+      { re: /\bR\s*[:-]\s*([A-E])\b/i, confidence: 0.88, source: 'pd-r-letra' }
+    ];
+
+    let best = null;
+    for (const p of patterns) {
+      const m = text.match(p.re);
+      if (!m) continue;
+      const letter = String(m[1] || '').toUpperCase();
+      if (!/^[A-E]$/.test(letter)) continue;
+
+      const hit = text.search(p.re);
+      const start = Math.max(0, hit - 120);
+      const end = Math.min(text.length, hit + 220);
+
+      const candidate = {
+        letter,
+        confidence: p.confidence,
+        source: p.source,
+        evidence: text.slice(start, end)
+      };
+
+      if (!best || candidate.confidence > best.confidence) best = candidate;
+    }
+
+    return best;
+  },
+
+
+  extractCanonicalExplicitAnswerScript: function () {
+    const text = String(document?.body?.innerText || '').replace(/\s+/g, ' ').trim();
+    if (!text) return null;
+
+    const patterns = [
+      { re: /portanto,?\s*a\s*resposta\s*correta\s*(?:é|e)\s*a\s*alternativa\s*([A-E])\b/i, c: 0.98, m: 'explicit-portanto' },
+      { re: /alternativa\s*correta\s*(?:é|e)\s*(?:a\s*letra\s*)?([A-E])\b/i, c: 0.96, m: 'explicit-alternativa' },
+      { re: /resposta\s*correta\s*(?:é|e)\s*(?:a\s*letra\s*)?([A-E])\b/i, c: 0.94, m: 'explicit-resposta' },
+      { re: /gabarito\s*[:-]?\s*([A-E])\b/i, c: 0.92, m: 'explicit-gabarito' }
+    ];
+
+    for (const p of patterns) {
+      const m = text.match(p.re);
+      if (m && /^[A-E]$/i.test(m[1])) {
+        return {
+          letter: m[1].toUpperCase(),
+          confidence: p.c,
+          method: p.m,
+          evidence: text.slice(Math.max(0, text.search(p.re)-120), Math.min(text.length, text.search(p.re)+220))
+        };
+      }
+    }
+    return null;
+  },
+extractGabaritoFromPageScript: function (questionText = '') {
+    const canonical = this.extractCanonicalExplicitAnswerScript();
+    if (canonical && /^[A-E]$/.test(canonical.letter || '')) return canonical;
+    const pdExplicit = this.extractPasseiDiretoExplicitAnswerScript(questionText);
+    if (pdExplicit && /^[A-E]$/.test(pdExplicit.letter || '')) {
+      return pdExplicit;
+    }
         try {
             const raw = String(document.body?.innerText || '');
             if (!raw || raw.length < 30) return null;
