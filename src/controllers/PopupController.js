@@ -687,7 +687,7 @@ export const PopupController = {
       }
     }
 
-    GeminiAuthService.getClientId().then(id => {
+    GeminiAuthService.getStoredClientId().then(id => {
       const inp = document.getElementById('gemini-client-id-input');
       if (inp && id) inp.value = id;
     });

@@ -25,6 +25,11 @@ export const GeminiAuthService = {
     PKCE_KEY: 'gemini_pkce_pending',
     CLIENT_ID_KEY: 'gemini_oauth_client_id',
 
+    // Optional bundled OAuth client_id (public, safe to ship in open source).
+    // If set, login works in 1-click (Codex-style) without manual setup.
+    // Local user value in storage still takes precedence.
+    BUNDLED_CLIENT_ID: '',
+
     // ─── Google OAuth endpoints ───
     AUTH_URL: 'https://accounts.google.com/o/oauth2/v2/auth',
     TOKEN_URL: 'https://oauth2.googleapis.com/token',
@@ -34,16 +39,29 @@ export const GeminiAuthService = {
 
     // ─── Client ID management ───────────────────────────────────────────────
 
-    async getClientId() {
+    async getStoredClientId() {
         const result = await new Promise(resolve =>
             chrome.storage.local.get([this.CLIENT_ID_KEY], resolve)
         );
         return result[this.CLIENT_ID_KEY] || null;
     },
 
+    async getClientId() {
+        const stored = await this.getStoredClientId();
+        return stored || this.BUNDLED_CLIENT_ID || null;
+    },
+
     async setClientId(id) {
+        const value = (id || '').trim();
+        if (!value) {
+            await new Promise(resolve =>
+                chrome.storage.local.remove([this.CLIENT_ID_KEY], resolve)
+            );
+            return;
+        }
+
         await new Promise(resolve =>
-            chrome.storage.local.set({ [this.CLIENT_ID_KEY]: id.trim() }, resolve)
+            chrome.storage.local.set({ [this.CLIENT_ID_KEY]: value }, resolve)
         );
     },
 
