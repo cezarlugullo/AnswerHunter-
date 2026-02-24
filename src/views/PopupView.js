@@ -581,6 +581,9 @@ export const PopupView = {
       const saveIcon = isSaved ? 'bookmark' : 'bookmark_border';
       const saveClass = isSaved ? 'saved' : '';
       const iconClass = isSaved ? 'filled' : '';
+      const isReviewLater = Boolean(item.reviewLater);
+      const reviewClass = isReviewLater ? 'active' : '';
+      const reviewIcon = isReviewLater ? 'bookmark' : 'bookmark_add';
       const dataContent = encodeURIComponent(JSON.stringify(item));
 
       const answerLetter = item.answerLetter || item.bestLetter ||
@@ -609,6 +612,29 @@ export const PopupView = {
         'inconclusive': 'result.reason.inconclusive',
       };
       const reasonKey = reasonKeyMap[item.reason] || 'result.reason.inconclusive';
+      const sourceEntries = (() => {
+        if (!Array.isArray(item.sources) || item.sources.length === 0) return [];
+        const bestByHost = new Map();
+        item.sources.forEach((source, idx) => {
+          const rawLink = String(source?.link || '').trim();
+          let hostKey = '';
+          try {
+            if (rawLink) hostKey = new URL(rawLink).hostname.replace(/^www\./i, '').toLowerCase();
+          } catch (_) {
+            hostKey = '';
+          }
+          if (!hostKey) hostKey = String(source?.hostHint || source?.title || `source-${idx}`).trim().toLowerCase();
+          const existing = bestByHost.get(hostKey);
+          const currentWeight = Number(source?.weight || 0);
+          const existingWeight = Number(existing?.source?.weight || 0);
+          if (!existing || currentWeight > existingWeight) {
+            bestByHost.set(hostKey, { source, idx });
+          }
+        });
+        return [...bestByHost.values()]
+          .sort((a, b) => a.idx - b.idx)
+          .map(entry => entry.source);
+      })();
 
       // Only show vote pills when 2+ alternatives were scored (AI-only fallback has just one)
       const votesEntries = item.votes ? Object.entries(item.votes) : [];
@@ -727,6 +753,10 @@ export const PopupView = {
             </div>` : ''}
 
             <div class="study-actions-container">
+              <button class="study-action-btn btn-review-later ${reviewClass}" type="button" data-content="${dataContent}" title="${escapeHtml(this.t('result.reviewLater.title'))}">
+                <span class="material-symbols-rounded">${reviewIcon}</span>
+                <span>${escapeHtml(this.t('result.reviewLater.btn'))}</span>
+              </button>
               <button class="study-action-btn btn-tutor" type="button" data-question="${encodeURIComponent(item.question)}" data-answer="${encodeURIComponent(item.answer || '')}" data-context="${encodeURIComponent(overviewSummary || Object.values(item.optionsMap || {}).join(' '))}" title="${escapeHtml(this.t('result.tutor.title'))}">
                 <span class="material-symbols-rounded">school</span>
                 <span>${escapeHtml(this.t('result.tutor.btn'))}</span>
@@ -780,15 +810,15 @@ export const PopupView = {
           </div>
 
           <div class="qa-card-actions">
-            ${Array.isArray(item.sources) && item.sources.length > 0
+            ${sourceEntries.length > 0
           ? `<div class="sources-box">
                   <button class="sources-toggle" type="button" aria-expanded="false">
                     <span class="material-symbols-rounded">link</span>
-                    <span>${escapeHtml(this.t('result.sources', { count: item.sources.length }))}</span>
+                    <span>${escapeHtml(this.t('result.sources', { count: sourceEntries.length }))}</span>
                     <span class="material-symbols-rounded sources-caret">expand_more</span>
                   </button>
                   <div class="sources-list" hidden>
-                    ${item.sources.map((source) => {
+                    ${sourceEntries.map((source) => {
             let host = source.title || source.link || '';
             const safeSourceLink = sanitizeUrl(source.link, 'source-link');
             try {
@@ -852,6 +882,15 @@ export const PopupView = {
     if (icon) {
       icon.textContent = saved ? 'bookmark' : 'bookmark_border';
       icon.classList.toggle('filled', !!saved);
+    }
+  },
+
+  setReviewLaterButtonState(button, active) {
+    if (!button) return;
+    const icon = button.querySelector('.material-symbols-rounded');
+    button.classList.toggle('active', !!active);
+    if (icon) {
+      icon.textContent = active ? 'bookmark' : 'bookmark_add';
     }
   },
 

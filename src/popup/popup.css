@@ -8555,6 +8555,19 @@ input:focus {
   transform: translateY(-2px);
 }
 
+/* 4. Review Later Button (Amber) */
+.study-action-btn.btn-review-later .material-symbols-rounded {
+  color: #d97706;
+}
+
+.study-action-btn.btn-review-later:hover:not(:disabled),
+.study-action-btn.btn-review-later.active {
+  background-color: rgba(217, 119, 6, 0.08);
+  border-color: rgba(217, 119, 6, 0.32);
+  color: #d97706;
+  transform: translateY(-2px);
+}
+
 .study-feature-output {
   margin-top: 14px;
   padding: 16px;

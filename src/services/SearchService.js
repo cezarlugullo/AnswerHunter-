@@ -635,6 +635,80 @@ export const SearchService = {
     if (gabarito) quality += 3;
     return Math.min(quality, 10);
   },
+  _selectDiverseTopResults(results, options = {}) {
+    const limit = Math.max(1, Number(options.limit) || 10);
+    const initialWindow = Math.max(limit, Number(options.initialWindow) || 18);
+    const maxPerHost = Math.max(1, Number(options.maxPerHost) || 1);
+
+    const pool = (Array.isArray(results) ? results : [])
+      .filter(item => item && String(item.link || '').trim())
+      .slice(0, initialWindow);
+
+    if (pool.length <= 1) {
+      return {
+        selected: pool.slice(0, limit),
+        stats: {
+          totalPool: pool.length,
+          uniqueHosts: pool.length,
+          cappedHosts: 0,
+          duplicatesDropped: 0
+        }
+      };
+    }
+
+    const selected = [];
+    const seenLinks = new Set();
+    const hostCounts = new Map();
+
+    const pushResult = (item, ignoreHostCap = false) => {
+      if (!item) return false;
+      const link = String(item.link || '').trim();
+      if (!link || seenLinks.has(link)) return false;
+      const host = this._getHostHintFromLink(link);
+      const hostCount = host ? (hostCounts.get(host) || 0) : 0;
+      if (!ignoreHostCap && host && hostCount >= maxPerHost) return false;
+
+      selected.push(item);
+      seenLinks.add(link);
+      if (host) hostCounts.set(host, hostCount + 1);
+      return true;
+    };
+
+    // Pass 1: maximize host diversity (one result per host).
+    const seenHosts = new Set();
+    for (const item of pool) {
+      if (selected.length >= limit) break;
+      const host = this._getHostHintFromLink(item.link);
+      if (!host || seenHosts.has(host)) continue;
+      if (pushResult(item, true)) seenHosts.add(host);
+    }
+
+    // Pass 2: fill remaining slots with host cap applied.
+    for (const item of pool) {
+      if (selected.length >= limit) break;
+      pushResult(item, false);
+    }
+
+    // Pass 3 fallback: if still short, allow extra same-host links.
+    for (const item of pool) {
+      if (selected.length >= limit) break;
+      pushResult(item, true);
+    }
+
+    const uniqueHosts = new Set(selected.map(item => this._getHostHintFromLink(item.link)).filter(Boolean)).size;
+    const cappedHosts = [...hostCounts.values()].filter(v => v > 1).length;
+    const duplicatesDropped = Math.max(0, Math.min(limit, pool.length) - selected.length);
+
+    return {
+      selected: selected.slice(0, limit),
+      stats: {
+        totalPool: pool.length,
+        uniqueHosts,
+        cappedHosts,
+        duplicatesDropped
+      }
+    };
+  },
   _logSourceDiagnostic(diag) {
     if (!diag) return;
     const host = diag.hostHint || 'unknown';
@@ -755,7 +829,15 @@ export const SearchService = {
     // Load AI extraction result cache (no-op if already loaded this session).
     await SearchCacheService.loadAiResultCache();
     const sources = [];
-    const topResults = results.slice(0, 10);
+    const {
+      selected: topResults,
+      stats: topResultsDiversity
+    } = this._selectDiverseTopResults(results, {
+      limit: 10,
+      initialWindow: 18,
+      maxPerHost: 1
+    });
+    console.log(`SearchService: Top results diversified => selected=${topResults.length}, uniqueHosts=${topResultsDiversity.uniqueHosts}/${topResultsDiversity.totalPool}, hostsWithDuplicates=${topResultsDiversity.cappedHosts}`);
     const questionForInference = originalQuestionWithOptions || questionText;
     const questionStem = QuestionParser.extractQuestionStem(questionForInference);
     const questionFingerprint = await this._canonicalHash(questionForInference);

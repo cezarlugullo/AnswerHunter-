@@ -4138,4 +4138,69 @@ Responda de forma clara, didática e concisa (máximo 200 palavras). Não repita
         return result || 'Não foi possível processar sua pergunta. Tente novamente.';
     },
 
+    async generateTags(questionText) {
+        const settings = await this._getSettings();
+        const prompt = `Analise a questão abaixo e gere de 3 a 5 tags/categorias que descrevam o tema acadêmico.
+
+QUESTÃO:
+${questionText.slice(0, 600)}
+
+Responda APENAS com um JSON array de strings, sem explicações. Exemplo:
+["Biologia", "Genética", "DNA Replicação"]
+
+REGRAS:
+- Tags curtas (1-3 palavras)
+- Do mais geral para o mais específico
+- Em português
+- Sem tags genéricas como "Questão" ou "Múltipla Escolha"`;
+
+        const parseResponse = (content) => {
+            if (!content) return null;
+            try {
+                const cleaned = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+                const parsed = JSON.parse(cleaned);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed.slice(0, 5);
+                return null;
+            } catch (_) {
+                // Try to extract tags from text
+                const match = content.match(/\[.*?\]/s);
+                if (match) {
+                    try { return JSON.parse(match[0]).slice(0, 5); } catch (_2) { return null; }
+                }
+                return null;
+            }
+        };
+
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                const content = await this._callGemini([
+                    { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.3, max_tokens: 100, model: settings.geminiModel || 'gemini-2.5-flash' });
+                return parseResponse(content);
+            } catch (e) {
+                console.warn('AnswerHunter: Gemini generateTags error:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryGroq = async () => {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const content = await this._callGroq([
+                    { role: 'system', content: 'Classifique a questão em JSON array de tags académicas. Responda só JSON.' },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.3, max_tokens: 100, model: settings.groqModelSmart });
+                return parseResponse(content);
+            } catch (e) {
+                console.warn('AnswerHunter: Groq generateTags error:', e?.message || e);
+                return null;
+            }
+        };
+
+        const result = (await tryGemini()) || (await tryGroq());
+        return result || [];
+    },
+
 };

@@ -77,7 +77,7 @@ export const StorageModel = {
      * @param {string} answer 
      * @param {string} source 
      */
-    async addItem(question, answer, source) {
+    async addItem(question, answer, source, extraContent = {}) {
         if (!this.data.length) await this.init();
 
         if (this.isSaved(question)) {
@@ -89,7 +89,7 @@ export const StorageModel = {
             current.children.push({
                 id: 'q' + Date.now(),
                 type: 'question',
-                content: { question, answer, source },
+                content: { question, answer, source, ...(extraContent || {}) },
                 createdAt: Date.now()
             });
             await this.save();
@@ -125,16 +125,72 @@ export const StorageModel = {
      * @returns {boolean}
      */
     isSaved(questionText) {
+        return this.findQuestionNodeByContent(questionText) !== null;
+    },
+
+    /**
+     * Finds a saved question node by question text.
+     * @param {string} questionText
+     * @param {Array} nodes
+     * @returns {Object|null}
+     */
+    findQuestionNodeByContent(questionText, nodes = this.data) {
+        if (!questionText) return null;
         const search = (nodes) => {
             for (const node of nodes) {
-                if (node.type === 'question' && node.content && node.content.question === questionText) return true;
+                if (node.type === 'question' && node.content && node.content.question === questionText) return node;
                 if (node.children) {
-                    if (search(node.children)) return true;
+                    const found = search(node.children);
+                    if (found) return found;
                 }
             }
-            return false;
+            return null;
         };
         return search(this.data);
+    },
+
+    /**
+     * Returns whether a saved question is marked for review.
+     * @param {string} questionText
+     * @returns {boolean}
+     */
+    isReviewLater(questionText) {
+        const node = this.findQuestionNodeByContent(questionText);
+        return !!(node?.content?.reviewLater);
+    },
+
+    /**
+     * Returns saved/review metadata for a question.
+     * @param {string} questionText
+     * @returns {{saved: boolean, reviewLater: boolean}}
+     */
+    getQuestionMeta(questionText) {
+        const node = this.findQuestionNodeByContent(questionText);
+        return {
+            saved: !!node,
+            reviewLater: !!(node?.content?.reviewLater)
+        };
+    },
+
+    /**
+     * Marks or unmarks a saved question as "review later".
+     * @param {string} questionText
+     * @param {boolean} enabled
+     * @returns {Promise<boolean>}
+     */
+    async setReviewLater(questionText, enabled = true) {
+        if (!this.data.length) await this.init();
+        const node = this.findQuestionNodeByContent(questionText);
+        if (!node?.content) return false;
+
+        if (enabled) {
+            node.content.reviewLater = true;
+        } else {
+            delete node.content.reviewLater;
+        }
+
+        await this.save();
+        return true;
     },
 
     /**

@@ -1762,6 +1762,166 @@
     }
     .xp-toast .icon { font-size: 16px; }
 
+    /* ── Modo Pomodoro ── */
+    .pomodoro-widget {
+      position: fixed;
+      bottom: 24px;
+      left: 24px;
+      z-index: 900;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(90px);
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+      min-width: 220px;
+    }
+    .pomodoro-widget.visible {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .pom-circle {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      font-weight: 800;
+      background: var(--bg);
+      border: 3px solid var(--primary);
+      color: var(--primary);
+      flex-shrink: 0;
+      transition: border-color 0.3s;
+    }
+    .pom-circle.break { border-color: var(--green); color: var(--green); }
+    .pom-info { flex: 1; }
+    .pom-label { font-size: 0.7rem; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+    .pom-time { font-size: 1rem; font-weight: 800; color: var(--text); }
+    .pom-actions { display: flex; gap: 4px; }
+    .pom-btn {
+      width: 32px; height: 32px;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      color: var(--text);
+    }
+    .pom-btn:hover { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .pom-btn .icon { font-size: 16px; }
+
+    /* Pomodoro toolbar button */
+    .tool-btn.pomodoro-btn {
+      background: linear-gradient(135deg, #FFF1F0, #FFF5F5);
+      border-color: #FECACA;
+      color: #B91C1C;
+    }
+    .tool-btn.pomodoro-btn:hover { background: #FEE2E2; }
+
+    /* ── Tags IA ── */
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 8px;
+      margin-bottom: 4px;
+    }
+    .card-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px 8px;
+      background: var(--indigo-bg);
+      border: 1px solid #C7D2FE;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #4338CA;
+    }
+    .card-tag .icon { font-size: 11px; }
+    .btn-tags {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+    }
+    .btn-tags:hover { background: var(--indigo-bg); color: var(--indigo); }
+    .btn-tags .icon { font-size: 14px; }
+    .btn-tags.loading { opacity: 0.6; pointer-events: none; }
+
+    /* ── Predição de Nota ── */
+    .prediction-section {
+      margin-bottom: 20px;
+      padding: 16px;
+      background: linear-gradient(135deg, #FFFBEB, #FFF7ED);
+      border: 1px solid #FDE68A;
+      border-radius: 12px;
+    }
+    .prediction-score {
+      font-size: 2.4rem;
+      font-weight: 800;
+      color: var(--text);
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    .prediction-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .prediction-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .prediction-bar-name { min-width: 60px; font-weight: 600; color: var(--text); }
+    .prediction-bar-track { flex: 1; height: 7px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .prediction-bar-fill { height: 100%; border-radius: 4px; }
+
+    /* Voz button on cards */
+    .btn-voice {
+      background: none;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 0 10px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+    }
+    .btn-voice:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-voice.speaking { border-color: var(--primary); color: var(--primary); background: #FFF3EC; }
+    .btn-voice .icon { font-size: 16px; }
+
     footer {
       text-align: center;
       padding: 20px;
@@ -1851,6 +2011,12 @@
     <div class="chip-group tools">
       <button class="tool-btn dashboard-btn" id="btnDashboard" title="Dashboard de desempenho">
         <span class="icon">insights</span> Dashboard
+      </button>
+      <button class="tool-btn pomodoro-btn" id="btnPomodoro" title="Modo Pomodoro">
+        <span class="icon">hourglass_top</span> Pomodoro
+      </button>
+      <button class="tool-btn" id="btnExportAnki" title="Exportar para Anki (.txt)">
+        <span class="icon">file_download</span> Anki
       </button>
       <button class="tool-btn simulado-btn" id="btnSimulado" title="Iniciar simulado cronometrado">
         <span class="icon">timer</span> Simulado
@@ -1953,6 +2119,26 @@
     <div class="sim-modal-body" id="simModalBody">
       <!-- dynamic content -->
     </div>
+  </div>
+</div>
+
+<!-- ══ Pomodoro Widget ══ -->
+<div id="pomodoroWidget" class="pomodoro-widget" aria-live="polite" role="timer">
+  <div class="pom-circle" id="pomCircle">25:00</div>
+  <div class="pom-info">
+    <div class="pom-label" id="pomLabel">Foco</div>
+    <div class="pom-time" id="pomTime">25:00</div>
+  </div>
+  <div class="pom-actions">
+    <button class="pom-btn" id="pomPlayPause" title="Play/Pause" aria-label="Play/Pause">
+      <span class="icon" id="pomPlayIcon">play_arrow</span>
+    </button>
+    <button class="pom-btn" id="pomReset" title="Reiniciar" aria-label="Reiniciar">
+      <span class="icon">restart_alt</span>
+    </button>
+    <button class="pom-btn" id="pomClose" title="Fechar" aria-label="Fechar Pomodoro">
+      <span class="icon">close</span>
+    </button>
   </div>
 </div>
 

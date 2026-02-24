@@ -458,7 +458,14 @@ function buildCard(q, index) {
       <button class="answer-tool-btn btn-chat-doubt" type="button">
         <span class="icon">forum</span> Chat de dúvida
       </button>
+      <button class="btn-voice" type="button" title="Ler questão em voz alta">
+        <span class="icon">record_voice_over</span> Ouvir
+      </button>
+      <button class="btn-tags" type="button" title="Gerar tags por IA" data-qid="${escH(q.id || '')}">
+        <span class="icon">local_offer</span> Tags IA
+      </button>
     </div>
+    <div class="card-tags" id="tags_${escH(q.id || '')}"></div>
     
     <div class="answer-explanation">
       <div class="explanation-content"></div>
@@ -791,6 +798,51 @@ function buildCard(q, index) {
       }
     });
   });
+
+  // Voice button
+  const btnVoice = article.querySelector('.btn-voice');
+  if (btnVoice) {
+    btnVoice.addEventListener('click', () => {
+      speakText(cleanQuestion, btnVoice);
+    });
+  }
+
+  // Tags IA button
+  const btnTags = article.querySelector('.btn-tags');
+  const tagsContainer = article.querySelector(`#tags_${q.id || ''}`);
+  if (btnTags && tagsContainer && q.id) {
+    // Load cached tags from SM-2 storage
+    loadSm2Data().then(data => {
+      const entry = data[q.id];
+      if (entry && entry.tags && entry.tags.length > 0) {
+        renderCardTags(tagsContainer, entry.tags);
+        btnTags.style.display = 'none';
+      }
+    });
+
+    btnTags.addEventListener('click', async () => {
+      btnTags.classList.add('loading');
+      btnTags.innerHTML = '<span class="icon" style="animation:spin 1s linear infinite">autorenew</span> Gerando...';
+      try {
+        const tags = await ApiService.generateTags(cleanQuestion);
+        if (tags && tags.length > 0) {
+          renderCardTags(tagsContainer, tags);
+          btnTags.style.display = 'none';
+          // Cache tags in SM-2 data
+          const data = await loadSm2Data();
+          if (!data[q.id]) data[q.id] = {};
+          data[q.id].tags = tags;
+          saveSm2Data(data);
+        } else {
+          btnTags.classList.remove('loading');
+          btnTags.innerHTML = '<span class="icon">local_offer</span> Tags IA';
+        }
+      } catch (err) {
+        btnTags.classList.remove('loading');
+        btnTags.innerHTML = '<span class="icon">local_offer</span> Tags IA';
+      }
+    });
+  }
 
   // SM-2 rating buttons
   const sm2Bar = article.querySelector('.sm2-rating-bar');
@@ -1817,6 +1869,7 @@ async function renderDashboard() {
   const reviewed = sm2Entries.length;
   const mastered = sm2Entries.filter(e => e.interval >= 21).length;
   const dueToday = allQuestions.filter(q => sm2IsDue(sm2Data[q.id])).length;
+  const predictedScore = calcPredictedScore(sm2Data, allQuestions);
 
   // XP
   const { xp, level } = xpData;
@@ -1855,6 +1908,12 @@ async function renderDashboard() {
         <div class="dash-stat-label">Due Hoje</div>
       </div>
     </div>
+
+    ${predictedScore !== null ? `
+    <div class="prediction-section">
+      <div class="prediction-score">${predictedScore}%</div>
+      <div class="prediction-label">Predição de nota (baseada em EF + domínio)</div>
+    </div>` : ''}
 
     <div class="dash-xp-section">
       <div class="dash-section-title"><span class="icon">bolt</span> Progresso XP</div>
@@ -1915,5 +1974,190 @@ if (chipErrors) {
     filterCards();
   });
 }
+
+// ══ Leitura em Voz Alta ══════════════════════════════════════════════════════
+
+let _speechUtterance = null;
+
+function speakText(text, btn) {
+  if (!('speechSynthesis' in window)) {
+    alert('Leitura em voz alta não suportada neste navegador.');
+    return;
+  }
+  // If currently speaking this button's text, stop
+  if (btn.classList.contains('speaking')) {
+    window.speechSynthesis.cancel();
+    btn.classList.remove('speaking');
+    btn.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
+    return;
+  }
+
+  // Cancel any current speech
+  window.speechSynthesis.cancel();
+  document.querySelectorAll('.btn-voice.speaking').forEach(b => {
+    b.classList.remove('speaking');
+    b.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
+  });
+
+  _speechUtterance = new SpeechSynthesisUtterance(text);
+  _speechUtterance.lang = 'pt-BR';
+  _speechUtterance.rate = 0.9;
+  _speechUtterance.pitch = 1;
+
+  // Find Portuguese voice if available
+  const voices = window.speechSynthesis.getVoices();
+  const ptVoice = voices.find(v => v.lang.startsWith('pt'));
+  if (ptVoice) _speechUtterance.voice = ptVoice;
+
+  btn.classList.add('speaking');
+  btn.innerHTML = '<span class="icon">stop_circle</span> Parar';
+
+  _speechUtterance.onend = () => {
+    btn.classList.remove('speaking');
+    btn.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
+  };
+  _speechUtterance.onerror = () => {
+    btn.classList.remove('speaking');
+    btn.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
+  };
+
+  window.speechSynthesis.speak(_speechUtterance);
+}
+
+// ══ Tags IA ══════════════════════════════════════════════════════════════════
+
+function renderCardTags(container, tags) {
+  container.innerHTML = tags.map(tag =>
+    `<span class="card-tag"><span class="icon">local_offer</span>${escH(tag)}</span>`
+  ).join('');
+}
+
+// ══ Exportar para Anki ═══════════════════════════════════════════════════════
+
+document.getElementById('btnExportAnki').addEventListener('click', () => {
+  const cards = document.querySelectorAll('.card:not(.hidden-card)');
+  if (cards.length === 0) {
+    alert('Nenhuma questão disponível para exportar.');
+    return;
+  }
+
+  const lines = [];
+  lines.push('#separator:Tab');
+  lines.push('#html:false');
+  lines.push('#notetype:Basic');
+
+  cards.forEach(card => {
+    const qEl = card.querySelector('.card-question');
+    const aEl = card.querySelector('.answer-text-content');
+    if (!qEl || !aEl) return;
+    const q = qEl.innerText.replace(/\t|\n/g, ' ').trim();
+    const a = aEl.innerText.replace(/\t|\n/g, ' ').trim();
+    if (q && a) lines.push(`${q}\t${a}`);
+  });
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `AnswerHunter_${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+
+  showSyncToast(`${cards.length} questão${cards.length !== 1 ? 'ões' : ''} exportada${cards.length !== 1 ? 's' : ''} para Anki`);
+});
+
+// ══ Predição de Nota (adicionada ao Dashboard) ════════════════════════════════
+
+function calcPredictedScore(sm2Data, questions) {
+  if (!questions.length) return null;
+  const reviewed = questions.filter(q => sm2Data[q.id]);
+  if (!reviewed.length) return null;
+  const avgEF = reviewed.reduce((sum, q) => sum + (sm2Data[q.id].ef || 2.5), 0) / reviewed.length;
+  // Normalize EF: 1.3 = 0%, 3.0 = 100%
+  const pct = Math.round(((avgEF - 1.3) / (3.0 - 1.3)) * 100);
+  const mastered = reviewed.filter(q => (sm2Data[q.id].interval || 0) >= 21).length;
+  const mastery = Math.round((mastered / questions.length) * 100);
+  // Weighted: 60% EF, 40% mastery
+  return Math.round(0.6 * pct + 0.4 * mastery);
+}
+
+// ══ Modo Pomodoro ════════════════════════════════════════════════════════════
+
+const POM_WORK = 25 * 60; // 25 min
+const POM_BREAK = 5 * 60; // 5 min
+let _pom = { running: false, isBreak: false, remaining: POM_WORK, intervalId: null };
+
+function formatPomTime(sec) {
+  return `${Math.floor(sec / 60).toString().padStart(2, '0')}:${(sec % 60).toString().padStart(2, '0')}`;
+}
+
+function updatePomDisplay() {
+  const circle = document.getElementById('pomCircle');
+  const timeEl = document.getElementById('pomTime');
+  const labelEl = document.getElementById('pomLabel');
+  const display = formatPomTime(_pom.remaining);
+  if (circle) circle.textContent = display;
+  if (timeEl) timeEl.textContent = display;
+  const label = _pom.isBreak ? 'Pausa' : 'Foco';
+  if (labelEl) labelEl.textContent = label;
+  if (circle) {
+    circle.classList.toggle('break', _pom.isBreak);
+  }
+}
+
+function startPomodoro() {
+  if (_pom.running) return;
+  _pom.running = true;
+  document.getElementById('pomPlayIcon').textContent = 'pause';
+  _pom.intervalId = setInterval(() => {
+    _pom.remaining--;
+    updatePomDisplay();
+    if (_pom.remaining <= 0) {
+      clearInterval(_pom.intervalId);
+      _pom.running = false;
+      _pom.isBreak = !_pom.isBreak;
+      _pom.remaining = _pom.isBreak ? POM_BREAK : POM_WORK;
+      document.getElementById('pomPlayIcon').textContent = 'play_arrow';
+      updatePomDisplay();
+      showSyncToast(_pom.isBreak ? 'Hora da pausa! ☕ 5 minutos.' : 'Pausa encerrada! Hora de focar.');
+      awardXP(_pom.isBreak ? 0 : 20);
+    }
+  }, 1000);
+}
+
+function pausePomodoro() {
+  if (!_pom.running) return;
+  clearInterval(_pom.intervalId);
+  _pom.running = false;
+  document.getElementById('pomPlayIcon').textContent = 'play_arrow';
+}
+
+function resetPomodoro() {
+  clearInterval(_pom.intervalId);
+  _pom.running = false;
+  _pom.isBreak = false;
+  _pom.remaining = POM_WORK;
+  document.getElementById('pomPlayIcon').textContent = 'play_arrow';
+  updatePomDisplay();
+}
+
+document.getElementById('btnPomodoro').addEventListener('click', () => {
+  const widget = document.getElementById('pomodoroWidget');
+  widget.classList.toggle('visible');
+  updatePomDisplay();
+});
+
+document.getElementById('pomPlayPause').addEventListener('click', () => {
+  if (_pom.running) pausePomodoro();
+  else startPomodoro();
+});
+
+document.getElementById('pomReset').addEventListener('click', resetPomodoro);
+
+document.getElementById('pomClose').addEventListener('click', () => {
+  pausePomodoro();
+  document.getElementById('pomodoroWidget').classList.remove('visible');
+});
 
 setupStickyOffsets();
