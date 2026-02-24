@@ -2068,7 +2068,7 @@ export const SearchService = {
           if (aiExtracted?.letter) {
             console.log(`  🤖 [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
             aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, combinedText, originalOptionsMap);
-            console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);}
+            console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
             // Validate the letter exists in the user's options map.
             // The AI may find a different question on the same page (e.g. one with 5 options)
             // and return a letter that doesn't exist in the current question (e.g. E when only A-D exist).
