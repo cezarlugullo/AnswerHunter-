@@ -2467,7 +2467,7 @@ function renderCardTags(container, tags) {
 function refreshSubjectOrganizationAfterTags() {
   populateSubjectSelect(_originalOrder);
   const sortMode = document.getElementById('sortSelect')?.value || 'default';
-  if (sortMode === 'subject' || sortMode === 'subject_grouped') {
+  if (sortMode === 'subject' || sortMode === 'subject_grouped' || sortMode === 'folder' || sortMode === 'folder_grouped') {
     const sorted = getSortedQuestions(_originalOrder, sortMode);
     allQuestions = sorted;
     rebuildCardList(sorted, sortMode);
