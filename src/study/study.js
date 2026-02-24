@@ -3084,11 +3084,11 @@ if (chipErrors) {
   });
 }
 
-// ══ Leitura em Voz Alta (Google Translate TTS — grátis, sem API key) ═════════
+// ══ Leitura em Voz Alta (compatível com extensão, grátis) ═══════════════════
 
 let _speechUtterance = null;
-let _ttsAudio = null;          // current Audio element
-let _ttsQueue = [];            // queue of audio chunks to play
+let _ttsAudio = null;
+let _ttsQueue = [];
 let _ttsPlaying = false;
 
 function _resetVoiceBtn(btn) {
@@ -3104,27 +3104,25 @@ function _stopAllSpeech() {
     _ttsAudio.currentTime = 0;
     _ttsAudio = null;
   }
+  if (globalThis.chrome?.tts?.stop) {
+    try { chrome.tts.stop(); } catch (_) { }
+  }
   if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   document.querySelectorAll('.btn-voice.speaking').forEach(b => _resetVoiceBtn(b));
 }
 
-/**
- * Split text into chunks ≤ maxLen at sentence/word boundaries.
- */
 function _chunkText(text, maxLen = 180) {
   const chunks = [];
-  let remaining = text.trim();
+  let remaining = String(text || '').trim();
   while (remaining.length > 0) {
     if (remaining.length <= maxLen) {
       chunks.push(remaining);
       break;
     }
-    // Try to break at sentence end (. ! ? ;)
     let cut = -1;
     for (let i = maxLen; i > maxLen * 0.4; i--) {
       if ('.!?;'.includes(remaining[i])) { cut = i + 1; break; }
     }
-    // Fallback: break at space
     if (cut === -1) {
       for (let i = maxLen; i > maxLen * 0.3; i--) {
         if (remaining[i] === ' ') { cut = i; break; }
@@ -3134,21 +3132,14 @@ function _chunkText(text, maxLen = 180) {
     chunks.push(remaining.substring(0, cut).trim());
     remaining = remaining.substring(cut).trim();
   }
-  return chunks.filter(c => c.length > 0);
+  return chunks.filter(Boolean);
 }
 
-/**
- * Build Google Translate TTS URL for a text chunk.
- * This is the same endpoint Google Translate uses — free, no key needed.
- */
 function _gTranslateTtsUrl(text) {
   const encoded = encodeURIComponent(text);
   return `https://translate.google.com/translate_tts?ie=UTF-8&tl=pt-BR&client=tw-ob&q=${encoded}&textlen=${text.length}`;
 }
 
-/**
- * Play queued audio chunks sequentially.
- */
 function _playNextChunk(btn) {
   if (_ttsQueue.length === 0) {
     _ttsPlaying = false;
@@ -3163,13 +3154,11 @@ function _playNextChunk(btn) {
   _ttsPlaying = true;
 
   audio.addEventListener('ended', () => _playNextChunk(btn));
-  audio.addEventListener('error', (e) => {
-    console.warn('[AH-TTS] Chunk playback error, trying fallback', e);
-    // If Google Translate TTS fails, drain queue and use Web Speech for full text
+  audio.addEventListener('error', () => {
     _ttsQueue = [];
     _ttsAudio = null;
     _ttsPlaying = false;
-    // Don't reset btn — fallback will handle it
+    _resetVoiceBtn(btn);
   });
 
   audio.play().catch(() => {
@@ -3180,22 +3169,62 @@ function _playNextChunk(btn) {
   });
 }
 
-/**
- * Try Google Translate TTS (chunked, natural voice, free).
- * @returns {boolean} true if started successfully
- */
 function _tryGoogleTranslateTTS(text, btn) {
   const chunks = _chunkText(text, 180);
-  if (chunks.length === 0) return false;
-
+  if (!chunks.length) return false;
   _ttsQueue = chunks.map(c => _gTranslateTtsUrl(c));
   _playNextChunk(btn);
   return true;
 }
 
-/**
- * Fallback: Web Speech API (robotic, but always available offline).
- */
+function _pickBestChromeTtsVoice(voices) {
+  const list = Array.isArray(voices) ? voices : [];
+  return list.find(v => v.lang === 'pt-BR' && /natural|neural|online/i.test(v.voiceName || ''))
+    || list.find(v => v.lang === 'pt-BR' && /microsoft|google/i.test(v.voiceName || ''))
+    || list.find(v => v.lang === 'pt-BR')
+    || list.find(v => String(v.lang || '').startsWith('pt'))
+    || null;
+}
+
+function _tryChromeTTS(text, btn) {
+  return new Promise(resolve => {
+    if (!globalThis.chrome?.tts?.speak || !globalThis.chrome?.tts?.getVoices) {
+      resolve(false);
+      return;
+    }
+
+    chrome.tts.getVoices((voices) => {
+      const picked = _pickBestChromeTtsVoice(voices);
+      const options = {
+        lang: picked?.lang || 'pt-BR',
+        rate: 0.95,
+        pitch: 1,
+        enqueue: false,
+        onEvent: (event) => {
+          if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled' || event.type === 'error') {
+            _ttsPlaying = false;
+            _resetVoiceBtn(btn);
+          }
+        }
+      };
+      if (picked?.voiceName) options.voiceName = picked.voiceName;
+
+      try {
+        chrome.tts.speak(text, options, () => {
+          if (chrome.runtime?.lastError) {
+            resolve(false);
+            return;
+          }
+          _ttsPlaying = true;
+          resolve(true);
+        });
+      } catch (_) {
+        resolve(false);
+      }
+    });
+  });
+}
+
 function _fallbackWebSpeech(text, btn) {
   if (!('speechSynthesis' in window)) {
     _resetVoiceBtn(btn);
@@ -3218,10 +3247,13 @@ function _fallbackWebSpeech(text, btn) {
   window.speechSynthesis.speak(_speechUtterance);
 }
 
+/* ── Main entry point ───────────────────────────────────────────────────── */
+
 /**
  * Main entry: speak text with best available voice.
- * 1) Google Translate TTS (free, no key, natural voice)
- * 2) Web Speech API fallback (offline/robotic)
+ * 1) chrome.tts (extensão, pode usar voz natural do sistema)
+ * 2) Google Translate TTS (grátis, sem chave)
+ * 3) Web Speech API fallback
  */
 async function speakText(text, btn) {
   if (btn.classList.contains('speaking')) {
@@ -3233,11 +3265,12 @@ async function speakText(text, btn) {
   btn.classList.add('speaking');
   btn.innerHTML = '<span class="icon">stop_circle</span> Parar';
 
-  // Primary: Google Translate TTS (natural voice, free)
-  const started = _tryGoogleTranslateTTS(text, btn);
-  if (started) return;
+  const startedChromeTts = await _tryChromeTTS(text, btn);
+  if (startedChromeTts) return;
 
-  // Fallback: Web Speech API
+  const startedGoogleTts = _tryGoogleTranslateTTS(text, btn);
+  if (startedGoogleTts) return;
+
   _fallbackWebSpeech(text, btn);
 }
 

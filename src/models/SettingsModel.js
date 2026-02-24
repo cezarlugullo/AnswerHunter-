@@ -23,6 +23,7 @@ export const SettingsModel = {
         openrouterApiKey: '',
         openrouterModelSmart: 'deepseek/deepseek-r1:free',
         chatgptModel: 'gpt-5.2',
+        copilotModel: 'claude-sonnet-4.6',
         primaryProvider: 'groq',
         setupCompleted: false,
         requiredProviders: {

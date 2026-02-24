@@ -473,6 +473,9 @@ export const PopupController = {
     const groqModel = settings.groqModelSmart || 'llama-3.3-70b-versatile';
     const geminiModel = settings.geminiModelSmart || 'gemini-2.5-flash';
     const chatgptModel = settings.chatgptModel || 'gpt-5.2-codex';
+    const copilotModel  = settings.copilotModel  || 'claude-sonnet-4.6';
+    const copilotModelSelect = document.getElementById('select-copilot-model');
+    if (copilotModelSelect) copilotModelSelect.value = copilotModel;
     if (this.view.elements.selectGroqModel) {
       this.view.elements.selectGroqModel.value = groqModel;
     }

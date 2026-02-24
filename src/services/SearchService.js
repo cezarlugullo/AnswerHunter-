@@ -46,6 +46,7 @@ import { EvidenceService } from './search/EvidenceService.js';
 import { SearchCacheService } from './search/SearchCacheService.js';
 import { FreeTextAnswerService } from './search/FreeTextAnswerService.js';
 import { PerformanceTimer } from '../utils/PerformanceTimer.js';
+import { BrainlyService } from './BrainlyService.js';
 
 // SearchService
 // Coordinates (1) direct extraction and (2) web search + evidence-based refinement.
@@ -453,6 +454,16 @@ export const SearchService = {
     }
     console.log(`    [reverseTextLookup] NO REMAP for ${sourceLetter}`);
     return sourceLetter;
+  },
+
+
+  // Pick the longer of two texts for option remapping — evidence may be shorter than scopedCombinedText
+  _bestRemapText(...candidates) {
+    let best = '';
+    for (const c of candidates) {
+      if (c && typeof c === 'string' && c.length > best.length) best = c;
+    }
+    return best;
   },
 
   _remapLetterIfShuffled(sourceLetter, sourceText, userOptionsMap) {
@@ -955,6 +966,8 @@ export const SearchService = {
     // Load AI extraction result cache (no-op if already loaded this session).
     await SearchCacheService.loadAiResultCache();
     const sources = [];
+    // Map: link -> scopedCombinedText — used by AI verification step
+    const _scopedTextsMap = new Map();
     const {
       selected: topResults,
       stats: topResultsDiversity
@@ -1129,6 +1142,32 @@ export const SearchService = {
     };
     const aiEvidence = [];
     const collectedForCombined = [];
+
+    // ── BrainlyService: pre-fetch answers via GraphQL (parallel, non-blocking) ──
+    // Brainly pages are JS-heavy SPAs that fail on direct fetch.
+    // GraphQL endpoint /graphql/pt returns answers without auth.
+    // We launch this in parallel so results are ready when the loop reaches Brainly sources.
+    const _brainlyUrls = topResults
+        .map(r => r.link || '')
+        .filter(u => BrainlyService.isBrainlyUrl(u));
+    const _brainlyGraphQLPromise = _brainlyUrls.length > 0
+        ? BrainlyService.getAnswersFromUrls(_brainlyUrls, 3).catch(e => {
+            console.warn('[BrainlyService] Pre-fetch failed:', e.message);
+            return [];
+          })
+        : Promise.resolve([]);
+    if (_brainlyUrls.length > 0) {
+        console.log('[BrainlyService] Pre-fetching ' + _brainlyUrls.length + ' Brainly URL(s) via GraphQL in parallel');
+    }
+    // Map of url -> answerText resolved lazily on first Brainly source
+    let _brainlyGraphQLMap = null;
+    const _getBrainlyAnswer = async (url) => {
+        if (!_brainlyGraphQLMap) {
+            const answers = await _brainlyGraphQLPromise;
+            _brainlyGraphQLMap = new Map(answers.map(a => [a.url, a.answerText]));
+        }
+        return _brainlyGraphQLMap.get(url) || null;
+    };
     let aiExtractionCount = 0; // max AI per-page extraction calls per search run
     let aiHtmlExtractionCount = 0; // max AI HTML extraction calls per search run
     const aiKnowledgePool = []; // Accumulated knowledge from AI extraction (partial + full)
@@ -1321,7 +1360,7 @@ export const SearchService = {
           votes
         } = EvidenceService.computeVotesAndState(sources);
         const topVote = bestLetter ? votes[bestLetter] || 0 : 0;
-        if (bestLetter && topVote >= 5.5) {
+        if (bestLetter && topVote >= 4.5) { // Lowered from 5.5: single strong source (weight~4) should be sufficient
           console.log(`SearchService: ⚡ Batch 1 sufficient — skipping batch 2 (votes[${bestLetter}]=${topVote.toFixed(1)})`);
           _batch2Fetched = true; // skip fetch, but still mark as handled
           break; // exit analysis loop early
@@ -1349,6 +1388,7 @@ export const SearchService = {
         const pageText = (snap?.text || '').trim();
         const combinedText = `${title}. ${snippet}\n\n${pageText}`.trim();
         const scopedCombinedText = EvidenceService.buildQuestionScopedText(combinedText, questionForInference, 3600);
+        _scopedTextsMap.set(link, scopedCombinedText.slice(0, 2500)); // AI verification text store
         console.log(`  📐 scopedCombinedText length=${scopedCombinedText.length} (full combined=${combinedText.length}) preview="${scopedCombinedText.slice(0, 200)}"`);
         const seedText = `${title}. ${snippet}`.trim();
         const snapshotWeak = !snap?.ok || pageText.length < 120;
@@ -1379,19 +1419,29 @@ export const SearchService = {
               console.log(`  ✅ Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-gabarito-bypass letter=${bypassLetter} topicSim=${seedTopicSim.toFixed(2)} (option coverage low but explicit answer marker found in snippet)`);
               // fall through — let the evidence pipeline extract the gabarito from scopedCombinedText
             } else {
-              console.log(`\u26d4 Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
-              runStats.blockedSnapshotMismatch += 1;
-              this._logSourceDiagnostic({
-                phase: 'decision',
-                hostHint: this._getHostHintFromLink(link),
-                type: 'TYPE_SNAPSHOT_WEAK',
-                topicSim: seedTopicSim,
-                optionsMatch: false,
-                obfuscation: null,
-                decision: 'skip',
-                reason: 'snapshot-empty-options-mismatch'
-              });
-              continue;
+              // ── BrainlyService GraphQL bypass ──
+              // Brainly pages are JS SPAs — snapshot is always empty.
+              // If we have a pre-fetched GraphQL answer, bypass this rejection
+              // and fall through so the FreeText section can map it to a letter.
+              const _curHostHint = this._getHostHintFromLink(link);
+              const _isBrainlyHost = _curHostHint === 'brainly.com.br' || _curHostHint === 'brainly.com' || _curHostHint === 'brainly.lat';
+              if (_isBrainlyHost && _brainlyUrls.length > 0) {
+                const _gqlBypassAnswer = await _getBrainlyAnswer(link);
+                if (_gqlBypassAnswer && _gqlBypassAnswer.length > 20) {
+                  console.log(`  🧠 [BRAINLY-GQL] Bypassing snapshot rejection for ${_curHostHint} — GraphQL answer ready (${_gqlBypassAnswer.length} chars)`);
+                  // fall through to full extraction pipeline
+                } else {
+                  console.log(`⛔ Source #${runStats.analyzed} (${_curHostHint}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total}) [no GraphQL]`);
+                  runStats.blockedSnapshotMismatch += 1;
+                  this._logSourceDiagnostic({ phase: 'decision', hostHint: _curHostHint, type: 'TYPE_SNAPSHOT_WEAK', topicSim: seedTopicSim, optionsMatch: false, obfuscation: null, decision: 'skip', reason: 'snapshot-empty-options-mismatch' });
+                  continue;
+                }
+              } else {
+                console.log(`⛔ Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
+                runStats.blockedSnapshotMismatch += 1;
+                this._logSourceDiagnostic({ phase: 'decision', hostHint: this._getHostHintFromLink(link), type: 'TYPE_SNAPSHOT_WEAK', topicSim: seedTopicSim, optionsMatch: false, obfuscation: null, decision: 'skip', reason: 'snapshot-empty-options-mismatch' });
+                continue;
+              }
             }
           }
         }
@@ -1576,6 +1626,43 @@ export const SearchService = {
           // When the page has a natural-language answer (e.g. "Resposta: texto..."),
           // try to map it to the user's options even when options don't appear verbatim.
           const isFreeTextHost = hostHint === 'brainly.com.br' || hostHint === 'brainly.com' || hostHint === 'brainly.lat';
+          // ── BrainlyService GraphQL injection: if we have a pre-fetched answer, use it ──
+          // This bypasses the empty-page problem (Brainly requires JS rendering).
+          if (isFreeTextHost && _brainlyUrls.length > 0) {
+            const _graphqlAnswer = await _getBrainlyAnswer(link);
+            if (_graphqlAnswer && _graphqlAnswer.length > 20) {
+              // Inject GraphQL answer as pageText so FreeTextAnswerService can map it
+              const _injectedText = '[GraphQL] ' + _graphqlAnswer;
+              console.log('  🧠 [BRAINLY-GQL] Using GraphQL answer for ' + hostHint + ' (' + _graphqlAnswer.length + ' chars): ' + _graphqlAnswer.substring(0, 100));
+              try {
+                const ftGql = await FreeTextAnswerService.extractAnswerFromFreeText(_injectedText, originalOptionsMap, questionStem);
+                if (ftGql?.letter) {
+                  console.log('  🧠 [BRAINLY-GQL] Mapped to letter=' + ftGql.letter + ' conf=' + ftGql.confidence.toFixed(3));
+                  const domainWeight = getDomainWeight(link);
+                  const gqlWeight = Math.min(1.2, (ftGql.confidence || 0.70) * domainWeight * 1.05);
+                  sources.push({
+                    title,
+                    link,
+                    letter: ftGql.letter,
+                    weight: gqlWeight,
+                    evidenceType: 'brainly-graphql',
+                    hostHint,
+                    sourceId: hostHint + ':graphql',
+                    evidenceBlock: ftGql.snippet || _graphqlAnswer.slice(0, 500),
+                    matchQuality: topicSimBase,
+                    questionPolarity
+                  });
+                  runStats.acceptedViaFreeText = (runStats.acceptedViaFreeText || 0) + 1;
+                  console.groupEnd();
+                  continue;
+                } else {
+                  console.log('  🧠 [BRAINLY-GQL] Could not map answer to option letter');
+                }
+              } catch (gqlErr) {
+                console.warn('  🧠 [BRAINLY-GQL] FreeText mapping failed:', gqlErr?.message);
+              }
+            }
+          }
           if (isFreeTextHost && hasOptions && topicSimBase >= 0.28 && !obfuscation?.isObfuscated) {
             console.log(`  🗒️ [FREETEXT] Attempting FreeTextAnswerService for ${hostHint} (topicSim=${topicSimBase.toFixed(3)})`);
             try {
@@ -1760,7 +1847,7 @@ export const SearchService = {
           }
           // Remap letter if source has shuffled options — use evidence or scopedCombinedText for best coverage
           console.log(`  🔀 Structured pre-remap letter: ${structured.letter} — attempting remap via evidence or scopedCombinedText...`);
-          structured.letter = this._remapLetterIfShuffled(structured.letter, structured.evidence || scopedCombinedText, originalOptionsMap);
+          structured.letter = this._remapLetterIfShuffled(structured.letter, this._bestRemapText(structured.evidence, scopedCombinedText), originalOptionsMap);
           console.log(`  🔀 Structured post-remap letter: ${structured.letter}`);
           const baseWeight = getDomainWeight(link);
           const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
@@ -1891,7 +1978,7 @@ export const SearchService = {
           if (extracted?.letter) {
             console.log(`  📄 PDF-highlight raw letter: ${extracted.letter} — attempting remap via evidence or scopedCombinedText...`);
             // Remap letter if source has shuffled options
-            extracted.letter = this._remapLetterIfShuffled(extracted.letter, extracted.evidence || scopedCombinedText, originalOptionsMap);
+            extracted.letter = this._remapLetterIfShuffled(extracted.letter, this._bestRemapText(extracted.evidence, scopedCombinedText), originalOptionsMap);
             console.log(`SearchService: PDF signal detected. host=${hostHint} letter=${extracted.letter} method=${extracted.method || 'ff1-highlight'}`);
             const baseWeight = getDomainWeight(link);
             const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
@@ -1982,7 +2069,7 @@ export const SearchService = {
         if (localResult?.letter) {
           console.log(`  🔀 Local pre-remap letter: ${localResult.letter}`);
           // Remap letter if source has shuffled options
-          localResult.letter = this._remapLetterIfShuffled(localResult.letter, localResult.evidence || scopedCombinedText, originalOptionsMap);
+          localResult.letter = this._remapLetterIfShuffled(localResult.letter, this._bestRemapText(localResult.evidence, scopedCombinedText), originalOptionsMap);
           console.log(`  🔀 Local post-remap letter: ${localResult.letter}`);
           const baseWeight = getDomainWeight(link);
           const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
@@ -2048,7 +2135,7 @@ export const SearchService = {
         if (extracted?.letter) {
           console.log(`  🔀 Explicit pre-remap letter: ${extracted.letter}`);
           // Remap letter if source has shuffled options
-          extracted.letter = this._remapLetterIfShuffled(extracted.letter, extracted.evidence || scopedCombinedText, originalOptionsMap);
+          extracted.letter = this._remapLetterIfShuffled(extracted.letter, this._bestRemapText(extracted.evidence, scopedCombinedText), originalOptionsMap);
           console.log(`  🔀 Explicit post-remap letter: ${extracted.letter}`);
           const baseWeight = getDomainWeight(link);
           const weight = baseWeight + 2.0;
@@ -2161,7 +2248,7 @@ export const SearchService = {
           }
           if (aiExtracted?.letter) {
             console.log(`  🤖 [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
-            aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, aiExtracted.evidence || scopedCombinedText, originalOptionsMap);
+            aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, this._bestRemapText(aiExtracted.evidence, scopedCombinedText), originalOptionsMap);
             console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
             // Validate the letter exists in the user's options map.
             // The AI may find a different question on the same page (e.g. one with 5 options)
@@ -2639,6 +2726,7 @@ export const SearchService = {
       // source to satisfy minRelevantSources.
       relevant.some(e => e.origin === 'aiEvidence' && (e.topicSim || 0) >= 0.95) && relevant.length >= 2);
       const isSnippetStemSynthesis = canProceedAISynthesisOnly && highConfidenceSnippetStems.length >= 2;
+      let aiCombinedRan = false;
       const canProceedAI = relevant.length > 0 && sources.length > 0 && (!hasOptions || hasReliableOptionAlignedSource && (relevant.length >= minRelevantSources || hasSingleHighTrustAnchor)) || canProceedAISynthesisOnly;
       console.log(`canProceedAI=${canProceedAI}`);
       if (canProceedAISynthesisOnly) {
@@ -2653,6 +2741,7 @@ export const SearchService = {
         console.groupEnd();
       }
       if (canProceedAI) {
+        aiCombinedRan = true;
         _ahTimer.mark('AI Combined Pass — Prepare Evidence');
         const merged = relevant.map((e, i) => `SOURCE ${i + 1}: ${e.title}\n${e.text}\nLINK: ${e.link}`).join('\n\n');
 
@@ -2923,6 +3012,90 @@ export const SearchService = {
     } catch (_) {}
 
     // ═══ DEBUG: Final Voting Breakdown ═══
+
+    // ═══ AI VERIFICATION — Low-confidence single-source fallback ═══
+    // Triggered when: resultState=suggested, confidence<0.72, single source, AI Combined did NOT run
+    // Purpose: catch shuffled options or short source text cases where letter may be wrong
+    _ahTimer.mark('Pre-AI Verification');
+    if (
+      resultState === 'suggested' &&
+      confidence < 0.72 &&
+      sources.length === 1 &&
+      !aiCombinedRan &&
+      hasOptions &&
+      originalOptionsMap
+    ) {
+      const _verifSrc = sources[0];
+      const _verifText = _scopedTextsMap.get(_verifSrc.link) || '';
+      console.group('🔎 AI Verification (low-confidence single-source)');
+      console.log(`  trigger: resultState=${resultState} confidence=${(confidence||0).toFixed(2)} sources=${sources.length} aiCombinedRan=${aiCombinedRan}`);
+      console.log(`  source: host=${_verifSrc.hostHint} letter=${_verifSrc.letter} scopedText=${_verifText.length} chars`);
+      if (_verifText.length >= 200 && _verifSrc.letter) {
+        try {
+          if (typeof onStatus === 'function') onStatus('Verificando resposta com IA...');
+          const _verifResult = await ApiService.aiVerifyLetterInContext(
+            questionForInference,
+            _verifSrc.letter,
+            _verifText,
+            _verifSrc.hostHint || _verifSrc.link || 'unknown'
+          );
+          if (_verifResult?.letter && /^[A-E]$/.test(_verifResult.letter)) {
+            const _verifLetter = this._remapLetterIfShuffled(
+              _verifResult.letter,
+              this._bestRemapText(_verifText, ''),
+              originalOptionsMap
+            );
+            console.log(`  🤖 AI verification result: ${_verifResult.letter} → remapped: ${_verifLetter} (original: ${_verifSrc.letter})`);
+            if (_verifLetter !== _verifSrc.letter) {
+              console.log(`  ⚠️ AI disagrees with source letter — adding verification source for recompute`);
+              const _verifEvidBlock = EvidenceService.buildEvidenceBlock({
+                questionFingerprint,
+                sourceId: `ai-verif:${_verifSrc.sourceId || _verifSrc.link}`,
+                sourceLink: _verifSrc.link || '',
+                hostHint: 'ai-verification',
+                evidenceText: _verifResult.reasoning || '',
+                originalOptionsMap,
+                explicitLetter: _verifLetter,
+                confidenceLocal: 0.65,
+                evidenceType: 'ai-verification'
+              });
+              sources.push({
+                title: `AI Verification (${_verifSrc.hostHint || 'source'})`,
+                link: _verifSrc.link || '',
+                letter: _verifLetter,
+                weight: 1.8,
+                evidenceType: 'ai-verification',
+                questionPolarity,
+                hostHint: 'ai-verification',
+                sourceId: `ai-verif:${_verifSrc.sourceId || _verifSrc.link}`,
+                evidenceBlock: _verifEvidBlock
+              });
+              const _recomputed = EvidenceService.computeVotesAndState(sources);
+              votes = _recomputed.votes;
+              baseVotes = _recomputed.baseVotes;
+              evidenceVotes = _recomputed.evidenceVotes;
+              bestLetter = _recomputed.bestLetter;
+              resultState = _recomputed.resultState;
+              confidence = _recomputed.confidence;
+              reason = _recomputed.reason;
+              evidenceConsensus = _recomputed.evidenceConsensus;
+              console.log(`  ✅ Recomputed votes: bestLetter=${bestLetter} state=${resultState} confidence=${(confidence||0).toFixed(2)}`);
+            } else {
+              console.log(`  ✅ AI confirms letter ${_verifLetter} — boosting confidence`);
+              confidence = Math.min(0.88, (confidence || 0.5) + 0.15);
+            }
+          } else {
+            console.log(`  ❌ AI verification returned no valid letter: ${JSON.stringify(_verifResult)}`);
+          }
+        } catch (_verifErr) {
+          console.warn(`  🔎 AI verification error:`, _verifErr?.message || _verifErr);
+        }
+      } else {
+        console.log(`  ⏭️ Skip: scopedText too short (${_verifText.length} chars) or no source letter`);
+      }
+      console.groupEnd();
+    }
+    _ahTimer.mark('AI Verification Step');
     console.group('🏳️ Final Voting Breakdown');
     console.log('All sources:');
     sources.forEach((s, i) => {

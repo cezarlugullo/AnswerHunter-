@@ -572,14 +572,14 @@
         </div>
         <div style="display: flex; gap: 8px; margin-top: 12px;">
           <select id="select-chatgpt-model" class="ob-input"
-            style="flex: 1; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: white; border-radius: 8px; padding: 8px;">
-            <optgroup label="★ Recomendado">
-              <option value="gpt-5.2-codex">GPT-5.2 Codex (mais inteligente)</option>
-              <option value="gpt-5.1-codex-max">GPT-5.1 Codex Max (tarefas longas)</option>
+            style="flex: 1; border: 1px solid rgba(16,163,127,0.25); background: rgba(0,0,0,0.25); color: white; border-radius: 8px; padding: 8px 10px; font-size: 0.8rem; cursor: pointer;">
+            <optgroup label="✨ Recomendado">
+              <option value="gpt-5.2-codex">GPT-5.2 Codex — ★ mais inteligente</option>
+              <option value="gpt-5.1-codex-max">GPT-5.1 Codex Max — tarefas longas</option>
             </optgroup>
-            <optgroup label="Codex Padrão">
-              <option value="gpt-5.1-codex">GPT-5.1 Codex</option>
-              <option value="gpt-5.1-codex-mini">GPT-5.1 Codex Mini (rápido)</option>
+            <optgroup label="⚡ Padrão">
+              <option value="gpt-5.1-codex">GPT-5.1 Codex — padrão</option>
+              <option value="gpt-5.1-codex-mini">GPT-5.1 Codex Mini — rápido</option>
             </optgroup>
           </select>
           <button id="chatgpt-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
@@ -757,28 +757,32 @@
 
         <div style="display: flex; gap: 8px; margin-top: 10px;">
           <select id="select-copilot-model" class="ob-input"
-            style="flex: 1; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: white; border-radius: 8px; padding: 8px; font-size: 0.8rem;">
-            <optgroup label="★ Recomendado">
-              <option value="gpt-4o">GPT-4o (equilibrado)</option>
-              <option value="gpt-4o-mini">GPT-4o Mini (rápido)</option>
-              <option value="gpt-4.1">GPT-4.1 (qualidade)</option>
-              <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+            style="flex: 1; border: 1px solid rgba(121,192,255,0.25); background: rgba(0,0,0,0.25); color: white; border-radius: 8px; padding: 8px 10px; font-size: 0.8rem; cursor: pointer;">
+            <optgroup label="✨ Recomendado para AnswerHunter  [1×]">
+              <option value="claude-sonnet-4.6" selected>Claude Sonnet 4.6 — ★ melhor custo-benefício</option>
+              <option value="claude-sonnet-4.5">Claude Sonnet 4.5 — análise precisa</option>
+              <option value="gpt-5.3-codex">GPT-5.3-Codex — GPT5 equilibrado</option>
+              <option value="gpt-5.2-codex">GPT-5.2-Codex — GPT5 sólido</option>
+              <option value="gpt-5.1-codex">GPT-5.1-Codex — GPT5 padrão</option>
+              <option value="gemini-3-pro">Gemini 3 Pro (Preview) — Google top</option>
+              <option value="claude-sonnet-4">Claude Sonnet 4 — geração anterior</option>
             </optgroup>
-            <optgroup label="Raciocínio">
-              <option value="o3">o3 (raciocínio forte)</option>
-              <option value="o3-mini">o3-mini (raciocínio)</option>
-              <option value="o1">o1 (complexo)</option>
+            <optgroup label="🆓 Sem custo de quota  [0×]">
+              <option value="gpt-5-mini">GPT-5 Mini — grátis, boa qualidade</option>
+              <option value="gpt-4.1">GPT-4.1 — grátis, muito bom</option>
             </optgroup>
-            <optgroup label="Claude">
-              <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
-              <option value="claude-sonnet-4">Claude Sonnet 4</option>
-              <option value="claude-3.7-sonnet">Claude 3.7 Sonnet</option>
-              <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+            <optgroup label="⚡ Rápido e econômico  [0.33×]">
+              <option value="claude-haiku-4.5">Claude Haiku 4.5 — rápido e barato</option>
+              <option value="gpt-5.1-codex-mini">GPT-5.1-Codex-Mini (Preview) — leve</option>
             </optgroup>
-            <optgroup label="Gemini">
-              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <optgroup label="🧠 GPT-5 Completo  [1×]">
+              <option value="gpt-5.2">GPT-5.2 — sem Codex</option>
+              <option value="gpt-5.1-codex-max">GPT-5.1-Codex-Max — tarefas longas</option>
+              <option value="gpt-5.1">GPT-5.1 — base GPT5</option>
+            </optgroup>
+            <optgroup label="💎 Premium  [3×]">
+              <option value="claude-opus-4.6">Claude Opus 4.6 — máxima inteligência</option>
+              <option value="claude-opus-4.5">Claude Opus 4.5 — geração anterior</option>
             </optgroup>
           </select>
           <button id="copilot-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
