@@ -9,6 +9,7 @@ import { isLikelyQuestion } from '../utils/helpers.js';
 import { ChatGPTAuthService } from '../services/ChatGPTAuthService.js';
 import { GeminiCLIAuthService } from '../services/GeminiCLIAuthService.js';
 import { CopilotAuthService } from '../services/CopilotAuthService.js';
+import { PerformanceTimer } from '../utils/PerformanceTimer.js';
 
 export const PopupController = {
   view: null,
@@ -1829,6 +1830,9 @@ export const PopupController = {
     this.view.setButtonDisabled('copyBtn', true);
     this.view.clearResults();
 
+    // AH-PERF: End-to-end handleSearch timer
+    const _pcTimer = PerformanceTimer.create('🧩 handleSearch() — End-to-End');
+
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
@@ -1841,6 +1845,7 @@ export const PopupController = {
         target: { tabId: tab.id, allFrames: true },
         function: ExtractionService.extractQuestionOnlyScript
       });
+      _pcTimer.mark('DOM Extraction (executeScript)');
 
       const countDistinctOptions = (text) => {
         if (!text) return 0;
@@ -2920,6 +2925,7 @@ export const PopupController = {
         return;
       }
 
+      _pcTimer.mark('Question Selection + Validation');
       console.log('AnswerHunter: displayQuestion sent to search →', displayQuestion.substring(0, 200));
 
       // -- Phase 2: dispatch the slow network work to the background service worker --
@@ -2941,6 +2947,7 @@ export const PopupController = {
           displayQuestion
         });
         bgDispatched = true;
+        _pcTimer.mark('Background SW Dispatch (SEARCH_PHASE2)');
       } catch (_bgErr) {
         console.warn('AnswerHunter: BG dispatch failed — running search inline:', _bgErr?.message);
       }
@@ -2949,6 +2956,7 @@ export const PopupController = {
         // Inline fallback (background SW unavailable)
         await chrome.storage.local.remove('ah_pending_search');
         const _sr = await SearchService.searchOnly(displayQuestion);
+        _pcTimer.mark(`Inline Fallback: searchOnly (${(_sr||[]).length} results)`);
         if (!_sr?.length) {
           this.view.showStatus('loading', this.t('status.noSourcesAskAi'));
           await this.renderAiFallback(displayQuestion, displayQuestion);
@@ -2956,10 +2964,14 @@ export const PopupController = {
         }
         this.view.showStatus('loading', this.t('status.foundAndAnalyzing', { count: _sr.length }));
         const _fr = await SearchService.refineFromResults(bestQuestion, _sr, displayQuestion, (m) => this.view.showStatus('loading', m));
+        _pcTimer.mark('Inline Fallback: refineFromResults');
+        _pcTimer.summary();
         await this._finishBackgroundSearch(_fr, displayQuestion, bestQuestion);
         return;
       }
 
+      _pcTimer.mark('BG Polling Started');
+      _pcTimer.summary();
       this.view.showStatus('loading', this.t('status.searchingBackground'));
       this._startPollBackgroundSearch(requestId, displayQuestion, bestQuestion);
     } catch (error) {

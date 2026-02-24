@@ -1474,6 +1474,10 @@ function init(questions) {
     allQuestions = sorted;
     rebuildCardList(sorted, mode);
     initDoneDrawerFromSm2(); // move today's rated cards to the done drawer on reload
+
+    // Initialize gamification on load
+    loadStreakData().then(data => renderStreakUI(data));
+    updateDailyProgress();
   }).catch(() => {});
 
   // Hide answered chip
@@ -1841,8 +1845,11 @@ async function rateSm2(qid, quality, sm2Bar, doneEl) {
   data[qid] = newEntry;
   await saveSm2Data(data);
 
-  // Update XP
+  // Update XP (also triggers streak + daily progress inside awardXP)
   awardXP(quality === 0 ? 2 : quality === 1 ? 5 : quality === 2 ? 10 : 15);
+
+  // Motivational nudge every N cards
+  maybeShowMotivation();
 
   // Prepare done badge (will be visible in the drawer after animation)
   showSm2DoneBadge(sm2Bar, doneEl, newEntry);
@@ -2454,8 +2461,178 @@ async function awardXP(amount) {
 
   if (leveledUp) {
     setTimeout(() => {
-      showSyncToast(`Nível ${newLevel} alcançado! +XP`);
+      showSyncToast(`🏆 Nível ${newLevel} alcançado!`);
+      microCelebrate('levelup');
     }, 400);
+  }
+
+  // Update streak and daily progress after XP award
+  updateStreak();
+  updateDailyProgress();
+}
+
+// ══ Streak System (dopamine-friendly daily consistency) ══════════════════════
+
+const STREAK_KEY = 'ah_streakData';
+
+async function loadStreakData() {
+  return new Promise(resolve => {
+    chrome.storage.local.get([STREAK_KEY], r => resolve(r[STREAK_KEY] || { count: 0, lastDate: null }));
+  });
+}
+
+async function saveStreakData(data) {
+  return new Promise(resolve => chrome.storage.local.set({ [STREAK_KEY]: data }, resolve));
+}
+
+async function updateStreak() {
+  const data = await loadStreakData();
+  const todayStr = todayISO();
+
+  if (data.lastDate === todayStr) {
+    // Already counted today — just refresh UI
+    renderStreakUI(data);
+    return data;
+  }
+
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+  if (data.lastDate === yesterdayStr) {
+    // Consecutive day — increment streak
+    data.count = (data.count || 0) + 1;
+  } else if (data.lastDate && data.lastDate !== todayStr) {
+    // Streak broken — reset to 1
+    data.count = 1;
+  } else {
+    // First ever
+    data.count = 1;
+  }
+  data.lastDate = todayStr;
+  await saveStreakData(data);
+  renderStreakUI(data);
+
+  // Milestone celebrations
+  if ([3, 7, 14, 30, 50, 100].includes(data.count)) {
+    setTimeout(() => {
+      microCelebrate('streak');
+      showSyncToast(`🔥 ${data.count} ${data.count === 1 ? 'dia seguido' : 'dias seguidos'}! Continue assim!`);
+    }, 600);
+  }
+
+  return data;
+}
+
+function renderStreakUI(data) {
+  const el = document.getElementById('streakCount');
+  const container = document.getElementById('streakBar');
+  if (!el || !container) return;
+  el.textContent = data.count || 0;
+  container.style.display = (data.count || 0) > 0 ? '' : 'none';
+  // Update text for singular/plural
+  const textEl = container.querySelector('.streak-text');
+  if (textEl) textEl.textContent = data.count === 1 ? 'dia seguido' : 'dias seguidos';
+  // Fire emoji based on streak length
+  const fireEl = container.querySelector('.streak-fire');
+  if (fireEl) {
+    fireEl.textContent = data.count >= 30 ? '🏆' : data.count >= 14 ? '💎' : data.count >= 7 ? '⚡' : '🔥';
+  }
+}
+
+// ══ Daily Progress Tracking (visual progress bar — ADHD-friendly) ════════════
+
+async function updateDailyProgress() {
+  const data = await loadSm2Data();
+  const todayStr = todayISO();
+  const doneToday = allQuestions.filter(q => data[q.id]?.lastRated === todayStr).length;
+  const totalCards = allQuestions.length;
+  const pct = totalCards > 0 ? Math.round((doneToday / totalCards) * 100) : 0;
+
+  const bar = document.getElementById('dailyProgressFill');
+  const label = document.getElementById('dailyProgressLabel');
+  const container = document.getElementById('dailyProgressBar');
+  if (!bar || !label || !container) return;
+
+  container.style.display = '';
+  bar.style.width = pct + '%';
+  label.textContent = `${doneToday}/${totalCards} hoje (${pct}%)`;
+
+  // Color transitions for progress milestones
+  if (pct >= 100) {
+    bar.style.background = 'linear-gradient(90deg, var(--accent) 0%, #a855f7 100%)';
+  } else if (pct >= 75) {
+    bar.style.background = 'linear-gradient(90deg, var(--accent) 0%, #22c55e 100%)';
+  } else if (pct >= 50) {
+    bar.style.background = 'var(--accent)';
+  } else {
+    bar.style.background = 'var(--accent)';
+  }
+
+  // Milestone micro-celebrations
+  if (doneToday > 0 && doneToday === totalCards) {
+    microCelebrate('complete');
+  } else if (doneToday === Math.ceil(totalCards / 2) && totalCards > 3) {
+    microCelebrate('halfway');
+  }
+}
+
+// ══ Micro-Celebrations (dopamine-friendly feedback — research backed) ════════
+
+const MOTIVATIONAL_MESSAGES = [
+  '💪 Cada questão revisada fortalece suas conexões neurais!',
+  '🧠 Espaçamento ativo: seu cérebro está consolidando agora!',
+  '🎯 Retrieval practice: testar > reler. Você está no caminho certo!',
+  '⚡ Elaboração: você está construindo pontes entre conceitos!',
+  '🌟 Consistência > intensidade. Continue assim!',
+  '🔄 Seu hipocampo agradece cada revisão espaçada!',
+  '📈 Progresso real acontece no longo prazo. Você está investindo!',
+  '🧩 Cada peça de conhecimento se conecta com as outras!',
+  '💡 Micro-learning funciona: sessões curtas = retenção longa!',
+  '🏗️ Você está construindo memória de longo prazo agora!',
+];
+
+function microCelebrate(type = 'generic') {
+  const container = document.createElement('div');
+  container.className = 'micro-celebration';
+  container.setAttribute('aria-hidden', 'true');
+
+  if (type === 'levelup') {
+    container.innerHTML = '🏆';
+    container.classList.add('celebrate-levelup');
+  } else if (type === 'streak') {
+    container.innerHTML = '🔥';
+    container.classList.add('celebrate-streak');
+  } else if (type === 'complete') {
+    container.innerHTML = '🎉';
+    container.classList.add('celebrate-complete');
+  } else if (type === 'halfway') {
+    container.innerHTML = '⭐';
+    container.classList.add('celebrate-halfway');
+  } else {
+    container.innerHTML = '✨';
+  }
+
+  document.body.appendChild(container);
+  setTimeout(() => container.remove(), 2200);
+}
+
+function showMotivationalMessage() {
+  const msg = MOTIVATIONAL_MESSAGES[Math.floor(Math.random() * MOTIVATIONAL_MESSAGES.length)];
+  const el = document.getElementById('motivationMsg');
+  if (el) {
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 6000);
+  }
+}
+
+// Show a motivational message every N rated cards
+let _ratedCountSession = 0;
+function maybeShowMotivation() {
+  _ratedCountSession++;
+  if (_ratedCountSession % 5 === 0) {
+    showMotivationalMessage();
   }
 }
 
@@ -2907,53 +3084,161 @@ if (chipErrors) {
   });
 }
 
-// ══ Leitura em Voz Alta ══════════════════════════════════════════════════════
+// ══ Leitura em Voz Alta (Google Translate TTS — grátis, sem API key) ═════════
 
 let _speechUtterance = null;
+let _ttsAudio = null;          // current Audio element
+let _ttsQueue = [];            // queue of audio chunks to play
+let _ttsPlaying = false;
 
-function speakText(text, btn) {
-  if (!('speechSynthesis' in window)) {
-    alert('Leitura em voz alta não suportada neste navegador.');
+function _resetVoiceBtn(btn) {
+  btn.classList.remove('speaking');
+  btn.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
+}
+
+function _stopAllSpeech() {
+  _ttsQueue = [];
+  _ttsPlaying = false;
+  if (_ttsAudio) {
+    _ttsAudio.pause();
+    _ttsAudio.currentTime = 0;
+    _ttsAudio = null;
+  }
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  document.querySelectorAll('.btn-voice.speaking').forEach(b => _resetVoiceBtn(b));
+}
+
+/**
+ * Split text into chunks ≤ maxLen at sentence/word boundaries.
+ */
+function _chunkText(text, maxLen = 180) {
+  const chunks = [];
+  let remaining = text.trim();
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLen) {
+      chunks.push(remaining);
+      break;
+    }
+    // Try to break at sentence end (. ! ? ;)
+    let cut = -1;
+    for (let i = maxLen; i > maxLen * 0.4; i--) {
+      if ('.!?;'.includes(remaining[i])) { cut = i + 1; break; }
+    }
+    // Fallback: break at space
+    if (cut === -1) {
+      for (let i = maxLen; i > maxLen * 0.3; i--) {
+        if (remaining[i] === ' ') { cut = i; break; }
+      }
+    }
+    if (cut === -1) cut = maxLen;
+    chunks.push(remaining.substring(0, cut).trim());
+    remaining = remaining.substring(cut).trim();
+  }
+  return chunks.filter(c => c.length > 0);
+}
+
+/**
+ * Build Google Translate TTS URL for a text chunk.
+ * This is the same endpoint Google Translate uses — free, no key needed.
+ */
+function _gTranslateTtsUrl(text) {
+  const encoded = encodeURIComponent(text);
+  return `https://translate.google.com/translate_tts?ie=UTF-8&tl=pt-BR&client=tw-ob&q=${encoded}&textlen=${text.length}`;
+}
+
+/**
+ * Play queued audio chunks sequentially.
+ */
+function _playNextChunk(btn) {
+  if (_ttsQueue.length === 0) {
+    _ttsPlaying = false;
+    _ttsAudio = null;
+    _resetVoiceBtn(btn);
     return;
   }
-  // If currently speaking this button's text, stop
-  if (btn.classList.contains('speaking')) {
-    window.speechSynthesis.cancel();
-    btn.classList.remove('speaking');
-    btn.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
-    return;
-  }
 
-  // Cancel any current speech
-  window.speechSynthesis.cancel();
-  document.querySelectorAll('.btn-voice.speaking').forEach(b => {
-    b.classList.remove('speaking');
-    b.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
+  const url = _ttsQueue.shift();
+  const audio = new Audio(url);
+  _ttsAudio = audio;
+  _ttsPlaying = true;
+
+  audio.addEventListener('ended', () => _playNextChunk(btn));
+  audio.addEventListener('error', (e) => {
+    console.warn('[AH-TTS] Chunk playback error, trying fallback', e);
+    // If Google Translate TTS fails, drain queue and use Web Speech for full text
+    _ttsQueue = [];
+    _ttsAudio = null;
+    _ttsPlaying = false;
+    // Don't reset btn — fallback will handle it
   });
+
+  audio.play().catch(() => {
+    _ttsQueue = [];
+    _ttsAudio = null;
+    _ttsPlaying = false;
+    _resetVoiceBtn(btn);
+  });
+}
+
+/**
+ * Try Google Translate TTS (chunked, natural voice, free).
+ * @returns {boolean} true if started successfully
+ */
+function _tryGoogleTranslateTTS(text, btn) {
+  const chunks = _chunkText(text, 180);
+  if (chunks.length === 0) return false;
+
+  _ttsQueue = chunks.map(c => _gTranslateTtsUrl(c));
+  _playNextChunk(btn);
+  return true;
+}
+
+/**
+ * Fallback: Web Speech API (robotic, but always available offline).
+ */
+function _fallbackWebSpeech(text, btn) {
+  if (!('speechSynthesis' in window)) {
+    _resetVoiceBtn(btn);
+    return;
+  }
 
   _speechUtterance = new SpeechSynthesisUtterance(text);
   _speechUtterance.lang = 'pt-BR';
-  _speechUtterance.rate = 0.9;
+  _speechUtterance.rate = 0.92;
   _speechUtterance.pitch = 1;
 
-  // Find Portuguese voice if available
   const voices = window.speechSynthesis.getVoices();
-  const ptVoice = voices.find(v => v.lang.startsWith('pt'));
-  if (ptVoice) _speechUtterance.voice = ptVoice;
+  const bestVoice = voices.find(v => v.lang === 'pt-BR' && /google/i.test(v.name))
+    || voices.find(v => v.lang === 'pt-BR')
+    || voices.find(v => v.lang.startsWith('pt'));
+  if (bestVoice) _speechUtterance.voice = bestVoice;
 
+  _speechUtterance.onend = () => _resetVoiceBtn(btn);
+  _speechUtterance.onerror = () => _resetVoiceBtn(btn);
+  window.speechSynthesis.speak(_speechUtterance);
+}
+
+/**
+ * Main entry: speak text with best available voice.
+ * 1) Google Translate TTS (free, no key, natural voice)
+ * 2) Web Speech API fallback (offline/robotic)
+ */
+async function speakText(text, btn) {
+  if (btn.classList.contains('speaking')) {
+    _stopAllSpeech();
+    return;
+  }
+
+  _stopAllSpeech();
   btn.classList.add('speaking');
   btn.innerHTML = '<span class="icon">stop_circle</span> Parar';
 
-  _speechUtterance.onend = () => {
-    btn.classList.remove('speaking');
-    btn.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
-  };
-  _speechUtterance.onerror = () => {
-    btn.classList.remove('speaking');
-    btn.innerHTML = '<span class="icon">record_voice_over</span> Ouvir';
-  };
+  // Primary: Google Translate TTS (natural voice, free)
+  const started = _tryGoogleTranslateTTS(text, btn);
+  if (started) return;
 
-  window.speechSynthesis.speak(_speechUtterance);
+  // Fallback: Web Speech API
+  _fallbackWebSpeech(text, btn);
 }
 
 // ══ Tags IA ══════════════════════════════════════════════════════════════════

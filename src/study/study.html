@@ -527,10 +527,10 @@
     .progress-strip {
       background: var(--surface);
       border-bottom: 1px solid var(--border-soft);
-      padding: 8px 24px;
+      padding: 10px 24px;
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 14px;
     }
     .progress-label {
       font-size: 0.75rem;
@@ -577,10 +577,10 @@
       overflow-y: auto;
       border-right: 1px solid var(--border);
       background: var(--surface);
-      padding: 16px 12px;
+      padding: 18px 14px;
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
     }
 
     .sidebar-section-label {
@@ -589,7 +589,8 @@
       text-transform: uppercase;
       letter-spacing: 0.7px;
       color: var(--muted-light);
-      padding: 10px 8px 5px;
+      padding: 12px 8px 6px;
+      margin-top: 4px;
     }
 
     .sidebar-stat {
@@ -617,7 +618,7 @@
     .sidebar-divider {
       height: 1px;
       background: var(--border-soft);
-      margin: 8px 4px;
+      margin: 10px 4px;
     }
 
     .sidebar-nav-item {
@@ -654,10 +655,10 @@
 
     /* ── Card list ── */
     #cardList {
-      padding: 20px 24px 60px;
+      padding: 14px 28px 60px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 16px;
       max-width: 900px;
       width: 100%;
       margin: 0 auto;
@@ -723,7 +724,7 @@
     }
 
     /* ── Done Drawer ── */
-    .done-drawer { margin: 4px 0 24px; }
+    .done-drawer { margin: 8px 0 28px; }
     .done-drawer-header {
       display: flex;
       align-items: center;
@@ -775,6 +776,130 @@
     }
     .card.landing-in-drawer {
       animation: cardLandInDrawer 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    /* ── Gamification Bar (streak + daily progress) ── */
+    .gamification-bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 24px;
+      margin: 0;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .streak-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      color: var(--fg);
+      background: linear-gradient(135deg, #fef3c7, #fde68a33);
+      border: 1px solid #fbbf2444;
+      border-radius: 20px;
+      padding: 5px 16px 5px 12px;
+      white-space: nowrap;
+      transition: transform 0.2s;
+    }
+    .streak-bar:hover { transform: scale(1.03); }
+    .streak-fire { font-size: 1.1rem; }
+    .streak-label { font-weight: 500; }
+    #streakCount { font-size: 1.05rem; color: #d97706; }
+    .streak-text { font-weight: 400; color: var(--muted); font-size: 0.78rem; }
+
+    .daily-progress-bar {
+      flex: 1;
+      min-width: 120px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .daily-progress-track {
+      flex: 1;
+      height: 6px;
+      background: var(--border-soft);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .daily-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 6px;
+      transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1), background 0.4s;
+    }
+    .daily-progress-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      white-space: nowrap;
+      min-width: 60px;
+    }
+
+    /* ── Motivational Message ── */
+    .motivation-msg {
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--accent);
+      padding: 0 12px;
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+      transition: max-height 0.4s ease, opacity 0.4s ease, padding 0.4s ease;
+    }
+    .motivation-msg.show {
+      max-height: 40px;
+      opacity: 1;
+      padding: 6px 12px;
+    }
+
+    /* ── Micro-Celebrations ── */
+    .micro-celebration {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      font-size: 4rem;
+      z-index: 10000;
+      pointer-events: none;
+      animation: celebratePop 2s ease forwards;
+    }
+    @keyframes celebratePop {
+      0%   { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+      30%  { transform: translate(-50%, -50%) scale(1.3); opacity: 1; }
+      50%  { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+    }
+    .celebrate-levelup { animation-duration: 2.5s; }
+    .celebrate-streak  { animation-duration: 2.2s; }
+    .celebrate-complete {
+      font-size: 5rem;
+      animation-duration: 3s;
+    }
+
+    /* ── ADHD-Friendly Content Readability ── */
+    .card-body .ai-tutor-answer,
+    .card-body .ai-review-card,
+    .card-body .explanation-box {
+      line-height: 1.75;
+      max-width: 65ch;
+      font-size: 0.92rem;
+    }
+    .card-body .ai-tutor-answer p,
+    .card-body .ai-review-card p,
+    .card-body .explanation-box p {
+      margin-bottom: 0.75em;
+    }
+    .card-body .ai-tutor-answer strong,
+    .card-body .ai-review-card strong {
+      color: var(--accent);
+    }
+    .card-body .ai-tutor-answer ul,
+    .card-body .ai-review-card ul {
+      padding-left: 1.2em;
+    }
+    .card-body .ai-tutor-answer li,
+    .card-body .ai-review-card li {
+      margin-bottom: 0.4em;
     }
 
     /* Card header bar */
@@ -2949,8 +3074,8 @@
     }
 
     .subject-group-header {
-      margin: 16px 0 6px;
-      padding: 10px 14px;
+      margin: 14px 0 8px;
+      padding: 12px 16px;
       border: 1px solid rgba(255, 107, 0, 0.20);
       border-radius: var(--radius);
       background: linear-gradient(135deg, #fff7ed 0%, #fff 100%);
@@ -2964,6 +3089,9 @@
       letter-spacing: .01em;
       user-select: none;
       transition: background 0.15s;
+    }
+    #cardList > .subject-group-header:first-child {
+      margin-top: 4px;
     }
     .subject-group-header:hover { background: linear-gradient(135deg, #ffedd5 0%, #fff7ed 100%); }
     .subject-group-header .left {
@@ -3636,6 +3764,37 @@
       }
     }
 
+    /* ── Desktop spacing refinements ── */
+    @media (min-width: 1280px) {
+      .toolbar-row-nav {
+        padding: 8px 28px;
+      }
+      .toolbar-row-tools {
+        padding: 6px 28px;
+        gap: 8px;
+      }
+      .progress-strip {
+        padding: 10px 28px;
+      }
+      .gamification-bar {
+        padding: 8px 28px;
+      }
+      .stats-bar {
+        padding: 14px 28px;
+      }
+      #cardList {
+        max-width: 980px;
+        padding: 12px 30px 64px;
+        gap: 14px;
+      }
+      .subject-group-header {
+        margin: 12px 0 8px;
+      }
+      #cardList > .subject-group-header:first-child {
+        margin-top: 2px;
+      }
+    }
+
     /* ── Responsive ── */
     @media (max-width: 1120px) {
       .app-shell { grid-template-columns: 1fr; padding: 12px; }
@@ -3668,9 +3827,14 @@
     .stats-bar {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-      padding: 16px 0;
-      margin-bottom: 4px;
+      gap: 12px;
+      padding: 16px 24px;
+      margin-bottom: 8px;
+    }
+    #statsBar:empty {
+      display: none;
+      padding: 0;
+      margin: 0;
     }
     .stat-card {
       background: var(--surface);
@@ -4296,6 +4460,23 @@
       </div>
       <span class="progress-pct" id="progressPct">0%</span>
     </div>
+
+    <!-- Gamification bar: streak + daily progress -->
+    <div class="gamification-bar" id="gamificationBar">
+      <div class="streak-bar" id="streakBar" style="display:none">
+        <span class="streak-fire">🔥</span>
+        <span class="streak-label"><strong id="streakCount">0</strong> <span class="streak-text">dias seguidos</span></span>
+      </div>
+      <div class="daily-progress-bar" id="dailyProgressBar" style="display:none">
+        <div class="daily-progress-track">
+          <div class="daily-progress-fill" id="dailyProgressFill"></div>
+        </div>
+        <span class="daily-progress-label" id="dailyProgressLabel">0/0 hoje</span>
+      </div>
+    </div>
+
+    <!-- Motivational message -->
+    <div class="motivation-msg" id="motivationMsg" aria-live="polite"></div>
 
     <!-- Stats bar -->
     <div class="stats-bar" id="statsBar"></div>

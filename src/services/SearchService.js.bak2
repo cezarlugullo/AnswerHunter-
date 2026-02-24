@@ -45,7 +45,6 @@ import { HtmlExtractorService } from './search/HtmlExtractorService.js';
 import { EvidenceService } from './search/EvidenceService.js';
 import { SearchCacheService } from './search/SearchCacheService.js';
 import { FreeTextAnswerService } from './search/FreeTextAnswerService.js';
-import { PerformanceTimer } from '../utils/PerformanceTimer.js';
 
 // SearchService
 // Coordinates (1) direct extraction and (2) web search + evidence-based refinement.
@@ -946,9 +945,6 @@ export const SearchService = {
   async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null, pageGabarito = null) {
     if (!results || results.length === 0) return [];
 
-    // AH-PERF: Performance timer for search flow bottleneck analysis
-    const _ahTimer = PerformanceTimer.create('🔍 AnswerHunter Search Flow');
-
     // Reset webcache 429 tracking for this search session.
     ApiService.resetWebcache429();
 
@@ -1161,7 +1157,6 @@ export const SearchService = {
       aiOverview: !!serperMeta?.aiOverview,
       peopleAlsoAsk: Array.isArray(serperMeta?.peopleAlsoAsk) ? serperMeta.peopleAlsoAsk.length > 0 : !!serperMeta?.peopleAlsoAsk
     };
-    _ahTimer.mark('Setup & Question Parse');
     if (serperMeta && hasOptions) {
       console.group('🌐 Google Meta Signals (answerBox / AI Overview / PAA)');
       console.log('answerBox:', serperMeta.answerBox ? 'present' : 'absent');
@@ -1238,7 +1233,6 @@ export const SearchService = {
       console.groupEnd();
     }
 
-    _ahTimer.mark('Google Meta Signal Extraction');
     // ═══ BATCHED PAGE FETCH (with cross-search cache) ═══
     // Fetch in 2 batches: first 5 results (usually contain the answer), then
     // remaining 5 only if no strong answer found. Saves 2-4s when batch 1 suffices.
@@ -1311,7 +1305,6 @@ export const SearchService = {
     await _fetchBatch(batch1);
     _storeFetchInCache();
     console.log(`SearchService: Batch 1 fetch complete — ${_prefetchedSnaps.size} pages ready (${_cacheHits} from cache)`);
-    _ahTimer.mark('Batch 1 Page Fetch');
     let _batch2Fetched = batch2.length === 0;
     for (const result of topResults) {
       // Batch 2 trigger: after analyzing batch 1, check if we need more sources
@@ -1334,7 +1327,6 @@ export const SearchService = {
         await _fetchBatch(batch2);
         _storeFetchInCache();
         console.log(`SearchService: Batch 2 fetch complete — ${_prefetchedSnaps.size} total pages ready`);
-        _ahTimer.mark('Batch 2 Page Fetch (triggered)');
         _batch2Fetched = true;
       }
       try {
@@ -2267,7 +2259,6 @@ export const SearchService = {
 
     // Merge aiEvidence + collectedForCombined, sorted by topic similarity
 
-    _ahTimer.mark(`Source Analysis Loop (${runStats.analyzed} pages / ${runStats.acceptedForVotes} accepted)`);
     // ═══ DEFERRED AI-MISMATCH EXTRACTION ═══
     // Process mismatch sources that were queued during the main loop.
     // Only runs if we still lack strong explicit evidence — skip entirely when
@@ -2322,7 +2313,6 @@ export const SearchService = {
       }
     }
 
-    _ahTimer.mark('Deferred AI-Mismatch Extraction');
     // ═══ SNIPPET-LEVEL GABARITO EXTRACTION ═══
     // When no direct sources found, try to extract explicit gabarito from Serper
     // snippet + title text for each result. This catches cases where the SERP itself
@@ -2380,7 +2370,6 @@ export const SearchService = {
       console.groupEnd();
     }
 
-    _ahTimer.mark('Snippet-Level Gabarito Extraction');
     // Snippet fallback: use Serper snippets as a lightweight evidence source
     // for AI combined inference when other sources are insufficient.
     const totalBlocked = runStats.blockedSnapshotMismatch + runStats.blockedByError + runStats.blockedOptionsMismatch + runStats.blockedObfuscation;
@@ -2455,7 +2444,6 @@ export const SearchService = {
     });
     console.groupEnd();
 
-    _ahTimer.mark('Evidence Collection + Snippet Fallback');
     // Determine if we already have strong explicit evidence
     const hasStrongExplicit = sources.some(s => (s.weight || 0) >= 5.0);
     const __ahStrongExplicit = __ahDetectStrongExplicitV2(sources);
@@ -2653,14 +2641,12 @@ export const SearchService = {
         console.groupEnd();
       }
       if (canProceedAI) {
-        _ahTimer.mark('AI Combined Pass — Prepare Evidence');
         const merged = relevant.map((e, i) => `SOURCE ${i + 1}: ${e.title}\n${e.text}\nLINK: ${e.link}`).join('\n\n');
 
         // Desperate mode disabled: knowledge-only voting is not allowed without explicit evidence.
         const knowledgePromise = Promise.resolve(null);
         try {
           const [aiAnswer, knowledgeAnswer] = await Promise.all([ApiService.inferAnswerFromEvidence(questionForInference, merged), knowledgePromise]);
-          _ahTimer.mark('AI Combined Inference (inferAnswerFromEvidence)');
           let aiLetter = this._parseAnswerLetter(aiAnswer);
           let aiWeightUsed = null;
           // Fallback: match AI prose against known option texts
@@ -2840,7 +2826,6 @@ export const SearchService = {
     // ═══ AI COMBINED REFLECTION FALLBACK ═══
     // When no sources were accepted for voting but we accumulated knowledge
     // from AI page extraction, try a combined reflection as last resort.
-    _ahTimer.mark('AI Combined Pass End');
     if (sources.length === 0 && aiKnowledgePool.length > 0 && hasOptions) {
       console.group('🧠 AI Combined Reflection Fallback');
       console.log(`No voting sources. Knowledge pool has ${aiKnowledgePool.length} entries from AI extraction.`);
@@ -2897,7 +2882,6 @@ export const SearchService = {
     } else if (sources.length === 0 && aiKnowledgePool.length === 0) {
       console.log('🧠 No knowledge pool accumulated — reflection fallback skipped');
     }
-    _ahTimer.mark('AI Reflection Fallback');
     if (sources.length === 0) {
       logRunSummary('no-sources');
       return [];
@@ -2913,7 +2897,6 @@ export const SearchService = {
       evidenceConsensus
     } = EvidenceService.computeVotesAndState(sources);
 
-    _ahTimer.mark('Vote Computation (computeVotesAndState)');
     // AH_PHASE3_CONFIRM_LOCK
     try {
       if (resultState === 'suggested' && __ahPhase3ShouldConfirm(bestLetter, votes, sources)) {
@@ -2951,7 +2934,6 @@ export const SearchService = {
     } else if (hasExplicitEvidence && (evidenceConsensus?.bestEvidenceCount || 0) >= 1) {
       evidenceTier = 'EVIDENCE_MEDIUM';
     }
-    _ahTimer.mark('Final State + Answer Build');
     let overview = null;
     try {
       const overviewCandidates = [];
@@ -3002,8 +2984,6 @@ export const SearchService = {
     } catch (error) {
       console.warn('SearchService: failed to build overview payload:', error?.message || String(error));
     }
-    _ahTimer.mark('Overview Generation (generateOverviewFromEvidence)');
-    _ahTimer.summary();
     const finalPayload = [{
       question: questionText,
       answer,
@@ -3035,8 +3015,6 @@ export const SearchService = {
   },
   async searchAndRefine(questionText, originalQuestionWithOptions = '', onStatus = null) {
     const questionForInference = originalQuestionWithOptions || questionText;
-    // AH-PERF: Outer timer for full search pipeline
-    const _outerTimer = PerformanceTimer.create('🎯 searchAndRefine() — Full Pipeline');
     const questionFingerprint = await this._canonicalHash(questionForInference);
     const buildInconclusiveNoEvidence = reason => [{
       question: questionText,
@@ -3055,15 +3033,12 @@ export const SearchService = {
     const cachedResult = cachedDecision ? this._buildResultFromCachedDecision(questionText, questionForInference, cachedDecision) : null;
     const cachedItem = cachedResult?.[0] || null;
     const hasCached = !!cachedItem;
-    _outerTimer.mark(`Cache Lookup (hit=${hasCached})`);
     const results = await ApiService.searchWithSerper(questionText);
     const serperMeta = results?._serperMeta || null;
     const searchProvider = results?._searchProvider || null;
-    _outerTimer.mark('Serper Search (searchWithSerper)');
     const mergedResults = await this._mergeCachedSourcesIntoResults(questionFingerprint, results || []);
     if (serperMeta) mergedResults._serperMeta = serperMeta;
     if (searchProvider) mergedResults._searchProvider = searchProvider;
-    _outerTimer.mark('Merge Cached Sources');
     if (!mergedResults || mergedResults.length === 0) {
       if (hasCached) {
         await this._recordSearchMetrics({
@@ -3091,7 +3066,6 @@ export const SearchService = {
       return inconclusive;
     }
     const refined = await this.refineFromResults(questionText, mergedResults, originalQuestionWithOptions);
-    _outerTimer.mark('refineFromResults (full pipeline)');
     if (!refined || refined.length === 0) {
       if (hasCached) {
         await this._recordSearchMetrics({
@@ -3159,7 +3133,6 @@ export const SearchService = {
       bestLetter: resultItem.bestLetter || resultItem.answerLetter || '',
       confidence: Number(resultItem.confidence || 0)
     });
-    _outerTimer.summary();
     return refined;
   }
 };

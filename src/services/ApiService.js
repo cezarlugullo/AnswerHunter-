@@ -604,6 +604,111 @@ export const ApiService = {
         return s.primaryProvider === 'gemini' && !!s.geminiApiKey;
     },
 
+    /* ─────────────────────────────────────────────────────────────────
+     * _callWithProviderChain — centralised multi-provider fallback
+     *
+     * Replaces the repeated try-chain pattern found across many
+     * methods with ONE reusable mechanism.
+     *
+     * ALL five providers already share the same contract:
+     *   _callGemini / _callGroq / _callOpenRouter / _callChatGPT / _callCopilot
+     *   => (messages, {model?, temperature?, max_tokens?}) → Promise<string|null>
+     *
+     * @param {Object} cfg
+     * @param {Array<{role:string,content:string}>} cfg.messages
+     *        Chat-completions messages (system + user, or multi-turn).
+     * @param {{temperature?:number, max_tokens?:number}} cfg.opts
+     *        Common opts applied to every provider.
+     * @param {Object} [cfg.models]
+     *        Per-provider model overrides: { gemini?, groq?, openrouter?, chatgpt?, copilot? }
+     *        When omitted the corresponding _call* uses its own default from settings.
+     * @param {string[]} [cfg.providers]
+     *        Which providers to include  (default: all five).
+     *        Vision-only calls can pass e.g. ['gemini','groq'].
+     * @param {(raw:string) => any} [cfg.postProcess]
+     *        Optional transform applied to each provider's raw text.
+     *        Return a truthy value to accept it; return null/undefined to reject.
+     * @param {(value:any) => boolean} [cfg.isValid]
+     *        Extra validity check on the (optionally post-processed) result.
+     *        Default: truthy + string length ≥ 1.
+     * @param {any} [cfg.fallbackValue=null]
+     *        Returned when every provider fails.
+     * @param {string} [cfg.label='providerChain']
+     *        Name shown in console logs.
+     * @returns {Promise<{result:any, provider:string}|{result:any, provider:null}>}
+     * ───────────────────────────────────────────────────────────────── */
+    async _callWithProviderChain(cfg) {
+        const {
+            messages,
+            opts = {},
+            models = {},
+            providers: enabledProviders,
+            postProcess,
+            isValid: customIsValid,
+            fallbackValue = null,
+            label = 'providerChain'
+        } = cfg;
+
+        const settings = await this._getSettings();
+        const primary = settings.primaryProvider || 'groq';
+
+        // ── Provider registry: name → call function ──
+        // Each entry guards on API-key / quota automatically inside _call*.
+        const registry = {
+            gemini:     (msgs, o) => this._callGemini(msgs, { ...o, model: models.gemini || o.model }),
+            groq:       (msgs, o) => this._callGroq(msgs, { ...o, model: models.groq || o.model }),
+            openrouter: (msgs, o) => this._callOpenRouter(msgs, { ...o, model: models.openrouter || o.model }),
+            chatgpt:    (msgs, o) => this._callChatGPT(msgs, { ...o, model: models.chatgpt || o.model }),
+            copilot:    (msgs, o) => this._callCopilot(msgs, { ...o, model: models.copilot || o.model }),
+        };
+
+        // ── Build ordered list ──
+        const ALL_PROVIDERS = ['groq', 'openrouter', 'gemini', 'chatgpt', 'copilot'];
+        const allowed = enabledProviders
+            ? ALL_PROVIDERS.filter(p => enabledProviders.includes(p))
+            : ALL_PROVIDERS;
+
+        // Default ordering per primary preference
+        const ORDER_MAP = {
+            copilot:    ['copilot', 'chatgpt', 'openrouter', 'gemini', 'groq'],
+            chatgpt:    ['chatgpt', 'copilot', 'openrouter', 'gemini', 'groq'],
+            openrouter: ['openrouter', 'gemini', 'copilot', 'chatgpt', 'groq'],
+            gemini:     ['gemini', 'openrouter', 'copilot', 'chatgpt', 'groq'],
+            groq:       ['groq', 'openrouter', 'gemini', 'copilot', 'chatgpt'],
+        };
+        const ordered = (ORDER_MAP[primary] || ORDER_MAP.groq).filter(p => allowed.includes(p));
+
+        const defaultIsValid = (v) => {
+            if (v == null) return false;
+            if (typeof v === 'string') return v.length >= 1;
+            return true; // objects, arrays, booleans from postProcess
+        };
+        const validate = customIsValid || defaultIsValid;
+
+        console.log(`  🔗 [${label}] primary=${primary}  order=${ordered.join(' → ')}`);
+
+        for (const providerName of ordered) {
+            try {
+                let raw = await registry[providerName](messages, opts);
+                if (raw == null) continue; // provider unavailable or returned null
+
+                const value = postProcess ? postProcess(raw) : raw;
+                if (!validate(value)) {
+                    console.log(`  🔗 [${label}] ${providerName} → rejected by validation, trying next…`);
+                    continue;
+                }
+
+                console.log(`%c[AH] 🎯 ${label} → ${providerName}`, 'color:#0ff;font-weight:bold');
+                return { result: value, provider: providerName };
+            } catch (err) {
+                console.warn(`  🔗 [${label}] ${providerName} error:`, err?.message || err);
+            }
+        }
+
+        console.warn(`  🔗 [${label}] all providers failed`);
+        return { result: fallbackValue, provider: null };
+    },
+
     /**
      * Run multi-attempt Gemini consensus for MC inference.
      * @param {string} systemMsg - System prompt
@@ -3417,7 +3522,7 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
             })
             .join('\n\n');
 
-        const prompt = `Você vai gerar um overview curto e útil (estilo Google AI Overview), SEM inventar fatos.
+        const prompt = `Analise as evidências abaixo e crie um resumo ÚTIL para o estudante — não apenas repita fatos, mas ajude a ENTENDER o conceito da questão.
 
 QUESTÃO:
 ${String(questionText).slice(0, 1800)}
@@ -3427,21 +3532,22 @@ ${compactEvidence}
 
 RETORNE APENAS JSON válido no formato:
 {
-  "summary": "resumo em 2-4 frases, objetivo",
-  "keyPoints": ["ponto 1", "ponto 2", "ponto 3"],
+  "summary": "2-4 frases que contextualizem o tema e respondam à questão de forma compreensível. Evite linguagem de livro — explique como um professor explicaria verbalmente.",
+  "keyPoints": ["insight 1 (não repita a pergunta — agregue valor)", "insight 2", "insight 3 (diferença-chave ou armadilha comum se relevante)"],
   "references": [
     {"title": "nome curto da fonte", "link": "https://..."}
   ]
 }
 
 REGRAS:
-- Use apenas o que está nas evidências.
-- Se houver conflito ou baixa clareza, mencione isso no summary.
-- keyPoints: no máximo 4 itens.
+- Use apenas o que está nas evidências — NUNCA invente.
+- summary: priorize clareza e utilidade sobre formalidade.
+- keyPoints: destaque o que DIFERENCIA este conceito de conceitos parecidos. Máximo 4.
+- Se houver conflito, explicite: "Fontes divergem sobre..."
 - references: no máximo 5 itens.
 - Não inclua markdown, comentário ou texto fora do JSON.`;
 
-        const sysMsg = 'Você transforma evidências em resumo estruturado e confiável. Nunca invente links, citações ou fatos fora da entrada.';
+        const sysMsg = 'Você sintetiza evidências acadêmicas em resumos que realmente ajudam o estudante a entender — não apenas a ler. Contextualiza, destaca diferenças-chave e aponta armadilhas. Nunca invente links, citações ou fatos fora da entrada.';
 
         /** Parse overview JSON from raw response */
         const parseOverview = (raw, modelLabel) => {
@@ -4013,88 +4119,37 @@ REGRAS:
      */
     async defineTerm(term, contextText = '') {
         const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelFast } = settings;
+        const systemMsg = `Você é um professor que explica conceitos técnicos com clareza CRISTALINA, pensando em alunos com dificuldade de concentração.
 
-        const systemMsg = 'Você é um dicionário educacional conciso. Defina termos de forma clara e breve (2-3 linhas).';
+Para cada definição:
+(1) 📌 O que É — linguagem simples, frase curta
+(2) 🔗 Analogia do cotidiano — torne tangível ("é como o índice de um livro — mapeia onde cada coisa está")
+(3) ❌ O que NÃO é — evite a confusão mais comum
+
+Regras ADHD-friendly:
+- Máximo 3-4 linhas
+- Uma ideia por frase
+- Use negrito nos termos-chave
+- Comece com a informação mais útil`;
         const prompt = contextText
-            ? `Defina o termo "${term}" considerando o seguinte contexto educacional:\n\n${contextText.slice(0, 500)}\n\nDefinição breve:`
-            : `Defina o termo "${term}" de forma breve e educacional. Definição:`;
+            ? `O aluno encontrou o termo "${term}" durante o estudo e não entendeu. Contexto onde apareceu:\n\n${contextText.slice(0, 500)}\n\nExplique este termo de forma que o aluno entenda na hora — como se fosse uma explicação sussurrada durante a aula. Comece direto com o que o termo significa, sem preâmbulo.`
+            : `O aluno quer entender o termo "${term}". Explique de forma clara e memorável — definição + analogia/exemplo em 2-3 linhas. Comece direto, sem "claro!" ou "ótima pergunta!".`;
 
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                return await this._callGemini([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.2, max_tokens: 150, model: settings.geminiModel || 'gemini-2.5-flash' });
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini defineTerm error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                // intercept options to overwrite model
-                const opts = Object.assign({}, {
-                    temperature: 0.10,
-                    max_tokens: 600,
-                    model: settings.geminiModelSmart || 'gemini-2.5-flash'
-                });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
-                return await this._callOpenRouter([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], opts);
-            } catch (e) {
-                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
-                return null;
-            }
-        };
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: groqModelFast,
-                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                        temperature: 0.2,
-                        max_tokens: 150
-                    })
-                }));
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) {
-                console.warn('AnswerHunter: Groq defineTerm error:', e?.message || e);
-                return null;
-            }
-        };
-
-
-        const geminiPrimary = false; // dummy for older vars
-        const settingsForFallback = await this._getSettings();
-        const primary = settingsForFallback.primaryProvider || 'groq';
-        let chain = [];
-        if (typeof tryOpenRouter !== 'undefined') {
-            chain = [tryGroq, tryOpenRouter, tryGemini];
-            if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
-            else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
-        } else {
-            chain = [tryGroq, tryGemini];
-            if (primary === 'gemini') chain = [tryGemini, tryGroq];
-        }
-        let result = null;
-        for (const fn of chain) {
-            result = await fn();
-            if (result) {
-                console.log(`%c[AH] 🎯 defineTerm → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
-                break;
-            }
-        }
-
-        return result || `Termo não encontrado: ${term}`;
+        const { result } = await this._callWithProviderChain({
+            messages: [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: prompt }
+            ],
+            opts: { temperature: 0.2, max_tokens: 150 },
+            models: {
+                gemini: settings.geminiModel || 'gemini-2.5-flash',
+                groq: settings.groqModelFast,
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+            },
+            label: 'defineTerm',
+            fallbackValue: `Termo não encontrado: ${term}`,
+        });
+        return result;
     },
 
     /**
@@ -4102,11 +4157,23 @@ REGRAS:
      */
     async generateTutorExplanation(question, answer, context = '') {
         const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
 
-        const systemMsg = `Você é um professor paciente, didático e experiente. Sua ÚNICA tarefa é explicar POR QUE a resposta do GABARITO está correta, de forma que qualquer estudante entenda completamente o raciocínio.
+        const systemMsg = `Você é um professor universitário sênior renomado, com décadas de experiência transformando assuntos complexos em explicações que qualquer pessoa entende. Você cria "momentos eureka" — quando o aluno pensa "agora fez sentido!".
 
-⚠️ REGRA ABSOLUTA: A resposta correta é EXATAMENTE a que está indicada no GABARITO abaixo. Você NÃO pode discordar do gabarito. Sua explicação DEVE obrigatoriamente justificar essa resposta específica do gabarito, mesmo que você pessoalmente pensasse diferente.`;
+Sua personalidade docente:
+- Usa analogias do cotidiano ("DNS é a agenda de contatos do celular")
+- Antecipa onde o aluno vai se confundir e já esclarece antes
+- Fala como gente, não como livro — mas com rigor técnico
+- Faz o aluno gostar da matéria
+
+🧠 PRINCÍPIOS CIENTÍFICOS (aplique sempre):
+- DUAL CODING: use emoji/ícones como marcadores visuais para cada seção
+- CHUNKING: máximo 3 frases por parágrafo. Quebre blocos longos
+- ELABORAÇÃO: explique o "por quê" por trás de cada afirmação
+- EXEMPLOS CONCRETOS: pelo menos 1 exemplo do mundo real por conceito
+- ADHD-FRIENDLY: frases curtas, uma ideia por frase, evite paredes de texto
+
+⚠️ REGRA ABSOLUTA: A resposta correta é EXATAMENTE a que está indicada no GABARITO. Você NÃO pode discordar. Sua explicação DEVE justificar essa resposta.`;
 
         const prompt = `QUESTÃO:
 ${question.slice(0, 1500)}
@@ -4118,102 +4185,46 @@ ${context ? `CONTEXTO ADICIONAL:\n${context.slice(0, 300)}\n` : ''}FORMATO OBRIG
 
 1. Comece com: "✅ Resposta correta: [copie exatamente a letra e/ou texto da resposta do gabarito]"
 
-2. **Contexto do tema** — Em 2-3 frases, explique o assunto/tema da questão de forma simples, como se o aluno nunca tivesse visto o tema antes.
+2. **🎯 Primeiro, entenda o cenário** — Em 2-3 frases, contextualize o assunto como se fosse a primeira vez que o aluno ouve sobre isso. Use uma analogia ou exemplo do dia-a-dia para tornar concreto. O objetivo é que o aluno pense "ah, então é ISSO que esse conceito significa na prática".
 
-3. **Raciocínio passo a passo** — Numere cada etapa do raciocínio (1., 2., 3., ...) que leva à resposta do gabarito:
-   - Use linguagem simples e direta
-   - Dê exemplos práticos quando possível
-   - Conecte cada passo ao anterior
+3. **🧩 Construindo o raciocínio** — Numere cada passo lógico (1., 2., 3., ...) que leva à resposta do gabarito:
+   - Cada passo deve fluir naturalmente do anterior ("Se isso é verdade, então...")
+   - Dê pelo menos 1 exemplo concreto ou analogia
+   - Destaque armadilhas: "⚠️ Cuidado: muitos confundem X com Y"
+   - Se possível, mostre a aplicação real do conceito
 
-4. **Por que as outras alternativas estão erradas** — Para cada alternativa incorreta, explique brevemente (1 frase) por que está errada. Use o formato: "❌ Alternativa X: [motivo]"
+4. **❌ Eliminando as alternativas erradas** — Para cada alternativa incorreta, explique em 1-2 frases por que está errada de forma que o aluno NUNCA MAIS caia nessa armadilha. Formato:
+   "❌ Alternativa X: [por que está errada + armadilha que levaria o aluno a marcar esta]"
 
-5. Finalize com: "💡 Resumo: [1 frase que sintetize o conceito-chave]"
+5. **💡 Resumo pra levar pro resto da vida:** [1-2 frases que sintetizem o conceito de forma tão marcante que o aluno não esquece. Pode ser uma regra mnemônica, frase de efeito ou analogia-chave.]
 
 REGRAS:
-- Linguagem CLARA e ACESSÍVEL — imagine que está ensinando a um aluno do ensino médio
-- Máximo 450 palavras
-- NUNCA contradiga o gabarito — se o gabarito diz que a resposta é X, justifique X
-- Use **negrito** para termos importantes
-- Se a questão não tiver alternativas, foque nos passos 1, 2, 3 e 5`;
+- Linguagem CLARA e CONVERSACIONAL — como se estivesse explicando pessoalmente
+- Máximo 500 palavras
+- NUNCA contradiga o gabarito
+- Use **negrito** para termos-chave e conceitos importantes
+- Se a questão não tiver alternativas, foque nos passos 1, 2, 3 e 5
+- Proibido: frases genéricas como "é importante estudar" ou "esse tema cai bastante"
+- CHUNKING: máximo 3 frases por bloco. Pule linha entre cada seção numerada
+- ADHD-FRIENDLY: comece cada seção com o emoji do formato. Uma ideia por frase. Zero parágrafos longos
+- ELABORAÇÃO: para cada afirmação, adicione "porque..." ou "isso funciona porque..."  
+- EXEMPLO CONCRETO obrigatório: pelo menos 1 cenário real por seção`;
 
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                return await this._callGemini([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.3, max_tokens: 1000, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini generateTutorExplanation error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                // intercept options to overwrite model
-                const opts = Object.assign({}, { temperature: 0.3, max_tokens: 1000, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
-                return await this._callOpenRouter([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], opts);
-            } catch (e) {
-                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
-                return null;
-            }
-        };
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: groqModelSmart,
-                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                        temperature: 0.3,
-                        max_tokens: 1000
-                    })
-                }));
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) {
-                console.warn('AnswerHunter: Groq generateTutorExplanation error:', e?.message || e);
-                return null;
-            }
-        };
-
-
-        const tryCopilot = async () => {
-            try {
-                return await this._callCopilot([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.3, max_tokens: 1000 });
-            } catch (e) {
-                console.warn('AnswerHunter: Copilot generateTutorExplanation error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const settingsForFallback = await this._getSettings();
-        const primary = settingsForFallback.primaryProvider || 'groq';
-        let chain = [];
-        if (primary === 'copilot') chain = [tryCopilot, tryGemini, tryOpenRouter, tryGroq];
-        else if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq, tryCopilot];
-        else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq, tryCopilot];
-        else chain = [tryGroq, tryOpenRouter, tryGemini, tryCopilot];
-        let result = null;
-        for (const fn of chain) {
-            result = await fn();
-            if (result) {
-                console.log(`%c[AH] 🎯 generateTutorExplanation → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
-                break;
-            }
-        }
-
-        return result || 'Não foi possível gerar a explicação. Tente novamente.';
+        const { result } = await this._callWithProviderChain({
+            messages: [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: prompt }
+            ],
+            opts: { temperature: 0.3, max_tokens: 1000 },
+            models: {
+                gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
+                groq: settings.groqModelSmart,
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+            },
+            label: 'generateTutorExplanation',
+            fallbackValue: 'Não foi possível gerar a explicação. Tente novamente.',
+        });
+        return result;
     },
 
     /**
@@ -4222,11 +4233,22 @@ REGRAS:
      */
     async generateReviewCard(question, answer, context = '') {
         const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
 
-        const systemMsg = `Você é um especialista em técnicas de estudo e memorização (Anki, flashcards, revisão espaçada). Crie fichas de revisão objetivas e memoráveis.`;
+        const systemMsg = `Você é um mentor de estudos lendário — resume em 30 segundos o que o livro leva 30 páginas. Especialista em revisão espaçada e elaborative interrogation.
 
-        const prompt = `Crie uma FICHA DE REVISÃO concisa para o estudante memorizar o conteúdo desta questão.
+Filosofia: "Se não consegue explicar pra avó, não entendeu."
+
+Seu trabalho: fichas que o aluno lê uma vez e GRAVA.
+
+🧠 PRINCÍPIOS CIENTÍFICOS (aplique sempre):
+- DUAL CODING: cada seção tem emoji como âncora visual
+- CHUNKING: 2-3 frases por seção, nunca mais. Quebre blocos longos
+- RETRIEVAL PRACTICE: inclua 1 pergunta-gatilho que force o aluno a pensar antes de ler a resposta
+- EXEMPLOS CONCRETOS: pelo menos 1 exemplo tangível por regra de ouro
+- ADHD-FRIENDLY: frases curtas e diretas. Negrito nos termos-chave. Zero paredes de texto
+- INTERLEAVING: no "Conecte com", sugira temas de OUTRAS disciplinas quando possível`;
+
+        const prompt = `Crie uma FICHA DE REVISÃO poderosa para o estudante memorizar esta questão.
 
 QUESTÃO:
 ${question.slice(0, 1500)}
@@ -4237,111 +4259,54 @@ ${answer.slice(0, 800)}
 ${context ? `CONTEXTO:\n${context.slice(0, 300)}\n` : ''}FORMATO OBRIGATÓRIO:
 
 📌 CONCEITO-CHAVE
-[Nome do conceito/tema principal testado — 1 linha]
+[Nome do conceito + subtítulo que já ensina algo — ex: "Polimorfismo — Quando o mesmo comando faz coisas diferentes"]
 
-📖 DEFINIÇÃO RÁPIDA
-[Definição objetiva do conceito em 2-3 frases curtas. Sem enrolação.]
+📖 EM PALAVRAS SIMPLES
+[Explique o conceito em 2-3 frases como se tivesse explicando pra um amigo no bar. Sem jargão desnecessário. Se usar um termo técnico, traduza entre parênteses. O objetivo é o aluno pensar "ah, é só isso?"]
 
-🔑 O QUE MEMORIZAR
-- [Ponto essencial 1]
-- [Ponto essencial 2]
-- [Ponto essencial 3]
-- [Fórmula ou regra se aplicável]
+🔑 REGRAS DE OURO (pra nunca errar)
+- [Regra 1: afirmação direta + contra-exemplo curto se útil]
+- [Regra 2: use formato "X é..., mas NÃO é..." quando ajudar a distinguir conceitos parecidos]
+- [Regra 3: fórmula, acrônimo ou regra prática se aplicável]
+- [Regra 4 (opcional): diferença-chave entre este conceito e um facilmente confundido]
 
-⚠️ PEGADINHAS COMUNS
-- [Erro comum 1 que bancas exploram]
-- [Erro comum 2]
+⚠️ ARMADILHAS DE PROVA
+- [Armadilha 1: descreva o que parece certo mas está errado + por que o aluno cai nessa]
+- [Armadilha 2: outra pegadinha clássica com cenário concreto]
 
-🧠 DICA DE MEMORIZAÇÃO
-[Uma técnica mnemônica, analogia ou macete para lembrar — seja criativo e marcante]
+🧠 GATILHO DE MEMÓRIA
+[Crie algo MARCANTE e ORIGINAL: pode ser uma analogia inusitada, um mnemônico criativo, uma frase de efeito, ou uma micro-história. O teste: o aluno deve conseguir lembrar daqui 1 semana. Seja ousado.]
 
-🔗 TEMAS RELACIONADOS
-[Liste 2-3 temas que o aluno deve estudar junto]
+🔗 CONECTE COM
+[2-3 temas diretamente relacionados que o aluno deve dominar junto — explique em ~5 palavras por que cada um é relevante]
+
+🎯 PERGUNTA-GATILHO
+[Uma pergunta curta que o aluno tenta responder ANTES de ler a ficha. Ex: "Qual a diferença entre TCP e UDP em uma palavra?" — Isso ativa retrieval practice e fixa melhor]
 
 REGRAS:
-- Máximo 250 palavras
-- Linguagem direta, sem floreios
-- Foque no que CAI EM PROVA
+- Máximo 280 palavras
+- Proibido texto de livro didático — use linguagem VIVA e DIRETA
+- Foque no que DIFERENCIA quem acerta de quem erra
 - Use **negrito** para termos-chave
-- A ficha deve funcionar como material de revisão rápida antes da prova`;
+- Proibido frases genéricas ("é importante saber", "cai muito em provas")
+- CHUNKING: máximo 2-3 frases por seção. Seções visualmente separadas
+- ADHD-FRIENDLY: comece cada seção com emoji. Frases curtas. Uma ideia por frase`;
 
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                return await this._callGemini([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.4, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini generateReviewCard error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const opts = { temperature: 0.4, max_tokens: 800, model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free' };
-                return await this._callOpenRouter([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], opts);
-            } catch (e) {
-                console.warn('AnswerHunter: OpenRouter generateReviewCard error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: groqModelSmart,
-                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                        temperature: 0.4,
-                        max_tokens: 800
-                    })
-                }));
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) {
-                console.warn('AnswerHunter: Groq generateReviewCard error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryCopilot = async () => {
-            try {
-                return await this._callCopilot([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.4, max_tokens: 800 });
-            } catch (e) {
-                console.warn('AnswerHunter: Copilot generateReviewCard error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const settingsForFallback = await this._getSettings();
-        const primary = settingsForFallback.primaryProvider || 'groq';
-        let chain = [];
-        if (primary === 'copilot') chain = [tryCopilot, tryGemini, tryOpenRouter, tryGroq];
-        else if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq, tryCopilot];
-        else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq, tryCopilot];
-        else chain = [tryGroq, tryOpenRouter, tryGemini, tryCopilot];
-
-        let result = null;
-        for (const fn of chain) {
-            result = await fn();
-            if (result) {
-                console.log(`%c[AH] 🎯 generateReviewCard → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
-                break;
-            }
-        }
-
-        return result || 'Não foi possível gerar a ficha de revisão. Tente novamente.';
+        const { result } = await this._callWithProviderChain({
+            messages: [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: prompt }
+            ],
+            opts: { temperature: 0.4, max_tokens: 800 },
+            models: {
+                gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
+                groq: settings.groqModelSmart,
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+            },
+            label: 'generateReviewCard',
+            fallbackValue: 'Não foi possível gerar a ficha de revisão. Tente novamente.',
+        });
+        return result;
     },
 
     /**
@@ -4350,17 +4315,32 @@ REGRAS:
      */
     async generateSimilarQuestion(originalQuestion) {
         const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
 
-        const systemMsg = 'Você cria questões de múltipla escolha educacionais. Responda APENAS em JSON válido, sem texto adicional.';
-        const prompt = `Com base na questão abaixo, crie UMA questão similar de múltipla escolha com 4 alternativas (A, B, C, D).
+        const systemMsg = `Você é um professor-banca que cria questões desafiadoras mas justas. Conhece as armadilhas que separam quem memorizou de quem entendeu.
+
+Princípios:
+- Teste COMPREENSÃO, não decoreba
+- Alternativas erradas = erros reais que alunos cometem (elaborative interrogation)
+- Enunciado com contexto suficiente para quem estudou resolver
+- Evite pegadinhas linguísticas (dupla negação, "sempre/nunca")
+- INTERLEAVING: quando possível, misture conceitos relacionados no enunciado
+- EXEMPLOS CONCRETOS: use cenários do mundo real no enunciado, não abstrações
+
+Responda APENAS em JSON válido, sem markdown ou texto adicional.`;
+        const prompt = `Analise a questão abaixo e crie UMA nova questão que teste o MESMO conceito, mas com uma abordagem diferente (cenário novo, perspectiva invertida, ou aplicação prática).
 
 QUESTÃO ORIGINAL:
 ${originalQuestion.slice(0, 1000)}
 
-FORMATO DE RESPOSTA (JSON exato, sem markdown):
+ESTRATÉGIA DE CRIAÇÃO:
+1. Identifique o conceito central sendo testado
+2. Pense: "como posso testar isso de um ângulo que o aluno não espera?"
+3. Crie alternativas incorretas baseadas em confusões REAIS que alunos cometem
+4. A alternativa correta não deve ser óbvia por eliminação — o aluno precisa SABER
+
+FORMATO DE RESPOSTA (JSON exato):
 {
-  "questionText": "enunciado da nova questão",
+  "questionText": "enunciado contextualizado da nova questão",
   "optionsMap": {
     "A": "texto da alternativa A",
     "B": "texto da alternativa B",
@@ -4371,10 +4351,10 @@ FORMATO DE RESPOSTA (JSON exato, sem markdown):
 }
 
 REGRAS:
-- A questão deve testar o mesmo conceito, mas com abordagem diferente
-- Apenas UMA alternativa deve ser correta
-- As alternativas incorretas devem ser plausíveis
-- Responda APENAS com o JSON, sem explicações adicionais`;
+- Apenas UMA alternativa correta
+- Alternativas erradas baseadas em confusões conceituais reais (não absurdos óbvios)
+- Dificuldade similar ou levemente maior que a original
+- Responda APENAS com o JSON`;
 
         const parseResponse = (content) => {
             if (!content) return null;
@@ -4388,84 +4368,20 @@ REGRAS:
             }
         };
 
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                const content = await this._callGemini([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.5, max_tokens: 500, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-                return parseResponse(content);
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini generateSimilarQuestion error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                // intercept options to overwrite model
-                const opts = Object.assign({}, { temperature: 0.5, max_tokens: 500, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
-                return await this._callOpenRouter([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], opts);
-            } catch (e) {
-                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
-                return null;
-            }
-        };
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: groqModelSmart,
-                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                        temperature: 0.5,
-                        max_tokens: 500
-                    })
-                }));
-                return parseResponse(data?.choices?.[0]?.message?.content?.trim() || '');
-            } catch (e) {
-                console.warn('AnswerHunter: Groq generateSimilarQuestion error:', e?.message || e);
-                return null;
-            }
-        };
-
-
-        const tryCopilot = async () => {
-            try {
-                const content = await this._callCopilot([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.5, max_tokens: 500 });
-                return parseResponse(content);
-            } catch (e) {
-                console.warn('AnswerHunter: Copilot generateSimilarQuestion error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const settingsForFallback = await this._getSettings();
-        const primary = settingsForFallback.primaryProvider || 'groq';
-        let chain = [];
-        if (primary === 'copilot') chain = [tryCopilot, tryGemini, tryOpenRouter, tryGroq];
-        else if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq, tryCopilot];
-        else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq, tryCopilot];
-        else chain = [tryGroq, tryOpenRouter, tryGemini, tryCopilot];
-        let result = null;
-        for (const fn of chain) {
-            result = await fn();
-            if (result) {
-                console.log(`%c[AH] 🎯 generateSimilarQuestion → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
-                break;
-            }
-        }
+        const { result } = await this._callWithProviderChain({
+            messages: [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: prompt }
+            ],
+            opts: { temperature: 0.5, max_tokens: 500 },
+            models: {
+                gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
+                groq: settings.groqModelSmart,
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+            },
+            postProcess: parseResponse,
+            label: 'generateSimilarQuestion',
+        });
 
         if (!result) throw new Error('Não foi possível gerar uma questão similar.');
         return result;
@@ -4476,14 +4392,29 @@ REGRAS:
      */
     async answerFollowUp(originalQuestion, originalAnswer, context, userMessage, messageHistory = []) {
         const settings = await this._getSettings();
-        const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
 
-        const systemMsg = `Você é um tutor educacional. O estudante acabou de resolver uma questão e tem dúvidas.
-Questão original: ${originalQuestion.slice(0, 800)}
-Resposta correta: ${originalAnswer.slice(0, 300)}
-${context ? `Contexto: ${context.slice(0, 200)}` : ''}
+        const systemMsg = `Você é um tutor particular paciente e brilhante. O estudante acabou de resolver uma questão e está tirando dúvidas com você.
 
-Responda de forma clara, didática e concisa (máximo 200 palavras). Não repita a questão inteira.`;
+Contexto da conversa:
+- Questão: ${originalQuestion.slice(0, 800)}
+- Resposta correta: ${originalAnswer.slice(0, 300)}
+${context ? `- Contexto: ${context.slice(0, 200)}` : ''}
+
+Seu estilo de tutoria:
+- Responda como se estivesse sentado ao lado do aluno, com calma e clareza
+- Se já foi explicado, NÃO repita — explique de ÂNGULO DIFERENTE (analogia nova, exemplo diferente)
+- Se dúvida revelar conceito mal compreendido, corrija com gentileza
+- EXEMPLOS CONCRETOS e analogias do cotidiano obrigatórios
+- Se a dúvida envolve pré-requisito não dominado, explique o pré-requisito primeiro
+- Máximo 250 palavras — denso em valor, não volume
+- Não repita o enunciado da questão inteira
+
+🧠 FORMATO ADHD-FRIENDLY:
+- Frases curtas (máximo 2 linhas)
+- Uma ideia por parágrafo
+- Use **negrito** nos termos-chave
+- Se a resposta tiver mais de 3 conceitos, use lista com bullets
+- Comece direto com a resposta, sem "Ótima pergunta!" ou preâmbulos`;
 
         // Build message history for multi-turn context (cap at last 6 messages)
         const recentHistory = messageHistory.slice(-6);
@@ -4493,63 +4424,18 @@ Responda de forma clara, didática e concisa (máximo 200 palavras). Não repita
             { role: 'user', content: userMessage }
         ];
 
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                return await this._callGemini(messages, {
-                    temperature: 0.3,
-                    max_tokens: 400,
-                    model: settings.geminiModel || 'gemini-2.5-flash'
-                });
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini answerFollowUp error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: groqModelSmart,
-                        messages,
-                        temperature: 0.3,
-                        max_tokens: 400
-                    })
-                }));
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) {
-                console.warn('AnswerHunter: Groq answerFollowUp error:', e?.message || e);
-                return null;
-            }
-        };
-
-
-        const geminiPrimary = false; // dummy for older vars
-        const settingsForFallback = await this._getSettings();
-        const primary = settingsForFallback.primaryProvider || 'groq';
-        let chain = [];
-        if (typeof tryOpenRouter !== 'undefined') {
-            if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
-            else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
-            else chain = [tryGroq, tryOpenRouter, tryGemini];
-        } else {
-            if (primary === 'gemini') chain = [tryGemini, tryGroq];
-            else chain = [tryGroq, tryGemini];
-        }
-        let result = null;
-        for (const fn of chain) {
-            result = await fn();
-            if (result) {
-                console.log(`%c[AH] 🎯 answerFollowUp → ${fn.name.replace('try', '')}`, 'color:#0ff;font-weight:bold');
-                break;
-            }
-        }
-
-        return result || 'Não foi possível processar sua pergunta. Tente novamente.';
+        const { result } = await this._callWithProviderChain({
+            messages,
+            opts: { temperature: 0.3, max_tokens: 400 },
+            models: {
+                gemini: settings.geminiModel || 'gemini-2.5-flash',
+                groq: settings.groqModelSmart,
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+            },
+            label: 'answerFollowUp',
+            fallbackValue: 'Não foi possível processar sua pergunta. Tente novamente.',
+        });
+        return result;
     },
 
     async generateTags(questionText) {
@@ -4585,119 +4471,25 @@ REGRAS:
             }
         };
 
-        const tryChatGPT = async () => {
-            if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const content = await this._callChatGPT([
-                    { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
-                    { role: 'user', content: prompt }
-                ], {
-                    temperature: 0.3,
-                    max_tokens: 100,
-                    model: settings.chatgptModel || 'gpt-5.2-codex'
-                });
-                return parseResponse(content);
-            } catch (e) {
-                console.warn('AnswerHunter: ChatGPT generateTags error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const content = await this._callOpenRouter([
-                    { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
-                    { role: 'user', content: prompt }
-                ], {
-                    temperature: 0.3,
-                    max_tokens: 100,
-                    model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free'
-                });
-                return parseResponse(content);
-            } catch (e) {
-                console.warn('AnswerHunter: OpenRouter generateTags error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            if (this._geminiQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const content = await this._callGemini([
-                    { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.3, max_tokens: 100, model: settings.geminiModel || 'gemini-2.5-flash' });
-                return parseResponse(content);
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini generateTags error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGroq = async () => {
-            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const content = await this._callGroq([
-                    { role: 'system', content: 'Classifique a questão em JSON array de tags académicas. Responda só JSON.' },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.3, max_tokens: 100, model: settings.groqModelSmart || 'llama-3.3-70b-versatile' });
-                return parseResponse(content);
-            } catch (e) {
-                console.warn('AnswerHunter: Groq generateTags error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryCopilot = async () => {
-            if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const content = await this._callCopilot([
-                    { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
-                    { role: 'user', content: prompt }
-                ], {
-                    temperature: 0.3,
-                    max_tokens: 100,
-                    model: settings.copilotModel || 'gpt-4o'
-                });
-                return parseResponse(content);
-            } catch (e) {
-                console.warn('AnswerHunter: Copilot generateTags error:', e?.message || e);
-                return null;
-            }
-        };
-
-        const providerFns = {
-            copilot: tryCopilot,
-            chatgpt: tryChatGPT,
-            openrouter: tryOpenRouter,
-            gemini: tryGemini,
-            groq: tryGroq
-        };
-
-        const primary = settings.primaryProvider || 'groq';
-        const preferredOrder = primary === 'copilot'
-            ? ['copilot', 'chatgpt', 'openrouter', 'gemini', 'groq']
-            : primary === 'chatgpt'
-                ? ['chatgpt', 'copilot', 'openrouter', 'gemini', 'groq']
-                : primary === 'openrouter'
-                    ? ['openrouter', 'copilot', 'chatgpt', 'gemini', 'groq']
-                    : primary === 'gemini'
-                        ? ['gemini', 'openrouter', 'copilot', 'chatgpt', 'groq']
-                        : ['groq', 'openrouter', 'copilot', 'chatgpt', 'gemini'];
-
-        for (const provider of preferredOrder) {
-            const fn = providerFns[provider];
-            if (!fn) continue;
-            const tags = await fn();
-            if (Array.isArray(tags) && tags.length > 0) {
-                console.log(`%c[AH] 🎯 generateTags → ${provider}`, 'color:#0ff;font-weight:bold');
-                return tags;
-            }
-        }
-
-        return [];
+        const { result } = await this._callWithProviderChain({
+            messages: [
+                { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
+                { role: 'user', content: prompt }
+            ],
+            opts: { temperature: 0.3, max_tokens: 100 },
+            models: {
+                gemini: settings.geminiModel || 'gemini-2.5-flash',
+                groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                chatgpt: settings.chatgptModel || 'gpt-5.2-codex',
+                copilot: settings.copilotModel || 'gpt-4o',
+            },
+            postProcess: parseResponse,
+            isValid: (v) => Array.isArray(v) && v.length > 0,
+            label: 'generateTags',
+            fallbackValue: [],
+        });
+        return result;
     },
 
 };
