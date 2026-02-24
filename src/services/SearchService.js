@@ -936,7 +936,7 @@ export const SearchService = {
   async processExtractedItems(items) {
     const refinedData = [];
     for (const item of items) {
-      const refined = await ApiService.refineWithGroq(item);
+      const refined = await ApiService.refineWithAI(item);
       if (refined) refinedData.push(refined);
     }
     return refinedData;
@@ -1608,7 +1608,7 @@ export const SearchService = {
           }
 
           // AI knowledge extraction for mismatch sources — DEFERRED to post-loop.
-          // Queuing here avoids blocking the main analysis loop (each Groq call
+          // Queuing here avoids blocking the main analysis loop (each AI call
           // takes 2.5s queue-wait + 4-8s inference). Sources with direct answers
           // (qconcursos, passeidireto) now process without waiting for mismatch AI.
           if (aiExtractionCount < 5 && topicSimBase >= 0.50 && !obfuscation?.isObfuscated && scopedCombinedText.length >= 300) {

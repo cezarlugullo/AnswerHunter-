@@ -3505,8 +3505,9 @@ Ou: NAO_ENCONTRADO`;
 
     /**
      * Main refinement function (3-Steps)
+     * Uses whichever AI provider is available (Groq, Gemini, OpenRouter, ChatGPT).
      */
-    async refineWithGroq(item) {
+    async refineWithAI(item) {
         console.log('AnswerHunter: Iniciando refinamento com 3 prompts...');
         const originalQuestion = item.question;
         const hasOptionsInOriginal = /[A-E]\s*[\)\.]\s*\S+/i.test(originalQuestion);
@@ -3521,12 +3522,12 @@ Ou: NAO_ENCONTRADO`;
         }
 
         const answerPromise = this.inferAnswerFromEvidence(originalQuestion, item.answer);
-        const [answer, optionsFromGroq] = await Promise.all([
+        const [answer, optionsFromAI] = await Promise.all([
             answerPromise,
             optionsPromise ? optionsPromise : Promise.resolve(null)
         ]);
 
-        if (!options && optionsFromGroq) options = optionsFromGroq;
+        if (!options && optionsFromAI) options = optionsFromAI;
         console.log('AnswerHunter: Resposta identificada:', answer ? 'Sim' : 'Nao');
 
         if (!answer) {

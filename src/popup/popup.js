@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         'generateOverviewFromEvidence',
         'generateKnowledgeAnswer',
         'generateAnswerFromQuestion',
-        'refineWithGroq'
+        'refineWithAI'
     ]);
 
     // Initialize the view (cache DOM elements)
