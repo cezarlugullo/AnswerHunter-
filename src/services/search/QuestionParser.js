@@ -74,7 +74,8 @@ export const QuestionParser = {
             stemLines.push(line);
         }
         let stem = (stemLines.join(' ').trim() || text.trim());
-        const inlineOpt = stem.match(/[\s:;]([A-E])\s*[\)\.\-:]\s+/i);
+        // Detect first inline option: handles both "A) text" and "A .csv" formats
+        const inlineOpt = stem.match(/[\s:;]([A-E])\s*[\)\.\-:]\s*/i);
         if (inlineOpt && Number.isFinite(inlineOpt.index) && inlineOpt.index > 30) {
             stem = stem.slice(0, inlineOpt.index).trim();
         }
@@ -107,7 +108,8 @@ export const QuestionParser = {
         }
 
         // Secondary pass: recover missing letters from inline/quoted patterns
-        const inlineRe = /(?:^|[\n\r\t ;"'""''])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:[\n\r\t ;"'""''][A-E]\s*[\)\.\-:]\s)|$)/gi;
+        // Lookahead updated: \s after delimiter is optional to handle "A .csv" format
+        const inlineRe = /(?:^|[\n\r\t ;"'""''])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:[\n\r\t ;"'""''][A-E]\s*[\)\.\-:])|$)/gi;
         let m;
         while ((m = inlineRe.exec(text)) !== null) {
             const letter = (m[1] || '').toUpperCase();
@@ -122,6 +124,34 @@ export const QuestionParser = {
             seen.add(letter);
             if (!isCodeLike) seenBodies.add(inlineDedupKey);
             if (seen.size >= 5) break;
+        }
+
+        // Tertiary pass: recover last missing option with no delimiter.
+        // Common case: options A-D use "A .csv" format but E is bare "E JSON".
+        // If we have sequential A..D but no E, and the last option body contains
+        // a trailing " E <text>" pattern, split it out.
+        if (options.length >= 3 && options.length <= 4) {
+            const expectedNextLetter = String.fromCharCode(65 + options.length); // A=65
+            if (/^[A-E]$/.test(expectedNextLetter) && !seen.has(expectedNextLetter)) {
+                // Check last option body for embedded next option
+                const lastOpt = options[options.length - 1];
+                const lastMatch = lastOpt.match(/^([A-E])\)\s*(.+)$/i);
+                if (lastMatch) {
+                    const lastBody = lastMatch[2];
+                    const trailRe = new RegExp('\\s+' + expectedNextLetter + '\\s+(.+)$', 'i');
+                    const trailMatch = lastBody.match(trailRe);
+                    if (trailMatch) {
+                        const fixedBody = lastBody.slice(0, trailMatch.index).trim();
+                        const newBody = this.stripOptionTailNoise(trailMatch[1]);
+                        const newNorm = this.normalizeOption(newBody);
+                        if (fixedBody && newBody && newNorm && this.isUsableOptionBody(newBody)) {
+                            options[options.length - 1] = `${lastMatch[1].toUpperCase()}) ${fixedBody}`;
+                            options.push(`${expectedNextLetter}) ${newBody}`);
+                            seen.add(expectedNextLetter);
+                        }
+                    }
+                }
+            }
         }
 
         // Contamination guard: for code-oriented stems, drop textual outlier options

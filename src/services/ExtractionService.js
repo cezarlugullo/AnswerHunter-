@@ -592,7 +592,13 @@ export const ExtractionService = {
                     raw = cleanText(btn.innerText || btn.textContent || '');
                 }
 
+                // Strip leading letter+delimiter (e.g. "A) text" or "A. text").
+                // Also handle bare letter prefix without delimiter (e.g. "E JSON" when
+                // letter was already captured from a circle element).
                 let body = cleanText(raw.replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim());
+                if (letter && body && new RegExp('^' + letter + '\\s+', 'i').test(body)) {
+                    body = body.replace(new RegExp('^' + letter + '\\s+', 'i'), '').trim();
+                }
 
                 const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
                 const idx = body.search(noise);

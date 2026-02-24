@@ -1867,11 +1867,26 @@ export const PopupController = {
       // When the page shows multiple numbered questions (e.g. Estácio "Conteúdo" pages),
       // the extractor may return all of them. Detect this and keep only the one
       // whose number is most centered in the viewport.
-      const multiQRe = /(?:^|\n)\s*(\d+)[\.\)]\s+\S/g;
-      const qNumbers = [];
+      // NOTE: delimiter [.)] is optional — some pages (e.g. Estácio provas) use
+      // bare numbers like "1 É um formato..." without dot or paren.
+      // Uses \b (word boundary) to also detect numbers mid-line (single-line DOM text).
+      const multiQRe = /(?:^|\n|\b)(\d{1,2})\s*[\.\)]?\s+(?=[A-ZÀ-ÖÙ-ÝÉ])/g;
+      const qNumbersRaw = [];
       let qm;
       while ((qm = multiQRe.exec(bestQuestion)) !== null) {
-        qNumbers.push({ num: parseInt(qm[1], 10), index: qm.index });
+        qNumbersRaw.push({ num: parseInt(qm[1], 10), index: qm.index });
+      }
+      // Filter: keep only plausible sequential question numbers (e.g. 1,2,3 or 1,2,3,4,5).
+      // Reject isolated large numbers or non-sequential gaps that are likely noise.
+      const qNumbers = [];
+      for (const q of qNumbersRaw) {
+        if (q.num >= 1 && q.num <= 50) qNumbers.push(q);
+      }
+      // Validate sequentiality: each successive question number should be ≤ previous + 3
+      if (qNumbers.length >= 2) {
+        const sorted = [...qNumbers].sort((a, b) => a.num - b.num);
+        const isSequential = sorted.every((q, i) => i === 0 || (q.num - sorted[i - 1].num) <= 3);
+        if (!isSequential) qNumbers.length = 0; // reject non-sequential
       }
 
       if (qNumbers.length >= 2) {
@@ -1888,7 +1903,7 @@ export const PopupController = {
                 if (rect.width < 100 || rect.height < 10) return;
                 if (rect.bottom < 0 || rect.top > window.innerHeight) return;
                 const text = (el.innerText || '').trim();
-                const m = text.match(/^\s*(\d+)[\.\)]\s+/);
+                const m = text.match(/^\s*(\d{1,2})\s*[.)]?\s+/);
                 if (!m || text.length < 30) return;
                 const centerY = rect.top + rect.height / 2;
                 const dist = Math.abs(centerY - viewportCenter);
@@ -1909,7 +1924,9 @@ export const PopupController = {
               const endIdx = targetIdx + 1 < qNumbers.length
                 ? qNumbers[targetIdx + 1].index
                 : bestQuestion.length;
-              const isolated = bestQuestion.substring(startIdx, endIdx).trim();
+              let isolated = bestQuestion.substring(startIdx, endIdx).trim();
+              // Strip leading question number prefix (e.g. "1 ", "2. ", "3) ")
+              isolated = isolated.replace(/^\s*\d{1,2}\s*[\.\)]?\s+/, '');
               if (isolated.length >= 30) {
                 console.log(`AnswerHunter: Isolated question ${targetQNum} (was extracting from question ${qNumbers[0].num})`);
                 bestQuestion = isolated;
@@ -1946,7 +1963,9 @@ export const PopupController = {
         const inlineDetected = _inlineLetters.size;
         const lineDetected = countDistinctOptions(bestQuestion);
         if (inlineDetected >= 3 && lineDetected < inlineDetected) {
-          bestQuestion = bestQuestion.replace(/(\S)\s+([a-eA-E]\s*[\)\.\-:]\s)/g, '$1\n$2');
+          // Split inline options onto separate lines.
+          // Handle both "A) text" (delimiter + space) and "A .csv" (space + delimiter + text) formats.
+          bestQuestion = bestQuestion.replace(/(\S)\s+([a-eA-E]\s*[\)\.\-:]\S?)/g, '$1\n$2');
           console.log(`AnswerHunter: INLINE_OPTIONS_SPLIT inline=${inlineDetected} wasOnLines=${lineDetected} nowOnLines=${countDistinctOptions(bestQuestion)}`);
         }
       }

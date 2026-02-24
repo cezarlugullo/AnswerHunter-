@@ -106,7 +106,14 @@ export const OptionsMatchService = {
             if (optCompact.length >= 12 && sourceCompact.includes(optCompact)) { hits++; continue; }
 
             const optTokens = opt.split(/\s+/).map(t => t.trim()).filter(t => t.length >= 4 && !weakStop.has(t));
-            if (optTokens.length === 0) continue;
+            // For very short option bodies (< 4 chars each token, e.g. "csv", "txt", "xml"),
+            // token matching would produce 0 tokens and skip entirely.
+            // Fall back to a relaxed direct-substring check for these short options.
+            if (optTokens.length === 0) {
+                const shortTokens = opt.split(/\s+/).map(t => t.trim()).filter(t => t.length >= 2 && !weakStop.has(t));
+                if (shortTokens.length > 0 && shortTokens.some(t => sourceTokenSet.has(t) || normalizedSource.includes(t))) hits++;
+                continue;
+            }
             let tokenHits = 0; for (const tk of optTokens) { if (sourceTokenSet.has(tk)) tokenHits++; }
             const tokenRatio = tokenHits / optTokens.length;
             if ((tokenHits >= 2 && tokenRatio >= 0.55) || tokenRatio >= 0.72) hits++;
