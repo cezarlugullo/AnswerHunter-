@@ -1,4 +1,4 @@
-import { StorageModel } from '../models/StorageModel.js';
+﻿import { StorageModel } from '../models/StorageModel.js';
 import { I18nService } from '../i18n/I18nService.js';
 
 export const BinderController = {
@@ -138,6 +138,13 @@ export const BinderController = {
             if (backBtn) {
                 e.preventDefault();
                 this.handleNavigateRoot();
+                return;
+            }
+
+            const openStudyPageBtn = e.target.closest('#openStudyPageBtn');
+            if (openStudyPageBtn) {
+                e.preventDefault();
+                this.handleOpenStudyPage();
                 return;
             }
 
@@ -355,7 +362,30 @@ export const BinderController = {
         }
     },
 
-    // === EXPORT / IMPORT ===
+    // === EXPORT / IMPORT / STUDY PAGE ===
+
+    _collectAllQuestions(nodes = StorageModel.data, folderPath = '') {
+        const items = [];
+        for (const node of nodes) {
+            if (node.type === 'question' && node.content) {
+                items.push({ ...node.content, folderPath, createdAt: node.createdAt });
+            } else if (node.type === 'folder') {
+                const path = folderPath ? `${folderPath} / ${node.title}` : node.title;
+                items.push(...this._collectAllQuestions(node.children || [], path));
+            }
+        }
+        return items;
+    },
+
+    async handleOpenStudyPage() {
+        const questions = this._collectAllQuestions();
+        if (!questions.length) {
+            if (this.view.showToast) this.view.showToast(this.t('binder.toast.nothingToExport'), 'error');
+            return;
+        }
+        const url = chrome.runtime.getURL('src/study/study.html');
+        chrome.tabs.create({ url });
+    },
 
     async handleExport() {
         try {

@@ -166,10 +166,11 @@ function sanitizeQuestionText(text) {
     /\bExplica(?:ç|c)[aã]o Passo a Passo\b/i,
     /\bTestar se aprendi\b/i,
     /\bChat de d[úu]vida\b/i,
-    /\bRevisar\b/i,
+    /\b(?:Revisar depois|Somente revis[aã]o)\b/i,
     /\bRevelar resposta\b/i,
     /\blightbulb\b/i,
     /\bcheck_circle\b/i,
+    /\bbookmark(?:_add)?\b/i,
     /\bcontent_copy\b/i,
     /\bsummarize\b/i,
     /\bSalvo em\s+\d{1,2}\/\d{1,2}\/\d{2,4}\b/i
@@ -186,8 +187,8 @@ function sanitizeQuestionText(text) {
   const result = [];
   const optionLineRe = /^[A-Ea-e][\)\.\-:]\s+/;
   const nextQuestionLineRe = /^\d+\.\s+\S/;
-  const iconNoiseLineRe = /^(?:menu_book|quiz|forum|lightbulb|check_circle|content_copy|delete|folder|restart_alt|sync|summarize)$/i;
-  const uiPhraseNoiseLineRe = /^(?:Explica(?:ç|c)[aã]o Passo a Passo|Testar se aprendi|Chat de d[úu]vida|Revelar resposta|Revisar)$/i;
+  const iconNoiseLineRe = /^(?:menu_book|quiz|forum|lightbulb|check_circle|content_copy|delete|folder|restart_alt|sync|summarize|bookmark|bookmark_add)$/i;
+  const uiPhraseNoiseLineRe = /^(?:Explica(?:ç|c)[aã]o Passo a Passo|Testar se aprendi|Chat de d[úu]vida|Revelar resposta|Revisar depois|Somente revis[aã]o)$/i;
   const feedbackNoiseLineRe = /^(?:Parab[eé]ns!?|Infelizmente[,!]?|Resposta\s+correta\b|Resposta\s+incorreta\b|Gabarito\b)/i;
   const metaNoiseLineRe = /^(?:Salvo em\s+\d{1,2}\/\d{1,2}\/\d{2,4}|Raiz\s*\/|#\d+)\b/i;
 
@@ -330,6 +331,80 @@ function collectQuestions(nodes, folderPath = '') {
   return items;
 }
 
+function updateReviewChipCounter() {
+  const chip = document.getElementById('chipReviewOnly');
+  if (!chip) return;
+
+  const labelEl = chip.querySelector('.chip-label');
+  if (!labelEl) return;
+
+  const totalReview = document.querySelectorAll('.card.for-review').length;
+  labelEl.textContent = totalReview > 0 ? `Somente revisão (${totalReview})` : 'Somente revisão';
+}
+
+function applyReviewLaterState(card, isReviewLater) {
+  if (!card) return;
+
+  card.classList.toggle('for-review', !!isReviewLater);
+  card.dataset.reviewLater = isReviewLater ? '1' : '0';
+
+  const badge = card.querySelector('.review-flag');
+  if (badge) badge.classList.toggle('visible', !!isReviewLater);
+
+  const btn = card.querySelector('.btn-review-card');
+  if (!btn) return;
+
+  btn.classList.toggle('active', !!isReviewLater);
+  btn.title = isReviewLater ? 'Remover de revisar depois' : 'Marcar para revisar depois';
+
+  const icon = btn.querySelector('.icon');
+  if (icon) icon.textContent = isReviewLater ? 'bookmark' : 'bookmark_add';
+}
+
+function persistReviewLaterState(questionId, questionText, isReviewLater) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['binderStructure'], (result) => {
+      const data = result.binderStructure;
+      if (!Array.isArray(data)) {
+        resolve(false);
+        return;
+      }
+
+      const updateInTree = (nodes) => {
+        for (const node of nodes) {
+          if (node.type === 'question' && node.content) {
+            const byId = questionId && node.id === questionId;
+            const byContent = !questionId && node.content.question === questionText;
+            if (byId || byContent) {
+              if (isReviewLater) {
+                node.content.reviewLater = true;
+              } else {
+                delete node.content.reviewLater;
+              }
+              return true;
+            }
+          }
+
+          if (node.children && updateInTree(node.children)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const found = updateInTree(data);
+      if (!found) {
+        resolve(false);
+        return;
+      }
+
+      chrome.storage.local.set({ binderStructure: data }, () => {
+        resolve(!chrome.runtime.lastError);
+      });
+    });
+  });
+}
+
 function buildCard(q, index) {
   const article = document.createElement('article');
   article.className = 'card';
@@ -346,7 +421,13 @@ function buildCard(q, index) {
     <div class="card-meta">
       <span class="card-num">#${index + 1}</span>
       ${showFolder ? `<span class="card-folder"><span class="icon">folder</span> ${escH(q.folderPath)}</span>` : ''}
+      <span class="review-flag${q.reviewLater ? ' visible' : ''}">
+        <span class="icon">bookmark</span> Revisar depois
+      </span>
       <div class="card-actions">
+        <button class="card-action-btn btn-review-card${q.reviewLater ? ' active' : ''}" title="${q.reviewLater ? 'Remover de revisar depois' : 'Marcar para revisar depois'}" type="button">
+          <span class="icon">${q.reviewLater ? 'bookmark' : 'bookmark_add'}</span>
+        </button>
         <button class="card-action-btn btn-copy-card" title="Copiar questão e resposta" type="button">
           <span class="icon">content_copy</span>
         </button>
@@ -393,6 +474,28 @@ function buildCard(q, index) {
       </div>
     </div>
 
+    <div class="answer-chat">
+      <div class="chat-header">
+        <span class="icon">forum</span>
+        <span class="chat-header-title">Chat de Dúvida</span>
+        <button class="chat-clear-btn" type="button" title="Limpar conversa" aria-label="Limpar conversa">
+          <span class="icon">delete_sweep</span>
+        </button>
+      </div>
+      <div class="chat-messages">
+        <div class="chat-empty-state">
+          <span class="icon">chat_bubble_outline</span>
+          <p>Tire suas dúvidas sobre esta questão com o tutor de IA.</p>
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <textarea class="chat-textarea" rows="1" placeholder="Pergunte sobre esta questão..." aria-label="Sua pergunta"></textarea>
+        <button class="chat-send-btn" type="button" aria-label="Enviar mensagem">
+          <span class="icon">send</span>
+        </button>
+      </div>
+    </div>
+
     <button class="reveal-btn" type="button">
       <span class="icon">lightbulb</span> Revelar resposta
     </button>
@@ -409,6 +512,8 @@ function buildCard(q, index) {
     </div>
     ${fmtDate(q.createdAt) ? `<div class="card-date">Salvo em ${fmtDate(q.createdAt)}</div>` : ''}
   `;
+
+  applyReviewLaterState(article, Boolean(q.reviewLater));
 
   article.querySelector('.reveal-btn').addEventListener('click', () => {
     revealCard(article);
@@ -497,18 +602,115 @@ function buildCard(q, index) {
     });
   }
 
+  const btnReviewCard = article.querySelector('.btn-review-card');
+  if (btnReviewCard) {
+    btnReviewCard.addEventListener('click', async () => {
+      const nextState = !article.classList.contains('for-review');
+      applyReviewLaterState(article, nextState);
+      updateReviewChipCounter();
+      filterCards();
+
+      const saved = await persistReviewLaterState(q.id, q.question, nextState);
+      if (!saved) {
+        applyReviewLaterState(article, !nextState);
+        updateReviewChipCounter();
+        filterCards();
+        showSyncToast('Nao foi possivel salvar o marcador de revisao.');
+        return;
+      }
+
+      showSyncToast(nextState ? 'Questao marcada para revisar depois.' : 'Questao removida da revisao.');
+    });
+  }
+
   const btnTest = article.querySelector('.btn-test-learning');
   if (btnTest) {
     btnTest.addEventListener('click', () => {
-      alert('Funcionalidade "Testar se aprendi" em breve!');
+      openQuizModal(cleanQuestion, cleanAnswer);
     });
   }
 
   const btnChat = article.querySelector('.btn-chat-doubt');
   if (btnChat) {
+    const chatPanel = article.querySelector('.answer-chat');
+    const chatMessages = chatPanel.querySelector('.chat-messages');
+    const chatTextarea = chatPanel.querySelector('.chat-textarea');
+    const chatSendBtn = chatPanel.querySelector('.chat-send-btn');
+    const chatClearBtn = chatPanel.querySelector('.chat-clear-btn');
+    let chatHistory = [];
+
+    // Toggle panel
     btnChat.addEventListener('click', () => {
-      alert('Funcionalidade "Chat de dúvida" em breve!');
+      const isOpen = chatPanel.classList.toggle('visible');
+      btnChat.classList.toggle('active', isOpen);
+      if (isOpen) {
+        setTimeout(() => chatTextarea.focus(), 50);
+      }
     });
+
+    // Auto-resize textarea
+    chatTextarea.addEventListener('input', () => {
+      chatTextarea.style.height = 'auto';
+      chatTextarea.style.height = Math.min(chatTextarea.scrollHeight, 100) + 'px';
+    });
+
+    // Send on Enter (Shift+Enter for newline)
+    chatTextarea.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendChatMessage();
+      }
+    });
+    chatSendBtn.addEventListener('click', sendChatMessage);
+
+    // Clear chat
+    chatClearBtn.addEventListener('click', () => {
+      chatHistory = [];
+      chatMessages.innerHTML = `
+        <div class="chat-empty-state">
+          <span class="icon">chat_bubble_outline</span>
+          <p>Tire suas dúvidas sobre esta questão com o tutor de IA.</p>
+        </div>`;
+    });
+
+    async function sendChatMessage() {
+      const userMsg = chatTextarea.value.trim();
+      if (!userMsg) return;
+
+      // Remove empty state if present
+      const emptyState = chatMessages.querySelector('.chat-empty-state');
+      if (emptyState) emptyState.remove();
+
+      // Add user bubble
+      appendChatBubble(chatMessages, 'user', userMsg);
+      chatHistory.push({ role: 'user', content: userMsg });
+
+      // Clear + disable input
+      chatTextarea.value = '';
+      chatTextarea.style.height = 'auto';
+      chatSendBtn.disabled = true;
+      chatTextarea.disabled = true;
+
+      // Typing indicator
+      const typingEl = appendTypingIndicator(chatMessages);
+
+      try {
+        const response = await ApiService.answerFollowUp(
+          cleanQuestion, cleanAnswer, q.source || '', userMsg, chatHistory.slice(0, -1)
+        );
+        typingEl.remove();
+        const aiText = response || 'Desculpe, não consegui gerar uma resposta. Tente novamente.';
+        appendChatBubble(chatMessages, 'ai', aiText);
+        chatHistory.push({ role: 'assistant', content: aiText });
+      } catch (err) {
+        typingEl.remove();
+        appendChatBubble(chatMessages, 'ai', 'Erro ao conectar com a IA. Verifique suas configurações e tente novamente.');
+      } finally {
+        chatSendBtn.disabled = false;
+        chatTextarea.disabled = false;
+        chatTextarea.focus();
+      }
+    }
   }
 
   article.querySelector('.btn-copy-card').addEventListener('click', async (e) => {
@@ -613,13 +815,16 @@ function updateProgress() {
 function filterCards() {
   const q = document.getElementById('searchInput').value.toLowerCase().trim();
   const hideAnswered = document.getElementById('chipHideAnswered').classList.contains('active');
+  const onlyReview = document.getElementById('chipReviewOnly').classList.contains('active');
 
   document.querySelectorAll('.card').forEach(card => {
     const text = card.querySelector('.card-question').textContent.toLowerCase();
     const isAnswered = card.classList.contains('answered');
+    const isReviewLater = card.classList.contains('for-review');
     const matchesSearch = !q || text.includes(q);
     const hiddenByFilter = hideAnswered && isAnswered;
-    card.classList.toggle('hidden-card', !matchesSearch || hiddenByFilter);
+    const hiddenByReviewFilter = onlyReview && !isReviewLater;
+    card.classList.toggle('hidden-card', !matchesSearch || hiddenByFilter || hiddenByReviewFilter);
   });
 
   updateProgress();
@@ -645,6 +850,7 @@ function init(questions) {
   questions.forEach((q, i) => fragment.appendChild(buildCard(q, i)));
   cardList.appendChild(fragment);
 
+  updateReviewChipCounter();
   updateProgress();
 
   document.getElementById('footer').textContent =
@@ -655,6 +861,12 @@ function init(questions) {
 
   // Hide answered chip
   document.getElementById('chipHideAnswered').addEventListener('click', function () {
+    this.classList.toggle('active');
+    filterCards();
+  });
+
+  // Review later filter chip
+  document.getElementById('chipReviewOnly').addEventListener('click', function () {
     this.classList.toggle('active');
     filterCards();
   });
@@ -681,6 +893,7 @@ function init(questions) {
     chipReveal.dataset.state = 'hide';
     chipReveal.innerHTML = '<span class="icon">lock_open</span> Revelar todas';
     document.getElementById('chipHideAnswered').classList.remove('active');
+    document.getElementById('chipReviewOnly').classList.remove('active');
     filterCards();
   });
 
@@ -774,6 +987,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     `AnswerHunter — ${total} questão${total !== 1 ? 'ões' : ''} · atualizado em ${new Date().toLocaleString('pt-BR')}`;
 
   // Re-apply current filter
+  updateReviewChipCounter();
   filterCards();
   updateProgress();
 
@@ -806,5 +1020,233 @@ function showSyncToast(msg) {
   clearTimeout(toast._timer);
   toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 3000);
 }
+
+// ══ Chat de Dúvida helpers ════════════════════════════════════════════════════
+
+function appendChatBubble(container, role, text) {
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble ${role}`;
+
+  const avatarIcon = role === 'ai' ? 'smart_toy' : 'person';
+  // Render markdown-lite: bold, line breaks
+  const rendered = escH(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+
+  bubble.innerHTML = `
+    <div class="chat-avatar"><span class="icon">${avatarIcon}</span></div>
+    <div class="chat-bubble-text">${rendered}</div>`;
+
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+  return bubble;
+}
+
+function appendTypingIndicator(container) {
+  const el = document.createElement('div');
+  el.className = 'chat-bubble ai';
+  el.innerHTML = `
+    <div class="chat-avatar"><span class="icon">smart_toy</span></div>
+    <div class="chat-typing">
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+      <div class="typing-dot"></div>
+    </div>`;
+  container.appendChild(el);
+  container.scrollTop = container.scrollHeight;
+  return el;
+}
+
+// ══ Quiz Interativo ══════════════════════════════════════════════════════════
+
+const quizOverlay = document.getElementById('quizOverlay');
+const quizModalBody = document.getElementById('quizModalBody');
+const quizModalFooter = document.getElementById('quizModalFooter');
+const quizScoreBadge = document.getElementById('quizScoreBadge');
+const quizScoreText = document.getElementById('quizScoreText');
+const quizModalClose = document.getElementById('quizModalClose');
+const quizCloseFooterBtn = document.getElementById('quizCloseFooterBtn');
+const quizRetryBtn = document.getElementById('quizRetryBtn');
+
+let _quizState = { current: null, total: 0, correct: 0 };
+
+function openQuizModal(question, answer) {
+  _quizState.current = { question, answer };
+  quizOverlay.removeAttribute('hidden');
+  // rAF to trigger CSS transition
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => quizOverlay.classList.add('open'));
+  });
+  quizModalFooter.style.display = 'none';
+  document.body.style.overflow = 'hidden';
+  renderQuizLoading();
+  loadQuizQuestion(question);
+}
+
+function closeQuizModal() {
+  quizOverlay.classList.remove('open');
+  document.body.style.overflow = '';
+  setTimeout(() => {
+    quizOverlay.setAttribute('hidden', '');
+    quizModalBody.innerHTML = '';
+    quizModalFooter.style.display = 'none';
+  }, 220);
+}
+
+async function loadQuizQuestion(question) {
+  renderQuizLoading();
+  try {
+    const data = await ApiService.generateSimilarQuestion(question);
+    if (!data || !data.questionText || !data.optionsMap || !data.answerLetter) {
+      renderQuizError('Não foi possível gerar a questão. Tente novamente.');
+      return;
+    }
+    renderQuizQuestion(data);
+  } catch (err) {
+    renderQuizError('Erro ao gerar questão: ' + (err?.message || 'Falha na IA'));
+  }
+}
+
+function renderQuizLoading() {
+  quizModalFooter.style.display = 'none';
+  quizModalBody.innerHTML = `
+    <div class="quiz-loading">
+      <span class="icon spin-icon">autorenew</span>
+      <p>Gerando questão similar...</p>
+    </div>`;
+}
+
+function renderQuizError(msg) {
+  quizModalBody.innerHTML = `
+    <div class="quiz-loading">
+      <span class="icon" style="font-size:36px;color:#EF4444">error_outline</span>
+      <p style="color:#EF4444">${escH(msg)}</p>
+    </div>`;
+  quizModalFooter.style.display = 'flex';
+}
+
+function renderQuizQuestion(data) {
+  const { questionText, optionsMap, answerLetter } = data;
+  const letters = Object.keys(optionsMap).filter(k => optionsMap[k]);
+
+  const optionsHtml = letters.map(letter => `
+    <button class="quiz-option" data-letter="${escH(letter)}" type="button" aria-pressed="false">
+      <span class="quiz-option-letter">${escH(letter)}</span>
+      <span class="quiz-option-text">${escH(optionsMap[letter])}</span>
+      <span class="quiz-option-result-icon"><span class="icon" style="font-size:20px"></span></span>
+    </button>`).join('');
+
+  quizModalBody.innerHTML = `
+    <div class="quiz-context-badge">
+      <span class="icon">school</span>
+      Questão similar gerada por IA
+    </div>
+    <div class="quiz-question-text">${escH(questionText)}</div>
+    <div class="quiz-options" id="quizOptions">${optionsHtml}</div>
+    <div class="quiz-result-banner" id="quizResultBanner">
+      <span class="icon"></span>
+      <span id="quizResultText"></span>
+    </div>
+    <div class="quiz-explanation" id="quizExplanation"></div>
+    <button class="quiz-confirm-btn" id="quizConfirmBtn" disabled type="button">
+      Confirmar resposta
+    </button>`;
+
+  let selectedLetter = null;
+  const confirmBtn = quizModalBody.querySelector('#quizConfirmBtn');
+  const optionBtns = quizModalBody.querySelectorAll('.quiz-option');
+
+  optionBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      selectedLetter = btn.dataset.letter;
+      optionBtns.forEach(b => {
+        b.classList.toggle('selected', b.dataset.letter === selectedLetter);
+        b.setAttribute('aria-pressed', b.dataset.letter === selectedLetter ? 'true' : 'false');
+      });
+      confirmBtn.disabled = false;
+    });
+  });
+
+  confirmBtn.addEventListener('click', () => {
+    if (!selectedLetter) return;
+    revealQuizResult(selectedLetter, answerLetter, optionBtns, questionText, optionsMap);
+  });
+
+  quizModalFooter.style.display = 'none';
+}
+
+function revealQuizResult(selected, correct, optionBtns, questionText, optionsMap) {
+  const isCorrect = selected === correct;
+
+  // Update score
+  _quizState.total += 1;
+  if (isCorrect) _quizState.correct += 1;
+  quizScoreText.textContent = `${_quizState.correct}/${_quizState.total}`;
+  quizScoreBadge.classList.add('show');
+
+  // Style options
+  optionBtns.forEach(btn => {
+    btn.disabled = true;
+    const letter = btn.dataset.letter;
+    const icon = btn.querySelector('.quiz-option-result-icon .icon');
+    btn.classList.remove('selected');
+    if (letter === correct) {
+      btn.classList.add('correct');
+      icon.textContent = 'check_circle';
+    } else if (letter === selected && !isCorrect) {
+      btn.classList.add('wrong');
+      icon.textContent = 'cancel';
+    }
+  });
+
+  // Disable confirm
+  const confirmBtn = quizModalBody.querySelector('#quizConfirmBtn');
+  if (confirmBtn) confirmBtn.style.display = 'none';
+
+  // Result banner
+  const banner = quizModalBody.querySelector('#quizResultBanner');
+  const bannerIcon = banner.querySelector('.icon');
+  const bannerText = banner.querySelector('#quizResultText');
+  banner.classList.add('show');
+  if (isCorrect) {
+    banner.classList.add('correct');
+    bannerIcon.textContent = 'check_circle';
+    bannerText.textContent = 'Correto! Você acertou essa questão.';
+  } else {
+    banner.classList.add('wrong');
+    bannerIcon.textContent = 'cancel';
+    bannerText.textContent = `Incorreto. A resposta certa era a alternativa ${correct}: ${optionsMap[correct]}`;
+  }
+
+  // Explanation
+  const expBox = quizModalBody.querySelector('#quizExplanation');
+  expBox.classList.add('show');
+  expBox.innerHTML = `<strong>Por que ${correct} é a correta?</strong> Esta questão testa o mesmo conceito da questão original. A alternativa correta é <strong>${escH(correct)}: ${escH(optionsMap[correct])}</strong>.`;
+
+  // Show footer
+  quizModalFooter.style.display = 'flex';
+}
+
+// Modal controls
+quizModalClose.addEventListener('click', closeQuizModal);
+quizCloseFooterBtn.addEventListener('click', closeQuizModal);
+quizRetryBtn.addEventListener('click', () => {
+  if (_quizState.current) {
+    quizModalFooter.style.display = 'none';
+    loadQuizQuestion(_quizState.current.question);
+  }
+});
+
+// Close on overlay click
+quizOverlay.addEventListener('click', e => {
+  if (e.target === quizOverlay) closeQuizModal();
+});
+
+// ESC key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !quizOverlay.hasAttribute('hidden')) closeQuizModal();
+});
 
 setupStickyOffsets();
