@@ -1838,7 +1838,7 @@ quizRetryBtn.addEventListener('click', () => {
 
 // Close on overlay click
 quizOverlay.addEventListener('click', e => {
-  if (e.target === quizOverlay) closeQuizModal();
+  // if (e.target === quizOverlay) closeQuizModal();
 });
 
 // ESC key
@@ -2114,7 +2114,7 @@ simCloseBtn.addEventListener('click', closeSimulado);
 
 // Backdrop click
 simOverlay.addEventListener('click', e => {
-  if (e.target === simOverlay) closeSimulado();
+  // if (e.target === simOverlay) closeSimulado();
 });
 
 // ══ Gamificação XP ══════════════════════════════════════════════════════════
