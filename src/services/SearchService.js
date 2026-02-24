@@ -2557,6 +2557,14 @@ export const SearchService = {
       const highConfidenceSnippetDomains = new Set(
         highConfidenceSnippetStems.map(e => String(e.hostHint || '').toLowerCase()).filter(Boolean)
       ).size;
+      const hasSingleHighTrustAnchor = hasOptions && !hasStrongExplicit && relevant.length === 1 && sources.length > 0 && hasReliableOptionAlignedSource && hasTrustedRelevantSource && hasVeryStrongAlignedSource && (() => {
+        const anchor = relevant[0] || null;
+        if (!anchor) return false;
+        const topicSim = anchor.topicSim || 0;
+        const textLen = (anchor.text || '').length;
+        const origin = String(anchor.origin || '').toLowerCase();
+        return origin === 'aievidence' && topicSim >= 0.88 && textLen >= 550;
+      })();
       const canProceedAISynthesisOnly = sources.length === 0 && hasOptions && (strongRelevant.length >= 3 && strongRelevantDomainCount >= 2 && hasVeryStrongAlignedSource || hasEliteAnchoredEvidence && hasReliableOptionAlignedSource && relevant.length >= 2 && corroboratingSnippetCount >= 1 ||
       // Path 3: high topic-similarity source provides strong anchor
       // even without corroborating snippets.
@@ -2572,11 +2580,14 @@ export const SearchService = {
       // source to satisfy minRelevantSources.
       relevant.some(e => e.origin === 'aiEvidence' && (e.topicSim || 0) >= 0.95) && relevant.length >= 2);
       const isSnippetStemSynthesis = canProceedAISynthesisOnly && highConfidenceSnippetStems.length >= 2;
-      const canProceedAI = relevant.length > 0 && sources.length > 0 && (!hasOptions || hasReliableOptionAlignedSource && relevant.length >= minRelevantSources) || canProceedAISynthesisOnly;
+      const canProceedAI = relevant.length > 0 && sources.length > 0 && (!hasOptions || hasReliableOptionAlignedSource && (relevant.length >= minRelevantSources || hasSingleHighTrustAnchor)) || canProceedAISynthesisOnly;
       console.log(`canProceedAI=${canProceedAI}`);
       if (canProceedAISynthesisOnly) {
         console.log(`✅ AI synthesis-only mode enabled: strongRelevant=${strongRelevant.length}, domainDiversity=${strongRelevantDomainCount}`);
         console.log(`   anchorMode=${hasEliteAnchoredEvidence} corroboratingSnippets=${corroboratingSnippetCount} snippetStems=${highConfidenceSnippetStems.length} snippetDomains=${highConfidenceSnippetDomains}`);
+      }
+      if (hasSingleHighTrustAnchor) {
+        console.log('✅ AI combined single-source override enabled: trusted high-confidence anchor');
       }
       if (!canProceedAI) {
         console.log('❌ AI combined will NOT run');

@@ -1805,10 +1805,11 @@ Letra B: TCP
                 const body = normalizeSpace(m[2] || '')
                     .replace(/\b(?:gabarito|resposta\s+correta|parab(?:ens|\u00e9ns))\b.*$/i, '')
                     .trim();
+                const codeLikeHint = looksLikeCodeOption(body) || /^[a-z0-9_]+(?:\s*\(\s*\))?$/i.test(body);
                 const bodyNorm = looksLikeCodeOption(body)
                     ? normalizeCodeAwareHint(body)
                     : normalizeForMatch(body);
-                const malformed = !body || body.length < 12
+                const malformed = !body || body.length < (codeLikeHint ? 2 : 12)
                     || /^[A-E]\s*[\)\.\-:]?\s*$/i.test(body)
                     || /^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(body)
                     || seen.has(bodyNorm);
