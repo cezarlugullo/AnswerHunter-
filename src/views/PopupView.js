@@ -1,5 +1,94 @@
 import { formatQuestionText, escapeHtml } from '../utils/helpers.js';
 
+/**
+ * Converts the structured AI reasoning text (PASSO 1 / 2 / 3 markdown)
+ * into readable HTML. Handles bold, inline code, V/F badges, step headers,
+ * bullet lists, and the final answer highlight.
+ */
+function formatReasoning(raw) {
+  if (!raw) return '';
+
+  // inline markdown: **bold** then `code`
+  const inline = (text) => {
+    const escaped = escapeHtml(text);
+    return escaped
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code class="rz-code">$1</code>');
+  };
+
+  const lines = raw.split(/\n/);
+  const out = [];
+  let inBulletList = false;
+
+  const closeBulletList = () => {
+    if (inBulletList) { out.push('</ul>'); inBulletList = false; }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed) { closeBulletList(); out.push('<div class="rz-spacer"></div>'); continue; }
+
+    // PASSO N: header — **PASSO 3: Texto**
+    const stepM = trimmed.match(/^\*\*PASSO\s*(\d+)\s*:\s*([^*]+)\*\*$/i);
+    if (stepM) {
+      closeBulletList();
+      out.push(`<div class="rz-step"><span class="rz-step-num">${escapeHtml(stepM[1])}</span><span class="rz-step-label">${inline(stepM[2].trim())}</span></div>`);
+      continue;
+    }
+
+    // Option row: A) **V** - text  or  A) **F** - text
+    const optM = trimmed.match(/^([A-E])\)\s*\*\*(V|F)\*\*\s*[-–]\s*(.+)$/i);
+    if (optM) {
+      closeBulletList();
+      const verdict = optM[2].toUpperCase();
+      const cls = verdict === 'V' ? 'rz-v' : 'rz-f';
+      out.push(
+        `<div class="rz-option">` +
+        `<span class="rz-opt-letter">${escapeHtml(optM[1])}</span>` +
+        `<span class="rz-badge ${cls}">${verdict === 'V' ? 'V' : 'F'}</span>` +
+        `<span class="rz-opt-text">${inline(optM[3].trim())}</span>` +
+        `</div>`
+      );
+      continue;
+    }
+
+    // Final answer highlight: Letra X: ...
+    const finalM = trimmed.match(/^Letra\s+([A-E]):\s*(.+)$/i);
+    if (finalM) {
+      closeBulletList();
+      out.push(
+        `<div class="rz-final">` +
+        `<span class="rz-final-icon">check_circle</span>` +
+        `<span><strong>Letra ${escapeHtml(finalM[1])}:</strong> ${inline(finalM[2].trim())}</span>` +
+        `</div>`
+      );
+      continue;
+    }
+
+    // Bullet / dash list item
+    const bulletM = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bulletM) {
+      if (!inBulletList) { out.push('<ul class="rz-list">'); inBulletList = true; }
+      out.push(`<li>${inline(bulletM[1])}</li>`);
+      continue;
+    }
+
+    // Sub-bullet: indented with - or **A e B**
+    if (trimmed.match(/^\s{2,}[-*]\s+/) ) {
+      if (!inBulletList) { out.push('<ul class="rz-list">'); inBulletList = true; }
+      out.push(`<li class="rz-sub">${inline(trimmed.replace(/^\s*[-*]\s+/, ''))}</li>`);
+      continue;
+    }
+
+    closeBulletList();
+    out.push(`<p class="rz-para">${inline(trimmed)}</p>`);
+  }
+
+  closeBulletList();
+  return out.join('');
+}
+
 export const PopupView = {
   elements: {},
   _translator: (key) => key,
@@ -734,7 +823,7 @@ export const PopupView = {
                 <span>${escapeHtml(this.t('result.aiReasoning'))}</span>
                 <span class="material-symbols-rounded answer-reasoning-caret">expand_more</span>
               </summary>
-              <div class="answer-reasoning-body">${escapeHtml(item.aiReasoning)}</div>
+              <div class="answer-reasoning-body">${formatReasoning(item.aiReasoning)}</div>
             </details>` : ''}
 
             ${item.optionsMap && Object.keys(item.optionsMap).length >= 2 ? `
