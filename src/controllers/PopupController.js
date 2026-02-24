@@ -7,7 +7,7 @@ import { SettingsModel } from '../models/SettingsModel.js';
 import { I18nService } from '../i18n/I18nService.js';
 import { isLikelyQuestion } from '../utils/helpers.js';
 import { ChatGPTAuthService } from '../services/ChatGPTAuthService.js';
-import { GeminiAuthService } from '../services/GeminiAuthService.js';
+import { GeminiCLIAuthService } from '../services/GeminiCLIAuthService.js';
 
 export const PopupController = {
   view: null,
@@ -56,6 +56,19 @@ export const PopupController = {
         const statusEl = document.getElementById('chatgpt-login-status');
         if (statusEl) statusEl.textContent = msg.error || 'Login failed';
         this.view.showToast('ChatGPT login failed', 'error');
+      } else if (msg.type === 'GEMINI_CLI_AUTH_SUCCESS') {
+        this.refreshGeminiAuthUI();
+        const loginBtn = document.getElementById('gemini-login-btn');
+        const statusEl2 = document.getElementById('gemini-login-status');
+        if (loginBtn) { loginBtn.disabled = false; loginBtn.innerHTML = '<span class="material-symbols-rounded">login</span> <span>Entrar com Google</span>'; }
+        if (statusEl2) statusEl2.textContent = '';
+        this.view.showToast('Google conectado!', 'success');
+      } else if (msg.type === 'GEMINI_CLI_AUTH_FAILED') {
+        const loginBtn2 = document.getElementById('gemini-login-btn');
+        const statusEl3 = document.getElementById('gemini-login-status');
+        if (loginBtn2) { loginBtn2.disabled = false; loginBtn2.innerHTML = '<span class="material-symbols-rounded">login</span> <span>Entrar com Google</span>'; }
+        if (statusEl3) statusEl3.textContent = msg.error || 'Falha no login Google';
+        this.view.showToast('Falha no login Google', 'error');
       }
     });
   },
@@ -141,7 +154,6 @@ export const PopupController = {
     document.getElementById('gemini-auth-close')?.addEventListener('click', () => {
       document.getElementById('gemini-auth-section')?.classList.add('hidden');
     });
-    document.getElementById('gemini-save-client-id')?.addEventListener('click', () => this.handleSaveGeminiClientId());
     document.getElementById('gemini-login-btn')?.addEventListener('click', () => this.handleGeminiLogin());
     document.getElementById('gemini-logout-btn')?.addEventListener('click', () => this.handleGeminiLogout());
     document.getElementById('select-gemini-oauth-model')?.addEventListener('change', () => this.persistAiConfig());
@@ -674,85 +686,46 @@ export const PopupController = {
   // --- Google / Gemini Auth Handlers ---
 
   openGeminiAuthPanel() {
-    try {
-      const uriEl = document.getElementById('gemini-redirect-uri');
-      if (uriEl) {
-        const redirectUri = GeminiAuthService.getRedirectURL();
-        uriEl.textContent = redirectUri;
-      }
-    } catch (_) {
-      const statusEl = document.getElementById('gemini-login-status');
-      if (statusEl) {
-        statusEl.textContent = 'OAuth indisponível. Recarregue a extensão para aplicar permissões.';
-      }
-    }
-
-    GeminiAuthService.getStoredClientId().then(id => {
-      const inp = document.getElementById('gemini-client-id-input');
-      if (inp && id) inp.value = id;
-    });
-
     document.getElementById('gemini-auth-section')?.classList.remove('hidden');
-  },
-
-  async handleSaveGeminiClientId() {
-    const id = document.getElementById('gemini-client-id-input')?.value?.trim();
-    if (!id) return;
-    await GeminiAuthService.setClientId(id);
-    this.view.showToast('Client ID salvo!', 'success');
   },
 
   async handleGeminiLogin() {
     const btn = document.getElementById('gemini-login-btn');
     const statusEl = document.getElementById('gemini-login-status');
-    const detailsEl = document.getElementById('gemini-setup-details');
-    const clientIdInput = document.getElementById('gemini-client-id-input');
 
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = '<span class="material-symbols-rounded spin-loading">sync</span> Entrando...';
     }
-    if (statusEl) statusEl.textContent = '';
+    if (statusEl) statusEl.innerHTML = '<span class="material-symbols-rounded spin-loading" style="font-size:14px;">sync</span> Abrindo página de login...';
 
     try {
-      const clientId = await GeminiAuthService.getClientId();
-      if (!clientId) {
-        if (detailsEl) detailsEl.open = true;
-        if (statusEl) statusEl.textContent = 'Configure o OAuth Client ID antes de entrar com Google.';
-        if (clientIdInput) clientIdInput.focus();
-        this.view.showToast('Falta configurar o Client ID do Google OAuth', 'error');
-        return;
+      await GeminiCLIAuthService.startLogin();
+      if (statusEl) {
+        statusEl.innerHTML = '<span class="material-symbols-rounded spin-loading" style="font-size:14px;">sync</span> Aguardando autenticação...';
       }
-
-      const result = await GeminiAuthService.startLogin();
-      if (result.success) {
-        await this.refreshGeminiAuthUI();
-        this.view.showToast(`Google conectado: ${result.email || ''}`, 'success');
-      } else {
-        if (statusEl) statusEl.textContent = result.error || 'Erro ao fazer login';
-        this.view.showToast(result.error || 'Falha no login Google', 'error');
-      }
+      // The background service worker will handle the callback
+      // and send GEMINI_CLI_AUTH_SUCCESS message
     } catch (err) {
       const message = err?.message || String(err);
       if (statusEl) statusEl.textContent = message;
-      this.view.showToast(`Erro no login Google: ${message}`, 'error');
-    } finally {
       if (btn) {
         btn.disabled = false;
         btn.innerHTML = '<span class="material-symbols-rounded">login</span> <span>Entrar com Google</span>';
       }
+      this.view.showToast(`Erro no login Google: ${message}`, 'error');
     }
   },
 
   async handleGeminiLogout() {
-    await GeminiAuthService.logout();
+    await GeminiCLIAuthService.logout();
     await this.refreshGeminiAuthUI();
     this.view.showToast('Desconectado do Google', 'info');
   },
 
   async refreshGeminiAuthUI() {
-    const isLoggedIn = await GeminiAuthService.isLoggedIn();
-    const auth = isLoggedIn ? await GeminiAuthService.getAuth() : null;
+    const isLoggedIn = await GeminiCLIAuthService.isLoggedIn();
+    const auth = isLoggedIn ? await GeminiCLIAuthService.getAuth() : null;
     document.getElementById('gemini-logged-out')?.classList.toggle('hidden', isLoggedIn);
     document.getElementById('gemini-logged-in')?.classList.toggle('hidden', !isLoggedIn);
     const dot = document.getElementById('gemini-status-dot');

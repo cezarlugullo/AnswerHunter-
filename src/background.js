@@ -11,68 +11,65 @@
  */
 
 import { ChatGPTAuthService } from './services/ChatGPTAuthService.js';
+import { GeminiCLIAuthService } from './services/GeminiCLIAuthService.js';
 import { SearchService } from './services/SearchService.js';
 
-const CALLBACK_PATTERN = 'http://localhost:1455/auth/callback';
+const CHATGPT_CALLBACK_PATTERN = 'http://localhost:1455/auth/callback';
+const GEMINI_CLI_CALLBACK_PATTERN = 'http://localhost:11235/auth/callback';
 
 /**
  * Listen for tab URL changes to capture the OAuth callback.
  * This runs in the background even when the popup is closed.
  */
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-    // Only check when the URL changes
     if (!changeInfo.url) return;
 
-    // Check if this is the OAuth callback URL
-    if (!changeInfo.url.startsWith(CALLBACK_PATTERN)) return;
-
-    console.log('ChatGPTAuth BG: Captured OAuth callback!');
-
-    try {
-        // Handle the callback (exchange code for tokens)
-        const result = await ChatGPTAuthService.handleCallback(changeInfo.url);
-
-        if (result.success) {
-            console.log('ChatGPTAuth BG: Login successful!');
-            // Close the callback tab (it shows a "connection refused" error)
-            try {
-                await chrome.tabs.remove(tabId);
-            } catch (_) {
-                // Tab may already be closed
+    // ─── ChatGPT OAuth callback ──────────────────────────────────────
+    if (changeInfo.url.startsWith(CHATGPT_CALLBACK_PATTERN)) {
+        console.log('ChatGPTAuth BG: Captured OAuth callback!');
+        try {
+            const result = await ChatGPTAuthService.handleCallback(changeInfo.url);
+            try { await chrome.tabs.remove(tabId); } catch (_) {}
+            if (result.success) {
+                console.log('ChatGPTAuth BG: Login successful!');
+                try { await chrome.runtime.sendMessage({ type: 'CHATGPT_AUTH_SUCCESS', email: result.email }); } catch (_) {}
+            } else {
+                console.error('ChatGPTAuth BG: Login failed:', result.error);
+                try { await chrome.runtime.sendMessage({ type: 'CHATGPT_AUTH_FAILED', error: result.error }); } catch (_) {}
             }
-
-            // Notify any open popup about the successful login
-            try {
-                await chrome.runtime.sendMessage({
-                    type: 'CHATGPT_AUTH_SUCCESS',
-                    email: result.email
-                });
-            } catch (_) {
-                // Popup may not be open — that's fine, it'll check on next open
-            }
-        } else {
-            console.error('ChatGPTAuth BG: Login failed:', result.error);
-            // Still close the error tab
-            try {
-                await chrome.tabs.remove(tabId);
-            } catch (_) { }
-
-            try {
-                await chrome.runtime.sendMessage({
-                    type: 'CHATGPT_AUTH_FAILED',
-                    error: result.error
-                });
-            } catch (_) { }
+        } catch (err) {
+            console.error('ChatGPTAuth BG: Callback handling error:', err);
         }
-    } catch (err) {
-        console.error('ChatGPTAuth BG: Callback handling error:', err);
+        return;
+    }
+
+    // ─── Gemini CLI OAuth callback ───────────────────────────────────
+    if (changeInfo.url.startsWith(GEMINI_CLI_CALLBACK_PATTERN)) {
+        console.log('GeminiCLIAuth BG: Captured OAuth callback!');
+        try {
+            const result = await GeminiCLIAuthService.handleCallback(changeInfo.url);
+            try { await chrome.tabs.remove(tabId); } catch (_) {}
+            if (result.success) {
+                console.log('GeminiCLIAuth BG: Login successful!');
+                try { await chrome.runtime.sendMessage({ type: 'GEMINI_CLI_AUTH_SUCCESS', email: result.email }); } catch (_) {}
+            } else {
+                console.error('GeminiCLIAuth BG: Login failed:', result.error);
+                try { await chrome.runtime.sendMessage({ type: 'GEMINI_CLI_AUTH_FAILED', error: result.error }); } catch (_) {}
+            }
+        } catch (err) {
+            console.error('GeminiCLIAuth BG: Callback handling error:', err);
+        }
+        return;
     }
 });
 
 // Keep the service worker alive briefly when auth is pending
-chrome.storage.local.get(['chatgpt_pkce_pending'], (result) => {
+chrome.storage.local.get(['chatgpt_pkce_pending', 'gemini_cli_pkce_pending'], (result) => {
     if (result.chatgpt_pkce_pending) {
         console.log('ChatGPTAuth BG: PKCE session pending — monitoring tabs for callback');
+    }
+    if (result.gemini_cli_pkce_pending) {
+        console.log('GeminiCLIAuth BG: PKCE session pending — monitoring tabs for callback');
     }
 });
 

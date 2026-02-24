@@ -607,44 +607,7 @@
           </p>
         </div>
 
-        <!-- Setup: client_id input -->
-        <details id="gemini-setup-details" style="margin-bottom: 10px;">
-          <summary style="font-size: 0.78rem; color: rgba(255,255,255,0.7); cursor: pointer; padding: 6px 0; user-select: none;">
-            <span class="material-symbols-rounded" style="font-size: 14px; vertical-align: middle;">settings</span>
-            Configurar OAuth Client ID
-          </summary>
-          <div style="padding: 10px 0 4px;">
-            <p style="font-size: 0.72rem; color: rgba(255,255,255,0.7); margin: 0 0 8px; line-height: 1.45;">
-              Se o app já vier com Client ID embutido, você pode ignorar esta seção.
-            </p>
-            <p style="font-size: 0.72rem; color: rgba(255,255,255,0.9); margin: 0 0 8px; line-height: 1.45;">
-              <strong style="color: #ffffff;">Guia rápido (para leigos):</strong><br>
-              • No Google Auth Platform, escolha <strong style="color: #ffffff;">Audience = External</strong>.<br>
-              • Em <strong style="color: #ffffff;">App Information</strong>, use nome <strong style="color: #ffffff;">Extension AnswerHunter</strong> e seu e-mail de suporte.<br>
-              • Salve e siga para criar o OAuth Client ID.
-            </p>
-            <p style="font-size: 0.72rem; color: rgba(255,255,255,0.6); margin: 0 0 8px; line-height: 1.5;">
-              1. Acesse <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener" style="color: #4285F4;">Google Cloud Console → Credentials</a><br>
-              2. Clique em <strong style="color: rgba(255,255,255,0.85);">Create Credentials → OAuth client ID</strong><br>
-              3. Em <strong style="color: rgba(255,255,255,0.85);">Application type</strong>, selecione <strong style="color: rgba(255,255,255,0.85);">Web application</strong><br>
-              4. Em <strong style="color: rgba(255,255,255,0.85);">Authorized redirect URIs</strong>, adicione exatamente:<br>
-              <code id="gemini-redirect-uri" style="font-size: 0.68rem; color: #4285F4; word-break: break-all;"></code><br>
-              5. Ative a <strong style="color: rgba(255,255,255,0.85);">Generative Language API</strong> em outra tela (API Library):
-              <a href="https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com" target="_blank" rel="noopener" style="color: #4285F4;">abrir API Library</a><br>
-              6. Copie o <strong style="color: rgba(255,255,255,0.85);">Client ID</strong> (somente ele, não use o secret) e cole abaixo
-            </p>
-            <div class="ob-input-wrapper" style="margin-bottom: 6px;">
-              <span class="material-symbols-rounded ob-input-icon">vpn_key</span>
-              <input type="text" id="gemini-client-id-input" class="ob-input"
-                placeholder="xxxxx.apps.googleusercontent.com" spellcheck="false" autocomplete="off">
-            </div>
-            <button id="gemini-save-client-id" class="ob-btn ob-btn-secondary" style="width: 100%; gap: 5px;">
-              <span class="material-symbols-rounded" style="font-size: 15px;">save</span>
-              <span>Salvar Client ID</span>
-            </button>
-          </div>
-        </details>
-
+        <!-- Setup: client_id input (Removed for Gemini CLI Auth) -->
         <button id="gemini-login-btn" class="ob-btn ob-btn-primary"
           style="width: 100%; gap: 8px; border: none;">
           <span class="material-symbols-rounded">login</span>

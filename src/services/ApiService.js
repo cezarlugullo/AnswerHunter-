@@ -1,6 +1,8 @@
 import { SettingsModel } from '../models/SettingsModel.js';
 import { ChatGPTAuthService } from './ChatGPTAuthService.js';
 import { GeminiAuthService } from './GeminiAuthService.js';
+import { GeminiCLIAuthService } from './GeminiCLIAuthService.js';
+import { GeminiCLIApiAdapter } from './GeminiCLIApiAdapter.js';
 
 /**
  * ApiService.js
@@ -36,8 +38,40 @@ export const ApiService = {
 
         const settings = await this._getSettings();
         const { geminiApiKey, geminiApiUrl, geminiModel } = settings;
+        const model = opts.model || geminiModel || 'gemini-2.5-flash';
 
-        // Prefer Google OAuth token over API key when user is signed in
+        // ─── Priority 1: Gemini CLI OAuth → cloudcode-pa.googleapis.com ───
+        // Uses the user's Gemini subscription (free / AI Pro / AI Ultra)
+        if (!opts._skipCLI) {
+            try {
+                const cliToken = await GeminiCLIAuthService.getValidToken();
+                if (cliToken) {
+                    const projectId = await GeminiCLIAuthService.getProjectId();
+                    if (projectId) {
+                        const cliResult = await GeminiCLIApiAdapter.generateContent(
+                            cliToken, projectId, messages,
+                            { model, temperature: opts.temperature, max_tokens: opts.max_tokens }
+                        );
+                        if (cliResult && typeof cliResult === 'string') {
+                            console.log(`AnswerHunter: Gemini CLI success (model=${model}, ${cliResult.length} chars)`);
+                            return cliResult;
+                        }
+                        if (cliResult?.error && cliResult.status === 429) {
+                            const cooldownMs = 120000;
+                            this._geminiQuotaExhaustedUntil = Date.now() + cooldownMs;
+                            console.warn('AnswerHunter: Gemini CLI rate-limited, falling back to API key');
+                        } else if (cliResult?.error) {
+                            console.warn(`AnswerHunter: Gemini CLI failed (${cliResult.status}), falling back`);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('AnswerHunter: Gemini CLI auth error, falling back:', e.message);
+            }
+        }
+
+        // ─── Priority 2: GeminiAuthService OAuth (user's own client_id) ───
+        // ─── Priority 3: API key ───
         let geminiToken = null;
         try {
             geminiToken = await GeminiAuthService.getValidToken();
@@ -46,8 +80,6 @@ export const ApiService = {
         if (!geminiToken && !geminiApiKey) return null;
         const authHeader = geminiToken ? `Bearer ${geminiToken}` : `Bearer ${geminiApiKey}`;
         const authSource = geminiToken ? 'oauth' : 'apikey';
-
-        const model = opts.model || geminiModel || 'gemini-2.5-flash';
         const baseUrl = (geminiApiUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
         const url = `${baseUrl}/openai/chat/completions`;
 
