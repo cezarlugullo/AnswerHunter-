@@ -233,19 +233,44 @@ function parseQuestion(text) {
   if (!text) return { enunciado: '', alternativas: [] };
 
   const safeText = sanitizeQuestionText(text);
-  let normalized = safeText.replace(/([^\n])\s+([A-Ea-e][\)\.])/g, '$1\n$2');
+
+  // Normalize: put options that use A) or A. delimiters onto their own line
+  let normalized = safeText
+    .replace(/([^\n])\s+([A-Ea-e][\)\.\-:])/g, '$1\n$2')
+    // Also split bare "letter SPACE non-alpha" inline options e.g. "D .jsp E JSON" → "D .jsp\nE JSON"
+    .replace(/([^\n])\s+\b([B-Eb-e])\s+([^a-z\d\n])/g, (_, pre, letter, after) =>
+      `${pre}\n${letter} ${after}`
+    );
+
   const lines = normalized.split('\n');
   const enunciado = [];
   const alternativas = [];
-  
-  const optionRegex = /^[A-Ea-e][\)\.]\s/;
-  
+
+  // Strict: A) A. A- A: followed by space
+  const strictOptRe = /^[A-Ea-e][\)\.\-:]\s/;
+  // Relaxed: bare "A <non-alpha>" e.g. "A .csv", "A +x"  (space then non-letter/digit)
+  const relaxedOptRe = /^([A-Ea-e])\s+([^A-Za-z\d\s])/;
+  // Sequential (already in options): bare "E Word" where E matches next expected letter
+  const seqOptRe = /^([A-Ea-e])\s+(\S)/;
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    if (optionRegex.test(trimmed)) {
-      alternativas.push(stripOptionTailNoise(trimmed));
+    const expectedLetter = alternativas.length < 5
+      ? String.fromCharCode(65 + alternativas.length) : null;
+
+    const isStrict = strictOptRe.test(trimmed);
+    const isRelaxed = !isStrict && relaxedOptRe.test(trimmed);
+    // Sequential: already collecting options AND this line's first char is the expected letter
+    const isSeq = !isStrict && !isRelaxed && alternativas.length > 0 &&
+      expectedLetter && seqOptRe.test(trimmed) &&
+      trimmed[0].toUpperCase() === expectedLetter;
+
+    if (isStrict || isRelaxed || isSeq) {
+      // Normalize "A .csv" → "A) .csv" for consistent downstream parsing
+      const normalized2 = trimmed.replace(/^([A-Ea-e])\s+/, '$1) ');
+      alternativas.push(stripOptionTailNoise(normalized2));
     } else {
       if (alternativas.length === 0) {
         enunciado.push(trimmed);
@@ -255,7 +280,7 @@ function parseQuestion(text) {
       }
     }
   }
-  
+
   return {
     enunciado: enunciado.join('\n').trim(),
     alternativas: alternativas
@@ -444,7 +469,10 @@ function buildCard(q, index) {
       <div class="question-enunciado">${escH(parsedQ.enunciado)}</div>
       ${parsedQ.alternativas.length > 0 ? `
         <div class="question-options">
-          ${parsedQ.alternativas.map(opt => `<div class="option-item">${escH(opt)}</div>`).join('')}
+          ${parsedQ.alternativas.map((opt, idx) => {
+            const letter = String.fromCharCode(65 + idx);
+            return `<button class="option-item" type="button" data-letter="${letter}" aria-pressed="false">${escH(opt)}</button>`;
+          }).join('')}
         </div>
       ` : ''}
     </div>
@@ -490,14 +518,6 @@ function buildCard(q, index) {
         <button class="reveal-btn" type="button">
           <span class="icon">lightbulb</span> Revelar resposta
         </button>
-        <div class="compare-wrap">
-          <button class="compare-toggle-btn" type="button">
-            <span class="icon">edit_note</span> Escrever antes de ver
-          </button>
-          <div class="compare-input-area" hidden>
-            <textarea class="compare-textarea" rows="2" placeholder="Digite sua resposta aqui antes de revelar o gabarito…"></textarea>
-          </div>
-        </div>
       </div>
 
       <div class="card-ai-strip">
@@ -592,7 +612,7 @@ function buildCard(q, index) {
         </div>
       </div>
     </div>
-    ${fmtDate(q.createdAt) ? `<div class="card-date" style="padding: 0 18px 12px;">Salvo em ${fmtDate(q.createdAt)}</div>` : ''}
+    ${fmtDate(q.createdAt) ? `<div class="card-date">Salvo em ${fmtDate(q.createdAt)}</div>` : ''}
   `;
 
   applyReviewLaterState(article, Boolean(q.reviewLater));
@@ -894,51 +914,60 @@ function buildCard(q, index) {
   }
 
   // Compare toggle
-  const compareToggle = article.querySelector('.compare-toggle-btn');
-  const compareInputArea = article.querySelector('.compare-input-area');
-  if (compareToggle && compareInputArea) {
-    compareToggle.addEventListener('click', () => {
-      const opening = compareInputArea.hidden;
-      compareInputArea.hidden = !opening;
+  const optionItems = Array.from(article.querySelectorAll('.option-item'));
+  const correctLetter = (parsedA.letter || '').toUpperCase();
+  if (correctLetter) article.dataset.correctLetter = correctLetter;
+  article.classList.add('click-mode');
 
-  // Comparar resposta: if user typed something, show side-by-side panel
-  const compareTextarea = card.querySelector('.compare-textarea');
-  const comparePanel = card.querySelector('.compare-panel');
-  if (comparePanel && compareTextarea) {
-    const userText = compareTextarea.value.trim();
-    if (userText) {
-      const qid = card.dataset.qid;
-      if (qid) _userAnswers[qid] = userText;
-      // Collapse input area
-      const compareInputArea = card.querySelector('.compare-input-area');
-      if (compareInputArea) compareInputArea.hidden = true;
-      const toggleBtn = card.querySelector('.compare-toggle-btn');
-      if (toggleBtn) toggleBtn.hidden = true;
-      // Populate compare panel
-      const correctText = card.querySelector('.answer-text-content')?.textContent?.trim() || '';
-      comparePanel.querySelectorAll('.compare-col-text')[0].textContent = userText;
-      comparePanel.querySelectorAll('.compare-col-text')[1].textContent = correctText;
-      comparePanel.hidden = false;
-    }
-  }
+  optionItems.forEach(optionEl => {
+    optionEl.addEventListener('click', () => {
+      if (!article.classList.contains('click-mode')) return;
+      if (article.classList.contains('answered')) return;
 
-      compareToggle.classList.toggle('active', opening);
-      if (opening) {
-        const ta = compareInputArea.querySelector('.compare-textarea');
-        setTimeout(() => ta && ta.focus(), 30);
-      }
+      const selectedLetter = String(optionEl.dataset.letter || '').toUpperCase();
+      const selectedText = optionEl.textContent?.trim() || selectedLetter;
+      revealCard(article, { selectedLetter, selectedText });
     });
-  }
+  });
 
   return article;
 }
 
-function revealCard(card) {
+function revealCard(card, context = {}) {
   card.querySelector('.reveal-btn').hidden = true;
-  // Hide compare wrap too since answer is now visible
-  const compareWrap = card.querySelector('.compare-wrap');
-  if (compareWrap) compareWrap.hidden = true;
+  card.classList.remove('click-mode');
   card.querySelector('.card-answer').hidden = false;
+
+  const optionItems = Array.from(card.querySelectorAll('.option-item'));
+  optionItems.forEach(item => {
+    item.classList.remove('selected', 'correct', 'wrong');
+    item.setAttribute('aria-pressed', 'false');
+  });
+
+  const selectedLetter = String(context.selectedLetter || '').toUpperCase();
+  const correctLetter = String(card.dataset.correctLetter || '').toUpperCase();
+  if (selectedLetter) {
+    const selectedEl = optionItems.find(el => String(el.dataset.letter || '').toUpperCase() === selectedLetter);
+    if (selectedEl) {
+      selectedEl.classList.add('selected');
+      selectedEl.setAttribute('aria-pressed', 'true');
+    }
+
+    if (correctLetter) {
+      const correctEl = optionItems.find(el => String(el.dataset.letter || '').toUpperCase() === correctLetter);
+      if (correctEl) correctEl.classList.add('correct');
+      if (selectedEl && selectedLetter !== correctLetter) selectedEl.classList.add('wrong');
+    }
+
+    const comparePanel = card.querySelector('.compare-panel');
+    if (comparePanel) {
+      const cols = comparePanel.querySelectorAll('.compare-col-text');
+      if (cols[0]) cols[0].textContent = context.selectedText || selectedLetter;
+      if (cols[1]) cols[1].textContent = card.querySelector('.answer-text-content')?.textContent?.trim() || '';
+      comparePanel.hidden = false;
+    }
+  }
+
   card.classList.add('answered');
   // Show SM-2 rating bar if not already rated today
   const sm2Bar = card.querySelector('.sm2-rating-bar');
@@ -962,8 +991,16 @@ function revealCard(card) {
 
 function hideCard(card) {
   card.querySelector('.reveal-btn').hidden = false;
-  const compareWrap = card.querySelector('.compare-wrap');
-  if (compareWrap) compareWrap.hidden = false;
+  card.classList.add('click-mode');
+
+  const comparePanel = card.querySelector('.compare-panel');
+  if (comparePanel) comparePanel.hidden = true;
+
+  card.querySelectorAll('.option-item').forEach(item => {
+    item.classList.remove('selected', 'correct', 'wrong');
+    item.setAttribute('aria-pressed', 'false');
+  });
+
   card.querySelector('.card-answer').hidden = true;
   card.classList.remove('answered');
   updateProgress();
@@ -1363,6 +1400,7 @@ function init(questions) {
 
   if (total === 0) {
     emptyState.querySelector('p').textContent = 'Nenhuma questão salva no fichário.';
+    setMainView('dashboard');
     return;
   }
 
@@ -1440,9 +1478,21 @@ function init(questions) {
     filterCards();
   });
 
-  // Reveal/hide all chip
+  // Reveal/hide all — mode toggle
   const chipReveal = document.getElementById('chipRevealAll');
-  chipReveal.dataset.state = 'hide'; // starts as "hide all" meaning answers are hidden
+
+  function updateModeToggle(isRevealMode) {
+    if (isRevealMode) {
+      chipReveal.innerHTML = '<span class="icon">visibility_off</span> Modo prova';
+      chipReveal.title = 'Modo livre ativo: gabarito visível. Clique para voltar ao modo prova.';
+    } else {
+      chipReveal.innerHTML = '<span class="icon">checklist</span> Modo prova';
+      chipReveal.title = 'Modo prova ativo: clique em uma alternativa para responder.';
+    }
+  }
+
+  chipReveal.dataset.state = 'hide';
+  updateModeToggle(false);
 
   chipReveal.addEventListener('click', function () {
     const reveal = this.dataset.state === 'hide';
@@ -1450,9 +1500,7 @@ function init(questions) {
       reveal ? revealCard(card) : hideCard(card);
     });
     this.dataset.state = reveal ? 'reveal' : 'hide';
-    this.innerHTML = reveal
-      ? '<span class="icon">lock</span> Ocultar todas'
-      : '<span class="icon">lock_open</span> Revelar todas';
+    updateModeToggle(reveal);
   });
 
   // Reset progress
@@ -1460,8 +1508,7 @@ function init(questions) {
     if (!confirm('Reiniciar todo o progresso desta sessão?')) return;
     document.querySelectorAll('.card').forEach(card => hideCard(card));
     chipReveal.dataset.state = 'hide';
-    chipReveal.innerHTML = '<span class="icon">lock_open</span> Revelar todas';
-    document.getElementById('chipHideAnswered').classList.remove('active');
+    updateModeToggle(false);    document.getElementById('chipHideAnswered').classList.remove('active');
     document.getElementById('chipReviewOnly').classList.remove('active');
     const subjectSelect = document.getElementById('subjectSelect');
     if (subjectSelect) subjectSelect.value = 'all';
@@ -1502,6 +1549,9 @@ function init(questions) {
       console.error('Failed to copy all', err);
     }
   });
+
+  // Dashboard is the default landing view
+  setMainView('dashboard');
 }
 
 // Load data from chrome.storage.local
@@ -1510,6 +1560,8 @@ chrome.storage.local.get(['binderStructure'], (result) => {
   if (!Array.isArray(data) || data.length === 0) {
     document.getElementById('emptyState').querySelector('p').textContent =
       'Nenhuma questão salva. Use a extensão para salvar questões no fichário.';
+    setMainView('dashboard');
+    renderDashboard(dashHome, { inline: true }).catch(() => {});
   } else {
     init(collectQuestions(data));
   }
@@ -1544,6 +1596,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // Re-apply current filter
   filterCards();
   syncSidebarSessionInfo();
+
+  if (_mainView === 'dashboard') {
+    renderDashboard(dashHome, { inline: true }).catch(() => {});
+  }
 
   // Show inline sync toast
   if (diff !== 0) {
@@ -2274,127 +2330,414 @@ async function saveSimResult(correct, total, elapsed) {
 const dashOverlay = document.getElementById('dashOverlay');
 const dashBody = document.getElementById('dashBody');
 const dashCloseBtn = document.getElementById('dashCloseBtn');
+const dashBackBtn = document.getElementById('dashBackBtn');
 const btnDashboard = document.getElementById('btnDashboard');
+const dashHome = document.getElementById('dashboardHome');
+const tabDashboard = document.getElementById('tabDashboard');
+const tabQuestions = document.getElementById('tabQuestions');
+
+let _mainView = 'dashboard';
+
+function setMainView(view, { rerender = true } = {}) {
+  _mainView = view === 'study' ? 'study' : 'dashboard';
+  document.body.classList.toggle('dashboard-main-mode', _mainView === 'dashboard');
+
+  if (tabDashboard) {
+    const active = _mainView === 'dashboard';
+    tabDashboard.classList.toggle('active', active);
+    tabDashboard.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+  if (tabQuestions) {
+    const active = _mainView === 'study';
+    tabQuestions.classList.toggle('active', active);
+    tabQuestions.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+
+  if (_mainView === 'dashboard' && rerender) {
+    renderDashboard(dashHome, { inline: true }).catch(() => {});
+  }
+}
 
 function openDashboard() {
-  dashOverlay.removeAttribute('hidden');
-  requestAnimationFrame(() => requestAnimationFrame(() => dashOverlay.classList.add('open')));
-  document.body.style.overflow = 'hidden';
-  renderDashboard();
+  setMainView('dashboard');
 }
 
 function closeDashboard() {
-  dashOverlay.classList.remove('open');
-  document.body.style.overflow = '';
-  setTimeout(() => dashOverlay.setAttribute('hidden', ''), 220);
+  setMainView('study');
 }
 
-async function renderDashboard() {
-  dashBody.innerHTML = `<div class="quiz-loading"><span class="icon spin-icon">autorenew</span><p>Carregando dados...</p></div>`;
+async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
+  if (!targetEl) return;
+  targetEl.innerHTML = `<div class="quiz-loading"><span class="icon spin-icon">autorenew</span><p>Carregando dados...</p></div>`;
 
   const [sm2Data, simHistory, xpData] = await Promise.all([
     loadSm2Data(), loadSimHistory(), loadXPData()
   ]);
 
-  const total = allQuestions.length;
-  const sm2Entries = Object.values(sm2Data);
-  const reviewed = sm2Entries.length;
-  const mastered = sm2Entries.filter(e => e.interval >= 21).length;
-  const dueToday = allQuestions.filter(q => sm2IsDue(sm2Data[q.id])).length;
-  const predictedScore = calcPredictedScore(sm2Data, allQuestions);
+  const getTodayISO = () => new Date().toISOString().slice(0, 10);
+  const getWeekStartISO = () => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const d = new Date(now);
+    d.setDate(now.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  };
 
-  // XP
+  const fmtElapsed = s => {
+    const safe = Number.isFinite(s) ? s : 0;
+    const h = Math.floor(safe / 3600);
+    const m = Math.floor((safe % 3600) / 60);
+    const sec = safe % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  const subjects = [...new Set(allQuestions.map(getQuestionSubject))]
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }));
+
+  const goals = await new Promise(resolve => {
+    chrome.storage.local.get(['ah_studyGoals'], r => {
+      resolve(r.ah_studyGoals || { daily: 30, weekly: 150 });
+    });
+  });
+  const dailyGoal = Math.max(1, parseInt(goals.daily, 10) || 30);
+  const weeklyGoal = Math.max(1, parseInt(goals.weekly, 10) || 150);
+
+  const filters = await new Promise(resolve => {
+    chrome.storage.local.get(['ah_dash_filters'], r => resolve(r.ah_dash_filters || { subject: 'all', period: '30d' }));
+  });
+
+  const computeDashboard = ({ subject = 'all', period = '30d' }) => {
+    const baseQuestions = subject === 'all'
+      ? allQuestions
+      : allQuestions.filter(q => getQuestionSubject(q) === subject);
+
+    const reviewedQuestions = baseQuestions.filter(q => sm2Data[q.id]);
+    const totalReviewed = reviewedQuestions.length;
+    const totalAvailable = baseQuestions.length;
+    const dueToday = baseQuestions.filter(q => sm2IsDue(sm2Data[q.id])).length;
+    const mastered = reviewedQuestions.filter(q => (sm2Data[q.id]?.interval || 0) >= 21).length;
+
+    let ratingsTotal = 0;
+    let errorsTotal = 0;
+    reviewedQuestions.forEach(q => {
+      const entry = sm2Data[q.id];
+      ratingsTotal += entry?.totalRatings || 0;
+      errorsTotal += entry?.errors || 0;
+    });
+    const hitRate = ratingsTotal > 0 ? Math.max(0, Math.round(((ratingsTotal - errorsTotal) / ratingsTotal) * 100)) : 0;
+    const errorRate = ratingsTotal > 0 ? Math.max(0, Math.min(100, 100 - hitRate)) : 0;
+
+    const today = getTodayISO();
+    const weekStart = getWeekStartISO();
+    const todayDone = reviewedQuestions.filter(q => sm2Data[q.id]?.lastRated === today).length;
+    const weekDone = reviewedQuestions.filter(q => {
+      const last = sm2Data[q.id]?.lastRated;
+      return last && last >= weekStart;
+    }).length;
+
+    const totalStudyTime = simHistory.reduce((sum, h) => sum + (h.elapsed || 0), 0);
+
+    const subjectRows = subjects.map(subj => {
+      const list = allQuestions.filter(q => getQuestionSubject(q) === subj);
+      let subjRatings = 0;
+      let subjErrors = 0;
+      list.forEach(q => {
+        const e = sm2Data[q.id];
+        subjRatings += e?.totalRatings || 0;
+        subjErrors += e?.errors || 0;
+      });
+      const subjHit = subjRatings > 0 ? Math.round(((subjRatings - subjErrors) / subjRatings) * 100) : 0;
+      return {
+        subject: subj,
+        questions: list.length,
+        ratings: subjRatings,
+        errors: subjErrors,
+        hit: subjHit
+      };
+    });
+
+    const byErrors = [...subjectRows].sort((a, b) => b.errors - a.errors).slice(0, 6);
+    const byHit = [...subjectRows]
+      .filter(r => r.ratings > 0)
+      .sort((a, b) => b.hit - a.hit)
+      .slice(0, 6);
+
+    const filteredHistory = (() => {
+      if (!Array.isArray(simHistory)) return [];
+      if (period === 'all') return simHistory.slice(0, 12).reverse();
+      const days = period === '7d' ? 7 : 30;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const toDate = d => {
+        const parts = String(d || '').split('/');
+        if (parts.length !== 3) return null;
+        const [day, month, year] = parts.map(n => parseInt(n, 10));
+        if (!day || !month || !year) return null;
+        return new Date(year, month - 1, day);
+      };
+      return simHistory
+        .filter(item => {
+          const dt = toDate(item.date);
+          return dt && dt >= cutoff;
+        })
+        .slice(0, 12)
+        .reverse();
+    })();
+
+    const trendBars = filteredHistory.map(item => ({
+      label: item.date,
+      pct: Math.max(0, Math.min(100, item.pct || 0))
+    }));
+
+    const predictedScore = calcPredictedScore(sm2Data, baseQuestions);
+    const avgHit = subjectRows.filter(r => r.ratings > 0).reduce((acc, r) => acc + r.hit, 0) / Math.max(1, subjectRows.filter(r => r.ratings > 0).length);
+    const rankEstimate = Math.max(1, Math.min(99, Math.round((hitRate * 0.7) + (Math.max(0, predictedScore || 0) * 0.3))));
+
+    const topErrorSubject = byErrors.find(r => r.errors > 0);
+    const agenda = baseQuestions
+      .map(q => ({ q, entry: sm2Data[q.id] }))
+      .filter(item => item.entry?.nextReview)
+      .sort((a, b) => String(a.entry.nextReview).localeCompare(String(b.entry.nextReview)))
+      .slice(0, 6)
+      .map(item => ({
+        date: item.entry.nextReview,
+        subject: getQuestionSubject(item.q),
+        title: sanitizeQuestionText(item.q.question || '').slice(0, 56)
+      }));
+
+    return {
+      baseQuestions,
+      totalAvailable,
+      totalReviewed,
+      dueToday,
+      mastered,
+      ratingsTotal,
+      errorsTotal,
+      hitRate,
+      errorRate,
+      todayDone,
+      weekDone,
+      totalStudyTime,
+      subjectRows,
+      byErrors,
+      byHit,
+      trendBars,
+      predictedScore,
+      avgHit: Number.isFinite(avgHit) ? Math.round(avgHit) : 0,
+      rankEstimate,
+      topErrorSubject,
+      agenda
+    };
+  };
+
+  const state = computeDashboard({ subject: filters.subject || 'all', period: filters.period || '30d' });
   const { xp, level } = xpData;
   const xpInLevel = xp % XP_PER_LEVEL;
   const xpPct = Math.round((xpInLevel / XP_PER_LEVEL) * 100);
 
-  // Hardest cards (lowest ef, min 1 rating)
-  const ratedCards = allQuestions
-    .filter(q => sm2Data[q.id] && sm2Data[q.id].totalRatings > 0)
-    .map(q => ({ q, entry: sm2Data[q.id] }))
-    .sort((a, b) => (a.entry.ef || 2.5) - (b.entry.ef || 2.5))
-    .slice(0, 5);
+  const dailyPct = Math.min(100, Math.round((state.todayDone / dailyGoal) * 100));
+  const weeklyPct = Math.min(100, Math.round((state.weekDone / weeklyGoal) * 100));
 
-  // Format elapsed
-  const fmtElapsed = s => {
-    const m = Math.floor(s / 60), sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, '0')}`;
+  const subjectOptions = ['<option value="all">Todos os assuntos</option>']
+    .concat(subjects.map(sub => `<option value="${escH(sub)}" ${filters.subject === sub ? 'selected' : ''}>${escH(sub)}</option>`))
+    .join('');
+
+  const periodOptions = `
+    <option value="7d" ${filters.period === '7d' ? 'selected' : ''}>Últimos 7 dias</option>
+    <option value="30d" ${filters.period === '30d' ? 'selected' : ''}>Últimos 30 dias</option>
+    <option value="all" ${filters.period === 'all' ? 'selected' : ''}>Histórico completo</option>
+  `;
+
+  const trendHtml = state.trendBars.length
+    ? state.trendBars.map(item => `
+      <div class="dash-bar-row">
+        <div class="dash-bar-label">${escH(item.label)}</div>
+        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${item.pct}%"></div></div>
+        <div class="dash-bar-val">${item.pct}%</div>
+      </div>
+    `).join('')
+    : '<div style="font-size:0.78rem;color:var(--muted)">Sem dados suficientes para tendência no período.</div>';
+
+  const byErrorsHtml = state.byErrors.length
+    ? state.byErrors.map(row => `
+      <div class="dash-bar-row">
+        <div class="dash-bar-label">${escH(row.subject)}</div>
+        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${Math.min(100, row.errors * 10)}%;background:linear-gradient(90deg,#EF4444,#F97316)"></div></div>
+        <div class="dash-bar-val">${row.errors}✗</div>
+      </div>
+    `).join('')
+    : '<div style="font-size:0.78rem;color:var(--muted)">Ainda sem erros registrados.</div>';
+
+  const byHitHtml = state.byHit.length
+    ? state.byHit.map(row => `
+      <div class="dash-bar-row">
+        <div class="dash-bar-label">${escH(row.subject)}</div>
+        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${row.hit}%;background:linear-gradient(90deg,#16A34A,#22C55E)"></div></div>
+        <div class="dash-bar-val">${row.hit}%</div>
+      </div>
+    `).join('')
+    : '<div style="font-size:0.78rem;color:var(--muted)">Responda mais questões para comparar disciplinas.</div>';
+
+  const agendaHtml = state.agenda.length
+    ? state.agenda.map(item => `
+      <div class="dash-agenda-item">
+        <div><strong>${escH(item.subject)}</strong><br>${escH(item.title)}${item.title.length >= 56 ? '…' : ''}</div>
+        <div style="font-weight:700;color:var(--muted)">${escH(item.date)}</div>
+      </div>
+    `).join('')
+    : '<div style="font-size:0.78rem;color:var(--muted)">Sem revisões agendadas ainda.</div>';
+
+  targetEl.innerHTML = `
+    <div class="dash-toolbar">
+      <select id="dashSubjectFilter" class="dash-filter" aria-label="Filtro de assunto">
+        ${subjectOptions}
+      </select>
+      <select id="dashPeriodFilter" class="dash-filter" aria-label="Filtro de período">
+        ${periodOptions}
+      </select>
+    </div>
+
+    <div class="dash-kpi-grid">
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Taxa de acerto</div>
+        <div class="dash-kpi-value">${state.hitRate}%</div>
+        <div class="dash-kpi-sub">Erro: ${state.errorRate}%</div>
+      </div>
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Respondidas</div>
+        <div class="dash-kpi-value">${state.totalReviewed}/${state.totalAvailable}</div>
+        <div class="dash-kpi-sub">Taxa de cobertura: ${state.totalAvailable > 0 ? Math.round((state.totalReviewed / state.totalAvailable) * 100) : 0}%</div>
+      </div>
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Disciplina crítica</div>
+        <div class="dash-kpi-value" style="font-size:0.95rem">${escH(state.topErrorSubject?.subject || '—')}</div>
+        <div class="dash-kpi-sub">${state.topErrorSubject ? `${state.topErrorSubject.errors} erros` : 'Sem erros relevantes'}</div>
+      </div>
+      <div class="dash-kpi">
+        <div class="dash-kpi-label">Tempo total</div>
+        <div class="dash-kpi-value">${fmtElapsed(state.totalStudyTime)}</div>
+        <div class="dash-kpi-sub">Simulados + sessões registradas</div>
+      </div>
+    </div>
+
+    <div class="dash-goals">
+      <div class="dash-goal-row"><span>Meta diária</span><strong>${state.todayDone}/${dailyGoal}</strong></div>
+      <div class="dash-progress-track"><div class="dash-progress-fill" style="width:${dailyPct}%"></div></div>
+      <div class="dash-goal-row"><span>Meta semanal</span><strong>${state.weekDone}/${weeklyGoal}</strong></div>
+      <div class="dash-progress-track"><div class="dash-progress-fill" style="width:${weeklyPct}%"></div></div>
+      <div class="dash-goal-row" style="margin-bottom:0"><span>XP</span><strong>Nível ${level} · ${xpInLevel}/${XP_PER_LEVEL}</strong></div>
+      <div class="dash-progress-track" style="margin-bottom:0"><div class="dash-progress-fill" style="width:${xpPct}%"></div></div>
+    </div>
+
+    <div class="dash-actions-grid">
+      <button class="dash-action-btn" id="dashActionContinue" type="button"><span class="icon">play_arrow</span> Continuar de onde parou</button>
+      <button class="dash-action-btn" id="dashActionReviewDue" type="button"><span class="icon">calendar_today</span> Revisar hoje (${state.dueToday})</button>
+      <button class="dash-action-btn" id="dashActionReviewErrors" type="button"><span class="icon">warning_amber</span> Revisar erros</button>
+      <button class="dash-action-btn" id="dashActionSim" type="button"><span class="icon">avg_pace</span> Gerar simulado</button>
+      <button class="dash-action-btn" id="dashActionOpenQuestions" type="button"><span class="icon">menu_book</span> Ver questões</button>
+    </div>
+
+    <div class="dash-split">
+      <div class="dash-panel">
+        <div class="dash-panel-title"><span class="icon">insights</span> Tendência de desempenho</div>
+        <div class="dash-bars">${trendHtml}</div>
+      </div>
+      <div class="dash-panel">
+        <div class="dash-panel-title"><span class="icon">schedule</span> Agenda de revisão</div>
+        <div class="dash-agenda-list">${agendaHtml}</div>
+      </div>
+    </div>
+
+    <div class="dash-split">
+      <div class="dash-panel">
+        <div class="dash-panel-title"><span class="icon">trending_down</span> Erros por disciplina</div>
+        <div class="dash-bars">${byErrorsHtml}</div>
+      </div>
+      <div class="dash-panel">
+        <div class="dash-panel-title"><span class="icon">trending_up</span> Acerto por disciplina</div>
+        <div class="dash-bars">${byHitHtml}</div>
+      </div>
+    </div>
+
+    <div class="dash-insights">
+      <div class="dash-insight-line"><strong>Predição de nota:</strong> ${state.predictedScore !== null ? `${state.predictedScore}%` : 'dados insuficientes'}</div>
+      <div class="dash-insight-line"><strong>Ranking estimado:</strong> top ${100 - state.rankEstimate}% (base local)</div>
+      <div class="dash-insight-line"><strong>Comparativo de disciplinas:</strong> média geral ${state.avgHit}% de acerto.</div>
+      <div class="dash-comparison-note">Comparativos e ranking são estimativas locais para orientar próximas ações de estudo. Não representam ranking social global.</div>
+    </div>
+  `;
+
+  const subjectFilterEl = targetEl.querySelector('#dashSubjectFilter');
+  const periodFilterEl = targetEl.querySelector('#dashPeriodFilter');
+
+  subjectFilterEl?.addEventListener('change', async () => {
+    const next = { subject: subjectFilterEl.value, period: periodFilterEl?.value || '30d' };
+    await new Promise(resolve => chrome.storage.local.set({ ah_dash_filters: next }, resolve));
+    renderDashboard(targetEl, { inline });
+  });
+
+  periodFilterEl?.addEventListener('change', async () => {
+    const next = { subject: subjectFilterEl?.value || 'all', period: periodFilterEl.value };
+    await new Promise(resolve => chrome.storage.local.set({ ah_dash_filters: next }, resolve));
+    renderDashboard(targetEl, { inline });
+  });
+
+  const exitDashboard = () => {
+    if (inline) setMainView('study', { rerender: false });
+    else closeDashboard();
   };
 
-  dashBody.innerHTML = `
-    <div class="dash-stats-grid">
-      <div class="dash-stat-card blue">
-        <div class="dash-stat-value">${total}</div>
-        <div class="dash-stat-label">Total</div>
-      </div>
-      <div class="dash-stat-card purple">
-        <div class="dash-stat-value">${reviewed}</div>
-        <div class="dash-stat-label">Revisadas</div>
-      </div>
-      <div class="dash-stat-card green">
-        <div class="dash-stat-value">${mastered}</div>
-        <div class="dash-stat-label">Dominadas</div>
-      </div>
-      <div class="dash-stat-card orange">
-        <div class="dash-stat-value">${dueToday}</div>
-        <div class="dash-stat-label">Due Hoje</div>
-      </div>
-    </div>
+  targetEl.querySelector('#dashActionContinue')?.addEventListener('click', () => {
+    exitDashboard();
+    const target = [...document.querySelectorAll('.card:not(.hidden-card)')].find(c => !c.classList.contains('answered'))
+      || document.querySelector('.card:not(.hidden-card)');
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.style.outline = '2px solid rgba(255,107,0,0.45)';
+      setTimeout(() => { target.style.outline = ''; }, 1500);
+    }
+  });
 
-    ${predictedScore !== null ? `
-    <div class="prediction-section">
-      <div class="prediction-score">${predictedScore}%</div>
-      <div class="prediction-label">Predição de nota (baseada em EF + domínio)</div>
-    </div>` : ''}
+  targetEl.querySelector('#dashActionReviewDue')?.addEventListener('click', async () => {
+    exitDashboard();
+    const chip = document.getElementById('chipSm2Due');
+    if (chip && !chip.classList.contains('active')) chip.click();
+  });
 
-    <div class="dash-xp-section">
-      <div class="dash-section-title"><span class="icon">bolt</span> Progresso XP</div>
-      <div class="dash-xp-row">
-        <span class="dash-xp-label">Nível ${level}</span>
-        <span class="dash-xp-val">${xp} XP total · ${xpInLevel}/${XP_PER_LEVEL}</span>
-      </div>
-      <div class="dash-xp-track">
-        <div class="dash-xp-fill" style="width:${xpPct}%"></div>
-      </div>
-    </div>
+  targetEl.querySelector('#dashActionReviewErrors')?.addEventListener('click', async () => {
+    exitDashboard();
+    const chip = document.getElementById('chipErrors');
+    if (chip && !chip.classList.contains('active')) chip.click();
+  });
 
-    ${ratedCards.length > 0 ? `
-    <div class="dash-section-title" style="margin-bottom:8px"><span class="icon">trending_down</span> Questões mais difíceis</div>
-    <div class="dash-hard-list">
-      ${ratedCards.map(({ q, entry }) => {
-        const ef = (entry.ef || 2.5).toFixed(1);
-        const efClass = entry.ef < 1.8 ? 'hard' : entry.ef < 2.2 ? 'medium' : 'easy';
-        const cleanQ = sanitizeQuestionText(q.question || '').slice(0, 80);
-        return `<div class="dash-hard-item">
-          <div class="dash-ef-badge ${efClass}">EF<br>${ef}</div>
-          <div class="dash-hard-text">${escH(cleanQ)}${cleanQ.length >= 80 ? '…' : ''}</div>
-          ${entry.errors > 0 ? `<div class="dash-hard-errors">${entry.errors}× ✗</div>` : ''}
-        </div>`;
-      }).join('')}
-    </div>` : ''}
+  targetEl.querySelector('#dashActionSim')?.addEventListener('click', () => {
+    exitDashboard();
+    document.getElementById('btnSimulado')?.click();
+  });
 
-    ${simHistory.length > 0 ? `
-    <div class="dash-section-title" style="margin-top:10px;margin-bottom:8px"><span class="icon">history</span> Histórico de Simulados</div>
-    <table class="dash-sim-table">
-      <thead><tr><th>Data</th><th>Questões</th><th>Resultado</th><th>Tempo</th></tr></thead>
-      <tbody>
-        ${simHistory.slice(0, 8).map(s => {
-          const scoreClass = s.pct >= 70 ? 'high' : s.pct >= 40 ? 'mid' : 'low';
-          return `<tr>
-            <td>${s.date}</td>
-            <td>${s.total}q</td>
-            <td><span class="dash-sim-score ${scoreClass}">${s.correct}/${s.total} · ${s.pct}%</span></td>
-            <td>${fmtElapsed(s.elapsed)}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>` : `<div style="text-align:center;color:var(--muted);font-size:0.84rem;padding:20px 0">Nenhum simulado realizado ainda.</div>`}
-  `;
+  targetEl.querySelector('#dashActionOpenQuestions')?.addEventListener('click', () => {
+    exitDashboard();
+  });
 }
 
-btnDashboard.addEventListener('click', openDashboard);
-dashCloseBtn.addEventListener('click', closeDashboard);
-dashOverlay.addEventListener('click', e => { if (e.target === dashOverlay) closeDashboard(); });
+btnDashboard?.addEventListener('click', () => {
+  if (_mainView === 'dashboard') setMainView('study', { rerender: false });
+  else openDashboard();
+});
+
+tabDashboard?.addEventListener('click', () => setMainView('dashboard'));
+tabQuestions?.addEventListener('click', () => setMainView('study', { rerender: false }));
+
+dashCloseBtn?.addEventListener('click', closeDashboard);
+dashBackBtn?.addEventListener('click', closeDashboard);
+dashOverlay?.addEventListener('click', e => { if (e.target === dashOverlay) closeDashboard(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && _mainView === 'dashboard') closeDashboard();
+  if (e.key === 'Escape' && dashOverlay?.classList.contains('open')) closeDashboard();
+});
 
 // ══ Caderno de Erros chip ════════════════════════════════════════════════════
 
@@ -2616,6 +2959,7 @@ function calcPredictedScore(sm2Data, questions) {
 const POM_WORK = 25 * 60; // 25 min
 const POM_BREAK = 5 * 60; // 5 min
 let _pom = { running: false, isBreak: false, remaining: POM_WORK, intervalId: null };
+const POM_POSITION_KEY = 'ah_pomodoro_position';
 
 function formatPomTime(sec) {
   return `${Math.floor(sec / 60).toString().padStart(2, '0')}:${(sec % 60).toString().padStart(2, '0')}`;
@@ -2669,6 +3013,103 @@ function resetPomodoro() {
   _pom.remaining = POM_WORK;
   document.getElementById('pomPlayIcon').textContent = 'play_arrow';
   updatePomDisplay();
+}
+
+function clampPomPosition(left, top, widget) {
+  const margin = 8;
+  const maxLeft = Math.max(margin, window.innerWidth - widget.offsetWidth - margin);
+  const maxTop = Math.max(margin, window.innerHeight - widget.offsetHeight - margin);
+  return {
+    left: Math.max(margin, Math.min(left, maxLeft)),
+    top: Math.max(margin, Math.min(top, maxTop))
+  };
+}
+
+function applyPomPosition(widget, left, top) {
+  const pos = clampPomPosition(left, top, widget);
+  widget.style.left = `${pos.left}px`;
+  widget.style.top = `${pos.top}px`;
+  widget.style.bottom = 'auto';
+}
+
+async function restorePomodoroPosition(widget) {
+  try {
+    const saved = await new Promise(resolve => {
+      chrome.storage.local.get([POM_POSITION_KEY], r => resolve(r[POM_POSITION_KEY] || null));
+    });
+    if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+      applyPomPosition(widget, saved.left, saved.top);
+    }
+  } catch (_) {
+    // ignore restore errors
+  }
+}
+
+function setupPomodoroDrag() {
+  const widget = document.getElementById('pomodoroWidget');
+  if (!widget) return;
+
+  restorePomodoroPosition(widget);
+
+  let dragging = false;
+  let pointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+
+  const savePosition = (left, top) => {
+    chrome.storage.local.set({ [POM_POSITION_KEY]: { left, top } });
+  };
+
+  const onPointerMove = (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    const nextLeft = startLeft + (event.clientX - startX);
+    const nextTop = startTop + (event.clientY - startY);
+    applyPomPosition(widget, nextLeft, nextTop);
+  };
+
+  const onPointerUp = (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    dragging = false;
+    widget.classList.remove('dragging');
+    widget.releasePointerCapture(pointerId);
+
+    const left = parseFloat(widget.style.left);
+    const top = parseFloat(widget.style.top);
+    if (Number.isFinite(left) && Number.isFinite(top)) {
+      savePosition(left, top);
+    }
+  };
+
+  widget.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    if (event.target.closest('.pom-btn')) return;
+
+    const rect = widget.getBoundingClientRect();
+    dragging = true;
+    pointerId = event.pointerId;
+    startX = event.clientX;
+    startY = event.clientY;
+    startLeft = rect.left;
+    startTop = rect.top;
+
+    widget.classList.add('dragging');
+    widget.setPointerCapture(pointerId);
+    event.preventDefault();
+  });
+
+  widget.addEventListener('pointermove', onPointerMove);
+  widget.addEventListener('pointerup', onPointerUp);
+  widget.addEventListener('pointercancel', onPointerUp);
+
+  window.addEventListener('resize', () => {
+    const left = parseFloat(widget.style.left);
+    const top = parseFloat(widget.style.top);
+    if (Number.isFinite(left) && Number.isFinite(top)) {
+      applyPomPosition(widget, left, top);
+    }
+  });
 }
 
 // ══ #14 Mapa Mental ══════════════════════════════════════════════════════════
@@ -2776,6 +3217,8 @@ document.getElementById('pomClose').addEventListener('click', () => {
   pausePomodoro();
   document.getElementById('pomodoroWidget').classList.remove('visible');
 });
+
+setupPomodoroDrag();
 
 setupStickyOffsets();
 setupSidebarProxyClicks();
