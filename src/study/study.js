@@ -449,28 +449,6 @@ function buildCard(q, index) {
       ` : ''}
     </div>
     
-    <div class="answer-tools">
-      <button class="answer-tool-btn btn-explanation" type="button">
-        <span class="icon">menu_book</span> Explicação Passo a Passo
-      </button>
-      <button class="answer-tool-btn btn-review" type="button">
-        <span class="icon">summarize</span> Revisar
-      </button>
-      <button class="answer-tool-btn btn-test-learning" type="button">
-        <span class="icon">quiz</span> Testar se aprendi
-      </button>
-      <button class="answer-tool-btn btn-chat-doubt" type="button">
-        <span class="icon">forum</span> Chat de dúvida
-      </button>
-      <button class="btn-voice" type="button" title="Ler questão em voz alta">
-        <span class="icon">record_voice_over</span> Ouvir
-      </button>
-      <button class="btn-tags" type="button" title="Gerar tags por IA" data-qid="${escH(q.id || '')}">
-        <span class="icon">local_offer</span> Tags IA
-      </button>
-    </div>
-    <div class="card-tags" id="tags_${escH(q.id || '')}"></div>
-    
     <div class="answer-explanation">
       <div class="explanation-content"></div>
       <div class="explanation-loading" style="display: none; color: var(--muted); font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
@@ -507,18 +485,50 @@ function buildCard(q, index) {
       </div>
     </div>
 
-    <div class="compare-wrap">
-      <button class="compare-toggle-btn" type="button">
-        <span class="icon">edit_note</span> Escrever antes de ver
-      </button>
-      <div class="compare-input-area" hidden>
-        <textarea class="compare-textarea" rows="2" placeholder="Digite sua resposta aqui antes de revelar o gabarito…"></textarea>
+    <div class="card-bottom-zone">
+      <div class="card-primary-actions">
+        <button class="reveal-btn" type="button">
+          <span class="icon">lightbulb</span> Revelar resposta
+        </button>
+        <div class="compare-wrap">
+          <button class="compare-toggle-btn" type="button">
+            <span class="icon">edit_note</span> Escrever antes de ver
+          </button>
+          <div class="compare-input-area" hidden>
+            <textarea class="compare-textarea" rows="2" placeholder="Digite sua resposta aqui antes de revelar o gabarito…"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-ai-strip">
+        <button class="ai-strip-toggle" type="button" aria-expanded="false">
+          <span class="icon">expand_more</span>
+          Ferramentas de Estudo
+          <span class="ai-strip-hint">IA • Áudio • Tags</span>
+        </button>
+        <div class="ai-tools-grid collapsed">
+          <button class="answer-tool-btn btn-explanation" type="button">
+            <span class="icon">menu_book</span> Explicação
+          </button>
+          <button class="answer-tool-btn btn-review" type="button">
+            <span class="icon">summarize</span> Resumo
+          </button>
+          <button class="answer-tool-btn btn-test-learning" type="button">
+            <span class="icon">quiz</span> Testar
+          </button>
+          <button class="answer-tool-btn btn-chat-doubt" type="button">
+            <span class="icon">forum</span> Chat
+          </button>
+          <button class="btn-voice" type="button" title="Ler questão em voz alta">
+            <span class="icon">record_voice_over</span> Ouvir
+          </button>
+          <button class="btn-tags" type="button" title="Gerar tags por IA" data-qid="${escH(q.id || '')}">
+            <span class="icon">local_offer</span> Tags
+          </button>
+        </div>
+        <div class="card-tags" id="tags_${escH(q.id || '')}"></div>
       </div>
     </div>
-
-    <button class="reveal-btn" type="button">
-      <span class="icon">lightbulb</span> Revelar resposta
-    </button>
     
     <div class="card-answer" hidden>
       <div class="compare-panel" hidden>
@@ -582,10 +592,21 @@ function buildCard(q, index) {
         </div>
       </div>
     </div>
-    ${fmtDate(q.createdAt) ? `<div class="card-date">Salvo em ${fmtDate(q.createdAt)}</div>` : ''}
+    ${fmtDate(q.createdAt) ? `<div class="card-date" style="padding: 0 18px 12px;">Salvo em ${fmtDate(q.createdAt)}</div>` : ''}
   `;
 
   applyReviewLaterState(article, Boolean(q.reviewLater));
+
+  // AI strip toggle
+  const aiStripToggle = article.querySelector('.ai-strip-toggle');
+  if (aiStripToggle) {
+    aiStripToggle.addEventListener('click', () => {
+      const grid = article.querySelector('.ai-tools-grid');
+      const isOpen = !grid.classList.contains('collapsed');
+      grid.classList.toggle('collapsed', isOpen);
+      aiStripToggle.setAttribute('aria-expanded', String(!isOpen));
+    });
+  }
 
   article.querySelector('.reveal-btn').addEventListener('click', () => {
     revealCard(article);
@@ -914,6 +935,9 @@ function buildCard(q, index) {
 
 function revealCard(card) {
   card.querySelector('.reveal-btn').hidden = true;
+  // Hide compare wrap too since answer is now visible
+  const compareWrap = card.querySelector('.compare-wrap');
+  if (compareWrap) compareWrap.hidden = true;
   card.querySelector('.card-answer').hidden = false;
   card.classList.add('answered');
   // Show SM-2 rating bar if not already rated today
@@ -938,6 +962,8 @@ function revealCard(card) {
 
 function hideCard(card) {
   card.querySelector('.reveal-btn').hidden = false;
+  const compareWrap = card.querySelector('.compare-wrap');
+  if (compareWrap) compareWrap.hidden = false;
   card.querySelector('.card-answer').hidden = true;
   card.classList.remove('answered');
   updateProgress();
@@ -972,11 +998,50 @@ function normText(value = '') {
     .trim();
 }
 
+// Canonical forms for subjects that appear with different casing/plural
+const SUBJECT_ALIASES = {
+  // Banco de Dados variants
+  'bancos de dados'          : 'Banco de Dados',
+  'banco de dados'           : 'Banco de Dados',
+  'banco de dado'            : 'Banco de Dados',
+  'base de dados'            : 'Banco de Dados',
+  'bases de dados'           : 'Banco de Dados',
+  'banco de dados nosql'     : 'Banco de Dados NoSQL',
+  'bancos de dados nosql'    : 'Banco de Dados NoSQL',
+  'sistemas de bancos'       : 'Banco de Dados',
+  'sistemas de banco'        : 'Banco de Dados',
+  'modelos de dados'         : 'Banco de Dados',
+  'modelo de dados'          : 'Banco de Dados',
+  // Ciência da Computação
+  'ciencia da computacao'    : 'Ciência da Computação',
+  'ciencias da computacao'   : 'Ciência da Computação',
+  // Sistemas distribuídos
+  'sistemas distribuidos'    : 'Sistemas Distribuídos',
+  'sistema distribuido'      : 'Sistemas Distribuídos',
+  'computacao distribuida'   : 'Computação Distribuída',
+  // Tecnologia da Informação
+  'tecnologia da informacao' : 'Tecnologia da Informação',
+  'tecnologias da informacao': 'Tecnologia da Informação',
+  // Sistemas de Informação
+  'sistemas de informacao'   : 'Sistemas de Informação',
+  'sistema de informacao'    : 'Sistemas de Informação',
+  // Computação / Informática
+  'computacao'               : 'Computação',
+  'informatica'              : 'Informática',
+};
+
 function normalizeSubject(value = '') {
-  return String(value || '')
+  const cleaned = String(value || '')
     .replace(/[\r\n\t]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  if (!cleaned) return '';
+  // Look up in alias map (accent- and case-insensitive)
+  const key = cleaned
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  return SUBJECT_ALIASES[key] ?? cleaned;
 }
 
 function inferSubjectFromText(question = '', answer = '') {
@@ -1100,9 +1165,16 @@ function filterCards() {
   });
 
   document.querySelectorAll('.subject-group-header').forEach(header => {
-    const subject = header.dataset.subject || '';
-    const visibleInGroup = document.querySelectorAll(`.card[data-subject="${CSS.escape(subject)}"]:not(.hidden-card)`).length;
-    header.style.display = visibleInGroup > 0 ? 'flex' : 'none';
+    let hasVisible = false;
+    let node = header.nextElementSibling;
+    while (node && !node.classList.contains('subject-group-header')) {
+      if (node.classList.contains('card') && !node.classList.contains('hidden-card')) {
+        hasVisible = true;
+        break;
+      }
+      node = node.nextElementSibling;
+    }
+    header.style.display = hasVisible ? 'flex' : 'none';
   });
 
   updateProgress();
@@ -1135,7 +1207,8 @@ function getSortedQuestions(questions, mode) {
       sorted.sort((a, b) => (b.question || '').localeCompare(a.question || '', 'pt-BR', { sensitivity: 'base' }));
       break;
     case 'folder':
-      sorted.sort((a, b) => (a.folderPath || '').localeCompare(b.folderPath || '', 'pt-BR'));
+    case 'folder_grouped':
+      sorted.sort((a, b) => (a.folderPath || 'Raiz').localeCompare(b.folderPath || 'Raiz', 'pt-BR'));
       break;
     case 'difficulty': {
       sorted.sort((a, b) => {
@@ -1182,14 +1255,29 @@ function populateSubjectSelect(questions) {
   subjectSelect.value = [...subjectSelect.options].some(opt => opt.value === current) ? current : 'all';
 }
 
-function buildSubjectHeader(subject, count) {
+function buildSubjectHeader(subject, count, icon = 'account_tree') {
   const header = document.createElement('div');
   header.className = 'subject-group-header';
   header.dataset.subject = subject;
+  header.dataset.collapsed = 'false';
   header.innerHTML = `
-    <span class="left"><span class="icon">account_tree</span>${escH(subject)}</span>
-    <span class="count">${count} questão${count !== 1 ? 'ões' : ''}</span>
+    <span class="left"><span class="icon">${icon}</span>${escH(subject)}</span>
+    <span class="right">
+      <span class="count">${count} questão${count !== 1 ? 'ões' : ''}</span>
+      <span class="icon subject-chevron">expand_more</span>
+    </span>
   `;
+  header.style.cursor = 'pointer';
+  header.addEventListener('click', () => {
+    const collapsed = header.dataset.collapsed === 'true';
+    header.dataset.collapsed = collapsed ? 'false' : 'true';
+    header.querySelector('.subject-chevron').textContent = collapsed ? 'expand_more' : 'chevron_right';
+    let node = header.nextElementSibling;
+    while (node && !node.classList.contains('subject-group-header')) {
+      node.classList.toggle('subject-collapsed', !collapsed);
+      node = node.nextElementSibling;
+    }
+  });
   return header;
 }
 
@@ -1208,22 +1296,28 @@ function rebuildCardList(questions, mode = 'default') {
   cardList.innerHTML = '';
   const fragment = document.createDocumentFragment();
 
+  const isGrouped = mode === 'subject_grouped' || mode === 'folder_grouped';
   let groupCounts = null;
-  let renderedBySubject = null;
-  if (mode === 'subject_grouped') {
+  let renderedGroups = null;
+  const getGroupKey = mode === 'folder_grouped'
+    ? q => q.folderPath || 'Raiz'
+    : q => getQuestionSubject(q);
+  const groupIcon = mode === 'folder_grouped' ? 'folder' : 'account_tree';
+
+  if (isGrouped) {
     groupCounts = questions.reduce((acc, q) => {
-      const subject = getQuestionSubject(q);
-      acc.set(subject, (acc.get(subject) || 0) + 1);
+      const key = getGroupKey(q);
+      acc.set(key, (acc.get(key) || 0) + 1);
       return acc;
     }, new Map());
-    renderedBySubject = new Set();
+    renderedGroups = new Set();
   }
 
   questions.forEach((q, i) => {
-    const subject = getQuestionSubject(q);
-    if (mode === 'subject_grouped' && !renderedBySubject.has(subject)) {
-      fragment.appendChild(buildSubjectHeader(subject, groupCounts.get(subject) || 0));
-      renderedBySubject.add(subject);
+    const groupKey = getGroupKey(q);
+    if (isGrouped && !renderedGroups.has(groupKey)) {
+      fragment.appendChild(buildSubjectHeader(groupKey, groupCounts.get(groupKey) || 0, groupIcon));
+      renderedGroups.add(groupKey);
     }
 
     const card = buildCard(q, i);
@@ -1320,12 +1414,10 @@ function init(questions) {
       subjectSelect.value = res.ah_subjectFilter;
     }
     const saved = res.ah_sortMode;
-    if (sortSelect && saved && saved !== 'default') {
+    if (sortSelect && saved) {
       sortSelect.value = saved;
-      applySortFromSelect();
-      return;
     }
-    filterCards();
+    applySortFromSelect();
   });
 
   loadSm2Data().then(() => {
