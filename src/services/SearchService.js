@@ -397,17 +397,18 @@ export const SearchService = {
       }
     }
     console.log(`    [reverseTextLookup] source=${sourceLetter} userToSourceMap=${JSON.stringify(sourceLetterForUser)}`);
-    const candidates = Object.entries(sourceLetterForUser).filter(([, sLet]) => sLet === sourceLetter);
-    if (candidates.length > 1) {
-      console.log(`    [reverseTextLookup] AMBIGUOUS: ${candidates.length} user options map to source ${sourceLetter} — keeping original letter`);
+    const matchedUsers = Object.entries(sourceLetterForUser)
+      .filter(([, sLet]) => sLet === sourceLetter)
+      .map(([uLet]) => uLet);
+    if (matchedUsers.length > 1) {
+      console.log(`    [reverseTextLookup] AMBIGUOUS remap for ${sourceLetter}: candidates=[${matchedUsers.join(',')}] — keeping source letter`);
       return sourceLetter;
     }
-    for (const [uLet, sLet] of Object.entries(sourceLetterForUser)) {
-      if (sLet === sourceLetter) {
-        if (uLet !== sourceLetter) console.log(`    [reverseTextLookup] REMAPPED: ${sourceLetter} \u2192 ${uLet}`);
-        else console.log(`    [reverseTextLookup] CONFIRMED: ${sourceLetter}`);
-        return uLet;
-      }
+    if (matchedUsers.length === 1) {
+      const remapped = matchedUsers[0];
+      if (remapped !== sourceLetter) console.log(`    [reverseTextLookup] REMAPPED: ${sourceLetter} \u2192 ${remapped}`);
+      else console.log(`    [reverseTextLookup] CONFIRMED: ${sourceLetter}`);
+      return remapped;
     }
     console.log(`    [reverseTextLookup] NO REMAP for ${sourceLetter}`);
     return sourceLetter;

@@ -2691,6 +2691,37 @@ export const PopupController = {
     });
   },
 
+  _buildLiveCardData(card, fallback = {}) {
+    const fallbackQuestion = String(fallback?.question || '').trim();
+    const fallbackAnswer = String(fallback?.answer || '').trim();
+    const fallbackSources = Array.isArray(fallback?.sources) ? fallback.sources : [];
+    const fallbackSource = String(fallback?.source || (fallbackSources[0]?.link || fallbackSources[0]?.title || '')).trim();
+
+    if (!card) {
+      return {
+        question: fallbackQuestion,
+        answer: fallbackAnswer,
+        sources: fallbackSources,
+        source: fallbackSource
+      };
+    }
+
+    const questionLive = String(card.querySelector('.qa-card-question')?.innerText || '').trim();
+    const answerLetter = String(card.querySelector('.answer-alternative .alt-letter')?.innerText || '').trim();
+    const answerBody = String(card.querySelector('.answer-alternative .alt-text')?.innerText || '').trim();
+    const answerTextOnly = String(card.querySelector('.qa-card-answer-text')?.innerText || '').trim();
+    const answerLive = answerLetter && answerBody
+      ? `Letra ${answerLetter}: ${answerBody}`
+      : (answerTextOnly || fallbackAnswer);
+
+    return {
+      question: questionLive || fallbackQuestion,
+      answer: answerLive || fallbackAnswer,
+      sources: fallbackSources,
+      source: fallbackSource
+    };
+  },
+
   async _persistAnswerOverride(card, newLetter, newBody) {
     try {
       const data = await chrome.storage.local.get(['lastSearchResults']);
@@ -2843,14 +2874,15 @@ export const PopupController = {
 
       try {
         const data = JSON.parse(decodeURIComponent(dataContent));
-        const question = data.question || '';
+        const card = reviewLaterButton.closest('.qa-card');
+        const liveData = this._buildLiveCardData(card, data);
+        const question = liveData.question || '';
         if (!question) return;
-        const answer = data.answer || '';
-        const sources = Array.isArray(data.sources) ? data.sources : [];
-        const source = data.source
+        const answer = liveData.answer || '';
+        const sources = Array.isArray(liveData.sources) ? liveData.sources : [];
+        const source = liveData.source
           || (sources.length ? (sources[0]?.link || sources[0]?.title || '') : '')
           || '';
-        const card = reviewLaterButton.closest('.qa-card');
         const saveButton = card?.querySelector('.save-btn');
 
         const meta = StorageModel.getQuestionMeta(question);
@@ -2888,12 +2920,13 @@ export const PopupController = {
 
       const data = JSON.parse(decodeURIComponent(dataContent));
       const card = saveButton.closest('.qa-card');
+      const liveData = this._buildLiveCardData(card, data);
       const reviewLaterButtonInCard = card?.querySelector('.btn-review-later');
-      await BinderController.toggleSaveItem(data.question, data.answer, data.source, saveButton, Array.isArray(data.sources) ? data.sources : []);
+      await BinderController.toggleSaveItem(liveData.question, liveData.answer, liveData.source, saveButton, Array.isArray(liveData.sources) ? liveData.sources : []);
       const saved = saveButton.classList.contains('saved');
       let reviewLater = false;
       if (saved) {
-        reviewLater = StorageModel.isReviewLater(data.question);
+        reviewLater = StorageModel.isReviewLater(liveData.question);
       }
       if (reviewLaterButtonInCard) this.view.setReviewLaterButtonState(reviewLaterButtonInCard, reviewLater);
       await this._persistResultFlags(card, { saved, reviewLater });
