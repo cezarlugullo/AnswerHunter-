@@ -373,12 +373,27 @@ export const SearchService = {
       for (const probeLen of [40, 25, 15, 5, 2]) {
         const probe = normUser.slice(0, Math.min(probeLen, normUser.length));
         if (probe.length < 2) break;
-        const idx = normSource.indexOf(probe);
-        if (idx < 0) continue;
-        // Look back up to 30 chars for a letter marker ("A) ", "A. ", "A " etc.)
-        const ctxBefore = normSource.slice(Math.max(0, idx - 30), idx);
-        const lm = ctxBefore.match(/\b([A-E])\s*[\)\.\- ]?\s*$/i);
-        if (lm) { sourceLetterForUser[userLetter] = lm[1].toUpperCase(); break; }
+        
+        let foundLetter = null;
+        let searchIdx = 0;
+        while (true) {
+          const idx = normSource.indexOf(probe, searchIdx);
+          if (idx < 0) break;
+          
+          // Look back up to 30 chars for a letter marker ("A) ", "A. ", "A " etc.)
+          const ctxBefore = normSource.slice(Math.max(0, idx - 30), idx);
+          const lm = ctxBefore.match(/\b([A-E])\s*[\)\.\- ]?\s*$/i);
+          if (lm) { 
+            foundLetter = lm[1].toUpperCase(); 
+            break; 
+          }
+          searchIdx = idx + probe.length;
+        }
+        
+        if (foundLetter) {
+          sourceLetterForUser[userLetter] = foundLetter;
+          break;
+        }
       }
     }
     console.log(`    [reverseTextLookup] source=${sourceLetter} userToSourceMap=${JSON.stringify(sourceLetterForUser)}`);
