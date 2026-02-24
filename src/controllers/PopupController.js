@@ -1259,10 +1259,7 @@ export const PopupController = {
         return;
       }
 
-      const withSaved = refined.map((item) => ({
-        ...item,
-        saved: StorageModel.isSaved(item.question)
-      }));
+      const withSaved = this._decorateWithSavedMeta(refined);
 
       this.view.appendResults(withSaved);
       await this.saveLastResults(withSaved);
@@ -2314,10 +2311,7 @@ export const PopupController = {
           aiFallback: false
         }];
 
-        const withSaved = direct.map((item) => ({
-          ...item,
-          saved: StorageModel.isSaved(displayQuestion)
-        }));
+        const withSaved = this._decorateWithSavedMeta(direct, displayQuestion);
 
         this.view.appendResults(withSaved);
         await this.saveLastResults(withSaved);
@@ -2359,10 +2353,7 @@ export const PopupController = {
           aiFallback: false
         }];
 
-        const withSaved = direct.map((item) => ({
-          ...item,
-          saved: StorageModel.isSaved(displayQuestion)
-        }));
+        const withSaved = this._decorateWithSavedMeta(direct, displayQuestion);
 
         this.view.appendResults(withSaved);
         await this.saveLastResults(withSaved);
@@ -2408,11 +2399,7 @@ export const PopupController = {
       }
 
       console.log('AnswerHunter: Final results to display:', finalResults);
-      const withSaved = finalResults.map((item) => ({
-        ...item,
-        question: displayQuestion,
-        saved: StorageModel.isSaved(displayQuestion)
-      }));
+      const withSaved = this._decorateWithSavedMeta(finalResults, displayQuestion);
 
       this.view.appendResults(withSaved);
       await this.saveLastResults(withSaved);
@@ -2551,11 +2538,7 @@ export const PopupController = {
       return;
     }
 
-    const withSaved = aiResults.map((item) => ({
-      ...item,
-      question: displayQuestion,
-      saved: StorageModel.isSaved(displayQuestion)
-    }));
+    const withSaved = this._decorateWithSavedMeta(aiResults, displayQuestion);
 
     this.view.appendResults(withSaved);
     await this.saveLastResults(withSaved);
@@ -2586,6 +2569,19 @@ export const PopupController = {
     return div.innerHTML;
   },
 
+  _decorateWithSavedMeta(items, questionFallback = '') {
+    return (items || []).map((item) => {
+      const question = item.question || questionFallback;
+      const meta = StorageModel.getQuestionMeta(question);
+      return {
+        ...item,
+        question,
+        saved: meta.saved,
+        reviewLater: meta.reviewLater
+      };
+    });
+  },
+
   async _persistAnswerOverride(card, newLetter, newBody) {
     try {
       const data = await chrome.storage.local.get(['lastSearchResults']);
@@ -2608,6 +2604,25 @@ export const PopupController = {
     }
   },
 
+  async _persistResultFlags(card, flags = {}) {
+    try {
+      const data = await chrome.storage.local.get(['lastSearchResults']);
+      const cached = data?.lastSearchResults;
+      if (!Array.isArray(cached) || cached.length === 0) return;
+
+      const allCards = [...(this.view.elements.resultsDiv?.querySelectorAll('.qa-card') || [])];
+      const cardIndex = allCards.indexOf(card);
+      if (cardIndex < 0 || cardIndex >= cached.length) return;
+
+      if (typeof flags.saved === 'boolean') cached[cardIndex].saved = flags.saved;
+      if (typeof flags.reviewLater === 'boolean') cached[cardIndex].reviewLater = flags.reviewLater;
+
+      await chrome.storage.local.set({ lastSearchResults: cached });
+    } catch (error) {
+      console.warn('Could not persist result flags:', error);
+    }
+  },
+
   async restoreLastResults({ clear = true } = {}) {
     try {
       const data = await chrome.storage.local.get(['lastSearchResults']);
@@ -2616,10 +2631,7 @@ export const PopupController = {
       if (clear) this.view.clearResults();
       if (!Array.isArray(cached) || cached.length === 0) return;
 
-      const withSaved = cached.map((item) => ({
-        ...item,
-        saved: StorageModel.isSaved(item.question)
-      }));
+      const withSaved = this._decorateWithSavedMeta(cached);
 
       this.view.appendResults(withSaved);
       this.view.toggleViewSection('view-search');
@@ -2715,13 +2727,66 @@ export const PopupController = {
       return;
     }
 
+    const reviewLaterButton = event.target.closest('.btn-review-later');
+    if (reviewLaterButton) {
+      const dataContent = reviewLaterButton.dataset.content;
+      if (!dataContent) return;
+
+      try {
+        const data = JSON.parse(decodeURIComponent(dataContent));
+        const question = data.question || '';
+        if (!question) return;
+        const answer = data.answer || '';
+        const source = data.source
+          || (Array.isArray(data.sources) ? (data.sources[0]?.link || data.sources[0]?.title || '') : '')
+          || '';
+        const card = reviewLaterButton.closest('.qa-card');
+        const saveButton = card?.querySelector('.save-btn');
+
+        const meta = StorageModel.getQuestionMeta(question);
+        let saved = meta.saved;
+        let reviewLater = !meta.reviewLater;
+
+        if (!saved) {
+          const added = await StorageModel.addItem(question, answer, source, { reviewLater: true });
+          if (!added) {
+            await StorageModel.setReviewLater(question, true);
+          }
+          saved = true;
+          reviewLater = true;
+          this.view.showToast(this.t('result.reviewLater.savedToast'), 'success');
+        } else {
+          const updated = await StorageModel.setReviewLater(question, reviewLater);
+          if (!updated) return;
+          this.view.showToast(this.t(reviewLater ? 'result.reviewLater.enabledToast' : 'result.reviewLater.disabledToast'), reviewLater ? 'success' : 'info');
+        }
+
+        if (saveButton) this.view.setSaveButtonState(saveButton, saved);
+        this.view.setReviewLaterButtonState(reviewLaterButton, reviewLater);
+        await this._persistResultFlags(card, { saved, reviewLater });
+        BinderController.refreshSearchSaveStates();
+      } catch (error) {
+        console.warn('Review-later toggle failed:', error);
+      }
+      return;
+    }
+
     const saveButton = event.target.closest('.save-btn');
     if (saveButton) {
       const dataContent = saveButton.dataset.content;
       if (!dataContent) return;
 
       const data = JSON.parse(decodeURIComponent(dataContent));
+      const card = saveButton.closest('.qa-card');
+      const reviewLaterButtonInCard = card?.querySelector('.btn-review-later');
       await BinderController.toggleSaveItem(data.question, data.answer, data.source, saveButton);
+      const saved = saveButton.classList.contains('saved');
+      let reviewLater = false;
+      if (saved) {
+        reviewLater = StorageModel.isReviewLater(data.question);
+      }
+      if (reviewLaterButtonInCard) this.view.setReviewLaterButtonState(reviewLaterButtonInCard, reviewLater);
+      await this._persistResultFlags(card, { saved, reviewLater });
       return;
     }
 

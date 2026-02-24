@@ -330,14 +330,17 @@ export const BinderController = {
         const resultsDiv = this.view?.elements?.resultsDiv;
         if (!resultsDiv) return;
 
-        const buttons = resultsDiv.querySelectorAll('.save-btn');
-        buttons.forEach((btn) => {
-            const dataContent = btn.dataset.content;
+        const cards = resultsDiv.querySelectorAll('.qa-card');
+        cards.forEach((card) => {
+            const saveBtn = card.querySelector('.save-btn');
+            const reviewBtn = card.querySelector('.btn-review-later');
+            const dataContent = saveBtn?.dataset.content || reviewBtn?.dataset.content;
             if (!dataContent) return;
             try {
                 const data = JSON.parse(decodeURIComponent(dataContent));
-                const saved = StorageModel.isSaved(data.question);
-                this.view.setSaveButtonState(btn, saved);
+                const meta = StorageModel.getQuestionMeta(data.question);
+                if (saveBtn) this.view.setSaveButtonState(saveBtn, meta.saved);
+                if (reviewBtn) this.view.setReviewLaterButtonState(reviewBtn, meta.reviewLater);
             } catch (error) {
                 console.warn('BinderController: erro ao atualizar status de salvo', error);
             }

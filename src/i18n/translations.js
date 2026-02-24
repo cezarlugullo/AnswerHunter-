@@ -113,6 +113,11 @@ export const TRANSLATIONS = {
     'result.sourceHost': 'Source: {host}',
     'result.save': 'Save to binder',
     'result.savedQuestion': 'Saved question',
+    'result.reviewLater.btn': 'Review later',
+    'result.reviewLater.title': 'Save and mark for review later',
+    'result.reviewLater.savedToast': 'Question saved and marked for review.',
+    'result.reviewLater.enabledToast': 'Marked for review later.',
+    'result.reviewLater.disabledToast': 'Removed from review later.',
 
     'result.state.confirmed': 'Confirmed by sources',
     'result.state.conflict': 'Conflict',
@@ -408,6 +413,11 @@ export const TRANSLATIONS = {
     'result.sourceHost': 'Fonte: {host}',
     'result.save': 'Salvar no fichário',
     'result.savedQuestion': 'Questão salva',
+    'result.reviewLater.btn': 'Revisar depois',
+    'result.reviewLater.title': 'Salvar e marcar para revisar depois',
+    'result.reviewLater.savedToast': 'Questão salva e marcada para revisão.',
+    'result.reviewLater.enabledToast': 'Marcada para revisar depois.',
+    'result.reviewLater.disabledToast': 'Removida de revisar depois.',
 
     'result.state.confirmed': 'Confirmado por fontes',
     'result.state.conflict': 'Conflito',

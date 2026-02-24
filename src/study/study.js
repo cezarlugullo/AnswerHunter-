@@ -503,11 +503,31 @@ function buildCard(q, index) {
       </div>
     </div>
 
+    <div class="compare-wrap">
+      <button class="compare-toggle-btn" type="button">
+        <span class="icon">edit_note</span> Escrever antes de ver
+      </button>
+      <div class="compare-input-area" hidden>
+        <textarea class="compare-textarea" rows="2" placeholder="Digite sua resposta aqui antes de revelar o gabarito…"></textarea>
+      </div>
+    </div>
+
     <button class="reveal-btn" type="button">
       <span class="icon">lightbulb</span> Revelar resposta
     </button>
     
     <div class="card-answer" hidden>
+      <div class="compare-panel" hidden>
+        <div class="compare-col user">
+          <div class="compare-col-label"><span class="icon">person</span> Sua resposta</div>
+          <div class="compare-col-text"></div>
+        </div>
+        <div class="compare-col correct">
+          <div class="compare-col-label"><span class="icon">check_circle</span> Gabarito</div>
+          <div class="compare-col-text"></div>
+        </div>
+      </div>
+
       <div class="answer-final-box">
         <span class="answer-badge"><span class="icon">check_circle</span> Gabarito</span>
         <span class="answer-text-content">
@@ -855,6 +875,43 @@ function buildCard(q, index) {
     });
   }
 
+  // Compare toggle
+  const compareToggle = article.querySelector('.compare-toggle-btn');
+  const compareInputArea = article.querySelector('.compare-input-area');
+  if (compareToggle && compareInputArea) {
+    compareToggle.addEventListener('click', () => {
+      const opening = compareInputArea.hidden;
+      compareInputArea.hidden = !opening;
+
+  // Comparar resposta: if user typed something, show side-by-side panel
+  const compareTextarea = card.querySelector('.compare-textarea');
+  const comparePanel = card.querySelector('.compare-panel');
+  if (comparePanel && compareTextarea) {
+    const userText = compareTextarea.value.trim();
+    if (userText) {
+      const qid = card.dataset.qid;
+      if (qid) _userAnswers[qid] = userText;
+      // Collapse input area
+      const compareInputArea = card.querySelector('.compare-input-area');
+      if (compareInputArea) compareInputArea.hidden = true;
+      const toggleBtn = card.querySelector('.compare-toggle-btn');
+      if (toggleBtn) toggleBtn.hidden = true;
+      // Populate compare panel
+      const correctText = card.querySelector('.answer-text-content')?.textContent?.trim() || '';
+      comparePanel.querySelectorAll('.compare-col-text')[0].textContent = userText;
+      comparePanel.querySelectorAll('.compare-col-text')[1].textContent = correctText;
+      comparePanel.hidden = false;
+    }
+  }
+
+      compareToggle.classList.toggle('active', opening);
+      if (opening) {
+        const ta = compareInputArea.querySelector('.compare-textarea');
+        setTimeout(() => ta && ta.focus(), 30);
+      }
+    });
+  }
+
   return article;
 }
 
@@ -1148,6 +1205,7 @@ function showSyncToast(msg) {
 
 const SM2_STORAGE_KEY = 'ah_sm2Data';
 let _sm2Cache = {};
+let _userAnswers = {}; // qid → user's typed answer (for Comparar)
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'

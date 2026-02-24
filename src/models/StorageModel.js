@@ -146,7 +146,7 @@ export const StorageModel = {
             }
             return null;
         };
-        return search(this.data);
+        return search(nodes);
     },
 
     /**
