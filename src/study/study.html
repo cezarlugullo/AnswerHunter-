@@ -2431,34 +2431,6 @@
   </div>
 </div>
 
-<script>
-  document.addEventListener('click', (event) => {
-    const proxyBtn = event.target.closest('[data-proxy-click]');
-    if (!proxyBtn) return;
-    const targetId = proxyBtn.getAttribute('data-proxy-click');
-    const target = targetId ? document.getElementById(targetId) : null;
-    if (!target) return;
-    target.click();
-  });
-
-  const syncSidebarSessionInfo = () => {
-    const counterEl = document.getElementById('counterEl');
-    const progressEl = document.getElementById('progressLabel');
-    const sideCounter = document.getElementById('sideCounterText');
-    const sideProgress = document.getElementById('sideProgressText');
-    if (counterEl && sideCounter) sideCounter.textContent = counterEl.textContent || '0 questões';
-    if (progressEl && sideProgress) sideProgress.textContent = progressEl.textContent || '0 de 0 respondidas';
-  };
-
-  document.addEventListener('DOMContentLoaded', () => {
-    syncSidebarSessionInfo();
-    const counterEl = document.getElementById('counterEl');
-    const progressEl = document.getElementById('progressLabel');
-    const obs = new MutationObserver(syncSidebarSessionInfo);
-    if (counterEl) obs.observe(counterEl, { childList: true, characterData: true, subtree: true });
-    if (progressEl) obs.observe(progressEl, { childList: true, characterData: true, subtree: true });
-  });
-</script>
 <script src="study.js" type="module"></script>
 </body>
 </html>

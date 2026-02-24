@@ -982,6 +982,36 @@ function setupStickyOffsets() {
   window.addEventListener('resize', syncStickyOffsets, { passive: true });
 }
 
+function syncSidebarSessionInfo() {
+  const counterEl = document.getElementById('counterEl');
+  const progressEl = document.getElementById('progressLabel');
+  const sideCounter = document.getElementById('sideCounterText');
+  const sideProgress = document.getElementById('sideProgressText');
+  if (counterEl && sideCounter) sideCounter.textContent = counterEl.textContent || '0 questões';
+  if (progressEl && sideProgress) sideProgress.textContent = progressEl.textContent || '0 de 0 respondidas';
+}
+
+function setupSidebarProxyClicks() {
+  document.addEventListener('click', event => {
+    const proxyBtn = event.target.closest('[data-proxy-click]');
+    if (!proxyBtn) return;
+    const targetId = proxyBtn.getAttribute('data-proxy-click');
+    const target = targetId ? document.getElementById(targetId) : null;
+    if (!target) return;
+    target.click();
+  });
+}
+
+function setupSidebarSessionSync() {
+  syncSidebarSessionInfo();
+  const counterEl = document.getElementById('counterEl');
+  const progressEl = document.getElementById('progressLabel');
+  if (!counterEl && !progressEl) return;
+  const obs = new MutationObserver(syncSidebarSessionInfo);
+  if (counterEl) obs.observe(counterEl, { childList: true, characterData: true, subtree: true });
+  if (progressEl) obs.observe(progressEl, { childList: true, characterData: true, subtree: true });
+}
+
 function updateProgress() {
   const answered = document.querySelectorAll('.card.answered:not(.hidden-card)').length;
   const visible = document.querySelectorAll('.card:not(.hidden-card)').length;
@@ -989,6 +1019,7 @@ function updateProgress() {
   document.getElementById('progressLabel').textContent = `${answered} de ${visible} respondidas`;
   document.getElementById('progressFill').style.width = pct + '%';
   document.getElementById('progressPct').textContent = pct + '%';
+  syncSidebarSessionInfo();
 }
 
 function filterCards() {
@@ -1024,6 +1055,7 @@ function init(questions) {
   const counterEl = document.getElementById('counterEl');
   counterEl.textContent = `${total} questão${total !== 1 ? 'ões' : ''}`;
 
+  syncSidebarSessionInfo();
   const cardList = document.getElementById('cardList');
   const emptyState = document.getElementById('emptyState');
 
@@ -1181,6 +1213,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   updateReviewChipCounter();
   filterCards();
   updateProgress();
+  syncSidebarSessionInfo();
 
   // Show inline sync toast
   if (diff !== 0) {
@@ -2318,3 +2351,5 @@ document.getElementById('pomClose').addEventListener('click', () => {
 });
 
 setupStickyOffsets();
+setupSidebarProxyClicks();
+setupSidebarSessionSync();

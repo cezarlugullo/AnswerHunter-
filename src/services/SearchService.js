@@ -1291,8 +1291,16 @@ export const SearchService = {
             // This handles cases where webcache is rate-limited and only snippet is available, yet the
             // snippet already reveals the answer (e.g. "a resposta correta é a alternativa D").
             const snapGab = EvidenceService.extractExplicitGabarito(seedText, questionStem);
-            if (snapGab?.letter && seedTopicSim >= 0.50) {
-              console.log(`  ✅ Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-gabarito-bypass letter=${snapGab.letter} topicSim=${seedTopicSim.toFixed(2)} (option coverage low but explicit gabarito found in snippet)`);
+            let snippetAnswerLetter = null;
+            if (!snapGab?.letter && originalOptionsMap && Object.keys(originalOptionsMap).length >= 2) {
+              const markerMatch = seedText.match(/(?:\bR(?:esposta)?\s*[:\-]\s*|resposta\s+correta\s*(?:e|é)\s*[:\-]?\s*)([A-Za-z0-9_.+\-]{2,40})/i);
+              if (markerMatch && markerMatch[1]) {
+                snippetAnswerLetter = OptionsMatchService.findLetterByAnswerText(String(markerMatch[1]).trim(), originalOptionsMap);
+              }
+            }
+            const bypassLetter = snapGab?.letter || snippetAnswerLetter;
+            if (bypassLetter && seedTopicSim >= 0.50) {
+              console.log(`  ✅ Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-gabarito-bypass letter=${bypassLetter} topicSim=${seedTopicSim.toFixed(2)} (option coverage low but explicit answer marker found in snippet)`);
               // fall through — let the evidence pipeline extract the gabarito from scopedCombinedText
             } else {
               console.log(`\u26d4 Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);

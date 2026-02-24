@@ -5529,10 +5529,13 @@ REGRAS:
           if (!text) return null;
           const questionPolarity = QuestionParser.detectQuestionPolarity(questionText);
           const patterns = [
-            { re: /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])\b/gi, label: "gab-explicito", confidence: 0.95 },
-            { re: /(?:^|\b)(?:a\s+resposta\s+correta\s+[eé]|a\s+alternativa\s+correta\s+[eé])\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/gi, label: "resposta-correta", confidence: 0.92 },
+            { re: /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])(?=[)\s.,;:\n]|$)/gi, label: "gab-explicito", confidence: 0.95 },
+            // Pattern 2: "a resposta/alternativa correta é (a) (letra/alternativa) D"
+            // NOTE: (?:a\s+)? + (?:(?:letra|alternativa)\s+)? consumes "a alternativa " so the
+            // regex does NOT backtrack and capture the Portuguese article 'a' as letter A.
+            { re: /(?:^|\b)(?:a\s+resposta\s+correta\s+[eé]|a\s+alternativa\s+correta\s+[eé])\s*(?:a\s+)?(?:(?:letra|alternativa)\s+)?([A-E])(?=[)\s.,;:\n]|$)/gi, label: "resposta-correta", confidence: 0.92 },
             { re: /(?:^|\b)(?:letra|alternativa)\s+([A-E])\s*(?:[eé]\s+(?:a\s+)?(?:correta|certa|resposta))/gi, label: "gab-letra", confidence: 0.9 },
-            { re: /(?:^|\b)gab(?:arito)?\.?\s*[:\-]?\s*([A-E])\b/gi, label: "gab-abrev", confidence: 0.88 }
+            { re: /(?:^|\b)gab(?:arito)?\.?\s*[:\-]?\s*([A-E])(?=[)\s.,;:\n]|$)/gi, label: "gab-abrev", confidence: 0.88 }
           ];
           const matches = [];
           for (const { re, label, confidence } of patterns) {
@@ -5553,8 +5556,8 @@ REGRAS:
           const polarity = QuestionParser.detectQuestionPolarity(questionStem);
           const tokens = QuestionParser.extractKeyTokens(questionStem);
           const patterns = [
-            /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])\b/i,
-            /(?:^|\b)(?:a\s+resposta\s+correta\s+e|a\s+alternativa\s+correta\s+e)\s*(?:a\s+)?(?:letra\s*)?([A-E])\b/i
+            /(?:^|\b)(?:gabarito|resposta\s+correta|alternativa\s+correta|item\s+correto)\s*[:\-]?\s*(?:letra\s*)?([A-E])(?=[)\s.,;:\n]|$)/i,
+            /(?:^|\b)(?:a\s+resposta\s+correta\s+[eé]|a\s+alternativa\s+correta\s+[eé])\s*(?:a\s+)?(?:(?:letra|alternativa)\s+)?([A-E])(?=[)\s.,;:\n]|$)/i
           ];
           if (polarity === "INCORRECT" || polarity === "UNKNOWN") {
             patterns.push(
@@ -7543,19 +7546,24 @@ ${pageText}`.trim();
                 const minRatioForStrong = highTopicSim ? 0.35 : 0.8;
                 const seedStrongMatch = (seedCoverage.ratio >= minRatioForStrong || seedCoverage.hits >= minHitsForStrong) && seedTopicSim >= 0.55;
                 if (!seedStrongMatch) {
-                  console.log(`\u26D4 Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
-                  runStats.blockedSnapshotMismatch += 1;
-                  this._logSourceDiagnostic({
-                    phase: "decision",
-                    hostHint: this._getHostHintFromLink(link),
-                    type: "TYPE_SNAPSHOT_WEAK",
-                    topicSim: seedTopicSim,
-                    optionsMatch: false,
-                    obfuscation: null,
-                    decision: "skip",
-                    reason: "snapshot-empty-options-mismatch"
-                  });
-                  continue;
+                  const snapGab = EvidenceService.extractExplicitGabarito(seedText, questionStem);
+                  if (snapGab?.letter && seedTopicSim >= 0.5) {
+                    console.log(`  \u2705 Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-gabarito-bypass letter=${snapGab.letter} topicSim=${seedTopicSim.toFixed(2)} (option coverage low but explicit gabarito found in snippet)`);
+                  } else {
+                    console.log(`\u26D4 Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
+                    runStats.blockedSnapshotMismatch += 1;
+                    this._logSourceDiagnostic({
+                      phase: "decision",
+                      hostHint: this._getHostHintFromLink(link),
+                      type: "TYPE_SNAPSHOT_WEAK",
+                      topicSim: seedTopicSim,
+                      optionsMatch: false,
+                      obfuscation: null,
+                      decision: "skip",
+                      reason: "snapshot-empty-options-mismatch"
+                    });
+                    continue;
+                  }
                 }
               }
               const hostHint = this._getHostHintFromLink(link);
@@ -8406,8 +8414,9 @@ ${scopedCombinedText.slice(0, 1800)}`;
               const snipSim = QuestionParser.questionSimilarityScore(snipText, questionStem);
               if (snipSim < 0.4) continue;
               const snipCoverage = OptionsMatchService.optionsCoverageInFreeText(originalOptions, snipText);
-              if (!snipCoverage.hasEnoughOptions || snipCoverage.ratio < 0.5) continue;
               const gabarito = EvidenceService.extractExplicitGabarito(snipText, questionStem);
+              const snipPassesCoverage = snipCoverage.hasEnoughOptions && snipCoverage.ratio >= 0.5;
+              if (!snipPassesCoverage && !(gabarito?.letter && snipSim >= 0.5)) continue;
               if (gabarito?.letter) {
                 const hostHint = this._getHostHintFromLink(result.link);
                 const letter = gabarito.letter.toUpperCase();
@@ -8587,7 +8596,12 @@ ${scopedCombinedText.slice(0, 1800)}`;
             if (hasOptions && !hasReliableOptionAlignedSource && relevant.length < minRelevantSources) {
               console.log(`\u26D4 AI combined SKIPPED: weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
               console.log(`SearchService: AI combined skipped - weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
-              return [];
+              if (sources.length === 0) {
+                console.groupEnd();
+                return [];
+              }
+              console.log(`SearchService: AI combined skipped but ${sources.length} direct source(s) remain \u2014 continuing to vote computation`);
+              console.groupEnd();
             }
             const strongRelevant = relevant.filter((e) => {
               const host = String(e.hostHint || this._getHostHintFromLink(e.link)).toLowerCase();

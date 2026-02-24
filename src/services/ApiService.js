@@ -1443,9 +1443,9 @@ Letra B: TCP
             };
         }
 
-        const rawHtml = String(final.text || '').slice(0, maxHtmlChars);
+        let rawHtml = String(final.text || '').slice(0, maxHtmlChars);
         // Keep raw HTML so structured parsers can recover embedded escaped content (e.g. \u003cdiv...).
-        const html = rawHtml;
+        let html = rawHtml;
 
         let derivedText = '';
         try {
@@ -1489,12 +1489,43 @@ Letra B: TCP
             derivedText = '';
         }
 
-        const cleanedText = (derivedText || '')
+        let cleanedText = (derivedText || '')
             .replace(/\r\n/g, '\n')
             .replace(/[ \t]+\n/g, '\n')
             .replace(/\n{3,}/g, '\n\n')
             .trim()
             .slice(0, maxTextChars);
+
+        // Text rescue: some sources return very large HTML shells but almost no readable DOM text
+        // (content embedded in scripts / anti-bot placeholders). In that case, try Jina mirror
+        // even when the initial raw HTML fetch was "successful".
+        if (cleanedText.length < 180 && !viaMirror) {
+            const mirrorUrl = this._makeJinaMirrorUrl(url);
+            if (mirrorUrl) {
+                const mirrored = await this._fetchTextWithTimeout(mirrorUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'text/plain,text/html;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                        'Cache-Control': 'no-cache'
+                    },
+                    mode: 'cors',
+                    credentials: 'omit'
+                }, timeoutMs + 1800);
+                const mirroredBlockedLike = mirrored.ok && this._looksBlockedLikeContent(mirrored.text, url);
+                if (mirrored.ok && (mirrored.text || '').length > 220 && !mirroredBlockedLike) {
+                    viaMirror = true;
+                    rawHtml = String(mirrored.text || '').slice(0, maxHtmlChars);
+                    html = rawHtml;
+                    cleanedText = String(mirrored.text || '')
+                        .replace(/\r\n/g, '\n')
+                        .replace(/[ \t]+\n/g, '\n')
+                        .replace(/\n{3,}/g, '\n\n')
+                        .trim()
+                        .slice(0, maxTextChars);
+                }
+            }
+        }
 
         return {
             ok: true,
@@ -3413,10 +3444,10 @@ REGRAS:
                     // but forgets to write the final "Letra X:" line.
                     // Pattern: "X) V" or "X) F" — pick the single V (correct) or single F (incorrect).
                     if (!match) {
-                        const vfMatches2 = [...normalized.matchAll(/\b([A-E])\s*\)\s*[*_]*\s*(V|F|Verdadeir[oa]|Fals[oa])\b/gi)];
+                        const vfMatches2 = [...normalized.matchAll(/\b([A-E])\s*\)\s*[*_]*\s*([VF])\b/gi)];
                         if (vfMatches2.length >= 2) {
                             const targetMark = asksIncorrect ? 'F' : 'V';
-                            const targetEntries = vfMatches2.filter(m => String(m[2]).toUpperCase().startsWith(targetMark));
+                            const targetEntries = vfMatches2.filter(m => String(m[2]).toUpperCase() === targetMark);
                             if (targetEntries.length === 1) {
                                 const inferredLetter = String(targetEntries[0][1]).toUpperCase();
                                 match = [null, inferredLetter]; // synthetic match for letter extraction below
@@ -3428,10 +3459,10 @@ REGRAS:
                     if (!match) continue;
 
                     // Ambiguity guard
-                    const vfMatches = [...normalized.matchAll(/\b([A-E])\s*\)\s*[*_]*\s*(V|F|Verdadeir[oa]|Fals[oa])\b/gi)];
+                    const vfMatches = [...normalized.matchAll(/\b([A-E])\)\s*([VF])\b/gi)];
                     if (vfMatches.length >= 2) {
-                        const vCount = vfMatches.filter(m => String(m[2]).toUpperCase().startsWith('V')).length;
-                        const fCount = vfMatches.filter(m => String(m[2]).toUpperCase().startsWith('F')).length;
+                        const vCount = vfMatches.filter(m => String(m[2]).toUpperCase() === 'V').length;
+                        const fCount = vfMatches.filter(m => String(m[2]).toUpperCase() === 'F').length;
                         if ((!asksIncorrect && vCount > 1) || (asksIncorrect && fCount > 1)) continue;
                     }
 
