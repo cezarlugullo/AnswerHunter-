@@ -1086,7 +1086,14 @@ export const PopupView = {
           return;
         }
 
-        const questionText = item.content?.question || '';
+        const normalizeSavedQuestion = (value) => String(value || '')
+          .replace(/\r\n/g, '\n')
+          .replace(/^\s*(?:ENUNCIADO|STATEMENT)\s*[:\-]?\s*/i, '')
+          .replace(/\n\s*(?:ALTERNATIVAS?|OPTIONS)\s*[:\-]?\s*\n/gi, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+
+        const questionText = normalizeSavedQuestion(item.content?.question || '');
         const preview = questionText.length > 60 ? `${questionText.slice(0, 60)}...` : questionText;
         const answerRaw = item.content?.answer || '';
         const answerLetter = answerRaw.match(/\b(?:letter|letra|alternativa)\s*([A-E])\b/i)?.[1]?.toUpperCase() || null;

@@ -1,3 +1,25 @@
+
+
+// AH_TEXT_TO_OPTION_V2
+function __ahNorm(t = '') {
+    return String(t || '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function mapAnswerTextToOptionLetter(answerText = '', optionsMap = {}) {
+    const ans = __ahNorm(answerText);
+    if (!ans) return null;
+    let best = null;
+    for (const [letter, text] of Object.entries(optionsMap || {})) {
+        const opt = __ahNorm(text);
+        if (!opt) continue;
+        const exact = (opt === ans || opt.includes(ans) || ans.includes(opt));
+        const score = exact ? 1 : 0;
+        if (!best || score > best.score) best = { letter, score };
+    }
+    return best && best.score > 0 ? best.letter : null;
+}
 /**
  * OptionsMatchService.js
  * Verifies whether a source page contains the same question options as the user's question.

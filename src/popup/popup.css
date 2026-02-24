@@ -825,18 +825,21 @@ button:disabled {
 }
 
 .qa-card-header .action-btn.action-bump {
-  animation: actionBump 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: actionColorPulse 360ms ease-out;
 }
 
-@keyframes actionBump {
+@keyframes actionColorPulse {
   0% {
-    transform: scale(1);
+    background-color: rgba(255, 209, 102, 0);
+    box-shadow: 0 0 0 1px rgba(255, 209, 102, 0) inset;
   }
   45% {
-    transform: scale(1.28);
+    background-color: rgba(255, 209, 102, 0.22);
+    box-shadow: 0 0 0 1px rgba(255, 209, 102, 0.45) inset;
   }
   100% {
-    transform: scale(1);
+    background-color: transparent;
+    box-shadow: 0 0 0 1px rgba(255, 209, 102, 0) inset;
   }
 }
 

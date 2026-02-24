@@ -2706,7 +2706,14 @@ export const PopupController = {
       };
     }
 
-    const questionLive = String(card.querySelector('.qa-card-question')?.innerText || '').trim();
+    const normalizeSavedQuestion = (value) => String(value || '')
+      .replace(/\r\n/g, '\n')
+      .replace(/^\s*(?:ENUNCIADO|STATEMENT)\s*[:\-]?\s*/i, '')
+      .replace(/\n\s*(?:ALTERNATIVAS?|OPTIONS)\s*[:\-]?\s*\n/gi, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    const questionLive = normalizeSavedQuestion(card.querySelector('.qa-card-question')?.innerText || '');
     const answerLetter = String(card.querySelector('.answer-alternative .alt-letter')?.innerText || '').trim();
     const answerBody = String(card.querySelector('.answer-alternative .alt-text')?.innerText || '').trim();
     const answerTextOnly = String(card.querySelector('.qa-card-answer-text')?.innerText || '').trim();
@@ -2715,7 +2722,8 @@ export const PopupController = {
       : (answerTextOnly || fallbackAnswer);
 
     return {
-      question: questionLive || fallbackQuestion,
+      // Prefer the original question payload when available (cleaner than rendered innerText).
+      question: normalizeSavedQuestion(fallbackQuestion || questionLive),
       answer: answerLive || fallbackAnswer,
       sources: fallbackSources,
       source: fallbackSource
@@ -3138,3 +3146,26 @@ export const PopupController = {
     }
   }
 };
+
+
+// AH_PHASE3_UI_CONFLICT_FILTER
+function __ahFilterWeakConflictsForDisplay(results) {
+  try {
+    if (!Array.isArray(results)) return results;
+    return results.map(r => {
+      if (!r || String(r.state || '') !== 'confirmed') return r;
+      const best = String(r.answerLetter || '').toUpperCase();
+      const baseVotes = r.baseVotes || {};
+      const entries = Object.entries(baseVotes);
+      if (!best || !entries.length) return r;
+      const bestVal = Number(baseVotes[best] || 0);
+      const filtered = {};
+      for (const [k, v] of entries) {
+        const vv = Number(v || 0);
+        if (k === best) filtered[k] = vv;
+        else if (vv >= Math.max(1.2, bestVal * 0.45)) filtered[k] = vv;
+      }
+      return { ...r, baseVotes: filtered };
+    });
+  } catch (_) { return results; }
+}

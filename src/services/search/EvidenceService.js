@@ -1,3 +1,21 @@
+
+
+// AH_BLOCK_CONSISTENCY_V2
+function isBlockConsistentWithQuestion(blockText = '', stem = '', options = []) {
+    const norm = (t = '') => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const b = norm(blockText);
+    const st = norm(stem);
+    if (!b || !st) return false;
+
+    const stemTerms = st.split(/\s+/).filter(w => w.length > 3).slice(0, 16);
+    const stemHits = stemTerms.filter(w => b.includes(w)).length;
+
+    const optHits = (options || [])
+        .map(o => norm(o).replace(/^[a-e]\)?\s*/, ''))
+        .filter(o => o && b.includes(o)).length;
+
+    return stemHits >= Math.max(3, Math.floor(stemTerms.length * 0.35)) && optHits >= Math.max(1, Math.floor((options || []).length * 0.4));
+}
 /**
  * EvidenceService.js
  * Handles evidence scoring, voting, and answer confirmation logic.

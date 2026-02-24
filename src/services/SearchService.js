@@ -1,3 +1,43 @@
+function __ahPhase3ShouldConfirm(bestLetter, votes, allSources) {
+  try {
+    const b = String(bestLetter || '').toUpperCase();
+    if (!/^[A-E]$/.test(b)) return false;
+    let explicitStrong = 0;
+    for (const src of (allSources || [])) {
+      const t = String(src?.type || src?.method || src?.evidenceType || '');
+      const l = String(src?.letter || '').toUpperCase();
+      const w = Number(src?.weight || 0);
+      if (l === b && /explicit|gabarito|pdf-highlight|structured/i.test(t) && w >= 3.0) {
+        explicitStrong++;
+      }
+    }
+    return explicitStrong >= 1;
+  } catch (_) { return false; }
+}
+
+
+
+function __ahDetectStrongExplicitV2(sources = []) {
+  try {
+    let best = null;
+    for (const src of sources || []) {
+      const letter = String(src?.letter || '').toUpperCase();
+      const type = String(src?.type || src?.method || src?.evidenceType || '');
+      const host = String(src?.host || src?.hostHint || '');
+      const w = Number(src?.weight || 0);
+      const explicit = /explicit|gabarito|pdf-highlight|structured/i.test(type);
+      const canonicalHost = /passeidireto.com$/i.test(host) || /passeidireto.com/i.test(host);
+      if (explicit && /^[A-E]$/.test(letter) && w >= 3.0) {
+        const cand = { letter, weight: w, host, type, canonicalHost };
+        if (!best || cand.weight > best.weight) best = cand;
+      }
+    }
+    return best;
+  } catch (_) {
+    return null;
+  }
+}
+// AH_STRONG_EXPLICIT_V2
 import { ApiService } from './ApiService.js';
 import { QuestionParser } from './search/QuestionParser.js';
 import { OptionsMatchService } from './search/OptionsMatchService.js';
@@ -2406,6 +2446,7 @@ export const SearchService = {
 
     // Determine if we already have strong explicit evidence
     const hasStrongExplicit = sources.some(s => (s.weight || 0) >= 5.0);
+    const __ahStrongExplicit = __ahDetectStrongExplicitV2(sources);
 
     // If we have no explicit sources OR we need more evidence, do AI combined pass
     if (allForCombined.length > 0 && (!hasStrongExplicit || sources.length < 2)) {
@@ -2686,6 +2727,20 @@ export const SearchService = {
             });
             runStats.acceptedForVotes += 1;
             console.log(`SearchService: AI combined => Letra ${aiLetter}, weight=${aiWeight}`);
+            if (__ahStrongExplicit && /^[A-E]$/.test(__ahStrongExplicit.letter || '')) {
+              try {
+                sources.push({
+                  title: 'Explicit lock bias',
+                  link: '',
+                  letter: __ahStrongExplicit.letter,
+                  weight: Math.max(0.5, Number(__ahStrongExplicit.weight || 0) * 0.2),
+                  evidenceType: 'explicit-lock-bias',
+                  questionPolarity,
+                  hostHint: 'explicit-lock'
+                });
+              } catch (_) {}
+            }
+            // AH_FINAL_STATE_EXPLICIT_LOCK_V2
           }
 
           // Process knowledge-based answer as separate vote
@@ -2831,7 +2886,7 @@ export const SearchService = {
       logRunSummary('no-sources');
       return [];
     }
-    const {
+    let {
       votes,
       baseVotes,
       evidenceVotes,
@@ -2841,6 +2896,14 @@ export const SearchService = {
       confidence,
       evidenceConsensus
     } = EvidenceService.computeVotesAndState(sources);
+
+    // AH_PHASE3_CONFIRM_LOCK
+    try {
+      if (resultState === 'suggested' && __ahPhase3ShouldConfirm(bestLetter, votes, sources)) {
+        resultState = 'confirmed';
+        confidence = Math.max(Number(confidence || 0), 0.85);
+      }
+    } catch (_) {}
 
     // ═══ DEBUG: Final Voting Breakdown ═══
     console.group('🏳️ Final Voting Breakdown');
