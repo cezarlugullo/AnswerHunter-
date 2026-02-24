@@ -780,6 +780,7 @@ function hideCard(card) {
 }
 
 let total = 0;
+let allQuestions = [];
 
 function syncStickyOffsets() {
   const header = document.querySelector('header');
@@ -831,6 +832,7 @@ function filterCards() {
 }
 
 function init(questions) {
+  allQuestions = questions;
   total = questions.length;
 
   const counterEl = document.getElementById('counterEl');
@@ -948,6 +950,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.binderStructure) return;
   const data = changes.binderStructure.newValue;
   const questions = Array.isArray(data) ? collectQuestions(data) : [];
+  allQuestions = questions;
 
   // Show toast notification
   const prev = document.querySelectorAll('.card').length;
@@ -1247,6 +1250,271 @@ quizOverlay.addEventListener('click', e => {
 // ESC key
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !quizOverlay.hasAttribute('hidden')) closeQuizModal();
+});
+
+// ══ Simulado Cronometrado ════════════════════════════════════════════════════
+
+const simOverlay = document.getElementById('simOverlay');
+const simModalBody = document.getElementById('simModalBody');
+const simHeaderSub = document.getElementById('simHeaderSub');
+const simCloseBtn = document.getElementById('simCloseBtn');
+const btnSimulado = document.getElementById('btnSimulado');
+
+let _sim = {
+  questions: [], idx: 0, results: [],
+  timerInterval: null, elapsed: 0, timeLimitSec: 0,
+  nQuestions: 10
+};
+
+function openSimulado() {
+  simOverlay.removeAttribute('hidden');
+  requestAnimationFrame(() => requestAnimationFrame(() => simOverlay.classList.add('open')));
+  document.body.style.overflow = 'hidden';
+  simHeaderSub.textContent = 'Configure e inicie seu simulado';
+  renderSimSetup();
+}
+
+function closeSimulado() {
+  clearInterval(_sim.timerInterval);
+  simOverlay.classList.remove('open');
+  document.body.style.overflow = '';
+  setTimeout(() => simOverlay.setAttribute('hidden', ''), 220);
+}
+
+function renderSimSetup() {
+  const available = allQuestions.length;
+  const countOptions = [5, 10, 20, Math.min(available, 30)].filter((v, i, a) => a.indexOf(v) === i && v <= available);
+  if (!countOptions.includes(available) && available > 0) countOptions.push(available);
+
+  simModalBody.innerHTML = `
+    <div class="sim-setup-section">
+      <div class="sim-setup-label"><span class="icon">format_list_numbered</span> Número de questões</div>
+      <div class="sim-options-grid" id="simCountGrid">
+        ${countOptions.map(n => `
+          <button class="sim-option-pill${n === 10 ? ' selected' : ''}" data-count="${n}" type="button">
+            <span class="icon">apps</span>${n === available ? `Todas (${n})` : n}
+          </button>`).join('')}
+      </div>
+    </div>
+    <div class="sim-setup-section">
+      <div class="sim-setup-label"><span class="icon">schedule</span> Tempo limite</div>
+      <div class="sim-options-grid" id="simTimeGrid">
+        <button class="sim-option-pill" data-time="300" type="button"><span class="icon">timer</span> 5 min</button>
+        <button class="sim-option-pill selected" data-time="600" type="button"><span class="icon">timer</span> 10 min</button>
+        <button class="sim-option-pill" data-time="1800" type="button"><span class="icon">timer</span> 30 min</button>
+        <button class="sim-option-pill" data-time="0" type="button"><span class="icon">all_inclusive</span> Sem limite</button>
+      </div>
+    </div>
+    <button class="sim-start-btn" id="simStartBtn" type="button">
+      <span class="icon">play_circle</span> Iniciar Simulado
+    </button>`;
+
+  let selectedCount = Math.min(10, available);
+  let selectedTime = 600;
+
+  // Count pills
+  simModalBody.querySelectorAll('#simCountGrid .sim-option-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      simModalBody.querySelectorAll('#simCountGrid .sim-option-pill').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedCount = parseInt(btn.dataset.count);
+    });
+  });
+
+  // Time pills
+  simModalBody.querySelectorAll('#simTimeGrid .sim-option-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      simModalBody.querySelectorAll('#simTimeGrid .sim-option-pill').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedTime = parseInt(btn.dataset.time);
+    });
+  });
+
+  simModalBody.querySelector('#simStartBtn').addEventListener('click', () => {
+    startSimulado(selectedCount, selectedTime);
+  });
+}
+
+function startSimulado(n, timeLimitSec) {
+  // Shuffle and pick N questions
+  const shuffled = [...allQuestions].sort(() => Math.random() - 0.5).slice(0, n);
+  _sim = { questions: shuffled, idx: 0, results: [], timerInterval: null, elapsed: 0, timeLimitSec, nQuestions: n };
+  renderSimQuestion();
+
+  // Start timer
+  _sim.timerInterval = setInterval(() => {
+    _sim.elapsed++;
+    updateSimTimer();
+    if (timeLimitSec > 0 && _sim.elapsed >= timeLimitSec) {
+      clearInterval(_sim.timerInterval);
+      finishSimulado();
+    }
+  }, 1000);
+}
+
+function updateSimTimer() {
+  const timerEl = document.getElementById('simTimer');
+  if (!timerEl) return;
+  const { elapsed, timeLimitSec } = _sim;
+  let display, isWarning = false;
+  if (timeLimitSec > 0) {
+    const remaining = timeLimitSec - elapsed;
+    isWarning = remaining <= 60;
+    const m = Math.floor(Math.max(0, remaining) / 60).toString().padStart(2, '0');
+    const s = (Math.max(0, remaining) % 60).toString().padStart(2, '0');
+    display = `${m}:${s}`;
+  } else {
+    const m = Math.floor(elapsed / 60).toString().padStart(2, '0');
+    const s = (elapsed % 60).toString().padStart(2, '0');
+    display = `${m}:${s}`;
+  }
+  timerEl.textContent = display;
+  timerEl.parentElement.classList.toggle('warning', isWarning);
+}
+
+function renderSimQuestion() {
+  const { questions, idx } = _sim;
+  const q = questions[idx];
+  const total = questions.length;
+  const pct = Math.round((idx / total) * 100);
+  const cleanQ = sanitizeQuestionText(q.question || '');
+  const cleanA = sanitizeAnswerText(q.answer || '');
+
+  simHeaderSub.textContent = `Questão ${idx + 1} de ${total}`;
+
+  simModalBody.innerHTML = `
+    <div class="sim-progress-row">
+      <span class="sim-progress-info">Questão ${idx + 1} / ${total}</span>
+      <div class="sim-timer" id="simTimerWrap">
+        <span class="icon">schedule</span>
+        <span id="simTimer">--:--</span>
+      </div>
+    </div>
+    <div class="sim-progress-bar-track">
+      <div class="sim-progress-bar-fill" style="width:${pct}%"></div>
+    </div>
+
+    <div class="sim-q-number">Questão ${idx + 1}</div>
+    <div class="sim-q-text">${escH(cleanQ)}</div>
+
+    <div class="sim-answer-box" id="simAnswerBox">
+      <div class="sim-answer-label"><span class="icon" style="font-size:13px">check_circle</span> Gabarito</div>
+      <div class="sim-answer-text">${escH(cleanA)}</div>
+    </div>
+
+    <div class="sim-self-assess" id="simSelfAssess">
+      <button class="sim-assess-btn correct" id="simCorrectBtn" type="button">
+        <span class="icon">check_circle</span> Acertei
+      </button>
+      <button class="sim-assess-btn wrong" id="simWrongBtn" type="button">
+        <span class="icon">cancel</span> Errei
+      </button>
+    </div>
+
+    <button class="sim-reveal-btn" id="simRevealBtn" type="button">
+      <span class="icon">lightbulb</span> Revelar Gabarito
+    </button>`;
+
+  // Initial timer display
+  updateSimTimer();
+
+  // Reveal gabarito
+  simModalBody.querySelector('#simRevealBtn').addEventListener('click', () => {
+    simModalBody.querySelector('#simAnswerBox').classList.add('show');
+    simModalBody.querySelector('#simSelfAssess').classList.add('show');
+    simModalBody.querySelector('#simRevealBtn').style.display = 'none';
+  });
+
+  // Self-assessment
+  simModalBody.querySelector('#simCorrectBtn').addEventListener('click', () => recordSimResult(true));
+  simModalBody.querySelector('#simWrongBtn').addEventListener('click', () => recordSimResult(false));
+}
+
+function recordSimResult(isCorrect) {
+  const { questions, idx } = _sim;
+  const q = questions[idx];
+  const cleanQ = sanitizeQuestionText(q.question || '');
+  const cleanA = sanitizeAnswerText(q.answer || '');
+  _sim.results.push({ question: cleanQ, answer: cleanA, correct: isCorrect });
+  _sim.idx++;
+
+  if (_sim.idx >= _sim.questions.length) {
+    finishSimulado();
+  } else {
+    renderSimQuestion();
+  }
+}
+
+function finishSimulado() {
+  clearInterval(_sim.timerInterval);
+  const { results, elapsed } = _sim;
+  const correct = results.filter(r => r.correct).length;
+  const total = results.length;
+  const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+  const mm = Math.floor(elapsed / 60).toString().padStart(2, '0');
+  const ss = (elapsed % 60).toString().padStart(2, '0');
+
+  simHeaderSub.textContent = 'Resultado final';
+
+  // Conic gradient for score circle
+  const degrees = Math.round((pct / 100) * 360);
+  const emoji = pct >= 80 ? 'Excelente!' : pct >= 60 ? 'Bom resultado!' : pct >= 40 ? 'Continue praticando!' : 'Precisa praticar mais.';
+  const wrong = total - correct;
+  const missed = results.filter(r => !r.correct);
+
+  simModalBody.innerHTML = `
+    <div class="sim-results">
+      <div class="sim-score-circle" style="background: conic-gradient(var(--green) ${degrees}deg, var(--green-bg) ${degrees}deg)">
+        <div class="sim-score-inner">
+          <span class="sim-score-pct">${pct}%</span>
+          <span class="sim-score-pct-label">acertos</span>
+        </div>
+      </div>
+      <div class="sim-results-title">${escH(emoji)}</div>
+      <div class="sim-results-sub">${correct} de ${total} questões corretas</div>
+      <div class="sim-stats-row">
+        <div class="sim-stat-pill green"><span class="icon">check_circle</span> ${correct} certas</div>
+        <div class="sim-stat-pill red"><span class="icon">cancel</span> ${wrong} erradas</div>
+        <div class="sim-stat-pill"><span class="icon">schedule</span> ${mm}:${ss}</div>
+      </div>
+      ${missed.length > 0 ? `
+        <div class="sim-missed-title"><span class="icon" style="font-size:14px">close</span> Questões que você errou</div>
+        <div class="sim-missed-list">
+          ${missed.map((r, i) => `
+            <div class="sim-missed-item">
+              <strong>Q${i + 1}:</strong> ${escH(r.question.slice(0, 120))}${r.question.length > 120 ? '…' : ''}
+              <br><span style="color:#15803D">✓ ${escH(r.answer.slice(0, 100))}${r.answer.length > 100 ? '…' : ''}</span>
+            </div>`).join('')}
+        </div>` : '<div class="sim-stat-pill green" style="margin:0 auto"><span class="icon">emoji_events</span> Parabéns, gabaritou!</div>'}
+      <div class="sim-results-footer">
+        <button class="sim-result-btn secondary" id="simResultCloseBtn" type="button">
+          <span class="icon">close</span> Fechar
+        </button>
+        <button class="sim-result-btn primary" id="simResultRetryBtn" type="button">
+          <span class="icon">refresh</span> Novo simulado
+        </button>
+      </div>
+    </div>`;
+
+  simModalBody.querySelector('#simResultCloseBtn').addEventListener('click', closeSimulado);
+  simModalBody.querySelector('#simResultRetryBtn').addEventListener('click', renderSimSetup);
+}
+
+// Toolbar button
+btnSimulado.addEventListener('click', () => {
+  if (allQuestions.length === 0) {
+    alert('Nenhuma questão disponível para o simulado.');
+    return;
+  }
+  openSimulado();
+});
+
+// Close btn
+simCloseBtn.addEventListener('click', closeSimulado);
+
+// Backdrop click
+simOverlay.addEventListener('click', e => {
+  if (e.target === simOverlay) closeSimulado();
 });
 
 setupStickyOffsets();

@@ -1144,7 +1144,397 @@
     .quiz-score-badge.show { display: flex; }
     .quiz-score-badge .icon { font-size: 14px; }
 
-    /* ── Footer ── */
+    /* ── Simulado Cronometrado ── */
+    .sim-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 30, 0.6);
+      backdrop-filter: blur(5px);
+      z-index: 1001;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+    .sim-overlay.open { opacity: 1; pointer-events: all; }
+    .sim-modal {
+      background: var(--surface);
+      border-radius: 20px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.25);
+      width: 100%;
+      max-width: 620px;
+      max-height: 92vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transform: translateY(20px) scale(0.97);
+      transition: transform 0.22s ease;
+    }
+    .sim-overlay.open .sim-modal { transform: translateY(0) scale(1); }
+
+    .sim-modal-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sim-modal-header .s-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #F59E0B, #F97316);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .sim-modal-header .s-icon .icon { color: #fff; font-size: 20px; }
+    .sim-header-info { flex: 1; }
+    .sim-header-title { font-size: 0.94rem; font-weight: 700; color: var(--text); }
+    .sim-header-sub { font-size: 0.74rem; color: var(--muted); }
+    .sim-close-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      padding: 6px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      transition: background 0.15s;
+    }
+    .sim-close-btn:hover { background: var(--bg); }
+    .sim-close-btn .icon { font-size: 22px; }
+
+    .sim-modal-body { flex: 1; overflow-y: auto; padding: 22px 22px; }
+
+    /* Setup phase */
+    .sim-setup-section { margin-bottom: 22px; }
+    .sim-setup-label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .sim-setup-label .icon { font-size: 16px; }
+    .sim-options-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .sim-option-pill {
+      padding: 8px 18px;
+      border-radius: 30px;
+      border: 2px solid var(--border);
+      background: var(--bg);
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .sim-option-pill:hover { border-color: #F59E0B; color: #92400E; }
+    .sim-option-pill.selected {
+      border-color: #F59E0B;
+      background: #FEF3C7;
+      color: #92400E;
+    }
+    .sim-option-pill .icon { font-size: 16px; }
+    .sim-start-btn {
+      width: 100%;
+      padding: 13px 20px;
+      background: linear-gradient(135deg, #F59E0B 0%, #F97316 100%);
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      font-family: 'Inter', sans-serif;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .sim-start-btn:hover { opacity: 0.92; transform: translateY(-1px); }
+    .sim-start-btn .icon { font-size: 20px; }
+
+    /* Progress bar + timer */
+    .sim-progress-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+    .sim-progress-info { font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+    .sim-timer {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text);
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 4px 10px;
+      flex-shrink: 0;
+    }
+    .sim-timer.warning { color: #DC2626; border-color: #FCA5A5; background: #FEF2F2; }
+    .sim-timer .icon { font-size: 16px; }
+    .sim-progress-bar-track {
+      height: 6px;
+      background: var(--bg);
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .sim-progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #F59E0B, #F97316);
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+
+    /* Question display */
+    .sim-q-number {
+      font-size: 0.73rem;
+      font-weight: 700;
+      color: #D97706;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .sim-q-text {
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1.7;
+      margin-bottom: 20px;
+      max-height: 220px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .sim-reveal-btn {
+      width: 100%;
+      padding: 12px 20px;
+      background: var(--surface);
+      border: 2px dashed #D97706;
+      border-radius: 12px;
+      font-size: 0.89rem;
+      font-weight: 600;
+      color: #D97706;
+      cursor: pointer;
+      transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 48px;
+    }
+    .sim-reveal-btn:hover { background: #FFFBEB; border-style: solid; }
+    .sim-reveal-btn .icon { font-size: 20px; }
+
+    .sim-answer-box {
+      display: none;
+      background: #FFFBEB;
+      border: 1.5px solid #FDE68A;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+    }
+    .sim-answer-box.show { display: block; }
+    .sim-answer-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #D97706;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .sim-answer-text {
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    .sim-self-assess {
+      display: none;
+      gap: 12px;
+    }
+    .sim-self-assess.show { display: flex; }
+    .sim-assess-btn {
+      flex: 1;
+      padding: 12px 16px;
+      border-radius: 12px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 48px;
+      font-family: 'Inter', sans-serif;
+      border: 2px solid transparent;
+    }
+    .sim-assess-btn.correct {
+      background: var(--green-bg);
+      border-color: var(--green-border);
+      color: #15803D;
+    }
+    .sim-assess-btn.correct:hover { background: #DCFCE7; }
+    .sim-assess-btn.wrong {
+      background: #FEF2F2;
+      border-color: #FECACA;
+      color: #B91C1C;
+    }
+    .sim-assess-btn.wrong:hover { background: #FEE2E2; }
+    .sim-assess-btn .icon { font-size: 20px; }
+
+    /* Results phase */
+    .sim-results { text-align: center; padding: 8px 0; }
+    .sim-score-circle {
+      width: 110px;
+      height: 110px;
+      border-radius: 50%;
+      background: conic-gradient(var(--green) 0%, var(--green-bg) 0%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+      position: relative;
+      box-shadow: 0 4px 20px rgba(22, 163, 74, 0.25);
+    }
+    .sim-score-inner {
+      width: 82px;
+      height: 82px;
+      background: var(--surface);
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .sim-score-pct {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+    }
+    .sim-score-pct-label { font-size: 0.7rem; color: var(--muted); font-weight: 600; }
+    .sim-results-title { font-size: 1.05rem; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+    .sim-results-sub { font-size: 0.85rem; color: var(--muted); margin-bottom: 20px; }
+    .sim-stats-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .sim-stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .sim-stat-pill .icon { font-size: 16px; }
+    .sim-stat-pill.green { background: var(--green-bg); border-color: var(--green-border); color: #15803D; }
+    .sim-stat-pill.red { background: #FEF2F2; border-color: #FECACA; color: #B91C1C; }
+
+    .sim-missed-title {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin-bottom: 10px;
+      text-align: left;
+    }
+    .sim-missed-list { display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto; }
+    .sim-missed-item {
+      padding: 10px 12px;
+      background: #FEF2F2;
+      border: 1px solid #FECACA;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: #7F1D1D;
+      text-align: left;
+      line-height: 1.5;
+    }
+    .sim-missed-item strong { color: #B91C1C; }
+
+    .sim-results-footer {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    .sim-result-btn {
+      flex: 1;
+      padding: 11px 16px;
+      border-radius: 10px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 44px;
+      font-family: 'Inter', sans-serif;
+    }
+    .sim-result-btn.primary {
+      background: linear-gradient(135deg, #F59E0B, #F97316);
+      color: #fff;
+      border: none;
+    }
+    .sim-result-btn.secondary {
+      background: var(--bg);
+      color: var(--text);
+      border: 1.5px solid var(--border);
+    }
+    .sim-result-btn .icon { font-size: 18px; }
+
+    /* Toolbar simulado button */
+    .tool-btn.simulado-btn {
+      background: linear-gradient(135deg, #FEF3C7, #FFF7ED);
+      border-color: #FDE68A;
+      color: #92400E;
+    }
+    .tool-btn.simulado-btn:hover {
+      background: linear-gradient(135deg, #FDE68A, #FDBA74);
+      border-color: #F59E0B;
+    }
     footer {
       text-align: center;
       padding: 20px;
@@ -1226,6 +1616,9 @@
       </button>
     </div>
     <div class="chip-group tools">
+      <button class="tool-btn simulado-btn" id="btnSimulado" title="Iniciar simulado cronometrado">
+        <span class="icon">timer</span> Simulado
+      </button>
       <button class="tool-btn" id="btnCopyAll" title="Copiar todas as questões visíveis">
         <span class="icon">content_copy</span> Copiar
       </button>
@@ -1288,6 +1681,25 @@
         <span class="icon">refresh</span>
         Nova questão
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Simulado Cronometrado Modal ══ -->
+<div id="simOverlay" class="sim-overlay" role="dialog" aria-modal="true" aria-labelledby="simModalTitle" hidden>
+  <div class="sim-modal">
+    <div class="sim-modal-header">
+      <div class="s-icon"><span class="icon">timer</span></div>
+      <div class="sim-header-info">
+        <div class="sim-header-title" id="simModalTitle">Simulado Cronometrado</div>
+        <div class="sim-header-sub" id="simHeaderSub">Configure e inicie seu simulado</div>
+      </div>
+      <button class="sim-close-btn" id="simCloseBtn" aria-label="Fechar simulado">
+        <span class="icon">close</span>
+      </button>
+    </div>
+    <div class="sim-modal-body" id="simModalBody">
+      <!-- dynamic content -->
     </div>
   </div>
 </div>
