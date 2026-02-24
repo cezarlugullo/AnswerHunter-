@@ -722,8 +722,15 @@
       display: flex;
       align-items: center;
       gap: 4px;
+      flex-wrap: wrap;
     }
     .answer-source .icon { font-size: 13px; }
+    .answer-source a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .answer-source a:hover { text-decoration: underline; }
     .card-date {
       margin-top: 10px;
       font-size: 0.7rem;

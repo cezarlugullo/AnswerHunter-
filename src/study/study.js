@@ -535,7 +535,18 @@ function buildCard(q, index) {
         </span>
       </div>
       
-      ${q.source ? `<div class="answer-source"><span class="icon">link</span> ${escH(q.source)}</div>` : ''}
+      ${(() => {
+        const srcs = Array.isArray(q.sources) && q.sources.length ? q.sources : (q.source ? [{ title: q.source, link: q.source }] : []);
+        if (!srcs.length) return '';
+        const links = srcs.map(s => {
+          const url = String(s?.link || s || '').trim();
+          const label = String(s?.title || url).trim();
+          let host = '';
+          try { host = new URL(url).hostname.replace(/^www\./i, ''); } catch (_) { host = label; }
+          return url ? `<a href="${escH(url)}" target="_blank" rel="noopener noreferrer">${escH(host || label)}</a>` : escH(label);
+        }).filter(Boolean).join(' · ');
+        return links ? `<div class="answer-source"><span class="icon">link</span> ${links}</div>` : '';
+      })()}
 
       <div class="sm2-rating-bar" id="sm2Bar_${escH(q.id || '')}">
         <div class="sm2-rating-label"><span class="icon">event_repeat</span> Revisão espaçada — como foi?</div>

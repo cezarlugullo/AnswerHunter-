@@ -348,7 +348,7 @@ export const BinderController = {
     },
 
     // Called when clicking Save/Remove button in search results
-    async toggleSaveItem(question, answer, source, btnElement) {
+    async toggleSaveItem(question, answer, source, btnElement, sources = []) {
         const isSaved = btnElement.classList.contains('saved');
 
         if (isSaved) {
@@ -357,7 +357,7 @@ export const BinderController = {
                 this.view.setSaveButtonState(btnElement, false);
             }
         } else {
-            const added = await StorageModel.addItem(question, answer, source);
+            const added = await StorageModel.addItem(question, answer, source, { sources });
             this.view.setSaveButtonState(btnElement, true);
             if (!added) {
                 console.warn('BinderController: duplicate item, not added.');

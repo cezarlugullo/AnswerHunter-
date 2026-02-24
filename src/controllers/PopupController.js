@@ -2846,8 +2846,9 @@ export const PopupController = {
         const question = data.question || '';
         if (!question) return;
         const answer = data.answer || '';
+        const sources = Array.isArray(data.sources) ? data.sources : [];
         const source = data.source
-          || (Array.isArray(data.sources) ? (data.sources[0]?.link || data.sources[0]?.title || '') : '')
+          || (sources.length ? (sources[0]?.link || sources[0]?.title || '') : '')
           || '';
         const card = reviewLaterButton.closest('.qa-card');
         const saveButton = card?.querySelector('.save-btn');
@@ -2857,7 +2858,7 @@ export const PopupController = {
         let reviewLater = !meta.reviewLater;
 
         if (!saved) {
-          const added = await StorageModel.addItem(question, answer, source, { reviewLater: true });
+          const added = await StorageModel.addItem(question, answer, source, { reviewLater: true, sources });
           if (!added) {
             await StorageModel.setReviewLater(question, true);
           }
@@ -2887,7 +2888,7 @@ export const PopupController = {
 
       const data = JSON.parse(decodeURIComponent(dataContent));
       const card = saveButton.closest('.qa-card');
-      const reviewLaterButtonInCard = card?.querySelector('.btn-review-later');
+      const reviewLaterButtonInCard = card?.querySelector('.btn-review-later');, Array.isArray(data.sources) ? data.sources : []
       await BinderController.toggleSaveItem(data.question, data.answer, data.source, saveButton);
       const saved = saveButton.classList.contains('saved');
       let reviewLater = false;
