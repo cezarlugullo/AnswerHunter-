@@ -1286,19 +1286,29 @@ export const SearchService = {
           const minRatioForStrong = highTopicSim ? 0.35 : 0.8;
           const seedStrongMatch = (seedCoverage.ratio >= minRatioForStrong || seedCoverage.hits >= minHitsForStrong) && seedTopicSim >= 0.55;
           if (!seedStrongMatch) {
-            console.log(`\u26d4 Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
-            runStats.blockedSnapshotMismatch += 1;
-            this._logSourceDiagnostic({
-              phase: 'decision',
-              hostHint: this._getHostHintFromLink(link),
-              type: 'TYPE_SNAPSHOT_WEAK',
-              topicSim: seedTopicSim,
-              optionsMatch: false,
-              obfuscation: null,
-              decision: 'skip',
-              reason: 'snapshot-empty-options-mismatch'
-            });
-            continue;
+            // Escape hatch: if the snippet itself contains an explicit gabarito signal and the question
+            // topic similarity is reasonable, let the source through so the evidence pipeline can use it.
+            // This handles cases where webcache is rate-limited and only snippet is available, yet the
+            // snippet already reveals the answer (e.g. "a resposta correta é a alternativa D").
+            const snapGab = EvidenceService.extractExplicitGabarito(seedText, questionStem);
+            if (snapGab?.letter && seedTopicSim >= 0.50) {
+              console.log(`  ✅ Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-gabarito-bypass letter=${snapGab.letter} topicSim=${seedTopicSim.toFixed(2)} (option coverage low but explicit gabarito found in snippet)`);
+              // fall through — let the evidence pipeline extract the gabarito from scopedCombinedText
+            } else {
+              console.log(`\u26d4 Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
+              runStats.blockedSnapshotMismatch += 1;
+              this._logSourceDiagnostic({
+                phase: 'decision',
+                hostHint: this._getHostHintFromLink(link),
+                type: 'TYPE_SNAPSHOT_WEAK',
+                topicSim: seedTopicSim,
+                optionsMatch: false,
+                obfuscation: null,
+                decision: 'skip',
+                reason: 'snapshot-empty-options-mismatch'
+              });
+              continue;
+            }
           }
         }
         const hostHint = this._getHostHintFromLink(link);
@@ -2239,10 +2249,14 @@ export const SearchService = {
         const snipSim = QuestionParser.questionSimilarityScore(snipText, questionStem);
         if (snipSim < 0.40) continue;
         const snipCoverage = OptionsMatchService.optionsCoverageInFreeText(originalOptions, snipText);
-        if (!snipCoverage.hasEnoughOptions || snipCoverage.ratio < 0.5) continue;
 
-        // Try explicit gabarito extraction from snippet
+        // Try explicit gabarito extraction BEFORE coverage gate — a snippet like
+        // "a resposta correta é a alternativa D" is valuable even when option text is absent
+        // (webcache rate-limited → snippets only contain the question stem, not option bodies).
         const gabarito = EvidenceService.extractExplicitGabarito(snipText, questionStem);
+        const snipPassesCoverage = snipCoverage.hasEnoughOptions && snipCoverage.ratio >= 0.5;
+        // Allow through if strong option coverage OR explicit gabarito found with decent topic sim
+        if (!snipPassesCoverage && !(gabarito?.letter && snipSim >= 0.50)) continue;
         if (gabarito?.letter) {
           const hostHint = this._getHostHintFromLink(result.link);
           const letter = gabarito.letter.toUpperCase();
