@@ -286,6 +286,7 @@ export const SearchService = {
     return null;
   },
   // Parses A) / B) / C) options from source text and returns {letter: body} map.
+  // Handles line-by-line format AND inline "A) text B) text" format.
   _buildSourceOptionsMapFromText(sourceText) {
     if (!sourceText || sourceText.length < 30) return {};
     const map = {};
@@ -317,6 +318,20 @@ export const SearchService = {
       }
     }
     flush();
+    // ── Fallback: inline option parsing (options concatenated on same line/few lines) ──
+    // Handles: "...question stem... A) optA B) optB C) optC D) optD"
+    if (Object.keys(map).length < 2) {
+      const flat = sourceText.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ');
+      // Split on letter-separator boundaries: looks for " A) " " B. " " C- " etc.
+      const parts = flat.split(/\s(?=[A-E]\s*[\)\.\-:])/i);
+      for (const part of parts) {
+        const m2 = part.match(/^([A-E])\s*[\)\.\-:]\s*(.{4,})/i);
+        if (m2) {
+          const letter = m2[1].toUpperCase();
+          if (!map[letter]) map[letter] = m2[2].trim().slice(0, 300).replace(/\s+/g, ' ');
+        }
+      }
+    }
     return map;
   }
 
@@ -335,21 +350,60 @@ export const SearchService = {
   // remap the source's letter to the user's letter by matching option text content.
   ,
 
-  _remapLetterIfShuffled(sourceLetter, sourceText, userOptionsMap) {
+  // Fallback remap: for each user option, finds its text in the source, looks back for a
+  // letter label. Works regardless of source formatting — no structured option lines needed.
+  _remapByReverseTextLookup(sourceLetter, sourceText, userOptionsMap) {
     if (!sourceLetter || !sourceText || !userOptionsMap) return sourceLetter;
+    const userEntries = Object.entries(userOptionsMap);
+    if (userEntries.length < 2) return sourceLetter;
+    const normSource = QuestionParser.normalizeOption(sourceText);
+    const sourceLetterForUser = {}; // userLetter → source letter label that precedes its text
+    for (const [userLetter, userBody] of userEntries) {
+      if (!userBody || userBody.length < 8) continue;
+      const normUser = QuestionParser.normalizeOption(userBody);
+      if (!normUser || normUser.length < 8) continue;
+      // Try progressively shorter probes to locate option text in source
+      for (const probeLen of [40, 25, 15]) {
+        const probe = normUser.slice(0, Math.min(probeLen, normUser.length));
+        if (probe.length < 8) break;
+        const idx = normSource.indexOf(probe);
+        if (idx < 0) continue;
+        // Look back up to 30 chars for a letter marker ("A) ", "A. ", "A " etc.)
+        const ctxBefore = normSource.slice(Math.max(0, idx - 30), idx + 2);
+        const lm = ctxBefore.match(/\b([A-E])\s*[\)\.\- ]?\s*$/i);
+        if (lm) { sourceLetterForUser[userLetter] = lm[1].toUpperCase(); break; }
+      }
+    }
+    console.log(`    [reverseTextLookup] source=${sourceLetter} userToSourceMap=${JSON.stringify(sourceLetterForUser)}`);
+    for (const [uLet, sLet] of Object.entries(sourceLetterForUser)) {
+      if (sLet === sourceLetter) {
+        if (uLet !== sourceLetter) console.log(`    [reverseTextLookup] REMAPPED: ${sourceLetter} \u2192 ${uLet}`);
+        else console.log(`    [reverseTextLookup] CONFIRMED: ${sourceLetter}`);
+        return uLet;
+      }
+    }
+    console.log(`    [reverseTextLookup] NO REMAP for ${sourceLetter}`);
+    return sourceLetter;
+  },
+
+  _remapLetterIfShuffled(sourceLetter, sourceText, userOptionsMap) {
+    if (!sourceLetter || !userOptionsMap) return sourceLetter;
     if (Object.keys(userOptionsMap).length < 2) return sourceLetter;
-    const sourceOptionsMap = this._buildSourceOptionsMapFromText(sourceText);
-    console.log(`    [remapIfShuffled] letter=${sourceLetter} sourceTextLen=${sourceText.length} sourceOpts=${Object.keys(sourceOptionsMap).length} keys=[${Object.keys(sourceOptionsMap).join(',')}]`);
+    const sourceOptionsMap = sourceText ? this._buildSourceOptionsMapFromText(sourceText) : {};
+    console.log(`    [remapIfShuffled] letter=${sourceLetter} sourceTextLen=${(sourceText || '').length} sourceOpts=${Object.keys(sourceOptionsMap).length} keys=[${Object.keys(sourceOptionsMap).join(',')}]`);
     if (Object.keys(sourceOptionsMap).length >= 2) {
       for (const [k, v] of Object.entries(sourceOptionsMap)) {
         console.log(`      src ${k}) "${v.slice(0, 70)}"`);
       }
+      return OptionsMatchService.remapLetterToUserOptions(sourceLetter, sourceOptionsMap, userOptionsMap);
     }
-    if (Object.keys(sourceOptionsMap).length < 2) {
-      console.log(`    [remapIfShuffled] SKIP: not enough source options parsed from text`);
-      return sourceLetter;
+    // Fallback: reverse-text lookup — find each user option's text in source, detect nearby letter label
+    if (sourceText && sourceText.length >= 30) {
+      console.log(`    [remapIfShuffled] FALLBACK to reverseTextLookup (sourceTextLen=${sourceText.length})`);
+      return this._remapByReverseTextLookup(sourceLetter, sourceText, userOptionsMap);
     }
-    return OptionsMatchService.remapLetterToUserOptions(sourceLetter, sourceOptionsMap, userOptionsMap);
+    console.log(`    [remapIfShuffled] SKIP: no usable source text for remap`);
+    return sourceLetter;
   }
 
   // ═══ OPTION-BASED DISCRIMINATIVE TOKENS ═══
@@ -1610,9 +1664,9 @@ export const SearchService = {
             console.groupEnd();
             continue;
           }
-          // Remap letter if source has shuffled options
-          console.log(`  🔀 Structured pre-remap letter: ${structured.letter} — attempting remap via scopedCombinedText (len=${scopedCombinedText.length})...`);
-          structured.letter = this._remapLetterIfShuffled(structured.letter, scopedCombinedText, originalOptionsMap);
+          // Remap letter if source has shuffled options — use full combinedText for best coverage
+          console.log(`  🔀 Structured pre-remap letter: ${structured.letter} — attempting remap via combinedText (len=${combinedText.length})...`);
+          structured.letter = this._remapLetterIfShuffled(structured.letter, combinedText, originalOptionsMap);
           console.log(`  🔀 Structured post-remap letter: ${structured.letter}`);
           const baseWeight = getDomainWeight(link);
           const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
@@ -1741,9 +1795,9 @@ export const SearchService = {
             }
           }
           if (extracted?.letter) {
-            console.log(`  📄 PDF-highlight raw letter: ${extracted.letter} — attempting remap via scopedCombinedText (len=${scopedCombinedText.length})...`);
+            console.log(`  📄 PDF-highlight raw letter: ${extracted.letter} — attempting remap via combinedText (len=${combinedText.length})...`);
             // Remap letter if source has shuffled options
-            extracted.letter = this._remapLetterIfShuffled(extracted.letter, scopedCombinedText, originalOptionsMap);
+            extracted.letter = this._remapLetterIfShuffled(extracted.letter, combinedText, originalOptionsMap);
             console.log(`SearchService: PDF signal detected. host=${hostHint} letter=${extracted.letter} method=${extracted.method || 'ff1-highlight'}`);
             const baseWeight = getDomainWeight(link);
             const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
@@ -1834,7 +1888,7 @@ export const SearchService = {
         if (localResult?.letter) {
           console.log(`  🔀 Local pre-remap letter: ${localResult.letter}`);
           // Remap letter if source has shuffled options
-          localResult.letter = this._remapLetterIfShuffled(localResult.letter, scopedCombinedText, originalOptionsMap);
+          localResult.letter = this._remapLetterIfShuffled(localResult.letter, combinedText, originalOptionsMap);
           console.log(`  🔀 Local post-remap letter: ${localResult.letter}`);
           const baseWeight = getDomainWeight(link);
           const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
@@ -1900,7 +1954,7 @@ export const SearchService = {
         if (extracted?.letter) {
           console.log(`  🔀 Explicit pre-remap letter: ${extracted.letter}`);
           // Remap letter if source has shuffled options
-          extracted.letter = this._remapLetterIfShuffled(extracted.letter, scopedCombinedText, originalOptionsMap);
+          extracted.letter = this._remapLetterIfShuffled(extracted.letter, combinedText, originalOptionsMap);
           console.log(`  🔀 Explicit post-remap letter: ${extracted.letter}`);
           const baseWeight = getDomainWeight(link);
           const weight = baseWeight + 2.0;
@@ -2013,8 +2067,8 @@ export const SearchService = {
           }
           if (aiExtracted?.letter) {
             console.log(`  🤖 [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
-            aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, scopedCombinedText, originalOptionsMap);
-            console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
+            aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, combinedText, originalOptionsMap);
+            console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);}
             // Validate the letter exists in the user's options map.
             // The AI may find a different question on the same page (e.g. one with 5 options)
             // and return a letter that doesn't exist in the current question (e.g. E when only A-D exist).
