@@ -277,12 +277,34 @@
     .card-action-btn .icon { font-size: 18px; }
 
     .card-question {
+      margin-bottom: 14px;
+    }
+    .question-enunciado {
       font-size: 0.95rem;
       line-height: 1.7;
       font-weight: 500;
-      margin-bottom: 14px;
       color: var(--text);
       white-space: pre-wrap;
+      margin-bottom: 12px;
+    }
+    .question-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .option-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      color: var(--text);
+      transition: border-color 0.2s, background 0.2s;
+      white-space: pre-wrap;
+    }
+    .option-item:hover {
+      border-color: var(--primary-light);
+      background: #fff;
     }
 
     .reveal-btn {
@@ -316,15 +338,28 @@
       margin-bottom: 8px;
     }
     .answer-label .icon { font-size: 15px; }
-    .answer-text {
-      font-size: 0.9rem;
-      line-height: 1.7;
-      color: #1A2E1A;
+    .answer-content {
       background: var(--green-bg);
       border: 1px solid var(--green-border);
       border-radius: 10px;
+      overflow: hidden;
+    }
+    .answer-steps {
       padding: 12px 16px;
+      font-size: 0.85rem;
+      color: #2d4a22;
       white-space: pre-wrap;
+      border-bottom: 1px dashed var(--green-border);
+      background: rgba(255,255,255,0.4);
+      line-height: 1.6;
+    }
+    .answer-final {
+      padding: 12px 16px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #1A2E1A;
+      white-space: pre-wrap;
+      line-height: 1.6;
     }
     .answer-source {
       margin-top: 8px;
@@ -381,8 +416,11 @@
         padding: 15px 0;
       }
       .card-answer { display: block !important; }
-      .answer-text { background: transparent; border: none; padding: 0; color: #000; }
-      .card-question { color: #000; }
+      .answer-content { background: transparent; border: none; padding: 0; color: #000; }
+      .answer-steps { background: transparent; border-bottom: 1px dashed #ccc; padding: 8px 0; color: #000; }
+      .answer-final { padding: 8px 0; color: #000; }
+      .question-enunciado { color: #000; }
+      .option-item { background: transparent; border: none; padding: 4px 0; color: #000; }
     }
   </style>
 </head>

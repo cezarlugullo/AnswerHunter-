@@ -13,6 +13,68 @@ const formatText = text => {
   return text.replace(/([^\n])\s+([A-Ea-e]\))/g, '$1\n$2');
 };
 
+function parseQuestion(text) {
+  if (!text) return { enunciado: '', alternativas: [] };
+  
+  let normalized = text.replace(/([^\n])\s+([A-Ea-e][\)\.])/g, '$1\n$2');
+  const lines = normalized.split('\n');
+  const enunciado = [];
+  const alternativas = [];
+  
+  const optionRegex = /^[A-Ea-e][\)\.]\s/;
+  
+  for (const line of lines) {
+    if (optionRegex.test(line.trim())) {
+      alternativas.push(line.trim());
+    } else {
+      if (alternativas.length === 0) {
+        enunciado.push(line);
+      } else {
+        alternativas[alternativas.length - 1] += '\n' + line;
+      }
+    }
+  }
+  
+  return {
+    enunciado: enunciado.join('\n').trim(),
+    alternativas: alternativas
+  };
+}
+
+function parseAnswer(text) {
+  if (!text) return { steps: '', final: '' };
+  
+  const lines = text.split('\n');
+  const steps = [];
+  const final = [];
+  
+  let inFinal = false;
+  for (const line of lines) {
+    const lower = line.trim().toLowerCase();
+    if (lower.startsWith('letra ') || 
+        lower.startsWith('resposta correta:') || 
+        lower.startsWith('gabarito') ||
+        lower.match(/^[a-e]\s*-/)) {
+      inFinal = true;
+    }
+    
+    if (inFinal) {
+      final.push(line);
+    } else {
+      steps.push(line);
+    }
+  }
+  
+  if (final.length === 0) {
+    return { steps: '', final: text.trim() };
+  }
+  
+  return {
+    steps: steps.join('\n').trim(),
+    final: final.join('\n').trim()
+  };
+}
+
 const fmtDate = ts => ts ? new Date(ts).toLocaleDateString('pt-BR') : '';
 
 function collectQuestions(nodes, folderPath = '') {
@@ -35,6 +97,8 @@ function buildCard(q, index) {
   if (q.id) article.dataset.qid = q.id;
 
   const showFolder = q.folderPath && q.folderPath !== 'Raiz';
+  const parsedQ = parseQuestion(q.question);
+  const parsedA = parseAnswer(q.answer);
 
   article.innerHTML = `
     <div class="card-meta">
@@ -49,13 +113,23 @@ function buildCard(q, index) {
         </button>
       </div>
     </div>
-    <div class="card-question">${escH(formatText(q.question))}</div>
+    <div class="card-question">
+      <div class="question-enunciado">${escH(parsedQ.enunciado)}</div>
+      ${parsedQ.alternativas.length > 0 ? `
+        <div class="question-options">
+          ${parsedQ.alternativas.map(opt => `<div class="option-item">${escH(opt)}</div>`).join('')}
+        </div>
+      ` : ''}
+    </div>
     <button class="reveal-btn" type="button">
       <span class="icon">lightbulb</span> Revelar resposta
     </button>
     <div class="card-answer" hidden>
       <div class="answer-label"><span class="icon">check_circle</span> Resposta</div>
-      <div class="answer-text">${escH(formatText(q.answer))}</div>
+      <div class="answer-content">
+        ${parsedA.steps ? `<div class="answer-steps">${escH(parsedA.steps)}</div>` : ''}
+        ${parsedA.final ? `<div class="answer-final">${escH(parsedA.final)}</div>` : ''}
+      </div>
       ${q.source ? `<div class="answer-source"><span class="icon">link</span> ${escH(q.source)}</div>` : ''}
     </div>
     ${fmtDate(q.createdAt) ? `<div class="card-date">Salvo em ${fmtDate(q.createdAt)}</div>` : ''}
@@ -223,8 +297,8 @@ function init(questions) {
 
     let text = '';
     visibleCards.forEach((card, idx) => {
-      const qText = card.querySelector('.card-question').textContent;
-      const aText = card.querySelector('.answer-text').textContent;
+      const qText = card.querySelector('.card-question').innerText;
+      const aText = card.querySelector('.answer-content').innerText;
       text += `--- Questão ${idx + 1} ---\n${qText}\n\nResposta:\n${aText}\n\n`;
     });
 
