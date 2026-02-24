@@ -734,20 +734,40 @@ export const PopupView = {
             </div>
             <div class="study-feature-output hidden"></div>
 
-            ${overviewSummary
-          ? `<div class="qa-card-answer-text"><strong>${escapeHtml(this.t('result.overview.title'))}</strong><br>${escapeHtml(overviewSummary)}</div>`
-          : ''}
-            ${overviewPoints.length > 0
-          ? `<div class="qa-card-answer-text"><strong>${escapeHtml(this.t('result.overview.points'))}</strong><br>${overviewPoints.map((point) => `• ${escapeHtml(point)}`).join('<br>')}</div>`
-          : ''}
-            ${overviewReferences.length > 0
-          ? `<div class="qa-card-answer-text"><strong>${escapeHtml(this.t('result.overview.references'))}</strong><br>${overviewReferences.map((ref) => {
+            ${(overviewSummary || overviewPoints.length > 0 || overviewReferences.length > 0)
+          ? `<div class="ah-overview">
+              <div class="ah-overview-header">
+                <span class="material-symbols-rounded">auto_awesome</span>
+                <span>${escapeHtml(this.t('result.overview.title'))}</span>
+              </div>
+              ${overviewSummary ? `<p class="ah-overview-summary">${escapeHtml(overviewSummary)}</p>` : ''}
+              ${overviewPoints.length > 0 ? `
+              <div class="ah-overview-section">
+                <div class="ah-overview-section-title">
+                  <span class="material-symbols-rounded">format_list_bulleted</span>
+                  <span>${escapeHtml(this.t('result.overview.points'))}</span>
+                </div>
+                <ul class="ah-overview-points">
+                  ${overviewPoints.map(point => `<li>${escapeHtml(point)}</li>`).join('')}
+                </ul>
+              </div>` : ''}
+              ${overviewReferences.length > 0 ? `
+              <div class="ah-overview-section">
+                <div class="ah-overview-section-title">
+                  <span class="material-symbols-rounded">link</span>
+                  <span>${escapeHtml(this.t('result.overview.references'))}</span>
+                </div>
+                <div class="ah-overview-refs">
+                  ${overviewReferences.map((ref) => {
             const label = escapeHtml(ref.title || ref.link);
             const safeRefLink = sanitizeUrl(ref.link, 'overview-reference');
             return safeRefLink
-              ? `<a href="${escapeHtml(safeRefLink)}" target="_blank" rel="noopener noreferrer">${label}</a>`
-              : `<span>${label}</span>`;
-          }).join('<br>')}</div>`
+              ? `<a class="ah-overview-ref" href="${escapeHtml(safeRefLink)}" target="_blank" rel="noopener noreferrer"><span class="material-symbols-rounded">open_in_new</span><span>${label}</span></a>`
+              : `<span class="ah-overview-ref no-link"><span>${label}</span></span>`;
+          }).join('')}
+                </div>
+              </div>` : ''}
+            </div>`
           : ''}
           </div>
 
