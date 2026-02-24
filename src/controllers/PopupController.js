@@ -2888,8 +2888,8 @@ export const PopupController = {
 
       const data = JSON.parse(decodeURIComponent(dataContent));
       const card = saveButton.closest('.qa-card');
-      const reviewLaterButtonInCard = card?.querySelector('.btn-review-later');, Array.isArray(data.sources) ? data.sources : []
-      await BinderController.toggleSaveItem(data.question, data.answer, data.source, saveButton);
+      const reviewLaterButtonInCard = card?.querySelector('.btn-review-later');
+      await BinderController.toggleSaveItem(data.question, data.answer, data.source, saveButton, Array.isArray(data.sources) ? data.sources : []);
       const saved = saveButton.classList.contains('saved');
       let reviewLater = false;
       if (saved) {
