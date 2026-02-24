@@ -13,6 +13,11 @@ export const ApiService = {
     _groqQuotaExhaustedUntil: 0,
     _openRouterQuotaExhaustedUntil: 0,
     _chatgptQuotaExhaustedUntil: 0,
+    _geminiQuotaExhaustedUntil: 0,
+    // Models confirmed to NOT work with the ChatGPT Codex backend (backend-api/codex/responses).
+    // Non-codex models (gpt-4.1, gpt-4o, etc.) consistently return 400 "not supported when using Codex".
+    _chatgptUnsupportedCodexModels: {},
+    _openRouterUnavailableModels: {},
 
     /**
      * Call Gemini via its OpenAI-compatible endpoint.
@@ -22,6 +27,12 @@ export const ApiService = {
      * @returns {Promise<string|null>} The assistant message content, or null on failure
      */
     async _callGemini(messages, opts = {}) {
+        if (this._geminiQuotaExhaustedUntil > Date.now()) {
+            const waitMin = Math.ceil((this._geminiQuotaExhaustedUntil - Date.now()) / 60000);
+            console.warn(`AnswerHunter: Gemini temporarily unavailable (~${waitMin}min left)`);
+            return null;
+        }
+
         const settings = await this._getSettings();
         const { geminiApiKey, geminiApiUrl, geminiModel } = settings;
         if (!geminiApiKey) return null;
@@ -56,6 +67,12 @@ export const ApiService = {
 
                 if (!response.ok) {
                     const errText = await response.text().catch(() => '');
+                    if (response.status === 429 || /quota|exceeded|rate\s*limit/i.test(errText)) {
+                        const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
+                        const cooldownMs = retryAfter > 0 ? Math.ceil(retryAfter * 1000) : 120000;
+                        this._geminiQuotaExhaustedUntil = Date.now() + cooldownMs;
+                        console.warn(`AnswerHunter: Gemini rate-limited/quota, cooldown=${cooldownMs}ms`);
+                    }
                     console.warn(`AnswerHunter: Gemini HTTP ${response.status} (model=${callModel}): ${errText.slice(0, 200)}`);
                     return null;
                 }
@@ -98,6 +115,32 @@ export const ApiService = {
         return null;
     },
 
+    _isOpenRouterModelUnavailableError(status, errorText = '') {
+        if (status !== 404) return false;
+        const text = String(errorText || '');
+        return /no endpoints found for/i.test(text) || /model[^\n]*not found/i.test(text);
+    },
+
+    _getOpenRouterFallbackModel(settings = {}, currentModel = '') {
+        const normalizedCurrent = String(currentModel || '').trim();
+        const configured = String(settings.openrouterModelSmart || '').trim();
+
+        const candidates = [
+            configured,
+            'google/gemini-2.5-flash-free',
+            'qwen/qwen-2.5-coder-32b-instruct:free',
+            'google/gemini-exp-1121:free',
+            'zhipuai/glm-4-plus'
+        ].map(m => String(m || '').trim()).filter(Boolean);
+
+        for (const candidate of candidates) {
+            if (candidate === normalizedCurrent) continue;
+            if (this._openRouterUnavailableModels[candidate]) continue;
+            return candidate;
+        }
+        return null;
+    },
+
     /**
      * Call OpenRouter via OpenAI-compatible chat completions endpoint.
      * @param {Array<{role:string,content:any}>} messages
@@ -117,7 +160,10 @@ export const ApiService = {
             return null;
         }
 
-        const model = opts.model || openrouterModelSmart || 'deepseek/deepseek-r1:free';
+        const requestedModel = String(opts.model || openrouterModelSmart || 'deepseek/deepseek-r1:free').trim();
+        const model = this._openRouterUnavailableModels[requestedModel]
+            ? (this._getOpenRouterFallbackModel(settings, requestedModel) || requestedModel)
+            : requestedModel;
         const url = 'https://openrouter.ai/api/v1/chat/completions';
 
         try {
@@ -151,6 +197,19 @@ export const ApiService = {
                     console.warn('AnswerHunter: OpenRouter insufficient credits/quota (402-like)');
                     return null;
                 }
+
+                if (this._isOpenRouterModelUnavailableError(response.status, errText)) {
+                    this._openRouterUnavailableModels[model] = true;
+                    if (!opts._modelRetried) {
+                        const fallbackModel = this._getOpenRouterFallbackModel(settings, model);
+                        if (fallbackModel && fallbackModel !== model) {
+                            console.warn(`AnswerHunter: OpenRouter model '${model}' unavailable; retrying with '${fallbackModel}'`);
+                            return this._callOpenRouter(messages, { ...opts, model: fallbackModel, _modelRetried: true });
+                        }
+                    }
+                    this._openRouterQuotaExhaustedUntil = Date.now() + 5 * 60 * 1000;
+                }
+
                 console.warn(`AnswerHunter: OpenRouter HTTP ${response.status}: ${errText.slice(0, 220)}`);
                 return null;
             }
@@ -182,6 +241,74 @@ export const ApiService = {
         }
     },
 
+    _isCodexModelUnsupportedError(status, errorText = '') {
+        if (status !== 400) return false;
+        const text = String(errorText || '');
+        return /not\s+supported\s+when\s+using\s+Codex/i.test(text)
+            || /model[^\n]*not\s+supported[^\n]*Codex/i.test(text)
+            || /Codex[^\n]*model[^\n]*not\s+supported/i.test(text);
+    },
+
+    _getChatGPTCodexFallbackModel(settings = {}, currentModel = '') {
+        const normalizedCurrent = String(currentModel || '').trim();
+
+        // Ordered fallback chain — only confirmed Codex backend models
+        const chain = [
+            'gpt-5.2-codex',
+            'gpt-5.1-codex-max',
+            'gpt-5.1-codex',
+            'gpt-5.1-codex-mini'
+        ];
+
+        for (const candidate of chain) {
+            if (candidate === normalizedCurrent) continue;
+            if (this._chatgptUnsupportedCodexModels[candidate]) continue;
+            return candidate;
+        }
+
+        return 'gpt-5.2-codex';
+    },
+
+    async _callGroq(messages, opts = {}) {
+        const settings = await this._getSettings();
+        const { groqApiKey, groqApiUrl } = settings;
+        if (!groqApiKey) return null;
+
+        if (this._groqQuotaExhaustedUntil > Date.now()) {
+            const waitMin = Math.ceil((this._groqQuotaExhaustedUntil - Date.now()) / 60000);
+            console.warn(`AnswerHunter: Groq temporarily unavailable (~${waitMin}min left)`);
+            return null;
+        }
+
+        const model = opts.model || settings.groqModelSmart || 'llama-3.3-70b-versatile';
+
+        try {
+            const data = await this._withGroqRateLimit(() => this._fetch(
+                groqApiUrl || 'https://api.groq.com/openai/v1/chat/completions',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${groqApiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model,
+                        messages,
+                        temperature: opts.temperature ?? 0.1,
+                        max_tokens: opts.max_tokens ?? 700
+                    })
+                }
+            ));
+
+            const content = data?.choices?.[0]?.message?.content;
+            if (typeof content === 'string') return content.trim() || null;
+            return null;
+        } catch (err) {
+            console.warn(`AnswerHunter: Groq request error (model=${model}):`, err?.message || String(err));
+            return null;
+        }
+    },
+
     /**
      * Call ChatGPT via the Codex backend (uses ChatGPT subscription credits).
      * Requires OAuth authentication via ChatGPTAuthService.
@@ -205,7 +332,10 @@ export const ApiService = {
         }
 
         const settings = await this._getSettings();
-        const model = opts.model || settings.chatgptModel || 'gpt-5.2';
+        const requestedModel = String(opts.model || settings.chatgptModel || 'gpt-5.2-codex').trim();
+        const model = this._chatgptUnsupportedCodexModels[requestedModel]
+            ? (this._getChatGPTCodexFallbackModel(settings, requestedModel) || requestedModel)
+            : requestedModel;
 
         // Get a valid (possibly refreshed) access token
         const accessToken = await ChatGPTAuthService.getValidToken();
@@ -264,6 +394,16 @@ export const ApiService = {
 
             if (!response.ok) {
                 const errText = await response.text().catch(() => '');
+
+                if (!opts._modelRetried && this._isCodexModelUnsupportedError(response.status, errText)) {
+                    this._chatgptUnsupportedCodexModels[model] = true;
+                    const fallbackModel = this._getChatGPTCodexFallbackModel(settings, model);
+                    if (fallbackModel && fallbackModel !== model) {
+                        console.warn(`AnswerHunter: ChatGPT model '${model}' unsupported on Codex; retrying with '${fallbackModel}'`);
+                        return this._callChatGPT(messages, { ...opts, model: fallbackModel, _modelRetried: true });
+                    }
+                }
+
                 console.warn(`AnswerHunter: ChatGPT HTTP ${response.status}: ${errText.slice(0, 300)}`);
                 return null;
             }
@@ -884,14 +1024,14 @@ Analise o texto passo a passo e responda no formato acima:`;
         const tryChatGPT = async () => {
             if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
             try {
-                console.log(`  🔬 [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.2'})...`);
+                console.log(`  🔬 [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.2-codex'})...`);
                 const result = await this._callChatGPT([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
                 ], {
                     temperature: 0.05,
                     max_tokens: 300,
-                    model: settings.chatgptModel || 'gpt-5.2'
+                    model: settings.chatgptModel || 'gpt-5.2-codex'
                 });
                 console.log(`  🔬 [aiExtract] ChatGPT response: ${result ? result.length + ' chars' : 'null'}`);
                 return result;
@@ -3042,11 +3182,11 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
 
         if (chatgptPrimaryInfer) {
             // ── ChatGPT PRIMARY for inference ──
-            console.log(`AnswerHunter: Inference via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2'})...`);
+            console.log(`AnswerHunter: Inference via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
             const chatgptResult = await this._callChatGPT([
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: basePrompt }
-            ], { model: settings.chatgptModel || 'gpt-5.2' });
+            ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
             if (chatgptResult) {
                 console.log(`AnswerHunter: ChatGPT inference success (${chatgptResult.length} chars)`);
                 return chatgptResult;
@@ -3497,13 +3637,13 @@ REGRAS:
 
             if (chatgptPrimary) {
                 // ── ChatGPT PRIMARY for MC ──
-                console.log(`AnswerHunter: MC via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2'})...`);
+                console.log(`AnswerHunter: MC via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
                 const chatgptAttempts = [];
                 for (let i = 0; i < 2; i++) {
                     const content = await this._callChatGPT([
                         { role: 'system', content: mcSystemMsg },
                         { role: 'user', content: prompt }
-                    ], { model: settings.chatgptModel || 'gpt-5.2' });
+                    ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
                     if (content) chatgptAttempts.push(content);
                 }
                 if (chatgptAttempts.length > 0) {
@@ -3602,11 +3742,11 @@ REGRAS:
         const openSysMsg = 'Você é um assistente que responde questões com objetividade.';
 
         if (chatgptPrimaryOpen) {
-            console.log(`AnswerHunter: Open-ended via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2'})...`);
+            console.log(`AnswerHunter: Open-ended via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
             const chatgptOpen = await this._callChatGPT([
                 { role: 'system', content: openSysMsg },
                 { role: 'user', content: prompt }
-            ], { model: settings.chatgptModel || 'gpt-5.2' });
+            ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
             if (chatgptOpen) return chatgptOpen;
             console.log('AnswerHunter: ChatGPT open-ended failed — trying Groq fallback...');
         }
@@ -4203,8 +4343,45 @@ REGRAS:
             }
         };
 
+        const tryChatGPT = async () => {
+            if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const content = await this._callChatGPT([
+                    { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
+                    { role: 'user', content: prompt }
+                ], {
+                    temperature: 0.3,
+                    max_tokens: 100,
+                    model: settings.chatgptModel || 'gpt-5.2-codex'
+                });
+                return parseResponse(content);
+            } catch (e) {
+                console.warn('AnswerHunter: ChatGPT generateTags error:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const content = await this._callOpenRouter([
+                    { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
+                    { role: 'user', content: prompt }
+                ], {
+                    temperature: 0.3,
+                    max_tokens: 100,
+                    model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free'
+                });
+                return parseResponse(content);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter generateTags error:', e?.message || e);
+                return null;
+            }
+        };
+
         const tryGemini = async () => {
             if (!settings.geminiApiKey) return null;
+            if (this._geminiQuotaExhaustedUntil > Date.now()) return null;
             try {
                 const content = await this._callGemini([
                     { role: 'system', content: 'Você classifica questões academicamente. Responda apenas em JSON.' },
@@ -4223,7 +4400,7 @@ REGRAS:
                 const content = await this._callGroq([
                     { role: 'system', content: 'Classifique a questão em JSON array de tags académicas. Responda só JSON.' },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.3, max_tokens: 100, model: settings.groqModelSmart });
+                ], { temperature: 0.3, max_tokens: 100, model: settings.groqModelSmart || 'llama-3.3-70b-versatile' });
                 return parseResponse(content);
             } catch (e) {
                 console.warn('AnswerHunter: Groq generateTags error:', e?.message || e);
@@ -4231,8 +4408,32 @@ REGRAS:
             }
         };
 
-        const result = (await tryGemini()) || (await tryGroq());
-        return result || [];
+        const providerFns = {
+            chatgpt: tryChatGPT,
+            openrouter: tryOpenRouter,
+            gemini: tryGemini,
+            groq: tryGroq
+        };
+
+        const primary = settings.primaryProvider || 'groq';
+        const preferredOrder = primary === 'chatgpt'
+            ? ['chatgpt', 'openrouter', 'gemini', 'groq']
+            : primary === 'openrouter'
+                ? ['openrouter', 'chatgpt', 'gemini', 'groq']
+                : primary === 'gemini'
+                    ? ['gemini', 'openrouter', 'chatgpt', 'groq']
+                    : ['groq', 'openrouter', 'chatgpt', 'gemini'];
+
+        for (const provider of preferredOrder) {
+            const fn = providerFns[provider];
+            if (!fn) continue;
+            const tags = await fn();
+            if (Array.isArray(tags) && tags.length > 0) {
+                return tags;
+            }
+        }
+
+        return [];
     },
 
 };

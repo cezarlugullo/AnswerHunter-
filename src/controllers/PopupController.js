@@ -1,4 +1,4 @@
-﻿import { ExtractionService } from '../services/ExtractionService.js';
+import { ExtractionService } from '../services/ExtractionService.js';
 import { SearchService } from '../services/SearchService.js';
 import { ApiService } from '../services/ApiService.js';
 import { BinderController } from './BinderController.js';
@@ -14,6 +14,7 @@ export const PopupController = {
   onboardingFlags: { welcomed: false, setupDone: false },
   _isReopenMode: false,
   _settingsCache: null,
+  _chatgptModelValidationRunning: false,
 
   async init(view) {
     this.view = view;
@@ -410,7 +411,7 @@ export const PopupController = {
     // Set model selects (settings panel only)
     const groqModel = settings.groqModelSmart || 'llama-3.3-70b-versatile';
     const geminiModel = settings.geminiModelSmart || 'gemini-2.5-flash';
-    const chatgptModel = settings.chatgptModel || 'gpt-5.2';
+    const chatgptModel = settings.chatgptModel || 'gpt-5.2-codex';
     if (this.view.elements.selectGroqModel) {
       this.view.elements.selectGroqModel.value = groqModel;
     }
@@ -484,7 +485,7 @@ export const PopupController = {
       this.view.setSetupStatus('gemini', this.t('setup.status.geminiMissing'), 'error');
     }
     if (provider === 'chatgpt') {
-      // ChatGPT uses OAuth, not API keys — check login status synchronously
+      // ChatGPT uses OAuth, not API keys � check login status synchronously
       const loggedIn = await ChatGPTAuthService.isLoggedIn();
       if (!loggedIn) {
         effectiveProvider = 'groq';
@@ -577,13 +578,13 @@ export const PopupController = {
     const groqModel = this.view.elements.selectGroqModel?.value || 'llama-3.3-70b-versatile';
     const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-flash';
     const openrouterModelSmart = this.view.elements.selectOpenrouterModel?.value || 'deepseek/deepseek-r1:free';
-    const chatgptModel = document.getElementById('select-chatgpt-model')?.value || 'gpt-5.2';
+    const chatgptModel = document.getElementById('select-chatgpt-model')?.value || 'gpt-5.2-codex';
 
     await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel });
-    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}, chatgpt=${chatgptModel}`);
+    console.log(`AnswerHunter: AI config saved � primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}, chatgpt=${chatgptModel}`);
   },
 
-  // ─── ChatGPT Auth Handlers ───
+  // --- ChatGPT Auth Handlers ---
 
   async handleChatGPTLogin() {
     const statusEl = document.getElementById('chatgpt-login-status');
@@ -637,12 +638,8 @@ export const PopupController = {
       if (loginBtn) loginBtn.disabled = false;
       if (statusEl) statusEl.textContent = '';
 
-      // Restore model selection
-      const settings = await SettingsModel.getSettings();
-      const modelSelect = document.getElementById('select-chatgpt-model');
-      if (modelSelect && settings.chatgptModel) {
-        modelSelect.value = settings.chatgptModel;
-      }
+      // Validate/prune unsupported Codex models and restore a valid selection
+      await this.validateAndPruneChatGPTModels();
     } else {
       loggedOutEl?.classList.remove('hidden');
       loggedInEl?.classList.add('hidden');
@@ -658,6 +655,164 @@ export const PopupController = {
       } else {
         dot.classList.add('hidden');
       }
+    }
+  },
+
+  async _loadChatGPTModelValidationCache() {
+    try {
+      const data = await chrome.storage.local.get(['_chatgptCodexModelValidation']);
+      const cached = data?._chatgptCodexModelValidation;
+      if (!cached || typeof cached !== 'object') return null;
+      return cached;
+    } catch (_) {
+      return null;
+    }
+  },
+
+  async _saveChatGPTModelValidationCache(cache) {
+    try {
+      await chrome.storage.local.set({ _chatgptCodexModelValidation: cache });
+    } catch (_) {
+      // ignore cache failures
+    }
+  },
+
+  async probeChatGPTCodexModel(model, retried = false) {
+    const auth = await ChatGPTAuthService.getAuth();
+    if (!auth?.accountId) {
+      return { ok: false, reason: 'no-auth', unsupported: false, rateLimited: false };
+    }
+
+    const token = await ChatGPTAuthService.getValidToken();
+    if (!token) {
+      return { ok: false, reason: 'no-token', unsupported: false, rateLimited: false };
+    }
+
+    const body = {
+      model,
+      input: [{ role: 'user', content: 'Responda apenas OK.' }],
+      stream: false,
+      store: false
+    };
+
+    try {
+      const response = await fetch('https://chatgpt.com/backend-api/codex/responses', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'chatgpt-account-id': auth.accountId
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (response.status === 401 && !retried) {
+        const refreshed = await ChatGPTAuthService.refreshToken();
+        if (refreshed) return this.probeChatGPTCodexModel(model, true);
+      }
+
+      if (response.ok) {
+        return { ok: true, reason: '', unsupported: false, rateLimited: false };
+      }
+
+      const errText = await response.text().catch(() => '');
+      const unsupported = response.status === 400
+        && /not\s+supported\s+when\s+using\s+Codex/i.test(errText || '');
+      const rateLimited = response.status === 429;
+
+      return {
+        ok: false,
+        reason: `${response.status}`,
+        unsupported,
+        rateLimited
+      };
+    } catch (_) {
+      return { ok: false, reason: 'network', unsupported: false, rateLimited: false };
+    }
+  },
+
+  async validateAndPruneChatGPTModels() {
+    if (this._chatgptModelValidationRunning) return;
+    const modelSelect = document.getElementById('select-chatgpt-model');
+    const statusEl = document.getElementById('chatgpt-login-status');
+    if (!modelSelect) return;
+
+    const optionValues = [...modelSelect.querySelectorAll('option')]
+      .map(opt => String(opt.value || '').trim())
+      .filter(Boolean);
+    if (!optionValues.length) return;
+
+    this._chatgptModelValidationRunning = true;
+    try {
+      const ttlMs = 24 * 60 * 60 * 1000;
+      const cached = await this._loadChatGPTModelValidationCache();
+      const isFresh = cached?.ts && (Date.now() - cached.ts < ttlMs);
+      const results = isFresh && cached?.results ? { ...cached.results } : {};
+
+      if (!isFresh && statusEl) statusEl.textContent = 'Validando modelos compat�veis com Codex...';
+
+      let hitRateLimit = false;
+      for (const model of optionValues) {
+        if (isFresh && (results[model] === 'ok' || results[model] === 'unsupported')) continue;
+
+        const probe = await this.probeChatGPTCodexModel(model);
+        if (probe.ok) {
+          results[model] = 'ok';
+        } else if (probe.unsupported) {
+          results[model] = 'unsupported';
+        } else if (probe.rateLimited) {
+          hitRateLimit = true;
+          break;
+        } else if (!results[model]) {
+          results[model] = 'unknown';
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 250));
+      }
+
+      await this._saveChatGPTModelValidationCache({ ts: Date.now(), results });
+
+      const unsupportedValues = new Set(optionValues.filter(v => results[v] === 'unsupported'));
+      if (unsupportedValues.size > 0) {
+        [...modelSelect.querySelectorAll('option')].forEach(opt => {
+          const value = String(opt.value || '').trim();
+          if (unsupportedValues.has(value)) opt.remove();
+        });
+      }
+
+      const availableValues = [...modelSelect.querySelectorAll('option')]
+        .map(opt => String(opt.value || '').trim())
+        .filter(Boolean);
+
+      if (!availableValues.length) {
+        modelSelect.innerHTML = '<option value="gpt-5.2-codex">GPT-5.2-Codex</option>';
+      }
+
+      const settings = await SettingsModel.getSettings();
+      const currentValue = String(settings.chatgptModel || '').trim();
+      const finalValues = [...modelSelect.querySelectorAll('option')]
+        .map(opt => String(opt.value || '').trim())
+        .filter(Boolean);
+      const finalModel = finalValues.includes(currentValue)
+        ? currentValue
+        : (finalValues[0] || 'gpt-5.2-codex');
+
+      modelSelect.value = finalModel;
+      if (finalModel !== currentValue) {
+        await SettingsModel.saveSettings({ chatgptModel: finalModel });
+      }
+
+      if (statusEl) {
+        if (unsupportedValues.size > 0) {
+          statusEl.textContent = `${unsupportedValues.size} modelo(s) incompat�vel(is) removido(s).`;
+        } else if (hitRateLimit) {
+          statusEl.textContent = 'Valida��o parcial (limite tempor�rio).';
+        } else {
+          statusEl.textContent = '';
+        }
+      }
+    } finally {
+      this._chatgptModelValidationRunning = false;
     }
   },
 
@@ -797,7 +952,7 @@ export const PopupController = {
       } else {
         this.view.setTestButtonLoading(provider, 'fail');
         if (provider === 'gemini' && failReason === 'quota') {
-          const quotaMsg = 'Chave válida, mas o projeto Gemini está sem cota (HTTP 429). Trocar a chave no mesmo projeto não resolve.';
+          const quotaMsg = 'Chave v�lida, mas o projeto Gemini est� sem cota (HTTP 429). Trocar a chave no mesmo projeto n�o resolve.';
           this.view.setSetupStatus(provider, quotaMsg, 'fail');
           this.view.showToast(quotaMsg, 'warning');
         } else if (provider === 'gemini' && failReason === 'rate_limit') {
@@ -1304,7 +1459,7 @@ export const PopupController = {
 
       const countDistinctOptions = (text) => {
         if (!text) return 0;
-        const matches = text.match(/(?:^|\n)\s*["'â€œâ€â€˜â€™]?\s*([A-E])\s*[\)\.\-:]\s*\S/gi) || [];
+        const matches = text.match(/(?:^|\n)\s*["'“”‘’]?\s*([A-E])\s*[\)\.\-:]\s*\S/gi) || [];
         const letters = new Set(matches.map(m => m.trim().charAt(0).toUpperCase()));
         return letters.size;
       };
@@ -1313,7 +1468,7 @@ export const PopupController = {
         const m = String(line || '').trim().match(/^([A-E])\s*[\)\.\-:]\s*(.+)$/i);
         if (!m) return false;
         let body = String(m[2] || '').replace(/\s+/g, ' ').trim();
-        const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+        const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[e�]ns|voc[e�]\s+acertou|confira\s+o|explica[c�][a�]o)\b/i;
         const idx = body.search(noise);
         if (idx > 1) body = body.slice(0, idx).trim();
         body = body.replace(/[;:,\-.\s]+$/, '');
@@ -1426,7 +1581,7 @@ export const PopupController = {
       // from the captured stem. This prevents options from a visible question below/above
       // the target from being merged into the wrong stem.
       const optionsAreContextuallyRelated = (stemText, optionsTextToCheck) => {
-        if (!stemText || !optionsTextToCheck) return true; // Can't determine—allow
+        if (!stemText || !optionsTextToCheck) return true; // Can't determine�allow
         const normalizeTokens = (s) => String(s || '')
           .toLowerCase()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -1437,14 +1592,14 @@ export const PopupController = {
 
         // Ignored stop words that appear in both stems and option lists (not discriminating)
         const stopWords = new Set([
-          'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questão',
+          'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest�o',
           'considere', 'para', 'como', 'quando', 'cada', 'qual', 'onde', 'quais',
           'entre', 'sobre', 'essa', 'esse', 'este', 'esta'
         ]);
 
         const stemLines = stemText.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]/i));
         const stemNorm = normalizeTokens(stemLines.join(' ')).filter(t => !stopWords.has(t));
-        if (stemNorm.length < 5) return true; // Stem too short—allow
+        if (stemNorm.length < 5) return true; // Stem too short�allow
 
         const stemSet = new Set(stemNorm);
 
@@ -1462,13 +1617,13 @@ export const PopupController = {
         const compactAtomicCount = optBodies.filter((body) => isCompactOptionBody(body)).length;
         const compactAtomicSet = optionLines.length >= 3 && compactAtomicCount / optionLines.length >= 0.8;
 
-        // If options are ALL very short (≤6 chars each, e.g. BSON, XLS, XML),
+        // If options are ALL very short (=6 chars each, e.g. BSON, XLS, XML),
         // they're likely acronyms from a completely different question domain.
         const avgOptLength = optBodies.reduce((sum, b) => sum + b.length, 0) / optBodies.length;
         const allAcronym = avgOptLength <= 6 && optBodies.every(b => b.length <= 8);
 
         if (allOptTokens.length === 0) {
-          // All options are too short to produce tokens — might be all-acronym
+          // All options are too short to produce tokens � might be all-acronym
           if (allAcronym) {
             if (optionLines.length >= 3 && (hasAcronymContext || hasDbTechContext || compactAtomicSet)) {
               console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (compact acronym set with contextual match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
@@ -1542,7 +1697,7 @@ export const PopupController = {
         console.groupEnd();
       }
 
-      // ── Vision OCR priority ──
+      // -- Vision OCR priority --
       // OCR runs only when DOM extraction is insufficient (< 4 options or short text).
       // When DOM already captured a complete question, skip OCR entirely to save time.
       const domQuestion = bestQuestion;
@@ -1617,8 +1772,8 @@ export const PopupController = {
         return;
       }
 
-      // â”€â”€ Multi-question isolation â”€â”€
-      // When the page shows multiple numbered questions (e.g. EstÃ¡cio "ConteÃºdo" pages),
+      // ── Multi-question isolation ──
+      // When the page shows multiple numbered questions (e.g. Estácio "Conteúdo" pages),
       // the extractor may return all of them. Detect this and keep only the one
       // whose number is most centered in the viewport.
       const multiQRe = /(?:^|\n)\s*(\d+)[\.\)]\s+\S/g;
@@ -1676,7 +1831,7 @@ export const PopupController = {
       }
 
       if (!isLikelyQuestion(bestQuestion)) {
-        console.log('AnswerHunter: bestQuestion (raw, pre-options) â†’', bestQuestion.substring(0, 200));
+        console.log('AnswerHunter: bestQuestion (raw, pre-options) →', bestQuestion.substring(0, 200));
         this.view.showStatus('loading', this.t('status.validatingQuestion'));
         const valid = await ApiService.validateQuestion(bestQuestion);
         if (!valid) {
@@ -1685,7 +1840,7 @@ export const PopupController = {
         }
       }
 
-      // â”€â”€ Normalize inline options to separate lines â”€â”€
+      // ── Normalize inline options to separate lines ──
       // The DOM sometimes delivers all options on a single line (no newlines between a), b), etc.).
       // countDistinctOptions only detects options preceded by ^ or \n, so inline options go undetected.
       // When this happens, extractOptionsOnlyScript runs and contaminates with options from OTHER
@@ -1842,7 +1997,7 @@ export const PopupController = {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
                     let body = String(current.body || '').replace(/\s+/g, ' ').trim();
-                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[e�]ns|voc[e�]\s+acertou|confira\s+o|explica[c�][a�]o)\b/i;
                     const idx = body.search(noise);
                     if (idx > 1) body = body.slice(0, idx).trim();
                     body = body.replace(/[;:,\-.\s]+$/, '');
@@ -1867,7 +2022,7 @@ export const PopupController = {
                       current = { letter: m[1], body: m[2] };
                       continue;
                     }
-                    if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[aã]o|aula)\b/i.test(line)) {
+                    if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[a�]o|aula)\b/i.test(line)) {
                       current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
                     }
                   }
@@ -1876,7 +2031,7 @@ export const PopupController = {
                 };
 
                 const stop = new Set([
-                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questão',
+                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest�o',
                   'considere', 'tabela', 'dados', 'produto', 'produtos', 'registro', 'registros',
                   'para', 'com', 'sem', 'dos', 'das', 'uma', 'de', 'da', 'do', 'e', 'o', 'a',
                   'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos'
@@ -1976,7 +2131,7 @@ export const PopupController = {
                 const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
 
                 const stop = new Set([
-                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questão',
+                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest�o',
                   'considere', 'tabela', 'dados', 'produto', 'produtos', 'registro', 'registros',
                   'para', 'com', 'sem', 'dos', 'das', 'uma', 'de', 'da', 'do', 'e', 'o', 'a',
                   'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos'
@@ -2003,7 +2158,7 @@ export const PopupController = {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
                     let body = String(current.body || '').replace(/\s+/g, ' ').trim();
-                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[e�]ns|voc[e�]\s+acertou|confira\s+o|explica[c�][a�]o)\b/i;
                     const idx = body.search(noise);
                     if (idx > 1) body = body.slice(0, idx).trim();
                     body = body.replace(/[;:,\-.\s]+$/, '');
@@ -2028,7 +2183,7 @@ export const PopupController = {
                       current = { letter: m[1], body: m[2] };
                       continue;
                     }
-                    if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[aã]o|aula)\b/i.test(line)) {
+                    if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[a�]o|aula)\b/i.test(line)) {
                       current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
                     }
                   }
@@ -2138,7 +2293,7 @@ export const PopupController = {
           }
         }
 
-        // Fallback priority: OCR stored options â†’ allFrames (last resort).
+        // Fallback priority: OCR stored options → allFrames (last resort).
         // allFrames can pick up options from OTHER questions (cross-frame contamination),
         // so we prefer OCR options when available.
         if (!optionsText && ocrVisionText) {
@@ -2164,7 +2319,7 @@ export const PopupController = {
 
         if (optionsText && optionsText.length > 10) {
           if (existingOptionCount < 2) {
-            // No real options in question text — just append all (after contamination guard check)
+            // No real options in question text � just append all (after contamination guard check)
             if (optionsAreContextuallyRelated(bestQuestion, optionsText)) {
               displayQuestion = `${bestQuestion}\n${optionsText}`;
             } else {
@@ -2364,9 +2519,9 @@ export const PopupController = {
         return;
       }
 
-      console.log('AnswerHunter: displayQuestion sent to search â†’', displayQuestion.substring(0, 200));
+      console.log('AnswerHunter: displayQuestion sent to search →', displayQuestion.substring(0, 200));
 
-      // ── Phase 2: dispatch the slow network work to the background service worker ──
+      // -- Phase 2: dispatch the slow network work to the background service worker --
       // The SW runs searchOnly + refineFromResults and stores the result in
       // chrome.storage.local, so the search survives popup closure.
       const requestId = `srch_${Date.now()}`;
@@ -2386,7 +2541,7 @@ export const PopupController = {
         });
         bgDispatched = true;
       } catch (_bgErr) {
-        console.warn('AnswerHunter: BG dispatch failed — running search inline:', _bgErr?.message);
+        console.warn('AnswerHunter: BG dispatch failed � running search inline:', _bgErr?.message);
       }
 
       if (!bgDispatched) {
@@ -2421,7 +2576,7 @@ export const PopupController = {
     }
   },
 
-  // ── Background search helpers ────────────────────────────────────────────────
+  // -- Background search helpers ------------------------------------------------
 
   /**
    * Processes the array of finalResults from a background search and
@@ -2483,7 +2638,7 @@ export const PopupController = {
 
         if (!entry || entry.state === 'running') return;
 
-        // Reached a terminal state — clear the poller and storage entries
+        // Reached a terminal state � clear the poller and storage entries
         clearInterval(this._bgSearchPoller);
         this._bgSearchPoller = null;
         await chrome.storage.local.remove(['ah_pending_search', key, statusKey]).catch(() => {});
@@ -2504,7 +2659,7 @@ export const PopupController = {
   },
 
   /**
-   * Called from init() — if the popup is reopened while a background search is
+   * Called from init() � if the popup is reopened while a background search is
    * already running (or just finished), resume showing progress / display results.
    */
   async _resumePendingBackgroundSearch() {
@@ -2516,13 +2671,13 @@ export const PopupController = {
       const { [key]: entry } = await chrome.storage.local.get(key);
 
       if (!entry) {
-        // Job not started or storage already cleared — discard stale pending marker
+        // Job not started or storage already cleared � discard stale pending marker
         await chrome.storage.local.remove('ah_pending_search').catch(() => {});
         return;
       }
 
       // Regardless of whether the job is still running or already done,
-      // (re-)attach the poller — it will handle all terminal states immediately.
+      // (re-)attach the poller � it will handle all terminal states immediately.
       this.view.showStatus('loading', this.t('status.searchingBackground'));
       this.view.setButtonDisabled('searchBtn', true);
       this._startPollBackgroundSearch(pending.requestId, pending.displayQuestion, pending.bestQuestion);
@@ -2534,7 +2689,7 @@ export const PopupController = {
     const map = {};
     const cleanOptionBody = (raw) => {
       let body = String(raw || '').replace(/\s+/g, ' ').trim();
-      const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eÃ©]ns|voc[eÃª]\s+acertou|confira\s+o\s+gabarito|explica[cÃ§][aÃ£]o)\b/i;
+      const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o\s+gabarito|explica[cç][aã]o)\b/i;
       const idx = body.search(noiseMarker);
       if (idx > 20) body = body.slice(0, idx).trim();
       return body.replace(/[;:,\-.\s]+$/g, '').trim();
@@ -2546,7 +2701,7 @@ export const PopupController = {
       return true;
     };
     const lines = String(text || '').split('\n');
-    const re = /^\s*["'â€œâ€â€˜â€™]?\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+    const re = /^\s*["'“”‘’]?\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
     for (const line of lines) {
       const m = line.match(re);
       if (m) {
@@ -2746,7 +2901,7 @@ export const PopupController = {
       cached[cardIndex].userOverride = true;
       cached[cardIndex].resultState = 'confirmed';
       await chrome.storage.local.set({ lastSearchResults: cached });
-      console.log(`AnswerHunter: User override applied â€” Letra ${newLetter}`);
+      console.log(`AnswerHunter: User override applied — Letra ${newLetter}`);
     } catch (error) {
       console.warn('Could not persist answer override:', error);
     }
@@ -2954,7 +3109,7 @@ export const PopupController = {
       tutorBtn.disabled = true;
       tutorBtn.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> <span>${this.t('status.refiningWithAi') || 'Pensando...'}</span>`;
       container.classList.remove('hidden');
-      container.innerHTML = `<div class="study-loading-placeholder">Gerando explicação passo a passo...</div>`;
+      container.innerHTML = `<div class="study-loading-placeholder">Gerando explica��o passo a passo...</div>`;
 
       try {
         const ApiServiceModule = (await import('../services/ApiService.js')).ApiService;
@@ -2968,18 +3123,18 @@ export const PopupController = {
           .replace(/^# (.*$)/gim, '<strong>$1</strong>')
           .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
           .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-          .replace(/^✅(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">✅$1</div>')
-          .replace(/^💡(.*)$/gim, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">💡$1</div>')
-          .replace(/^❌(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">❌$1</div>')
+          .replace(/^?(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">?$1</div>')
+          .replace(/^??(.*)$/gim, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">??$1</div>')
+          .replace(/^?(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">?$1</div>')
           .replace(/^(\d+)\.\s+(.*)/gim, '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;padding:8px 12px;background:rgba(255,255,255,0.7);border-radius:8px;border-left:3px solid #FF6B00;"><span style="background:#FF6B00;color:#fff;font-weight:700;font-size:0.78rem;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$1</span><span>$2</span></div>')
-          .replace(/\n\+/g, '\n• ')
-          .replace(/\n-/g, '\n• ')
+          .replace(/\n\+/g, '\n� ')
+          .replace(/\n-/g, '\n� ')
           .replace(/\n/g, '<br>');
 
         container.innerHTML = `<div class="study-tutor-explanation">${htmlExplanation}</div>`;
       } catch (err) {
         console.error('AnswerHunter Tutor Mode err:', err);
-        container.innerHTML = `<div class="study-error">Erro ao gerar explicação. Tente novamente mais tarde.</div>`;
+        container.innerHTML = `<div class="study-error">Erro ao gerar explica��o. Tente novamente mais tarde.</div>`;
       } finally {
         tutorBtn.disabled = false;
         tutorBtn.innerHTML = `<span class="material-symbols-rounded">school</span> <span>${this.t('result.tutor.btn')}</span>`;
@@ -2998,9 +3153,9 @@ export const PopupController = {
       const question = decodeURIComponent(similarBtn.dataset.question || '');
 
       similarBtn.disabled = true;
-      similarBtn.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> <span>${this.t('status.refiningWithAi') || 'Criando questão...'}</span>`;
+      similarBtn.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> <span>${this.t('status.refiningWithAi') || 'Criando quest�o...'}</span>`;
       container.classList.remove('hidden');
-      container.innerHTML = `<div class="study-loading-placeholder">Gerando uma questão similar para testar seus conhecimentos...</div>`;
+      container.innerHTML = `<div class="study-loading-placeholder">Gerando uma quest�o similar para testar seus conhecimentos...</div>`;
 
       try {
         const ApiServiceModule = (await import('../services/ApiService.js')).ApiService;
@@ -3026,7 +3181,7 @@ export const PopupController = {
         }
       } catch (err) {
         console.error('AnswerHunter Similar Question err:', err);
-        container.innerHTML = `<div class="study-error">Erro ao gerar questão. Tente novamente mais tarde.</div>`;
+        container.innerHTML = `<div class="study-error">Erro ao gerar quest�o. Tente novamente mais tarde.</div>`;
       } finally {
         similarBtn.disabled = false;
         similarBtn.innerHTML = `<span class="material-symbols-rounded">quiz</span> <span>${this.t('result.similar.btn')}</span>`;
@@ -3052,11 +3207,11 @@ export const PopupController = {
             <div class="study-chat-history">
               <div class="chat-message ai-message">
                 <span class="material-symbols-rounded">robot_2</span>
-                <div class="msg-content">${this.t ? this.t('result.chat.hello') || 'Olá! Como posso ajudar você a entender melhor esta questão?' : 'Olá! Como posso ajudar você a entender melhor esta questão?'}</div>
+                <div class="msg-content">${this.t ? this.t('result.chat.hello') || 'Ol�! Como posso ajudar voc� a entender melhor esta quest�o?' : 'Ol�! Como posso ajudar voc� a entender melhor esta quest�o?'}</div>
               </div>
             </div>
             <div class="study-chat-input-area">
-              <input type="text" class="study-chat-input" placeholder="${this.t ? this.t('result.chat.placeholder') || 'Digite sua dúvida aqui...' : 'Digite sua dúvida aqui...'}">
+              <input type="text" class="study-chat-input" placeholder="${this.t ? this.t('result.chat.placeholder') || 'Digite sua d�vida aqui...' : 'Digite sua d�vida aqui...'}">
               <button class="study-chat-send" type="button">
                 <span class="material-symbols-rounded">send</span>
               </button>
@@ -3105,8 +3260,8 @@ export const PopupController = {
             const htmlResponse = safeResponse
               .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
               .replace(/\*(.*?)\*/g, '<em>$1</em>')
-              .replace(/\n\+/g, '\n• ') // prep list items before newline processing
-              .replace(/\n-/g, '\n• ')
+              .replace(/\n\+/g, '\n� ') // prep list items before newline processing
+              .replace(/\n-/g, '\n� ')
               .replace(/\n/g, '<br>');
 
             history.insertAdjacentHTML('beforeend', `
@@ -3122,7 +3277,7 @@ export const PopupController = {
             history.insertAdjacentHTML('beforeend', `
               <div class="chat-message ai-message error-msg">
                 <span class="material-symbols-rounded">error</span>
-                <div class="msg-content">Erro de conexão. Tente novamente.</div>
+                <div class="msg-content">Erro de conex�o. Tente novamente.</div>
               </div>
             `);
           } finally {
