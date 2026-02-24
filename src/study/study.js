@@ -42,7 +42,7 @@ function parseQuestion(text) {
 }
 
 function parseAnswer(text) {
-  if (!text) return { steps: '', final: '' };
+  if (!text) return { steps: '', final: '', letter: '', text: '' };
   
   const lines = text.split('\n');
   const steps = [];
@@ -65,13 +65,32 @@ function parseAnswer(text) {
     }
   }
   
-  if (final.length === 0) {
-    return { steps: '', final: text.trim() };
+  let finalStr = final.length > 0 ? final.join('\n').trim() : text.trim();
+  let stepsStr = final.length > 0 ? steps.join('\n').trim() : '';
+  
+  // Try to extract letter and text
+  let letter = '';
+  let answerText = finalStr;
+  
+  // Match "Letra X: text" or "X - text"
+  const match = finalStr.match(/^(?:Letra\s+)?([A-E])(?:[:\-\)\.]\s*)(.*)/is);
+  if (match) {
+    letter = match[1].toUpperCase();
+    answerText = match[2].trim();
+  } else {
+    // fallback
+    const match2 = finalStr.match(/^(?:Resposta correta|Gabarito)[:\s]*(?:Letra\s+)?([A-E])?(?:[:\-\)\.]\s*)(.*)/is);
+    if (match2) {
+      letter = match2[1] ? match2[1].toUpperCase() : '';
+      answerText = match2[2].trim();
+    }
   }
   
   return {
-    steps: steps.join('\n').trim(),
-    final: final.join('\n').trim()
+    steps: stepsStr,
+    final: finalStr,
+    letter: letter,
+    text: answerText || finalStr // fallback to full final string if text is empty
   };
 }
 
@@ -125,11 +144,29 @@ function buildCard(q, index) {
       <span class="icon">lightbulb</span> Revelar resposta
     </button>
     <div class="card-answer" hidden>
-      <div class="answer-label"><span class="icon">check_circle</span> Resposta</div>
-      <div class="answer-content">
-        ${parsedA.steps ? `<div class="answer-steps">${escH(parsedA.steps)}</div>` : ''}
-        ${parsedA.final ? `<div class="answer-final">${escH(parsedA.final)}</div>` : ''}
+      <div class="answer-label"><span class="icon">check_circle</span> Gabarito</div>
+      
+      <div class="answer-final-box">
+        ${parsedA.letter ? `<div class="answer-letter">${parsedA.letter}</div>` : `<div class="answer-letter"><span class="icon">done</span></div>`}
+        <div class="answer-text-content">${escH(parsedA.text)}</div>
       </div>
+      
+      <div class="answer-tools">
+        ${parsedA.steps ? `
+        <button class="answer-tool-btn btn-explanation" type="button">
+          <span class="icon">menu_book</span> Explicação Passo a Passo
+        </button>
+        ` : ''}
+        <button class="answer-tool-btn btn-test-learning" type="button">
+          <span class="icon">quiz</span> Testar se aprendi
+        </button>
+        <button class="answer-tool-btn btn-chat-doubt" type="button">
+          <span class="icon">forum</span> Chat de dúvida
+        </button>
+      </div>
+      
+      ${parsedA.steps ? `<div class="answer-explanation">${escH(parsedA.steps)}</div>` : ''}
+      
       ${q.source ? `<div class="answer-source"><span class="icon">link</span> ${escH(q.source)}</div>` : ''}
     </div>
     ${fmtDate(q.createdAt) ? `<div class="card-date">Salvo em ${fmtDate(q.createdAt)}</div>` : ''}
@@ -139,9 +176,44 @@ function buildCard(q, index) {
     revealCard(article);
   });
 
+  const btnExplanation = article.querySelector('.btn-explanation');
+  if (btnExplanation) {
+    btnExplanation.addEventListener('click', () => {
+      const exp = article.querySelector('.answer-explanation');
+      const isVisible = exp.classList.contains('visible');
+      if (isVisible) {
+        exp.classList.remove('visible');
+        btnExplanation.classList.remove('active');
+      } else {
+        exp.classList.add('visible');
+        btnExplanation.classList.add('active');
+      }
+    });
+  }
+
+  const btnTest = article.querySelector('.btn-test-learning');
+  if (btnTest) {
+    btnTest.addEventListener('click', () => {
+      alert('Funcionalidade "Testar se aprendi" em breve!');
+    });
+  }
+
+  const btnChat = article.querySelector('.btn-chat-doubt');
+  if (btnChat) {
+    btnChat.addEventListener('click', () => {
+      alert('Funcionalidade "Chat de dúvida" em breve!');
+    });
+  }
+
   article.querySelector('.btn-copy-card').addEventListener('click', async (e) => {
     const btn = e.currentTarget;
-    const text = `Questão:\n${q.question}\n\nResposta:\n${q.answer}`;
+    const qText = article.querySelector('.card-question').innerText;
+    const aText = article.querySelector('.answer-final-box').innerText;
+    const expText = article.querySelector('.answer-explanation') ? article.querySelector('.answer-explanation').innerText : '';
+    
+    let text = `Questão:\n${qText}\n\nResposta:\n${aText}\n`;
+    if (expText) text += `\nExplicação:\n${expText}\n`;
+    
     try {
       await navigator.clipboard.writeText(text);
       const icon = btn.querySelector('.icon');
@@ -298,8 +370,11 @@ function init(questions) {
     let text = '';
     visibleCards.forEach((card, idx) => {
       const qText = card.querySelector('.card-question').innerText;
-      const aText = card.querySelector('.answer-content').innerText;
-      text += `--- Questão ${idx + 1} ---\n${qText}\n\nResposta:\n${aText}\n\n`;
+      const aText = card.querySelector('.answer-final-box').innerText;
+      const expText = card.querySelector('.answer-explanation') ? card.querySelector('.answer-explanation').innerText : '';
+      text += `--- Questão ${idx + 1} ---\n${qText}\n\nResposta:\n${aText}\n`;
+      if (expText) text += `\nExplicação:\n${expText}\n`;
+      text += `\n`;
     });
 
     try {
