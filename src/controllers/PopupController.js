@@ -479,6 +479,18 @@ export const PopupController = {
     return SettingsModel.isPresent(savedKey);
   },
 
+  /** Check if Gemini is usable (API key OR CLI auth logged in) */
+  _geminiCliLoggedIn: false,
+  async hasGeminiAccess() {
+    if (this.hasGeminiKey()) return true;
+    try {
+      const { GeminiCLIAuthService } = await import('../services/GeminiCLIAuthService.js');
+      const loggedIn = await GeminiCLIAuthService.isLoggedIn();
+      this._geminiCliLoggedIn = loggedIn;
+      return loggedIn;
+    } catch (_) { return false; }
+  },
+
   /** Handle provider pill click */
   async setProviderPill(provider) {
     let effectiveProvider = provider;
@@ -504,10 +516,11 @@ export const PopupController = {
       );
       this.view.setSetupStatus('openrouter', 'Missing OpenRouter key', 'error');
     }
-    if (provider === 'gemini' && !this.hasGeminiKey()) {
+    if (provider === 'gemini' && !(await this.hasGeminiAccess())) {
+      // No API key and not logged in via Google — open login panel
+      document.getElementById('gemini-auth-section')?.classList.remove('hidden');
       effectiveProvider = 'groq';
-      this.view.showToast(this.t('setup.toast.noGeminiKeySaved'), 'warning');
-      this.view.setSetupStatus('gemini', this.t('setup.status.geminiMissing'), 'error');
+      this.view.showToast('Faça login com Google ou adicione uma API key', 'warning');
     }
     if (provider === 'chatgpt') {
       // ChatGPT uses OAuth, not API keys — check login status synchronously
@@ -592,7 +605,7 @@ export const PopupController = {
       this.view.elements.pillGroqOb?.classList.add('active');
       this.updateProviderHint('groq');
     }
-    if (primaryProvider === 'gemini' && !this.hasGeminiKey()) {
+    if (primaryProvider === 'gemini' && !(await this.hasGeminiAccess())) {
       primaryProvider = 'groq';
       this.view.elements.pillGemini?.classList.remove('active');
       this.view.elements.pillGeminiOb?.classList.remove('active');
