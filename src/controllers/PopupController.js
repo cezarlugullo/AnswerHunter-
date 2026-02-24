@@ -2729,7 +2729,11 @@ export const PopupController = {
           .replace(/^# (.*$)/gim, '<strong>$1</strong>')
           .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
           .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-          .replace(/\n\+/g, '\n• ') // prep list items before newline processing
+          .replace(/^✅(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">✅$1</div>')
+          .replace(/^💡(.*)$/gim, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">💡$1</div>')
+          .replace(/^❌(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">❌$1</div>')
+          .replace(/^(\d+)\.\s+(.*)/gim, '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;padding:8px 12px;background:rgba(255,255,255,0.7);border-radius:8px;border-left:3px solid #FF6B00;"><span style="background:#FF6B00;color:#fff;font-weight:700;font-size:0.78rem;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$1</span><span>$2</span></div>')
+          .replace(/\n\+/g, '\n• ')
           .replace(/\n-/g, '\n• ')
           .replace(/\n/g, '<br>');
 

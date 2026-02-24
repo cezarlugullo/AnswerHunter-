@@ -492,26 +492,91 @@ export const EvidenceService = {
             const hasMinimumVotes = bestScore >= 5.0;
             const hasMargin = margin >= 1.0;
             const hasEvidenceConsensus = bestEvidenceCount >= 2 && bestEvidenceDomains >= 2;
+            const hasHighQualityMethod = bestNonAi.some(s => {
+                const et = String(s.evidenceType || '').toLowerCase();
+                return et.includes('pdf') || et.includes('highlight') || et.includes('answercard') || et.includes('gabarito');
+            });
 
             if (hasAnyNonAi && hasStrongConsensus && hasDomainConsensus && hasMinimumVotes && hasMargin && hasEvidenceConsensus) {
                 resultState = 'confirmed'; reason = 'confirmed_by_sources';
+            } else if (hasAnyNonAi && hasHighQualityMethod && hasDomainConsensus && bestScore >= 3.0) {
+                resultState = 'confirmed'; reason = 'confirmed_high_quality';
+            } else if (hasAnyNonAi && bestNonAi.length >= 2 && hasDomainConsensus && hasMargin) {
+                resultState = 'suggested'; reason = 'multiple_sources_agree';
+            } else if (hasAnyNonAi && hasHighQualityMethod && bestScore >= 2.0) {
+                resultState = 'suggested'; reason = 'strong_method_found';
             } else if (hasAnyNonAi && bestNonAi.length >= 1 && bestScore >= 3.0) {
-                const hasHighQualityMethod = bestNonAi.some(s => {
-                    const et = String(s.evidenceType || '').toLowerCase();
-                    return et.includes('pdf') || et.includes('highlight') || et.includes('answercard') || et.includes('gabarito');
-                });
-                if (hasHighQualityMethod || hasDomainConsensus) { resultState = 'suggested'; reason = 'ai_combined_suggestion'; }
-            } else if (bestScore > 0 && !hasAnyNonAi && sources.length >= 1) {
-                resultState = 'suggested'; reason = 'ai_combined_suggestion';
+                if (hasDomainConsensus) { resultState = 'suggested'; reason = 'multiple_sources_agree'; }
+                else { resultState = 'suggested'; reason = 'single_source_match'; }
+            } else if (bestScore > 0 && !hasAnyNonAi && sources.length >= 2) {
+                resultState = 'suggested'; reason = 'ai_multiple_agree';
+            } else if (bestScore > 0 && !hasAnyNonAi && sources.length === 1) {
+                resultState = 'suggested'; reason = 'ai_single_suggestion';
             } else if (second && margin < 1.0 && hasAnyNonAi) {
                 resultState = 'conflict'; reason = 'source_conflict';
+            } else if (second && margin < 0.5) {
+                resultState = 'conflict'; reason = 'narrow_margin';
             }
         }
 
-        let confidence = Math.max(0.25, Math.min(0.98, bestScore / total));
-        if (resultState !== 'confirmed') confidence = Math.min(confidence, 0.79);
-        if (resultState === 'confirmed') confidence = Math.max(confidence, 0.85);
-        if (resultState === 'suggested') confidence = Math.max(confidence, 0.50);
+        // ── Compute a REAL confidence score based on actual evidence quality ──
+        const totalSources = sources.length;
+        const nonAiCount = nonAiSources.filter(s => s.letter === bestLetter).length;
+        const uniqueDomainCount = bestDomains.size;
+        const hasStrongMethod = bestNonAi.some(s => {
+            const et = String(s.evidenceType || '').toLowerCase();
+            return et.includes('pdf') || et.includes('highlight') || et.includes('answercard') || et.includes('gabarito');
+        });
+
+        // Start from a base depending on resultState
+        let confidence = 0.30;
+
+        if (resultState === 'confirmed') {
+            // Strong confirmed: 85–96
+            confidence = 0.85;
+            if (bestStrongDomains.size >= 3) confidence += 0.04;
+            if (bestEvidenceCount >= 3) confidence += 0.03;
+            if (margin >= 3.0) confidence += 0.02;
+            if (hasStrongMethod) confidence += 0.02;
+            confidence = Math.min(0.96, confidence);
+        } else if (resultState === 'suggested') {
+            // Build up from 40 based on real signals
+            confidence = 0.40;
+            // Non-AI source count bonus (up to +15)
+            confidence += Math.min(0.15, nonAiCount * 0.05);
+            // Domain diversity bonus (up to +10)
+            confidence += Math.min(0.10, uniqueDomainCount * 0.05);
+            // Strong extraction method  bonus (+8)
+            if (hasStrongMethod) confidence += 0.08;
+            // High vote margin bonus (up to +8)
+            if (margin >= 2.0) confidence += 0.08;
+            else if (margin >= 1.0) confidence += 0.04;
+            // Evidence entailment bonus (up to +6)
+            if (bestEvidenceCount >= 2) confidence += 0.06;
+            else if (bestEvidenceCount >= 1) confidence += 0.03;
+            // Total source volume bonus (up to +5)
+            confidence += Math.min(0.05, totalSources * 0.01);
+            // Cap per reason
+            if (reason === 'ai_single_suggestion') confidence = Math.min(confidence, 0.52);
+            else if (reason === 'ai_multiple_agree') confidence = Math.min(confidence, 0.62);
+            else if (reason === 'single_source_match') confidence = Math.min(confidence, 0.68);
+            else confidence = Math.min(confidence, 0.82);
+        } else if (resultState === 'conflict') {
+            // Conflict: reflect closeness of votes
+            const ratio = secondScore > 0 ? bestScore / secondScore : 2;
+            confidence = Math.max(0.25, Math.min(0.45, 0.30 + (ratio - 1) * 0.15));
+        } else {
+            // Inconclusive: low confidence, reflect whether we have anything at all
+            if (totalSources > 0 && bestScore > 0) {
+                confidence = Math.max(0.25, Math.min(0.40, 0.25 + totalSources * 0.02));
+            } else {
+                confidence = 0.20;
+            }
+        }
+
+        // Final clamp
+        confidence = Math.round(confidence * 100) / 100;
+        confidence = Math.max(0.10, Math.min(0.98, confidence));
 
         return {
             votes: mergedVotes, baseVotes: votes, evidenceVotes,

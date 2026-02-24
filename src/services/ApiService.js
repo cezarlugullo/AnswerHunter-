@@ -3730,22 +3730,37 @@ REGRAS:
         const settings = await this._getSettings();
         const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
 
-        const systemMsg = 'Você é um tutor educacional especializado. Explique conceitos de forma didática, passo a passo.';
-        const prompt = `Explique de forma didática e passo a passo por que a resposta correta para a questão abaixo é a alternativa indicada.
+        const systemMsg = `Você é um professor paciente, didático e experiente. Sua ÚNICA tarefa é explicar POR QUE a resposta do GABARITO está correta, de forma que qualquer estudante entenda completamente o raciocínio.
 
-QUESTÃO:
+⚠️ REGRA ABSOLUTA: A resposta correta é EXATAMENTE a que está indicada no GABARITO abaixo. Você NÃO pode discordar do gabarito. Sua explicação DEVE obrigatoriamente justificar essa resposta específica do gabarito, mesmo que você pessoalmente pensasse diferente.`;
+
+        const prompt = `QUESTÃO:
 ${question.slice(0, 1500)}
 
-RESPOSTA CORRETA:
-${answer.slice(0, 500)}
+GABARITO (resposta correta definitiva — NÃO discorde):
+${answer.slice(0, 800)}
 
-${context ? `CONTEXTO ADICIONAL:\n${context.slice(0, 300)}\n` : ''}
-INSTRUÇÕES:
-- Use linguagem clara e acessível para estudantes
-- Explique o raciocínio por trás da resposta
-- Mencione por que as outras alternativas estão incorretas se possível
-- Use marcadores e parágrafos para facilitar a leitura
-- Seja objetivo (máximo 300 palavras)`;
+${context ? `CONTEXTO ADICIONAL:\n${context.slice(0, 300)}\n` : ''}FORMATO OBRIGATÓRIO DA EXPLICAÇÃO:
+
+1. Comece com: "✅ Resposta correta: [copie exatamente a letra e/ou texto da resposta do gabarito]"
+
+2. **Contexto do tema** — Em 2-3 frases, explique o assunto/tema da questão de forma simples, como se o aluno nunca tivesse visto o tema antes.
+
+3. **Raciocínio passo a passo** — Numere cada etapa do raciocínio (1., 2., 3., ...) que leva à resposta do gabarito:
+   - Use linguagem simples e direta
+   - Dê exemplos práticos quando possível
+   - Conecte cada passo ao anterior
+
+4. **Por que as outras alternativas estão erradas** — Para cada alternativa incorreta, explique brevemente (1 frase) por que está errada. Use o formato: "❌ Alternativa X: [motivo]"
+
+5. Finalize com: "💡 Resumo: [1 frase que sintetize o conceito-chave]"
+
+REGRAS:
+- Linguagem CLARA e ACESSÍVEL — imagine que está ensinando a um aluno do ensino médio
+- Máximo 450 palavras
+- NUNCA contradiga o gabarito — se o gabarito diz que a resposta é X, justifique X
+- Use **negrito** para termos importantes
+- Se a questão não tiver alternativas, foque nos passos 1, 2, 3 e 5`;
 
         const tryGemini = async () => {
             if (!settings.geminiApiKey) return null;
@@ -3753,7 +3768,7 @@ INSTRUÇÕES:
                 return await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.3, max_tokens: 600, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                ], { temperature: 0.3, max_tokens: 1000, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
             } catch (e) {
                 console.warn('AnswerHunter: Gemini generateTutorExplanation error:', e?.message || e);
                 return null;
@@ -3764,7 +3779,7 @@ INSTRUÇÕES:
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
                 // intercept options to overwrite model
-                const opts = Object.assign({}, { temperature: 0.3, max_tokens: 600, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                const opts = Object.assign({}, { temperature: 0.3, max_tokens: 1000, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
                 opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
                 return await this._callOpenRouter([
                     { role: 'system', content: systemMsg },
@@ -3785,7 +3800,7 @@ INSTRUÇÕES:
                         model: groqModelSmart,
                         messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
                         temperature: 0.3,
-                        max_tokens: 600
+                        max_tokens: 1000
                     })
                 }));
                 return data?.choices?.[0]?.message?.content?.trim() || null;
@@ -3815,6 +3830,118 @@ INSTRUÇÕES:
         }
 
         return result || 'Não foi possível gerar a explicação. Tente novamente.';
+    },
+
+    /**
+     * Generate a concise review/study card for a question — flashcard style
+     * Returns a structured text for spaced-repetition review
+     */
+    async generateReviewCard(question, answer, context = '') {
+        const settings = await this._getSettings();
+        const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
+
+        const systemMsg = `Você é um especialista em técnicas de estudo e memorização (Anki, flashcards, revisão espaçada). Crie fichas de revisão objetivas e memoráveis.`;
+
+        const prompt = `Crie uma FICHA DE REVISÃO concisa para o estudante memorizar o conteúdo desta questão.
+
+QUESTÃO:
+${question.slice(0, 1500)}
+
+GABARITO:
+${answer.slice(0, 800)}
+
+${context ? `CONTEXTO:\n${context.slice(0, 300)}\n` : ''}FORMATO OBRIGATÓRIO:
+
+📌 CONCEITO-CHAVE
+[Nome do conceito/tema principal testado — 1 linha]
+
+📖 DEFINIÇÃO RÁPIDA
+[Definição objetiva do conceito em 2-3 frases curtas. Sem enrolação.]
+
+🔑 O QUE MEMORIZAR
+- [Ponto essencial 1]
+- [Ponto essencial 2]
+- [Ponto essencial 3]
+- [Fórmula ou regra se aplicável]
+
+⚠️ PEGADINHAS COMUNS
+- [Erro comum 1 que bancas exploram]
+- [Erro comum 2]
+
+🧠 DICA DE MEMORIZAÇÃO
+[Uma técnica mnemônica, analogia ou macete para lembrar — seja criativo e marcante]
+
+🔗 TEMAS RELACIONADOS
+[Liste 2-3 temas que o aluno deve estudar junto]
+
+REGRAS:
+- Máximo 250 palavras
+- Linguagem direta, sem floreios
+- Foque no que CAI EM PROVA
+- Use **negrito** para termos-chave
+- A ficha deve funcionar como material de revisão rápida antes da prova`;
+
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                return await this._callGemini([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.4, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+            } catch (e) {
+                console.warn('AnswerHunter: Gemini generateReviewCard error:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const opts = { temperature: 0.4, max_tokens: 800, model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free' };
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter generateReviewCard error:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryGroq = async () => {
+            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: groqModelSmart,
+                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
+                        temperature: 0.4,
+                        max_tokens: 800
+                    })
+                }));
+                return data?.choices?.[0]?.message?.content?.trim() || null;
+            } catch (e) {
+                console.warn('AnswerHunter: Groq generateReviewCard error:', e?.message || e);
+                return null;
+            }
+        };
+
+        const settingsForFallback = await this._getSettings();
+        const primary = settingsForFallback.primaryProvider || 'groq';
+        let chain = [];
+        if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
+        else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
+        else chain = [tryGroq, tryOpenRouter, tryGemini];
+
+        let result = null;
+        for (const fn of chain) {
+            result = await fn();
+            if (result) break;
+        }
+
+        return result || 'Não foi possível gerar a ficha de revisão. Tente novamente.';
     },
 
     /**

@@ -594,13 +594,21 @@ export const PopupView = {
       const confidence = Number.isFinite(item.confidence) ? Math.round(item.confidence * 100) : null;
 
       const resultState = item.resultState || 'inconclusive';
-      const reasonKey = item.reason === 'confirmed_by_sources'
-        ? 'result.reason.confirmed'
-        : item.reason === 'source_conflict'
-          ? 'result.reason.conflict'
-          : (item.reason === 'ai_combined_suggestion' || item.reason === 'ai_knowledge')
-            ? 'result.reason.suggested'
-            : 'result.reason.inconclusive';
+      const reasonKeyMap = {
+        'confirmed_by_sources': 'result.reason.confirmed',
+        'confirmed_high_quality': 'result.reason.confirmed_high_quality',
+        'multiple_sources_agree': 'result.reason.multiple_sources',
+        'strong_method_found': 'result.reason.strong_method',
+        'single_source_match': 'result.reason.single_source',
+        'ai_multiple_agree': 'result.reason.ai_multiple',
+        'ai_single_suggestion': 'result.reason.ai_single',
+        'ai_combined_suggestion': 'result.reason.suggested',
+        'ai_knowledge': 'result.reason.suggested',
+        'source_conflict': 'result.reason.conflict',
+        'narrow_margin': 'result.reason.narrow_margin',
+        'inconclusive': 'result.reason.inconclusive',
+      };
+      const reasonKey = reasonKeyMap[item.reason] || 'result.reason.inconclusive';
 
       // Only show vote pills when 2+ alternatives were scored (AI-only fallback has just one)
       const votesEntries = item.votes ? Object.entries(item.votes) : [];
@@ -879,14 +887,41 @@ export const PopupView = {
 
     let html = `
       ${reminderHtml}
-      <div class="binder-toolbar">
-        <span class="crumb-current"><span class="material-symbols-rounded" style="font-size:18px;">folder_open</span> ${folder.id === 'root' ? escapeHtml(this.t('binder.title')) : escapeHtml(folder.title)}</span>
-        <div class="toolbar-actions">
-          ${folder.id !== 'root' ? `<button id="btnBackRoot" class="toolbar-icon-btn" title="${escapeHtml(this.t('binder.back'))}"><span class="material-symbols-rounded" style="font-size:18px;">arrow_back</span></button>` : ''}
-          <button id="btnStudyMode" class="toolbar-icon-btn ${isStudyMode ? 'active-study-mode' : ''}" title="${escapeHtml(this.t('binder.studyMode.toggle') || 'Study Mode')}"><span class="material-symbols-rounded" style="font-size:18px;">${isStudyMode ? 'school' : 'menu_book'}</span></button>
-          <button id="newFolderBtnBinder" class="toolbar-icon-btn" title="${escapeHtml(this.t('binder.newFolder'))}"><span class="material-symbols-rounded" style="font-size:18px;">create_new_folder</span></button>
-          <button id="exportBinderBtn" class="toolbar-icon-btn" title="Export"><span class="material-symbols-rounded" style="font-size:18px;">download</span></button>
-          <button id="importBinderBtn" class="toolbar-icon-btn" title="Import"><span class="material-symbols-rounded" style="font-size:18px;">upload</span></button>
+      <div class="binder-actions-panel">
+        ${folder.id !== 'root' ? `
+        <div class="folder-breadcrumb">
+          <button id="btnBackRoot" class="breadcrumb-back" title="${escapeHtml(this.t('binder.back'))}">
+            <span class="material-symbols-rounded">arrow_back</span>
+          </button>
+          <span class="breadcrumb-title"><span class="material-symbols-rounded">folder_open</span> ${escapeHtml(folder.title)}</span>
+        </div>
+        ` : ''}
+        
+        <button id="openStudyPageBtn" class="binder-primary-btn">
+          <span class="material-symbols-rounded">open_in_new</span>
+          <span>${escapeHtml(this.t('binder.studyPage.open'))}</span>
+        </button>
+        
+        <div class="binder-tools-grid">
+          <button id="btnStudyMode" class="tool-card ${isStudyMode ? 'active' : ''}" title="${escapeHtml(this.t('binder.studyMode.toggle'))}">
+            <span class="material-symbols-rounded">${isStudyMode ? 'school' : 'menu_book'}</span>
+            <span>${escapeHtml(this.t('binder.studyMode.toggle'))}</span>
+          </button>
+          
+          <button id="newFolderBtnBinder" class="tool-card" title="${escapeHtml(this.t('binder.newFolder'))}">
+            <span class="material-symbols-rounded">create_new_folder</span>
+            <span>${escapeHtml(this.t('binder.newFolder'))}</span>
+          </button>
+          
+          <button id="exportBinderBtn" class="tool-card" title="${escapeHtml(this.t('binder.export'))}">
+            <span class="material-symbols-rounded">download</span>
+            <span>${escapeHtml(this.t('binder.export'))}</span>
+          </button>
+          
+          <button id="importBinderBtn" class="tool-card" title="${escapeHtml(this.t('binder.import'))}">
+            <span class="material-symbols-rounded">upload</span>
+            <span>${escapeHtml(this.t('binder.import'))}</span>
+          </button>
         </div>
       </div>
       <div class="binder-content">

@@ -1,11 +1,129 @@
 // study.js — AnswerHunter Study Page
 // Reads binder data from chrome.storage.local and renders interactive study cards.
 
+import { ApiService } from '../services/ApiService.js';
+
 const escH = s => String(s || '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
+
+const parseMarkdown = text => {
+  let html = escH(text);
+  // Bold
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  return html;
+};
+
+const formatExplanation = text => {
+  if (!text) return '';
+  let html = escH(text);
+  
+  // Bold
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  
+  // Split into lines for structured rendering
+  const lines = html.split('\n');
+  let result = '';
+  let inList = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) {
+      if (inList) { result += '</div>'; inList = false; }
+      continue;
+    }
+    
+    // Correct answer header line (✅)
+    if (line.startsWith('✅')) {
+      result += `<div class="exp-correct-answer">${line}</div>`;
+      continue;
+    }
+    
+    // Summary line (💡)
+    if (line.startsWith('💡')) {
+      result += `<div class="exp-summary">${line}</div>`;
+      continue;
+    }
+    
+    // Wrong alternative line (❌)
+    if (line.startsWith('❌')) {
+      result += `<div class="exp-wrong">${line}</div>`;
+      continue;
+    }
+    
+    // Numbered steps (1., 2., 3., etc.)
+    const numMatch = line.match(/^(\d+)\.\s+(.*)/);
+    if (numMatch) {
+      result += `<div class="exp-step"><span class="exp-step-num">${numMatch[1]}</span><span class="exp-step-text">${numMatch[2]}</span></div>`;
+      continue;
+    }
+    
+    // Sub-items with dash (- text)
+    if (line.startsWith('- ')) {
+      result += `<div class="exp-sub-item">${line.slice(2)}</div>`;
+      continue;
+    }
+    
+    // Regular paragraph
+    result += `<p class="exp-paragraph">${line}</p>`;
+  }
+  
+  if (inList) result += '</div>';
+  return result;
+};
+
+const formatReviewCard = text => {
+  if (!text) return '';
+  let html = escH(text);
+
+  // Bold
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Italic
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
+  const lines = html.split('\n');
+  let result = '';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    // Section headers with emoji (📌 📖 🔑 ⚠️ 🧠 🔗)
+    if (/^(📌|📖|🔑|⚠️|🧠|🔗)\s+/.test(line)) {
+      const emojiMatch = line.match(/^(📌|📖|🔑|⚠️|🧠|🔗)\s+(.*)/);
+      if (emojiMatch) {
+        const emoji = emojiMatch[1];
+        const title = emojiMatch[2];
+        let cls = 'rev-section';
+        if (emoji === '📌') cls += ' rev-concept';
+        else if (emoji === '📖') cls += ' rev-definition';
+        else if (emoji === '🔑') cls += ' rev-memorize';
+        else if (emoji === '⚠️') cls += ' rev-pitfall';
+        else if (emoji === '🧠') cls += ' rev-mnemonic';
+        else if (emoji === '🔗') cls += ' rev-related';
+        result += `<div class="${cls}"><span class="rev-emoji">${emoji}</span><span class="rev-title">${title}</span></div>`;
+        continue;
+      }
+    }
+
+    // Bullet items
+    if (line.startsWith('- ')) {
+      result += `<div class="rev-bullet">${line.slice(2)}</div>`;
+      continue;
+    }
+
+    // Regular text
+    result += `<p class="rev-text">${line}</p>`;
+  }
+
+  return result;
+};
 
 const formatText = text => {
   if (!text) return '';
@@ -13,10 +131,108 @@ const formatText = text => {
   return text.replace(/([^\n])\s+([A-Ea-e]\))/g, '$1\n$2');
 };
 
+const normalizeNewlines = text => String(text || '')
+  .replace(/\u00A0/g, ' ')
+  .replace(/\r\n?/g, '\n')
+  .trim();
+
+function cutAtFirstMarker(text, patterns, minIndex = 0) {
+  let cutIndex = -1;
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    const match = pattern.exec(text);
+    if (match && match.index >= minIndex) {
+      cutIndex = cutIndex === -1 ? match.index : Math.min(cutIndex, match.index);
+    }
+  }
+  return cutIndex >= 0 ? text.slice(0, cutIndex).trim() : text;
+}
+
+function stripOptionTailNoise(text) {
+  if (!text) return '';
+  let cleaned = String(text).replace(/\s+/g, ' ').trim();
+  const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o\s+gabarito|explica[cç][aã]o)\b/i;
+  const idx = cleaned.search(noiseMarker);
+  if (idx > 20) cleaned = cleaned.slice(0, idx).trim();
+  return cleaned.replace(/[;:,\-.\s]+$/g, '').trim();
+}
+
+function sanitizeQuestionText(text) {
+  let cleaned = normalizeNewlines(text);
+  if (!cleaned) return '';
+
+  cleaned = cutAtFirstMarker(cleaned, [
+    /\bmenu_book\b/i,
+    /\bExplica(?:ç|c)[aã]o Passo a Passo\b/i,
+    /\bTestar se aprendi\b/i,
+    /\bChat de d[úu]vida\b/i,
+    /\bRevisar\b/i,
+    /\bRevelar resposta\b/i,
+    /\blightbulb\b/i,
+    /\bcheck_circle\b/i,
+    /\bcontent_copy\b/i,
+    /\bsummarize\b/i,
+    /\bSalvo em\s+\d{1,2}\/\d{1,2}\/\d{2,4}\b/i
+  ], 40);
+
+  cleaned = cleaned.replace(
+    /\bGabarito\b(?=[\s\S]{0,240}(?:Parab[eé]ns|Infelizmente|Resposta\s+correta|menu_book|check_circle|Salvo em|Revelar resposta))[\s\S]*$/i,
+    ''
+  ).trim();
+
+  const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
+  if (!lines.length) return cleaned;
+
+  const result = [];
+  const optionLineRe = /^[A-Ea-e][\)\.\-:]\s+/;
+  const nextQuestionLineRe = /^\d+\.\s+\S/;
+  const iconNoiseLineRe = /^(?:menu_book|quiz|forum|lightbulb|check_circle|content_copy|delete|folder|restart_alt|sync|summarize)$/i;
+  const uiPhraseNoiseLineRe = /^(?:Explica(?:ç|c)[aã]o Passo a Passo|Testar se aprendi|Chat de d[úu]vida|Revelar resposta|Revisar)$/i;
+  const feedbackNoiseLineRe = /^(?:Parab[eé]ns!?|Infelizmente[,!]?|Resposta\s+correta\b|Resposta\s+incorreta\b|Gabarito\b)/i;
+  const metaNoiseLineRe = /^(?:Salvo em\s+\d{1,2}\/\d{1,2}\/\d{2,4}|Raiz\s*\/|#\d+)\b/i;
+
+  let optionCount = 0;
+
+  for (const line of lines) {
+    if (optionLineRe.test(line)) optionCount += 1;
+
+    const isNoise = iconNoiseLineRe.test(line)
+      || uiPhraseNoiseLineRe.test(line)
+      || feedbackNoiseLineRe.test(line)
+      || metaNoiseLineRe.test(line)
+      || (optionCount >= 2 && nextQuestionLineRe.test(line));
+
+    if (isNoise && (optionCount > 0 || result.length >= 2)) break;
+    result.push(line);
+  }
+
+  cleaned = result.join('\n').trim();
+  return cleaned || normalizeNewlines(text);
+}
+
+function sanitizeAnswerText(text) {
+  let cleaned = normalizeNewlines(text);
+  if (!cleaned) return '';
+
+  cleaned = cutAtFirstMarker(cleaned, [
+    /\bmenu_book\b/i,
+    /\bExplica(?:ç|c)[aã]o Passo a Passo\b/i,
+    /\bTestar se aprendi\b/i,
+    /\bChat de d[úu]vida\b/i,
+    /\bRevelar resposta\b/i,
+    /\blightbulb\b/i,
+    /\bcontent_copy\b/i,
+    /\bSalvo em\s+\d{1,2}\/\d{1,2}\/\d{2,4}\b/i
+  ], 20);
+
+  return cleaned.trim();
+}
+
 function parseQuestion(text) {
   if (!text) return { enunciado: '', alternativas: [] };
-  
-  let normalized = text.replace(/([^\n])\s+([A-Ea-e][\)\.])/g, '$1\n$2');
+
+  const safeText = sanitizeQuestionText(text);
+  let normalized = safeText.replace(/([^\n])\s+([A-Ea-e][\)\.])/g, '$1\n$2');
   const lines = normalized.split('\n');
   const enunciado = [];
   const alternativas = [];
@@ -24,13 +240,17 @@ function parseQuestion(text) {
   const optionRegex = /^[A-Ea-e][\)\.]\s/;
   
   for (const line of lines) {
-    if (optionRegex.test(line.trim())) {
-      alternativas.push(line.trim());
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (optionRegex.test(trimmed)) {
+      alternativas.push(stripOptionTailNoise(trimmed));
     } else {
       if (alternativas.length === 0) {
-        enunciado.push(line);
+        enunciado.push(trimmed);
       } else {
-        alternativas[alternativas.length - 1] += '\n' + line;
+        const merged = `${alternativas[alternativas.length - 1]} ${trimmed}`;
+        alternativas[alternativas.length - 1] = stripOptionTailNoise(merged);
       }
     }
   }
@@ -43,8 +263,9 @@ function parseQuestion(text) {
 
 function parseAnswer(text) {
   if (!text) return { steps: '', final: '', letter: '', text: '' };
-  
-  const lines = text.split('\n');
+
+  const safeText = sanitizeAnswerText(text);
+  const lines = safeText.split('\n');
   const steps = [];
   const final = [];
   
@@ -65,7 +286,7 @@ function parseAnswer(text) {
     }
   }
   
-  let finalStr = final.length > 0 ? final.join('\n').trim() : text.trim();
+  let finalStr = final.length > 0 ? final.join('\n').trim() : safeText.trim();
   let stepsStr = final.length > 0 ? steps.join('\n').trim() : '';
   
   // Try to extract letter and text
@@ -116,8 +337,10 @@ function buildCard(q, index) {
   if (q.id) article.dataset.qid = q.id;
 
   const showFolder = q.folderPath && q.folderPath !== 'Raiz';
-  const parsedQ = parseQuestion(q.question);
-  const parsedA = parseAnswer(q.answer);
+  const cleanQuestion = sanitizeQuestionText(q.question);
+  const cleanAnswer = sanitizeAnswerText(q.answer);
+  const parsedQ = parseQuestion(cleanQuestion);
+  const parsedA = parseAnswer(cleanAnswer);
 
   article.innerHTML = `
     <div class="card-meta">
@@ -140,32 +363,47 @@ function buildCard(q, index) {
         </div>
       ` : ''}
     </div>
+    
+    <div class="answer-tools">
+      <button class="answer-tool-btn btn-explanation" type="button">
+        <span class="icon">menu_book</span> Explicação Passo a Passo
+      </button>
+      <button class="answer-tool-btn btn-review" type="button">
+        <span class="icon">summarize</span> Revisar
+      </button>
+      <button class="answer-tool-btn btn-test-learning" type="button">
+        <span class="icon">quiz</span> Testar se aprendi
+      </button>
+      <button class="answer-tool-btn btn-chat-doubt" type="button">
+        <span class="icon">forum</span> Chat de dúvida
+      </button>
+    </div>
+    
+    <div class="answer-explanation">
+      <div class="explanation-content"></div>
+      <div class="explanation-loading" style="display: none; color: var(--muted); font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+        <span class="icon" style="animation: spin 1s linear infinite;">autorenew</span> Gerando explicação com IA...
+      </div>
+    </div>
+
+    <div class="answer-review">
+      <div class="review-content"></div>
+      <div class="review-loading" style="display: none; color: var(--muted); font-size: 0.85rem; display: flex; align-items: center; gap: 6px;">
+        <span class="icon" style="animation: spin 1s linear infinite;">autorenew</span> Gerando ficha de revisão...
+      </div>
+    </div>
+
     <button class="reveal-btn" type="button">
       <span class="icon">lightbulb</span> Revelar resposta
     </button>
+    
     <div class="card-answer" hidden>
-      <div class="answer-label"><span class="icon">check_circle</span> Gabarito</div>
-      
       <div class="answer-final-box">
-        ${parsedA.letter ? `<div class="answer-letter">${parsedA.letter}</div>` : `<div class="answer-letter"><span class="icon">done</span></div>`}
-        <div class="answer-text-content">${escH(parsedA.text)}</div>
+        <span class="answer-badge"><span class="icon">check_circle</span> Gabarito</span>
+        <span class="answer-text-content">
+          ${parsedA.letter ? `<strong>${parsedA.letter})</strong> ` : ''}${escH(parsedA.text)}
+        </span>
       </div>
-      
-      <div class="answer-tools">
-        ${parsedA.steps ? `
-        <button class="answer-tool-btn btn-explanation" type="button">
-          <span class="icon">menu_book</span> Explicação Passo a Passo
-        </button>
-        ` : ''}
-        <button class="answer-tool-btn btn-test-learning" type="button">
-          <span class="icon">quiz</span> Testar se aprendi
-        </button>
-        <button class="answer-tool-btn btn-chat-doubt" type="button">
-          <span class="icon">forum</span> Chat de dúvida
-        </button>
-      </div>
-      
-      ${parsedA.steps ? `<div class="answer-explanation">${escH(parsedA.steps)}</div>` : ''}
       
       ${q.source ? `<div class="answer-source"><span class="icon">link</span> ${escH(q.source)}</div>` : ''}
     </div>
@@ -178,15 +416,83 @@ function buildCard(q, index) {
 
   const btnExplanation = article.querySelector('.btn-explanation');
   if (btnExplanation) {
-    btnExplanation.addEventListener('click', () => {
+    btnExplanation.addEventListener('click', async () => {
       const exp = article.querySelector('.answer-explanation');
+      const contentDiv = exp.querySelector('.explanation-content');
+      const loadingDiv = exp.querySelector('.explanation-loading');
       const isVisible = exp.classList.contains('visible');
+      
       if (isVisible) {
         exp.classList.remove('visible');
         btnExplanation.classList.remove('active');
       } else {
         exp.classList.add('visible');
         btnExplanation.classList.add('active');
+        
+        // If there's no content yet, generate it
+        if (!contentDiv.innerHTML.trim()) {
+          contentDiv.style.display = 'none';
+          loadingDiv.style.display = 'flex';
+          
+          try {
+            const explanation = await ApiService.generateTutorExplanation(cleanQuestion, cleanAnswer, q.source);
+            if (explanation) {
+              contentDiv.innerHTML = formatExplanation(explanation);
+            } else {
+              contentDiv.innerHTML = '<em>Não foi possível gerar a explicação no momento. Verifique suas chaves de API nas configurações.</em>';
+            }
+          } catch (err) {
+            console.error('Error generating explanation:', err);
+            contentDiv.innerHTML = '<em>Ocorreu um erro ao gerar a explicação.</em>';
+          } finally {
+            loadingDiv.style.display = 'none';
+            contentDiv.style.display = 'block';
+          }
+        } else {
+          loadingDiv.style.display = 'none';
+          contentDiv.style.display = 'block';
+        }
+      }
+    });
+  }
+
+  const btnReview = article.querySelector('.btn-review');
+  if (btnReview) {
+    btnReview.addEventListener('click', async () => {
+      const rev = article.querySelector('.answer-review');
+      const contentDiv = rev.querySelector('.review-content');
+      const loadingDiv = rev.querySelector('.review-loading');
+      const isVisible = rev.classList.contains('visible');
+
+      if (isVisible) {
+        rev.classList.remove('visible');
+        btnReview.classList.remove('active');
+      } else {
+        rev.classList.add('visible');
+        btnReview.classList.add('active');
+
+        if (!contentDiv.innerHTML.trim()) {
+          contentDiv.style.display = 'none';
+          loadingDiv.style.display = 'flex';
+
+          try {
+            const review = await ApiService.generateReviewCard(cleanQuestion, cleanAnswer, q.source);
+            if (review) {
+              contentDiv.innerHTML = formatReviewCard(review);
+            } else {
+              contentDiv.innerHTML = '<em>Não foi possível gerar a ficha de revisão. Verifique suas chaves de API.</em>';
+            }
+          } catch (err) {
+            console.error('Error generating review card:', err);
+            contentDiv.innerHTML = '<em>Ocorreu um erro ao gerar a ficha de revisão.</em>';
+          } finally {
+            loadingDiv.style.display = 'none';
+            contentDiv.style.display = 'block';
+          }
+        } else {
+          loadingDiv.style.display = 'none';
+          contentDiv.style.display = 'block';
+        }
       }
     });
   }
@@ -272,6 +578,28 @@ function hideCard(card) {
 }
 
 let total = 0;
+
+function syncStickyOffsets() {
+  const header = document.querySelector('header');
+  if (!header) return;
+
+  const headerHeight = Math.ceil(header.getBoundingClientRect().height);
+  document.documentElement.style.setProperty('--header-sticky-offset', `${headerHeight}px`);
+}
+
+function setupStickyOffsets() {
+  const header = document.querySelector('header');
+  if (!header) return;
+
+  syncStickyOffsets();
+
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(syncStickyOffsets);
+    observer.observe(header);
+  }
+
+  window.addEventListener('resize', syncStickyOffsets, { passive: true });
+}
 
 function updateProgress() {
   const answered = document.querySelectorAll('.card.answered:not(.hidden-card)').length;
@@ -478,3 +806,5 @@ function showSyncToast(msg) {
   clearTimeout(toast._timer);
   toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 3000);
 }
+
+setupStickyOffsets();
