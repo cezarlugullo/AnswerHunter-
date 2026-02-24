@@ -271,7 +271,7 @@ export const EvidenceService = {
         if (gabarito) {
             const expectedBody = optionsMap[gabarito.letter];
             if (!expectedBody || this.isExplicitLetterSafe(searchText, gabarito.letter, expectedBody)) {
-                return { ...gabarito, evidenceType: 'explicit-gabarito', blockMethod: block?.method || 'full-text' };
+                return { ...gabarito, evidenceType: 'explicit-gabarito', blockMethod: block?.method || 'full-text', evidence: searchText };
             }
         }
 

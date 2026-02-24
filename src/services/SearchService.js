@@ -215,6 +215,13 @@ export const SearchService = {
       const letter = uniqueExplicit[0];
       // Verify the letter exists in user's options
       if (originalOptionsMap && originalOptionsMap[letter]) {
+        if (typeof strongExplicitDominance !== 'undefined' && typeof bestExplicitVote !== 'undefined' && strongExplicitDominance && bestExplicitVote) {
+            try {
+                if (votes[bestExplicitVote.letter] < bestExplicitVote.weight) {
+                    votes[bestExplicitVote.letter] = bestExplicitVote.weight;
+                }
+            } catch (_) {}
+        }
         return {
           letter,
           confidence: 0.88
@@ -359,17 +366,17 @@ export const SearchService = {
     const normSource = QuestionParser.normalizeOption(sourceText);
     const sourceLetterForUser = {}; // userLetter → source letter label that precedes its text
     for (const [userLetter, userBody] of userEntries) {
-      if (!userBody || userBody.length < 8) continue;
+      if (!userBody || userBody.length < 2) continue;
       const normUser = QuestionParser.normalizeOption(userBody);
-      if (!normUser || normUser.length < 8) continue;
+      if (!normUser || normUser.length < 2) continue;
       // Try progressively shorter probes to locate option text in source
-      for (const probeLen of [40, 25, 15]) {
+      for (const probeLen of [40, 25, 15, 5, 2]) {
         const probe = normUser.slice(0, Math.min(probeLen, normUser.length));
-        if (probe.length < 8) break;
+        if (probe.length < 2) break;
         const idx = normSource.indexOf(probe);
         if (idx < 0) continue;
         // Look back up to 30 chars for a letter marker ("A) ", "A. ", "A " etc.)
-        const ctxBefore = normSource.slice(Math.max(0, idx - 30), idx + 2);
+        const ctxBefore = normSource.slice(Math.max(0, idx - 30), idx);
         const lm = ctxBefore.match(/\b([A-E])\s*[\)\.\- ]?\s*$/i);
         if (lm) { sourceLetterForUser[userLetter] = lm[1].toUpperCase(); break; }
       }
@@ -1682,12 +1689,12 @@ export const SearchService = {
             console.groupEnd();
             continue;
           }
-          // Remap letter if source has shuffled options — use full combinedText for best coverage
-          console.log(`  🔀 Structured pre-remap letter: ${structured.letter} — attempting remap via combinedText (len=${combinedText.length})...`);
-          structured.letter = this._remapLetterIfShuffled(structured.letter, combinedText, originalOptionsMap);
+          // Remap letter if source has shuffled options — use evidence or scopedCombinedText for best coverage
+          console.log(`  🔀 Structured pre-remap letter: ${structured.letter} — attempting remap via evidence or scopedCombinedText...`);
+          structured.letter = this._remapLetterIfShuffled(structured.letter, structured.evidence || scopedCombinedText, originalOptionsMap);
           console.log(`  🔀 Structured post-remap letter: ${structured.letter}`);
           const baseWeight = getDomainWeight(link);
-          const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
+          const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
           const structuredBoost = (structured.confidence || 0.82) >= 0.9 ? 4.4 : 3.7;
           const weight = baseWeight + structuredBoost + quality * 0.35;
           const sourceId = `${hostHint || 'source'}:${sources.length + 1}`;
@@ -1813,12 +1820,12 @@ export const SearchService = {
             }
           }
           if (extracted?.letter) {
-            console.log(`  📄 PDF-highlight raw letter: ${extracted.letter} — attempting remap via combinedText (len=${combinedText.length})...`);
+            console.log(`  📄 PDF-highlight raw letter: ${extracted.letter} — attempting remap via evidence or scopedCombinedText...`);
             // Remap letter if source has shuffled options
-            extracted.letter = this._remapLetterIfShuffled(extracted.letter, combinedText, originalOptionsMap);
+            extracted.letter = this._remapLetterIfShuffled(extracted.letter, extracted.evidence || scopedCombinedText, originalOptionsMap);
             console.log(`SearchService: PDF signal detected. host=${hostHint} letter=${extracted.letter} method=${extracted.method || 'ff1-highlight'}`);
             const baseWeight = getDomainWeight(link);
-            const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
+            const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
             const method = extracted.method || 'ff1-highlight';
             const heuristicSignal = method === 'ff1-highlight' || method === 'css-signature';
             const signalBoost = heuristicSignal ? 1.8 : 3.2;
@@ -1906,10 +1913,10 @@ export const SearchService = {
         if (localResult?.letter) {
           console.log(`  🔀 Local pre-remap letter: ${localResult.letter}`);
           // Remap letter if source has shuffled options
-          localResult.letter = this._remapLetterIfShuffled(localResult.letter, combinedText, originalOptionsMap);
+          localResult.letter = this._remapLetterIfShuffled(localResult.letter, localResult.evidence || scopedCombinedText, originalOptionsMap);
           console.log(`  🔀 Local post-remap letter: ${localResult.letter}`);
           const baseWeight = getDomainWeight(link);
-          const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
+          const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
           let weight = baseWeight + 2.6 + quality * 0.4;
           // Reduce gabarito weight when topicSim is moderate — source may be wrong question
           if (topicSimBase < 0.70) {
@@ -1972,7 +1979,7 @@ export const SearchService = {
         if (extracted?.letter) {
           console.log(`  🔀 Explicit pre-remap letter: ${extracted.letter}`);
           // Remap letter if source has shuffled options
-          extracted.letter = this._remapLetterIfShuffled(extracted.letter, combinedText, originalOptionsMap);
+          extracted.letter = this._remapLetterIfShuffled(extracted.letter, extracted.evidence || scopedCombinedText, originalOptionsMap);
           console.log(`  🔀 Explicit post-remap letter: ${extracted.letter}`);
           const baseWeight = getDomainWeight(link);
           const weight = baseWeight + 2.0;
@@ -2085,7 +2092,7 @@ export const SearchService = {
           }
           if (aiExtracted?.letter) {
             console.log(`  🤖 [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
-            aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, combinedText, originalOptionsMap);
+            aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, aiExtracted.evidence || scopedCombinedText, originalOptionsMap);
             console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
             // Validate the letter exists in the user's options map.
             // The AI may find a different question on the same page (e.g. one with 5 options)
@@ -2095,7 +2102,7 @@ export const SearchService = {
               aiExtracted.letter = null;
             }
             const baseWeight = getDomainWeight(link);
-            const quality = this.computeMatchQuality(combinedText, questionForInference, originalOptions, originalOptionsMap);
+            const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
             // Penalize risky hosts (passeidireto, brainly, scribd) when options didn't match exactly.
             // These pages often have many questions; the AI can accidentally read a neighbor question's gabarito.
             const riskyMismatchPenalty = riskyCombinedHosts.has(hostHint) && !optionsMatchBase ? 0.4 : 0;
