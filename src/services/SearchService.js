@@ -397,6 +397,11 @@ export const SearchService = {
       }
     }
     console.log(`    [reverseTextLookup] source=${sourceLetter} userToSourceMap=${JSON.stringify(sourceLetterForUser)}`);
+    const candidates = Object.entries(sourceLetterForUser).filter(([, sLet]) => sLet === sourceLetter);
+    if (candidates.length > 1) {
+      console.log(`    [reverseTextLookup] AMBIGUOUS: ${candidates.length} user options map to source ${sourceLetter} — keeping original letter`);
+      return sourceLetter;
+    }
     for (const [uLet, sLet] of Object.entries(sourceLetterForUser)) {
       if (sLet === sourceLetter) {
         if (uLet !== sourceLetter) console.log(`    [reverseTextLookup] REMAPPED: ${sourceLetter} \u2192 ${uLet}`);
