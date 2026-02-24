@@ -3413,10 +3413,10 @@ REGRAS:
                     // but forgets to write the final "Letra X:" line.
                     // Pattern: "X) V" or "X) F" — pick the single V (correct) or single F (incorrect).
                     if (!match) {
-                        const vfMatches2 = [...normalized.matchAll(/\b([A-E])\s*\)\s*[*_]*\s*([VF])\b/gi)];
+                        const vfMatches2 = [...normalized.matchAll(/\b([A-E])\s*\)\s*[*_]*\s*(V|F|Verdadeir[oa]|Fals[oa])\b/gi)];
                         if (vfMatches2.length >= 2) {
                             const targetMark = asksIncorrect ? 'F' : 'V';
-                            const targetEntries = vfMatches2.filter(m => String(m[2]).toUpperCase() === targetMark);
+                            const targetEntries = vfMatches2.filter(m => String(m[2]).toUpperCase().startsWith(targetMark));
                             if (targetEntries.length === 1) {
                                 const inferredLetter = String(targetEntries[0][1]).toUpperCase();
                                 match = [null, inferredLetter]; // synthetic match for letter extraction below
@@ -3428,10 +3428,10 @@ REGRAS:
                     if (!match) continue;
 
                     // Ambiguity guard
-                    const vfMatches = [...normalized.matchAll(/\b([A-E])\)\s*([VF])\b/gi)];
+                    const vfMatches = [...normalized.matchAll(/\b([A-E])\s*\)\s*[*_]*\s*(V|F|Verdadeir[oa]|Fals[oa])\b/gi)];
                     if (vfMatches.length >= 2) {
-                        const vCount = vfMatches.filter(m => String(m[2]).toUpperCase() === 'V').length;
-                        const fCount = vfMatches.filter(m => String(m[2]).toUpperCase() === 'F').length;
+                        const vCount = vfMatches.filter(m => String(m[2]).toUpperCase().startsWith('V')).length;
+                        const fCount = vfMatches.filter(m => String(m[2]).toUpperCase().startsWith('F')).length;
                         if ((!asksIncorrect && vCount > 1) || (asksIncorrect && fCount > 1)) continue;
                     }
 

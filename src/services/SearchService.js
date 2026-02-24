@@ -2294,12 +2294,12 @@ export const SearchService = {
       console.groupEnd();
     }
 
-    // Snippet fallback: when most pages were blocked by various filters, use Serper
-    // snippets as a lightweight evidence source for AI combined inference.
+    // Snippet fallback: use Serper snippets as a lightweight evidence source
+    // for AI combined inference when other sources are insufficient.
     const totalBlocked = runStats.blockedSnapshotMismatch + runStats.blockedByError + runStats.blockedOptionsMismatch + runStats.blockedObfuscation;
     const failRate = runStats.analyzed > 0 ? totalBlocked / runStats.analyzed : 0;
     const snippetEvidence = [];
-    if (sources.length === 0 && failRate >= 0.7 && topResults.length > 0) {
+    if (topResults.length > 0) {
       for (const result of topResults) {
         const snipText = `${result.title || ''}. ${result.snippet || ''}`.trim();
         if (snipText.length < 80) continue;
@@ -2342,7 +2342,15 @@ export const SearchService = {
     })), ...snippetEvidence.map(e => ({
       ...e,
       origin: 'snippet'
-    }))].sort((a, b) => (b.topicSim || 0) - (a.topicSim || 0));
+    }))].sort((a, b) => {
+      const getScore = (e) => {
+        let score = e.topicSim || 0;
+        if (e.origin === 'aiEvidence') score += 0.15;
+        if (e.origin === 'mismatch') score += 0.05;
+        return score;
+      };
+      return getScore(b) - getScore(a);
+    });
 
     // ═══ DEBUG: AI Combined Pool ═══
     console.group('🧠 AI Combined Evidence Pool');
@@ -2404,6 +2412,7 @@ export const SearchService = {
           if (topicSim < 0.30) return false;
           // Allow risky-host snippets when they have strong option coverage
           // (snippets are just title + SERP text — no cross-question risk).
+          return true;
         }
         if (strongCoverage) return true;
 
