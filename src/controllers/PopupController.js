@@ -485,7 +485,7 @@ export const PopupController = {
       this.view.setSetupStatus('gemini', this.t('setup.status.geminiMissing'), 'error');
     }
     if (provider === 'chatgpt') {
-      // ChatGPT uses OAuth, not API keys ó check login status synchronously
+      // ChatGPT uses OAuth, not API keys ‚Äî check login status synchronously
       const loggedIn = await ChatGPTAuthService.isLoggedIn();
       if (!loggedIn) {
         effectiveProvider = 'groq';
@@ -581,7 +581,7 @@ export const PopupController = {
     const chatgptModel = document.getElementById('select-chatgpt-model')?.value || 'gpt-5.2-codex';
 
     await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel });
-    console.log(`AnswerHunter: AI config saved ó primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}, chatgpt=${chatgptModel}`);
+    console.log(`AnswerHunter: AI config saved ‚Äî primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}, chatgpt=${chatgptModel}`);
   },
 
   // --- ChatGPT Auth Handlers ---
@@ -749,7 +749,7 @@ export const PopupController = {
       const isFresh = cached?.ts && (Date.now() - cached.ts < ttlMs);
       const results = isFresh && cached?.results ? { ...cached.results } : {};
 
-      if (!isFresh && statusEl) statusEl.textContent = 'Validando modelos compatÌveis com Codex...';
+      if (!isFresh && statusEl) statusEl.textContent = 'Validando modelos compat√≠veis com Codex...';
 
       let hitRateLimit = false;
       for (const model of optionValues) {
@@ -804,9 +804,9 @@ export const PopupController = {
 
       if (statusEl) {
         if (unsupportedValues.size > 0) {
-          statusEl.textContent = `${unsupportedValues.size} modelo(s) incompatÌvel(is) removido(s).`;
+          statusEl.textContent = `${unsupportedValues.size} modelo(s) incompat√≠vel(is) removido(s).`;
         } else if (hitRateLimit) {
-          statusEl.textContent = 'ValidaÁ„o parcial (limite tempor·rio).';
+          statusEl.textContent = 'Valida√ß√£o parcial (limite tempor√°rio).';
         } else {
           statusEl.textContent = '';
         }
@@ -952,7 +952,7 @@ export const PopupController = {
       } else {
         this.view.setTestButtonLoading(provider, 'fail');
         if (provider === 'gemini' && failReason === 'quota') {
-          const quotaMsg = 'Chave v·lida, mas o projeto Gemini est· sem cota (HTTP 429). Trocar a chave no mesmo projeto n„o resolve.';
+          const quotaMsg = 'Chave v√°lida, mas o projeto Gemini est√° sem cota (HTTP 429). Trocar a chave no mesmo projeto n√£o resolve.';
           this.view.setSetupStatus(provider, quotaMsg, 'fail');
           this.view.showToast(quotaMsg, 'warning');
         } else if (provider === 'gemini' && failReason === 'rate_limit') {
@@ -1468,7 +1468,7 @@ export const PopupController = {
         const m = String(line || '').trim().match(/^([A-E])\s*[\)\.\-:]\s*(.+)$/i);
         if (!m) return false;
         let body = String(m[2] || '').replace(/\s+/g, ' ').trim();
-        const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eÈ]ns|voc[eÍ]\s+acertou|confira\s+o|explica[cÁ][a„]o)\b/i;
+        const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[e√©]ns|voc[e√™]\s+acertou|confira\s+o|explica[c√ß][a√£]o)\b/i;
         const idx = body.search(noise);
         if (idx > 1) body = body.slice(0, idx).trim();
         body = body.replace(/[;:,\-.\s]+$/, '');
@@ -1581,7 +1581,7 @@ export const PopupController = {
       // from the captured stem. This prevents options from a visible question below/above
       // the target from being merged into the wrong stem.
       const optionsAreContextuallyRelated = (stemText, optionsTextToCheck) => {
-        if (!stemText || !optionsTextToCheck) return true; // Can't determineóallow
+        if (!stemText || !optionsTextToCheck) return true; // Can't determine‚Äîallow
         const normalizeTokens = (s) => String(s || '')
           .toLowerCase()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -1592,14 +1592,14 @@ export const PopupController = {
 
         // Ignored stop words that appear in both stems and option lists (not discriminating)
         const stopWords = new Set([
-          'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest„o',
+          'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest√£o',
           'considere', 'para', 'como', 'quando', 'cada', 'qual', 'onde', 'quais',
           'entre', 'sobre', 'essa', 'esse', 'este', 'esta'
         ]);
 
         const stemLines = stemText.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]/i));
         const stemNorm = normalizeTokens(stemLines.join(' ')).filter(t => !stopWords.has(t));
-        if (stemNorm.length < 5) return true; // Stem too shortóallow
+        if (stemNorm.length < 5) return true; // Stem too short‚Äîallow
 
         const stemSet = new Set(stemNorm);
 
@@ -1623,7 +1623,7 @@ export const PopupController = {
         const allAcronym = avgOptLength <= 6 && optBodies.every(b => b.length <= 8);
 
         if (allOptTokens.length === 0) {
-          // All options are too short to produce tokens ó might be all-acronym
+          // All options are too short to produce tokens ‚Äî might be all-acronym
           if (allAcronym) {
             if (optionLines.length >= 3 && (hasAcronymContext || hasDbTechContext || compactAtomicSet)) {
               console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (compact acronym set with contextual match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
@@ -1997,7 +1997,7 @@ export const PopupController = {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
                     let body = String(current.body || '').replace(/\s+/g, ' ').trim();
-                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eÈ]ns|voc[eÍ]\s+acertou|confira\s+o|explica[cÁ][a„]o)\b/i;
+                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[e√©]ns|voc[e√™]\s+acertou|confira\s+o|explica[c√ß][a√£]o)\b/i;
                     const idx = body.search(noise);
                     if (idx > 1) body = body.slice(0, idx).trim();
                     body = body.replace(/[;:,\-.\s]+$/, '');
@@ -2022,7 +2022,7 @@ export const PopupController = {
                       current = { letter: m[1], body: m[2] };
                       continue;
                     }
-                    if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[a„]o|aula)\b/i.test(line)) {
+                    if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[a√£]o|aula)\b/i.test(line)) {
                       current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
                     }
                   }
@@ -2031,7 +2031,7 @@ export const PopupController = {
                 };
 
                 const stop = new Set([
-                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest„o',
+                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest√£o',
                   'considere', 'tabela', 'dados', 'produto', 'produtos', 'registro', 'registros',
                   'para', 'com', 'sem', 'dos', 'das', 'uma', 'de', 'da', 'do', 'e', 'o', 'a',
                   'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos'
@@ -2131,7 +2131,7 @@ export const PopupController = {
                 const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
 
                 const stop = new Set([
-                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest„o',
+                  'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'quest√£o',
                   'considere', 'tabela', 'dados', 'produto', 'produtos', 'registro', 'registros',
                   'para', 'com', 'sem', 'dos', 'das', 'uma', 'de', 'da', 'do', 'e', 'o', 'a',
                   'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos'
@@ -2158,7 +2158,7 @@ export const PopupController = {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
                     let body = String(current.body || '').replace(/\s+/g, ' ').trim();
-                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eÈ]ns|voc[eÍ]\s+acertou|confira\s+o|explica[cÁ][a„]o)\b/i;
+                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[e√©]ns|voc[e√™]\s+acertou|confira\s+o|explica[c√ß][a√£]o)\b/i;
                     const idx = body.search(noise);
                     if (idx > 1) body = body.slice(0, idx).trim();
                     body = body.replace(/[;:,\-.\s]+$/, '');
@@ -2183,7 +2183,7 @@ export const PopupController = {
                       current = { letter: m[1], body: m[2] };
                       continue;
                     }
-                    if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[a„]o|aula)\b/i.test(line)) {
+                    if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[a√£]o|aula)\b/i.test(line)) {
                       current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
                     }
                   }
@@ -2319,7 +2319,7 @@ export const PopupController = {
 
         if (optionsText && optionsText.length > 10) {
           if (existingOptionCount < 2) {
-            // No real options in question text ó just append all (after contamination guard check)
+            // No real options in question text ‚Äî just append all (after contamination guard check)
             if (optionsAreContextuallyRelated(bestQuestion, optionsText)) {
               displayQuestion = `${bestQuestion}\n${optionsText}`;
             } else {
@@ -2541,7 +2541,7 @@ export const PopupController = {
         });
         bgDispatched = true;
       } catch (_bgErr) {
-        console.warn('AnswerHunter: BG dispatch failed ó running search inline:', _bgErr?.message);
+        console.warn('AnswerHunter: BG dispatch failed ‚Äî running search inline:', _bgErr?.message);
       }
 
       if (!bgDispatched) {
@@ -2638,7 +2638,7 @@ export const PopupController = {
 
         if (!entry || entry.state === 'running') return;
 
-        // Reached a terminal state ó clear the poller and storage entries
+        // Reached a terminal state ‚Äî clear the poller and storage entries
         clearInterval(this._bgSearchPoller);
         this._bgSearchPoller = null;
         await chrome.storage.local.remove(['ah_pending_search', key, statusKey]).catch(() => {});
@@ -2659,7 +2659,7 @@ export const PopupController = {
   },
 
   /**
-   * Called from init() ó if the popup is reopened while a background search is
+   * Called from init() ‚Äî if the popup is reopened while a background search is
    * already running (or just finished), resume showing progress / display results.
    */
   async _resumePendingBackgroundSearch() {
@@ -2671,13 +2671,13 @@ export const PopupController = {
       const { [key]: entry } = await chrome.storage.local.get(key);
 
       if (!entry) {
-        // Job not started or storage already cleared ó discard stale pending marker
+        // Job not started or storage already cleared ‚Äî discard stale pending marker
         await chrome.storage.local.remove('ah_pending_search').catch(() => {});
         return;
       }
 
       // Regardless of whether the job is still running or already done,
-      // (re-)attach the poller ó it will handle all terminal states immediately.
+      // (re-)attach the poller ‚Äî it will handle all terminal states immediately.
       this.view.showStatus('loading', this.t('status.searchingBackground'));
       this.view.setButtonDisabled('searchBtn', true);
       this._startPollBackgroundSearch(pending.requestId, pending.displayQuestion, pending.bestQuestion);
@@ -3109,7 +3109,7 @@ export const PopupController = {
       tutorBtn.disabled = true;
       tutorBtn.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> <span>${this.t('status.refiningWithAi') || 'Pensando...'}</span>`;
       container.classList.remove('hidden');
-      container.innerHTML = `<div class="study-loading-placeholder">Gerando explicaÁ„o passo a passo...</div>`;
+      container.innerHTML = `<div class="study-loading-placeholder">Gerando explica√ß√£o passo a passo...</div>`;
 
       try {
         const ApiServiceModule = (await import('../services/ApiService.js')).ApiService;
@@ -3123,18 +3123,18 @@ export const PopupController = {
           .replace(/^# (.*$)/gim, '<strong>$1</strong>')
           .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
           .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-          .replace(/^?(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">?$1</div>')
-          .replace(/^??(.*)$/gim, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">??$1</div>')
-          .replace(/^?(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">?$1</div>')
+          .replace(/^\u2705(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">‚úÖ$1</div>')
+          .replace(/^\u{1F4A1}(.*)$/gimu, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">üí°$1</div>')
+          .replace(/^\u274C(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">‚ùå$1</div>')
           .replace(/^(\d+)\.\s+(.*)/gim, '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;padding:8px 12px;background:rgba(255,255,255,0.7);border-radius:8px;border-left:3px solid #FF6B00;"><span style="background:#FF6B00;color:#fff;font-weight:700;font-size:0.78rem;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$1</span><span>$2</span></div>')
-          .replace(/\n\+/g, '\nï ')
-          .replace(/\n-/g, '\nï ')
+          .replace(/\n\+/g, '\n‚Ä¢ ')
+          .replace(/\n-/g, '\n‚Ä¢ ')
           .replace(/\n/g, '<br>');
 
         container.innerHTML = `<div class="study-tutor-explanation">${htmlExplanation}</div>`;
       } catch (err) {
         console.error('AnswerHunter Tutor Mode err:', err);
-        container.innerHTML = `<div class="study-error">Erro ao gerar explicaÁ„o. Tente novamente mais tarde.</div>`;
+        container.innerHTML = `<div class="study-error">Erro ao gerar explica√ß√£o. Tente novamente mais tarde.</div>`;
       } finally {
         tutorBtn.disabled = false;
         tutorBtn.innerHTML = `<span class="material-symbols-rounded">school</span> <span>${this.t('result.tutor.btn')}</span>`;
@@ -3153,9 +3153,9 @@ export const PopupController = {
       const question = decodeURIComponent(similarBtn.dataset.question || '');
 
       similarBtn.disabled = true;
-      similarBtn.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> <span>${this.t('status.refiningWithAi') || 'Criando quest„o...'}</span>`;
+      similarBtn.innerHTML = `<span class="material-symbols-rounded spin-loading">sync</span> <span>${this.t('status.refiningWithAi') || 'Criando quest√£o...'}</span>`;
       container.classList.remove('hidden');
-      container.innerHTML = `<div class="study-loading-placeholder">Gerando uma quest„o similar para testar seus conhecimentos...</div>`;
+      container.innerHTML = `<div class="study-loading-placeholder">Gerando uma quest√£o similar para testar seus conhecimentos...</div>`;
 
       try {
         const ApiServiceModule = (await import('../services/ApiService.js')).ApiService;
@@ -3181,7 +3181,7 @@ export const PopupController = {
         }
       } catch (err) {
         console.error('AnswerHunter Similar Question err:', err);
-        container.innerHTML = `<div class="study-error">Erro ao gerar quest„o. Tente novamente mais tarde.</div>`;
+        container.innerHTML = `<div class="study-error">Erro ao gerar quest√£o. Tente novamente mais tarde.</div>`;
       } finally {
         similarBtn.disabled = false;
         similarBtn.innerHTML = `<span class="material-symbols-rounded">quiz</span> <span>${this.t('result.similar.btn')}</span>`;
@@ -3207,11 +3207,11 @@ export const PopupController = {
             <div class="study-chat-history">
               <div class="chat-message ai-message">
                 <span class="material-symbols-rounded">robot_2</span>
-                <div class="msg-content">${this.t ? this.t('result.chat.hello') || 'Ol·! Como posso ajudar vocÍ a entender melhor esta quest„o?' : 'Ol·! Como posso ajudar vocÍ a entender melhor esta quest„o?'}</div>
+                <div class="msg-content">${this.t ? this.t('result.chat.hello') || 'Ol√°! Como posso ajudar voc√™ a entender melhor esta quest√£o?' : 'Ol√°! Como posso ajudar voc√™ a entender melhor esta quest√£o?'}</div>
               </div>
             </div>
             <div class="study-chat-input-area">
-              <input type="text" class="study-chat-input" placeholder="${this.t ? this.t('result.chat.placeholder') || 'Digite sua d˙vida aqui...' : 'Digite sua d˙vida aqui...'}">
+              <input type="text" class="study-chat-input" placeholder="${this.t ? this.t('result.chat.placeholder') || 'Digite sua d√∫vida aqui...' : 'Digite sua d√∫vida aqui...'}">
               <button class="study-chat-send" type="button">
                 <span class="material-symbols-rounded">send</span>
               </button>
@@ -3260,8 +3260,8 @@ export const PopupController = {
             const htmlResponse = safeResponse
               .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
               .replace(/\*(.*?)\*/g, '<em>$1</em>')
-              .replace(/\n\+/g, '\nï ') // prep list items before newline processing
-              .replace(/\n-/g, '\nï ')
+              .replace(/\n\+/g, '\n‚Ä¢ ') // prep list items before newline processing
+              .replace(/\n-/g, '\n‚Ä¢ ')
               .replace(/\n/g, '<br>');
 
             history.insertAdjacentHTML('beforeend', `
@@ -3277,7 +3277,7 @@ export const PopupController = {
             history.insertAdjacentHTML('beforeend', `
               <div class="chat-message ai-message error-msg">
                 <span class="material-symbols-rounded">error</span>
-                <div class="msg-content">Erro de conex„o. Tente novamente.</div>
+                <div class="msg-content">Erro de conex√£o. Tente novamente.</div>
               </div>
             `);
           } finally {
