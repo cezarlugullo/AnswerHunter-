@@ -1631,6 +1631,138 @@
       border-color: #C7D2FE;
       color: #4338CA;
     }
+
+    /* ── Dashboard de Desempenho ── */
+    .dash-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 30, 0.5);
+      backdrop-filter: blur(4px);
+      z-index: 1002;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+    .dash-overlay.open { opacity: 1; pointer-events: all; }
+    .dash-modal {
+      background: var(--surface);
+      border-radius: 20px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.25);
+      width: 100%;
+      max-width: 640px;
+      max-height: 88vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transform: translateY(16px) scale(0.98);
+      transition: transform 0.22s ease;
+    }
+    .dash-overlay.open .dash-modal { transform: none; }
+    .dash-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, #0F172A, #1E293B);
+      color: #fff;
+    }
+    .dash-header .d-icon {
+      width: 34px;
+      height: 34px;
+      background: linear-gradient(135deg, #6366F1, #8B5CF6);
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .dash-header .d-icon .icon { font-size: 18px; color: #fff; }
+    .dash-header-title { font-size: 0.94rem; font-weight: 700; flex: 1; }
+    .dash-close-btn {
+      background: none; border: none; cursor: pointer;
+      color: rgba(255,255,255,0.6); padding: 6px; border-radius: 8px;
+      display: flex; align-items: center; transition: color 0.15s, background 0.15s;
+    }
+    .dash-close-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+    .dash-close-btn .icon { font-size: 22px; }
+    .dash-body { flex: 1; overflow-y: auto; padding: 20px; }
+    .dash-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    @media (min-width: 480px) { .dash-stats-grid { grid-template-columns: repeat(4, 1fr); } }
+    .dash-stat-card {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 12px; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    .dash-stat-card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .dash-stat-card.blue::before { background: linear-gradient(90deg, #6366F1, #818CF8); }
+    .dash-stat-card.green::before { background: linear-gradient(90deg, var(--green), #4ADE80); }
+    .dash-stat-card.orange::before { background: linear-gradient(90deg, #F59E0B, #F97316); }
+    .dash-stat-card.purple::before { background: linear-gradient(90deg, #8B5CF6, #A78BFA); }
+    .dash-stat-value { font-size: 1.8rem; font-weight: 800; color: var(--text); line-height: 1; margin-bottom: 4px; }
+    .dash-stat-label { font-size: 0.72rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.3px; }
+    .dash-section-title {
+      font-size: 0.8rem; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.4px;
+      margin-bottom: 10px; display: flex; align-items: center; gap: 6px;
+    }
+    .dash-section-title .icon { font-size: 15px; }
+    .dash-xp-section { margin-bottom: 20px; }
+    .dash-xp-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .dash-xp-label { font-size: 0.82rem; font-weight: 600; color: var(--text); }
+    .dash-xp-val { font-size: 0.82rem; font-weight: 700; color: #8B5CF6; }
+    .dash-xp-track { height: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+    .dash-xp-fill { height: 100%; background: linear-gradient(90deg, #8B5CF6, #A78BFA); border-radius: 4px; transition: width 0.6s ease; }
+    .dash-sim-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    .dash-sim-table th { padding: 6px 10px; text-align: left; font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .dash-sim-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+    .dash-sim-table tr:last-child td { border-bottom: none; }
+    .dash-sim-score { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 0.8rem; }
+    .dash-sim-score.high { background: var(--green-bg); color: #15803D; }
+    .dash-sim-score.mid { background: #FEF3C7; color: #92400E; }
+    .dash-sim-score.low { background: #FEF2F2; color: #B91C1C; }
+    .dash-hard-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+    .dash-hard-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+    .dash-ef-badge { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 800; flex-shrink: 0; }
+    .dash-ef-badge.hard { background: #FEF2F2; color: #B91C1C; }
+    .dash-ef-badge.medium { background: #FEF3C7; color: #92400E; }
+    .dash-ef-badge.easy { background: var(--green-bg); color: #15803D; }
+    .dash-hard-text { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.82rem; color: var(--text); }
+    .dash-hard-errors { font-size: 0.72rem; color: #EF4444; font-weight: 600; flex-shrink: 0; }
+    .tool-btn.dashboard-btn { background: linear-gradient(135deg, #EEF2FF, #F5F3FF); border-color: #C7D2FE; color: #4338CA; }
+    .tool-btn.dashboard-btn:hover { background: linear-gradient(135deg, #C7D2FE, #DDD6FE); border-color: #818CF8; }
+    .chip.errors-chip { color: #B91C1C; }
+    .chip.errors-chip.active { background: #FEF2F2; border-color: #FECACA; color: #B91C1C; }
+
+    /* ── XP Toast ── */
+    .xp-toast {
+      position: fixed; bottom: 80px; right: 24px; z-index: 9999;
+      background: linear-gradient(135deg, #8B5CF6, #6366F1);
+      color: #fff; padding: 8px 16px; border-radius: 20px;
+      font-size: 0.8rem; font-weight: 700;
+      display: flex; align-items: center; gap: 6px;
+      box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+      animation: xpFlyUp 1.8s ease forwards; pointer-events: none;
+    }
+    @keyframes xpFlyUp {
+      0% { opacity: 0; transform: translateY(10px); }
+      20% { opacity: 1; transform: translateY(0); }
+      80% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-20px); }
+    }
+    .xp-toast .icon { font-size: 16px; }
+
+    footer {
       text-align: center;
       padding: 20px;
       font-size: 0.75rem;
@@ -1709,11 +1841,17 @@
       <button class="chip sm2-chip" id="chipSm2Due">
         <span class="icon">event_repeat</span> Revisão de hoje <span id="sm2DueCount" style="display:none;background:#4338CA;color:#fff;border-radius:10px;padding:1px 6px;font-size:0.7rem;margin-left:2px"></span>
       </button>
+      <button class="chip errors-chip" id="chipErrors">
+        <span class="icon">error_outline</span> Com erros
+      </button>
       <button class="chip active" id="chipRevealAll" data-state="hide">
         <span class="icon">lock_open</span> Revelar todas
       </button>
     </div>
     <div class="chip-group tools">
+      <button class="tool-btn dashboard-btn" id="btnDashboard" title="Dashboard de desempenho">
+        <span class="icon">insights</span> Dashboard
+      </button>
       <button class="tool-btn simulado-btn" id="btnSimulado" title="Iniciar simulado cronometrado">
         <span class="icon">timer</span> Simulado
       </button>
@@ -1745,6 +1883,22 @@
 </main>
 
 <footer id="footer"></footer>
+
+<!-- ══ Dashboard de Desempenho Modal ══ -->
+<div id="dashOverlay" class="dash-overlay" role="dialog" aria-modal="true" aria-labelledby="dashTitle" hidden>
+  <div class="dash-modal">
+    <div class="dash-header">
+      <div class="d-icon"><span class="icon">insights</span></div>
+      <span class="dash-header-title" id="dashTitle">Dashboard de Desempenho</span>
+      <button class="dash-close-btn" id="dashCloseBtn" aria-label="Fechar dashboard">
+        <span class="icon">close</span>
+      </button>
+    </div>
+    <div class="dash-body" id="dashBody">
+      <!-- dynamic content -->
+    </div>
+  </div>
+</div>
 
 <!-- ══ Quiz Interativo Modal ══ -->
 <div id="quizOverlay" class="quiz-overlay" role="dialog" aria-modal="true" aria-labelledby="quizModalTitle" hidden>

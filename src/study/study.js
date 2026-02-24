@@ -876,18 +876,22 @@ function filterCards() {
   const hideAnswered = document.getElementById('chipHideAnswered').classList.contains('active');
   const onlyReview = document.getElementById('chipReviewOnly').classList.contains('active');
   const onlySm2Due = document.getElementById('chipSm2Due')?.classList.contains('active');
+  const onlyErrors = document.getElementById('chipErrors')?.classList.contains('active');
 
   document.querySelectorAll('.card').forEach(card => {
     const text = card.querySelector('.card-question').textContent.toLowerCase();
     const isAnswered = card.classList.contains('answered');
     const isReviewLater = card.classList.contains('for-review');
     const qid = card.dataset.qid;
-    const isDue = onlySm2Due ? sm2IsDue(_sm2Cache[qid]) : true;
+    const sm2Entry = _sm2Cache[qid];
+    const isDue = onlySm2Due ? sm2IsDue(sm2Entry) : true;
+    const hasErrors = onlyErrors ? (sm2Entry && (sm2Entry.errors || 0) > 0) : true;
     const matchesSearch = !q || text.includes(q);
     const hiddenByFilter = hideAnswered && isAnswered;
     const hiddenByReviewFilter = onlyReview && !isReviewLater;
     const hiddenBySm2Filter = onlySm2Due && !isDue;
-    card.classList.toggle('hidden-card', !matchesSearch || hiddenByFilter || hiddenByReviewFilter || hiddenBySm2Filter);
+    const hiddenByErrorFilter = onlyErrors && !hasErrors;
+    card.classList.toggle('hidden-card', !matchesSearch || hiddenByFilter || hiddenByReviewFilter || hiddenBySm2Filter || hiddenByErrorFilter);
   });
 
   updateProgress();
@@ -1179,8 +1183,14 @@ async function rateSm2(qid, quality, sm2Bar, doneEl) {
   const data = await loadSm2Data();
   const entry = data[qid] || {};
   const newEntry = sm2Calculate(entry, quality);
+  // Track error count for Caderno de Erros
+  newEntry.errors = (entry.errors || 0) + (quality === 0 ? 1 : 0);
+  newEntry.totalRatings = (entry.totalRatings || 0) + 1;
   data[qid] = newEntry;
   await saveSm2Data(data);
+
+  // Update XP
+  awardXP(quality === 0 ? 2 : quality === 1 ? 5 : quality === 2 ? 10 : 15);
 
   // Update UI
   showSm2DoneBadge(sm2Bar, doneEl, newEntry);
@@ -1646,6 +1656,12 @@ function finishSimulado() {
   const mm = Math.floor(elapsed / 60).toString().padStart(2, '0');
   const ss = (elapsed % 60).toString().padStart(2, '0');
 
+  // Save history + award XP
+  if (total > 0) {
+    saveSimResult(correct, total, elapsed);
+    awardXP(correct * 5);
+  }
+
   simHeaderSub.textContent = 'Resultado final';
 
   // Conic gradient for score circle
@@ -1708,5 +1724,196 @@ simCloseBtn.addEventListener('click', closeSimulado);
 simOverlay.addEventListener('click', e => {
   if (e.target === simOverlay) closeSimulado();
 });
+
+// ══ Gamificação XP ══════════════════════════════════════════════════════════
+
+const XP_STORAGE_KEY = 'ah_xpData';
+const XP_PER_LEVEL = 100;
+
+async function loadXPData() {
+  return new Promise(resolve => {
+    chrome.storage.local.get([XP_STORAGE_KEY], r => resolve(r[XP_STORAGE_KEY] || { xp: 0, level: 1 }));
+  });
+}
+
+async function saveXPData(data) {
+  return new Promise(resolve => chrome.storage.local.set({ [XP_STORAGE_KEY]: data }, resolve));
+}
+
+async function awardXP(amount) {
+  const data = await loadXPData();
+  data.xp = (data.xp || 0) + amount;
+  const newLevel = Math.floor(data.xp / XP_PER_LEVEL) + 1;
+  const leveledUp = newLevel > (data.level || 1);
+  data.level = newLevel;
+  await saveXPData(data);
+
+  // Show XP toast
+  const toast = document.createElement('div');
+  toast.className = 'xp-toast';
+  toast.innerHTML = `<span class="icon">bolt</span>+${amount} XP`;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 1900);
+
+  if (leveledUp) {
+    setTimeout(() => {
+      showSyncToast(`Nível ${newLevel} alcançado! +XP`);
+    }, 400);
+  }
+}
+
+// ══ Simulado History ═════════════════════════════════════════════════════════
+
+const SIM_HISTORY_KEY = 'ah_simHistory';
+
+async function loadSimHistory() {
+  return new Promise(resolve => {
+    chrome.storage.local.get([SIM_HISTORY_KEY], r => resolve(r[SIM_HISTORY_KEY] || []));
+  });
+}
+
+async function saveSimResult(correct, total, elapsed) {
+  const history = await loadSimHistory();
+  history.unshift({
+    date: new Date().toLocaleDateString('pt-BR'),
+    correct, total,
+    pct: Math.round((correct / total) * 100),
+    elapsed,
+  });
+  // Keep last 20
+  if (history.length > 20) history.splice(20);
+  return new Promise(resolve => chrome.storage.local.set({ [SIM_HISTORY_KEY]: history }, resolve));
+}
+
+// ══ Dashboard de Desempenho ══════════════════════════════════════════════════
+
+const dashOverlay = document.getElementById('dashOverlay');
+const dashBody = document.getElementById('dashBody');
+const dashCloseBtn = document.getElementById('dashCloseBtn');
+const btnDashboard = document.getElementById('btnDashboard');
+
+function openDashboard() {
+  dashOverlay.removeAttribute('hidden');
+  requestAnimationFrame(() => requestAnimationFrame(() => dashOverlay.classList.add('open')));
+  document.body.style.overflow = 'hidden';
+  renderDashboard();
+}
+
+function closeDashboard() {
+  dashOverlay.classList.remove('open');
+  document.body.style.overflow = '';
+  setTimeout(() => dashOverlay.setAttribute('hidden', ''), 220);
+}
+
+async function renderDashboard() {
+  dashBody.innerHTML = `<div class="quiz-loading"><span class="icon spin-icon">autorenew</span><p>Carregando dados...</p></div>`;
+
+  const [sm2Data, simHistory, xpData] = await Promise.all([
+    loadSm2Data(), loadSimHistory(), loadXPData()
+  ]);
+
+  const total = allQuestions.length;
+  const sm2Entries = Object.values(sm2Data);
+  const reviewed = sm2Entries.length;
+  const mastered = sm2Entries.filter(e => e.interval >= 21).length;
+  const dueToday = allQuestions.filter(q => sm2IsDue(sm2Data[q.id])).length;
+
+  // XP
+  const { xp, level } = xpData;
+  const xpInLevel = xp % XP_PER_LEVEL;
+  const xpPct = Math.round((xpInLevel / XP_PER_LEVEL) * 100);
+
+  // Hardest cards (lowest ef, min 1 rating)
+  const ratedCards = allQuestions
+    .filter(q => sm2Data[q.id] && sm2Data[q.id].totalRatings > 0)
+    .map(q => ({ q, entry: sm2Data[q.id] }))
+    .sort((a, b) => (a.entry.ef || 2.5) - (b.entry.ef || 2.5))
+    .slice(0, 5);
+
+  // Format elapsed
+  const fmtElapsed = s => {
+    const m = Math.floor(s / 60), sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  dashBody.innerHTML = `
+    <div class="dash-stats-grid">
+      <div class="dash-stat-card blue">
+        <div class="dash-stat-value">${total}</div>
+        <div class="dash-stat-label">Total</div>
+      </div>
+      <div class="dash-stat-card purple">
+        <div class="dash-stat-value">${reviewed}</div>
+        <div class="dash-stat-label">Revisadas</div>
+      </div>
+      <div class="dash-stat-card green">
+        <div class="dash-stat-value">${mastered}</div>
+        <div class="dash-stat-label">Dominadas</div>
+      </div>
+      <div class="dash-stat-card orange">
+        <div class="dash-stat-value">${dueToday}</div>
+        <div class="dash-stat-label">Due Hoje</div>
+      </div>
+    </div>
+
+    <div class="dash-xp-section">
+      <div class="dash-section-title"><span class="icon">bolt</span> Progresso XP</div>
+      <div class="dash-xp-row">
+        <span class="dash-xp-label">Nível ${level}</span>
+        <span class="dash-xp-val">${xp} XP total · ${xpInLevel}/${XP_PER_LEVEL}</span>
+      </div>
+      <div class="dash-xp-track">
+        <div class="dash-xp-fill" style="width:${xpPct}%"></div>
+      </div>
+    </div>
+
+    ${ratedCards.length > 0 ? `
+    <div class="dash-section-title" style="margin-bottom:8px"><span class="icon">trending_down</span> Questões mais difíceis</div>
+    <div class="dash-hard-list">
+      ${ratedCards.map(({ q, entry }) => {
+        const ef = (entry.ef || 2.5).toFixed(1);
+        const efClass = entry.ef < 1.8 ? 'hard' : entry.ef < 2.2 ? 'medium' : 'easy';
+        const cleanQ = sanitizeQuestionText(q.question || '').slice(0, 80);
+        return `<div class="dash-hard-item">
+          <div class="dash-ef-badge ${efClass}">EF<br>${ef}</div>
+          <div class="dash-hard-text">${escH(cleanQ)}${cleanQ.length >= 80 ? '…' : ''}</div>
+          ${entry.errors > 0 ? `<div class="dash-hard-errors">${entry.errors}× ✗</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>` : ''}
+
+    ${simHistory.length > 0 ? `
+    <div class="dash-section-title" style="margin-top:10px;margin-bottom:8px"><span class="icon">history</span> Histórico de Simulados</div>
+    <table class="dash-sim-table">
+      <thead><tr><th>Data</th><th>Questões</th><th>Resultado</th><th>Tempo</th></tr></thead>
+      <tbody>
+        ${simHistory.slice(0, 8).map(s => {
+          const scoreClass = s.pct >= 70 ? 'high' : s.pct >= 40 ? 'mid' : 'low';
+          return `<tr>
+            <td>${s.date}</td>
+            <td>${s.total}q</td>
+            <td><span class="dash-sim-score ${scoreClass}">${s.correct}/${s.total} · ${s.pct}%</span></td>
+            <td>${fmtElapsed(s.elapsed)}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>` : `<div style="text-align:center;color:var(--muted);font-size:0.84rem;padding:20px 0">Nenhum simulado realizado ainda.</div>`}
+  `;
+}
+
+btnDashboard.addEventListener('click', openDashboard);
+dashCloseBtn.addEventListener('click', closeDashboard);
+dashOverlay.addEventListener('click', e => { if (e.target === dashOverlay) closeDashboard(); });
+
+// ══ Caderno de Erros chip ════════════════════════════════════════════════════
+
+const chipErrors = document.getElementById('chipErrors');
+if (chipErrors) {
+  chipErrors.addEventListener('click', async function () {
+    this.classList.toggle('active');
+    await loadSm2Data();
+    filterCards();
+  });
+}
 
 setupStickyOffsets();
