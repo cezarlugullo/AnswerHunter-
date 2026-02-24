@@ -4,13 +4,16 @@
 (function () {
     'use strict';
 
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        if (request && request.action === 'highlight') {
-            highlightAnswers();
-            sendResponse({ success: true });
-        }
-        return true;
-    });
+    const runtime = globalThis.chrome?.runtime;
+    if (runtime?.onMessage?.addListener) {
+        runtime.onMessage.addListener((request, sender, sendResponse) => {
+            if (request && request.action === 'highlight') {
+                highlightAnswers();
+                sendResponse({ success: true });
+            }
+            return true;
+        });
+    }
 
     function highlightAnswers() {
         // Removes previous highlights

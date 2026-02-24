@@ -1209,12 +1209,17 @@ Analise o texto passo a passo e responda no formato acima:`;
             if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
         }
 
+        const fallbackOrder = fallbackChain.map(p => p.name);
+        console.log(`  🔬 [aiExtract] primaryProvider(config)=${primary}`);
+        console.log(`  🔬 [aiExtract] providerOrder(run)=${fallbackOrder.length ? fallbackOrder.join(' -> ') : '(empty)'}`);
 
+        let usedProvider = null;
         for (const provider of fallbackChain) {
             content = await provider.fn();
 
             // If the provider returned a valid text and it wasn't a hard NAO_ENCONTRADO, keep it.
             if (content && content.length >= 10 && !/^RESULTADO:\s*NAO_ENCONTRADO/im.test(content)) {
+                usedProvider = provider.name;
                 break;
             }
             // If provider returned null (likely quota error or crash) or explicitly NAO_ENCONTRADO,
@@ -1225,6 +1230,13 @@ Analise o texto passo a passo e responda no formato acima:`;
         if (!content || content.length < 10) {
             console.log(`  🔬 [aiExtract] RESULT: no response from any provider`);
             return null;
+        }
+
+        console.log(`  🔬 [aiExtract] providerUsed(result)=${usedProvider || 'unknown'}`);
+        if (usedProvider && usedProvider !== primary) {
+            console.log(`  🔬 [aiExtract] providerFallback=true (requested=${primary} -> used=${usedProvider})`);
+        } else {
+            console.log(`  🔬 [aiExtract] providerFallback=false`);
         }
 
         /* ---------- Parse response ---------- */
@@ -4173,18 +4185,25 @@ REGRAS:
         };
 
 
-        const geminiPrimary = false; // dummy for older vars
+        const tryCopilot = async () => {
+            try {
+                return await this._callCopilot([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.3, max_tokens: 1000 });
+            } catch (e) {
+                console.warn('AnswerHunter: Copilot generateTutorExplanation error:', e?.message || e);
+                return null;
+            }
+        };
+
         const settingsForFallback = await this._getSettings();
         const primary = settingsForFallback.primaryProvider || 'groq';
         let chain = [];
-        if (typeof tryOpenRouter !== 'undefined') {
-            if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
-            else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
-            else chain = [tryGroq, tryOpenRouter, tryGemini];
-        } else {
-            if (primary === 'gemini') chain = [tryGemini, tryGroq];
-            else chain = [tryGroq, tryGemini];
-        }
+        if (primary === 'copilot') chain = [tryCopilot, tryGemini, tryOpenRouter, tryGroq];
+        else if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq, tryCopilot];
+        else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq, tryCopilot];
+        else chain = [tryGroq, tryOpenRouter, tryGemini, tryCopilot];
         let result = null;
         for (const fn of chain) {
             result = await fn();
@@ -4293,12 +4312,25 @@ REGRAS:
             }
         };
 
+        const tryCopilot = async () => {
+            try {
+                return await this._callCopilot([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.4, max_tokens: 800 });
+            } catch (e) {
+                console.warn('AnswerHunter: Copilot generateReviewCard error:', e?.message || e);
+                return null;
+            }
+        };
+
         const settingsForFallback = await this._getSettings();
         const primary = settingsForFallback.primaryProvider || 'groq';
         let chain = [];
-        if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
-        else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
-        else chain = [tryGroq, tryOpenRouter, tryGemini];
+        if (primary === 'copilot') chain = [tryCopilot, tryGemini, tryOpenRouter, tryGroq];
+        else if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq, tryCopilot];
+        else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq, tryCopilot];
+        else chain = [tryGroq, tryOpenRouter, tryGemini, tryCopilot];
 
         let result = null;
         for (const fn of chain) {
@@ -4406,18 +4438,26 @@ REGRAS:
         };
 
 
-        const geminiPrimary = false; // dummy for older vars
+        const tryCopilot = async () => {
+            try {
+                const content = await this._callCopilot([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.5, max_tokens: 500 });
+                return parseResponse(content);
+            } catch (e) {
+                console.warn('AnswerHunter: Copilot generateSimilarQuestion error:', e?.message || e);
+                return null;
+            }
+        };
+
         const settingsForFallback = await this._getSettings();
         const primary = settingsForFallback.primaryProvider || 'groq';
         let chain = [];
-        if (typeof tryOpenRouter !== 'undefined') {
-            if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq];
-            else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq];
-            else chain = [tryGroq, tryOpenRouter, tryGemini];
-        } else {
-            if (primary === 'gemini') chain = [tryGemini, tryGroq];
-            else chain = [tryGroq, tryGemini];
-        }
+        if (primary === 'copilot') chain = [tryCopilot, tryGemini, tryOpenRouter, tryGroq];
+        else if (primary === 'openrouter') chain = [tryOpenRouter, tryGemini, tryGroq, tryCopilot];
+        else if (primary === 'gemini') chain = [tryGemini, tryOpenRouter, tryGroq, tryCopilot];
+        else chain = [tryGroq, tryOpenRouter, tryGemini, tryCopilot];
         let result = null;
         for (const fn of chain) {
             result = await fn();

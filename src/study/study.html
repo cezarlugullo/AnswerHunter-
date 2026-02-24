@@ -467,6 +467,10 @@
     .chip.sm2-chip.active { background: var(--indigo-bg); border-color: var(--indigo-border); color: var(--indigo); }
     .chip.errors-chip:hover { border-color: var(--red); color: var(--red); }
     .chip.errors-chip.active { background: var(--red-bg); border-color: #FECACA; color: var(--red); }
+    .chip.today-chip:hover { border-color: #16a34a; color: #16a34a; }
+    .chip.today-chip.active { background: #dcfce7; border-color: #86efac; color: #15803d; }
+    #todayDoneCount { font-size: 11px; font-weight: 700; background: #15803d; color: #fff; border-radius: 999px; padding: 0 5px; margin-left: 3px; }
+    .chip.today-chip.active #todayDoneCount { background: #15803d; }
 
     .toolbar-sep {
       width: 1px;
@@ -683,6 +687,7 @@
       border: 1.5px solid var(--border);
       border-radius: var(--radius-lg);
       overflow: hidden;
+      position: relative;
       transition: box-shadow 0.2s, border-color 0.2s;
     }
     .card:hover { box-shadow: var(--shadow-md); }
@@ -693,6 +698,84 @@
       border-color: #FDE68A;
     }
     .card.hidden-card { display: none; }
+
+    /* ── SM-2 card fly-off animation ── */
+    @keyframes cardFlyOff {
+      0%   { transform: translateX(0) translateY(0) rotate(0deg) scale(1); opacity: 1; }
+      20%  { transform: translateX(30px) translateY(-6px) rotate(1.5deg) scale(0.99); opacity: 0.95; }
+      100% { transform: translateX(115%) translateY(-24px) rotate(8deg) scale(0.88); opacity: 0; }
+    }
+    @keyframes cardCollapseHeight {
+      from { max-height: var(--collapsing-height, 600px); margin-bottom: 16px; }
+      to   { max-height: 0; margin-bottom: 0; border-top-width: 0; border-bottom-width: 0; }
+    }
+    .card.flying-off {
+      animation: cardFlyOff 400ms cubic-bezier(0.55, 0, 0.9, 0.4) forwards;
+      pointer-events: none;
+      position: relative;
+      z-index: 10;
+      overflow: hidden;
+    }
+    .card.collapsing-away {
+      overflow: hidden;
+      animation: cardCollapseHeight 280ms ease-in forwards;
+      pointer-events: none;
+    }
+
+    /* ── Done Drawer ── */
+    .done-drawer { margin: 4px 0 24px; }
+    .done-drawer-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 10px 16px;
+      background: var(--green-bg, #f0fdf4);
+      border: 1.5px solid var(--green-border, #86efac);
+      border-radius: var(--radius-lg);
+      color: var(--green, #15803d);
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      text-align: left;
+    }
+    .done-drawer-header:hover { background: #dcfce7; border-color: #4ade80; }
+    .done-drawer-header .icon { font-size: 17px; }
+    .done-drawer-chevron { margin-left: auto; transition: transform 0.25s; }
+    .done-drawer.open .done-drawer-chevron { transform: rotate(180deg); }
+    .done-drawer-count {
+      background: #15803d;
+      color: #fff;
+      border-radius: 999px;
+      padding: 1px 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      min-width: 20px;
+      text-align: center;
+    }
+    .done-drawer-list {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .done-drawer-list.hidden { display: none; }
+    .done-drawer-list .card {
+      opacity: 0.62;
+      transition: opacity 0.2s, transform 0.2s, box-shadow 0.2s !important;
+    }
+    .done-drawer-list .card:hover {
+      opacity: 1;
+      transform: translateY(-1px) !important;
+    }
+    @keyframes cardLandInDrawer {
+      from { transform: translateX(-40px) scale(0.97); opacity: 0; }
+      to   { transform: translateX(0) scale(1); opacity: 0.62; }
+    }
+    .card.landing-in-drawer {
+      animation: cardLandInDrawer 320ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
 
     /* Card header bar */
     /* ── Card header (card-meta) ── */
@@ -1469,6 +1552,24 @@
     }
     .sm2-done-badge.show { display: flex; }
     .sm2-done-badge .icon { font-size: 15px; }
+    /* Flash overlay on rating action */
+    @keyframes ratingFlash {
+      0%   { opacity: 0; }
+      30%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    .card .rating-flash {
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      pointer-events: none;
+      animation: ratingFlash 350ms ease-out forwards;
+      z-index: 5;
+    }
+    .card .rating-flash.flash-green  { background: rgba(22, 163, 74, 0.12); }
+    .card .rating-flash.flash-amber  { background: rgba(245, 158, 11, 0.12); }
+    .card .rating-flash.flash-red    { background: rgba(220, 38, 38, 0.12); }
+    .card .rating-flash.flash-indigo { background: rgba(99, 102, 241, 0.12); }
 
     /* Due badge */
     .card-due-badge {
@@ -2612,6 +2713,7 @@
 
     .chip.sm2-chip.active { background: #eef2ff; border-color: #c7d2fe; color: #4338ca; box-shadow: 0 2px 8px rgba(99,102,241,0.12); }
     .chip.errors-chip.active { background: #fef2f2; border-color: #fecaca; color: #b91c1c; box-shadow: 0 2px 8px rgba(220,38,38,0.10); }
+    .chip.today-chip.active { background: #f0fdf4; border-color: #86efac; color: #15803d; box-shadow: 0 2px 8px rgba(22,163,74,0.10); }
 
     .tool-btn { transition: all var(--transition); }
     .tool-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-xs); }
@@ -4078,6 +4180,10 @@
       <button class="chip errors-chip" id="chipErrors" title="Com erros">
         <span class="icon">warning_amber</span> <span class="chip-label">Erros</span>
       </button>
+      <button class="chip today-chip" id="chipHideToday" title="Ocultar questões já avaliadas hoje">
+        <span class="icon">check_circle</span> <span class="chip-label">Feitas hoje</span>
+        <span id="todayDoneCount" style="display:none"></span>
+      </button>
     </div>
 
     <div class="toolbar-sep"></div>
@@ -4152,6 +4258,9 @@
     <button class="sidebar-nav-item" data-proxy-click="chipHideAnswered">
       <span class="icon">visibility_off</span> Ocultar respondidas
     </button>
+    <button class="sidebar-nav-item" data-proxy-click="chipHideToday">
+      <span class="icon">check_circle</span> Ocultar feitas hoje
+    </button>
     <button class="sidebar-nav-item" data-proxy-click="chipReviewOnly">
       <span class="icon">flag</span> Somente revisão
     </button>
@@ -4197,6 +4306,17 @@
         <span class="icon">sync</span>
         <p>Carregando questões...</p>
       </div>
+    </div>
+
+    <!-- Done Drawer: questions rated today -->
+    <div id="doneDrwr" class="done-drawer" style="display:none">
+      <button class="done-drawer-header" id="doneDrwrToggle" type="button" aria-expanded="false">
+        <span class="icon">check_circle</span>
+        <span>Feitas hoje</span>
+        <span class="done-drawer-count" id="doneDrwrCount">0</span>
+        <span class="icon done-drawer-chevron">expand_more</span>
+      </button>
+      <div id="doneDrwrList" class="done-drawer-list hidden"></div>
     </div>
 
     <!-- Sectioned list (compact mode) -->

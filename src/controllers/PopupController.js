@@ -447,9 +447,17 @@ export const PopupController = {
   restoreAiConfig(settings) {
     const provider = settings.primaryProvider || 'groq';
     // Set pill active state without saving
-    const pills = [this.view.elements.pillGroq, this.view.elements.pillGemini, this.view.elements.pillOpenrouter, document.getElementById('pill-chatgpt')];
+    const pills = [
+      this.view.elements.pillGroq,
+      this.view.elements.pillGemini,
+      this.view.elements.pillOpenrouter,
+      document.getElementById('pill-chatgpt'),
+      document.getElementById('pill-copilot')
+    ];
     pills.forEach(p => p?.classList.remove('active'));
-    if (provider === 'chatgpt') {
+    if (provider === 'copilot') {
+      document.getElementById('pill-copilot')?.classList.add('active');
+    } else if (provider === 'chatgpt') {
       document.getElementById('pill-chatgpt')?.classList.add('active');
     } else if (provider === 'openrouter') {
       this.view.elements.pillOpenrouter?.classList.add('active');
@@ -478,9 +486,17 @@ export const PopupController = {
   },
 
   syncObPills(provider) {
-    const obPills = [this.view.elements.pillGroqOb, this.view.elements.pillGeminiOb, this.view.elements.pillOpenrouterOb, document.getElementById('pill-chatgpt-ob')];
+    const obPills = [
+      this.view.elements.pillGroqOb,
+      this.view.elements.pillGeminiOb,
+      this.view.elements.pillOpenrouterOb,
+      document.getElementById('pill-chatgpt-ob'),
+      document.getElementById('pill-copilot-ob')
+    ];
     obPills.forEach(p => p?.classList.remove('active'));
-    if (provider === 'chatgpt') {
+    if (provider === 'copilot') {
+      document.getElementById('pill-copilot-ob')?.classList.add('active');
+    } else if (provider === 'chatgpt') {
       document.getElementById('pill-chatgpt-ob')?.classList.add('active');
     } else if (provider === 'gemini') {
       this.view.elements.pillGeminiOb?.classList.add('active');

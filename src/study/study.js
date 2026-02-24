@@ -1183,6 +1183,8 @@ function filterCards() {
   const onlyReview = document.getElementById('chipReviewOnly').classList.contains('active');
   const onlySm2Due = document.getElementById('chipSm2Due')?.classList.contains('active');
   const onlyErrors = document.getElementById('chipErrors')?.classList.contains('active');
+  const hideToday = document.getElementById('chipHideToday')?.classList.contains('active');
+  const todayStr = todayISO();
 
   document.querySelectorAll('.card').forEach(card => {
     const text = card.querySelector('.card-question').textContent.toLowerCase();
@@ -1192,13 +1194,15 @@ function filterCards() {
     const sm2Entry = _sm2Cache[qid];
     const isDue = onlySm2Due ? sm2IsDue(sm2Entry) : true;
     const hasErrors = onlyErrors ? (sm2Entry && (sm2Entry.errors || 0) > 0) : true;
+    const ratedToday = sm2Entry?.lastRated === todayStr;
     const matchesSearch = !q || text.includes(q);
     const matchesSubject = selectedSubject === 'all' || card.dataset.subject === selectedSubject;
     const hiddenByFilter = hideAnswered && isAnswered;
     const hiddenByReviewFilter = onlyReview && !isReviewLater;
     const hiddenBySm2Filter = onlySm2Due && !isDue;
     const hiddenByErrorFilter = onlyErrors && !hasErrors;
-    card.classList.toggle('hidden-card', !matchesSearch || !matchesSubject || hiddenByFilter || hiddenByReviewFilter || hiddenBySm2Filter || hiddenByErrorFilter);
+    const hiddenByTodayFilter = hideToday && ratedToday;
+    card.classList.toggle('hidden-card', !matchesSearch || !matchesSubject || hiddenByFilter || hiddenByReviewFilter || hiddenBySm2Filter || hiddenByErrorFilter || hiddenByTodayFilter);
   });
 
   document.querySelectorAll('.subject-group-header').forEach(header => {
@@ -1372,7 +1376,7 @@ function rebuildCardList(questions, mode = 'default') {
 
   updateReviewChipCounter();
   filterCards();
-  setTimeout(() => updateSm2DueBadge(), 100);
+  setTimeout(() => { updateSm2DueBadge(); updateTodayDoneBadge(); }, 100);
 }
 
 function applySortFromSelect() {
@@ -1414,7 +1418,7 @@ function init(questions) {
   updateReviewChipCounter();
   updateProgress();
   // Initialize SM-2 due badge
-  setTimeout(() => updateSm2DueBadge(), 300);
+  setTimeout(() => { updateSm2DueBadge(); updateTodayDoneBadge(); }, 300);
 
   document.getElementById('footer').textContent =
     `AnswerHunter — ${total} questão${total !== 1 ? 'ões' : ''} · gerado em ${new Date().toLocaleString('pt-BR')}`;
@@ -1447,13 +1451,18 @@ function init(questions) {
   }
 
   // Restore saved preferences
-  chrome.storage.local.get(['ah_sortMode', 'ah_subjectFilter'], (res) => {
+  chrome.storage.local.get(['ah_sortMode', 'ah_subjectFilter', 'ah_chipHideToday'], (res) => {
     if (subjectSelect && res.ah_subjectFilter) {
       subjectSelect.value = res.ah_subjectFilter;
     }
     const saved = res.ah_sortMode;
     if (sortSelect && saved) {
       sortSelect.value = saved;
+    }
+    // Restore hide-today chip state
+    if (res.ah_chipHideToday) {
+      const chipHT = document.getElementById('chipHideToday');
+      if (chipHT) chipHT.classList.add('active');
     }
     applySortFromSelect();
   });
@@ -1464,6 +1473,7 @@ function init(questions) {
     const sorted = getSortedQuestions(_originalOrder, mode);
     allQuestions = sorted;
     rebuildCardList(sorted, mode);
+    initDoneDrawerFromSm2(); // move today's rated cards to the done drawer on reload
   }).catch(() => {});
 
   // Hide answered chip
@@ -1477,6 +1487,19 @@ function init(questions) {
     this.classList.toggle('active');
     filterCards();
   });
+
+  // Hide today's rated questions chip
+  const chipHideToday = document.getElementById('chipHideToday');
+  if (chipHideToday) {
+    chipHideToday.addEventListener('click', async function () {
+      this.classList.toggle('active');
+      const active = this.classList.contains('active');
+      try { chrome.storage.local.set({ ah_chipHideToday: active }); } catch (_) {}
+      await loadSm2Data(); // ensure cache is fresh
+      filterCards();
+      updateTodayDoneBadge();
+    });
+  }
 
   // Reveal/hide all — mode toggle
   const chipReveal = document.getElementById('chipRevealAll');
@@ -1510,6 +1533,11 @@ function init(questions) {
     chipReveal.dataset.state = 'hide';
     updateModeToggle(false);    document.getElementById('chipHideAnswered').classList.remove('active');
     document.getElementById('chipReviewOnly').classList.remove('active');
+    const chipHT = document.getElementById('chipHideToday');
+    if (chipHT) {
+      chipHT.classList.remove('active');
+      try { chrome.storage.local.set({ ah_chipHideToday: false }); } catch (_) {}
+    }
     const subjectSelect = document.getElementById('subjectSelect');
     if (subjectSelect) subjectSelect.value = 'all';
     try { chrome.storage.local.set({ ah_subjectFilter: 'all' }); } catch (_) {}
@@ -1719,6 +1747,90 @@ async function saveSm2Data(data) {
   });
 }
 
+// ── SM-2 card fly-off ────────────────────────────────────────────────────────────────
+function flyCardOff(card) {
+  return new Promise(resolve => {
+    // Store current height so the collapse animation knows the start value
+    const h = card.offsetHeight;
+    card.style.setProperty('--collapsing-height', h + 'px');
+
+    // Phase 1: fly to the right (400 ms)
+    card.classList.add('flying-off');
+
+    setTimeout(() => {
+      card.classList.remove('flying-off');
+      card.style.opacity = '0';
+
+      // Phase 2: collapse the empty space (280 ms)
+      card.classList.add('collapsing-away');
+
+      setTimeout(() => {
+        card.classList.remove('collapsing-away');
+        card.style.cssText = ''; // wipe all inline styles
+        resolve();
+      }, 285);
+    }, 400);
+  });
+}
+
+function moveToDoneDrawer(card) {
+  const drawer = document.getElementById('doneDrwr');
+  const list   = document.getElementById('doneDrwrList');
+  const countEl = document.getElementById('doneDrwrCount');
+  if (!drawer || !list) return;
+
+  // Ensure no leftover animation classes/styles
+  card.classList.remove('flying-off', 'collapsing-away', 'hidden-card');
+  card.style.cssText = '';
+
+  list.appendChild(card);
+
+  const count = list.querySelectorAll('.card').length;
+  if (countEl) countEl.textContent = count;
+  drawer.style.display = '';
+
+  // Auto-open the drawer on the first card of the session
+  if (!drawer.dataset.manuallySet) {
+    drawer.classList.add('open');
+    list.classList.remove('hidden');
+    if (drawer.querySelector('[aria-expanded]')) {
+      drawer.querySelector('[aria-expanded]').setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  // Play a small "land" animation on the card
+  card.classList.add('landing-in-drawer');
+  card.addEventListener('animationend', () => card.classList.remove('landing-in-drawer'), { once: true });
+}
+
+function initDoneDrawerFromSm2() {
+  const todayStr = todayISO();
+  const drawer  = document.getElementById('doneDrwr');
+  const list    = document.getElementById('doneDrwrList');
+  const countEl = document.getElementById('doneDrwrCount');
+  if (!drawer || !list) return;
+
+  let count = 0;
+  document.querySelectorAll('#cardList .card').forEach(card => {
+    const qid   = card.dataset.qid;
+    const entry = _sm2Cache[qid];
+    if (entry?.lastRated === todayStr) {
+      card.classList.remove('hidden-card');
+      list.appendChild(card);
+      count++;
+    }
+  });
+
+  if (count > 0) {
+    if (countEl) countEl.textContent = count;
+    drawer.style.display = '';
+    // Start collapsed on reload so the main list feels clean
+    drawer.classList.remove('open');
+    list.classList.add('hidden');
+    drawer.dataset.manuallySet = 'true';
+  }
+}
+
 async function rateSm2(qid, quality, sm2Bar, doneEl) {
   const data = await loadSm2Data();
   const entry = data[qid] || {};
@@ -1732,9 +1844,25 @@ async function rateSm2(qid, quality, sm2Bar, doneEl) {
   // Update XP
   awardXP(quality === 0 ? 2 : quality === 1 ? 5 : quality === 2 ? 10 : 15);
 
-  // Update UI
+  // Prepare done badge (will be visible in the drawer after animation)
   showSm2DoneBadge(sm2Bar, doneEl, newEntry);
   updateSm2DueBadge();
+  updateTodayDoneBadge();
+
+  // Flash colour overlay on the card to give haptic-like feedback
+  const card = sm2Bar.closest('.card');
+  if (card) {
+    const flashClass = quality === 0 ? 'flash-red' : quality === 1 ? 'flash-amber' : quality === 2 ? 'flash-green' : 'flash-indigo';
+    const flash = document.createElement('div');
+    flash.className = `rating-flash ${flashClass}`;
+
+    moveToDoneDrawer(card);
+  }
+
+  // If hide-today chip is active, keep filter in sync (drawer handles the card now)
+  if (document.getElementById('chipHideToday')?.classList.contains('active')) {
+    filterCards();
+  }
 }
 
 async function updateSm2DueBadge() {
@@ -1750,6 +1878,19 @@ async function updateSm2DueBadge() {
   return dueCount;
 }
 
+async function updateTodayDoneBadge() {
+  const data = await loadSm2Data();
+  const todayStr = todayISO();
+  const doneCount = allQuestions.filter(q => data[q.id]?.lastRated === todayStr).length;
+  const countEl = document.getElementById('todayDoneCount');
+  const chip = document.getElementById('chipHideToday');
+  if (countEl) {
+    countEl.textContent = doneCount;
+    countEl.style.display = doneCount > 0 ? 'inline' : 'none';
+  }
+  if (chip) chip.title = `Ocultar ${doneCount} questão${doneCount !== 1 ? 'ões' : ''} já avaliada${doneCount !== 1 ? 's' : ''} hoje`;
+}
+
 // SM-2 chip filter
 const chipSm2Due = document.getElementById('chipSm2Due');
 if (chipSm2Due) {
@@ -1760,9 +1901,25 @@ if (chipSm2Due) {
   });
 }
 
+// Done drawer toggle
+const doneDrwrToggle = document.getElementById('doneDrwrToggle');
+if (doneDrwrToggle) {
+  doneDrwrToggle.addEventListener('click', () => {
+    const drawer = document.getElementById('doneDrwr');
+    const list   = document.getElementById('doneDrwrList');
+    const isOpen = drawer.classList.toggle('open');
+    list.classList.toggle('hidden', !isOpen);
+    doneDrwrToggle.setAttribute('aria-expanded', String(isOpen));
+    drawer.dataset.manuallySet = 'true';
+  });
+}
+
 // Initialize SM-2 badge when page loads
 document.addEventListener('DOMContentLoaded', () => {
-  if (allQuestions.length > 0) updateSm2DueBadge();
+  if (allQuestions.length > 0) {
+    updateSm2DueBadge();
+    updateTodayDoneBadge();
+  }
 });
 // Also update after init is called (via `init` setting allQuestions first)
 

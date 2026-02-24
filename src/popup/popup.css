@@ -7742,6 +7742,27 @@ input:focus {
   color: #ffffff;
 }
 
+.ob-provider-pill.active {
+  animation: obProviderSelected 240ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes obProviderSelected {
+  0% {
+    transform: translateY(2px) scale(0.985);
+    filter: brightness(0.95);
+  }
+
+  60% {
+    transform: translateY(-1px) scale(1.02);
+    filter: brightness(1.06);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+    filter: brightness(1);
+  }
+}
+
 .ob-provider-pill.active[data-provider="groq"] {
   border-color: rgba(245, 80, 54, 0.6);
   background: linear-gradient(135deg, rgba(245, 80, 54, 0.25) 0%, rgba(245, 80, 54, 0.08) 100%);
@@ -7784,6 +7805,17 @@ input:focus {
 
 .ob-provider-pill.active[data-provider="chatgpt"] .material-symbols-rounded {
   color: #a78bfa;
+}
+
+.ob-provider-pill.active[data-provider="copilot"] {
+  border-color: rgba(121, 192, 255, 0.62);
+  background: linear-gradient(135deg, rgba(121, 192, 255, 0.24) 0%, rgba(121, 192, 255, 0.08) 100%);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(121, 192, 255, 0.2), inset 0 0 20px rgba(121, 192, 255, 0.06);
+}
+
+.ob-provider-pill.active[data-provider="copilot"] .copilot-pill-icon {
+  color: #79c0ff;
 }
 
 /* Pill Badge */
