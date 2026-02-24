@@ -938,7 +938,7 @@ export const PopupController = {
       this._isReopenMode = isReopen;
 
       this.view.setSetupVisible(true);
-      const startStep = isReopen ? 4 : await this.determineCurrentStep();
+      const startStep = isReopen ? 5 : await this.determineCurrentStep();
 
       if (isReopen) {
         // Show reopen UX: key status chips, change-key buttons, close-settings buttons
