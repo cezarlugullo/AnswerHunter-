@@ -2535,7 +2535,12 @@ export const SearchService = {
       // describe the exact same question even though full pages couldn't be fetched
       // (e.g. webcache rate-limited). The snippets carry the correct question text
       // (SQL operators, code fragments, etc.) that the AI can use to infer the answer.
-      highConfidenceSnippetStems.length >= 2 && highConfidenceSnippetDomains >= 1);
+      highConfidenceSnippetStems.length >= 2 && highConfidenceSnippetDomains >= 1 ||
+      // Path 5: we have at least one very strong aiEvidence source (topicSim >= 0.95)
+      // and at least one other relevant source (even if it's just a snippet).
+      // This handles cases where a single strong source is found but we need a second
+      // source to satisfy minRelevantSources.
+      relevant.some(e => e.origin === 'aiEvidence' && (e.topicSim || 0) >= 0.95) && relevant.length >= 2);
       const isSnippetStemSynthesis = canProceedAISynthesisOnly && highConfidenceSnippetStems.length >= 2;
       const canProceedAI = relevant.length > 0 && sources.length > 0 && (!hasOptions || hasReliableOptionAlignedSource && relevant.length >= minRelevantSources) || canProceedAISynthesisOnly;
       console.log(`canProceedAI=${canProceedAI}`);
