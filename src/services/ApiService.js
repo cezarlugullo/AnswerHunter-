@@ -1,5 +1,6 @@
 import { SettingsModel } from '../models/SettingsModel.js';
 import { ChatGPTAuthService } from './ChatGPTAuthService.js';
+import { GeminiAuthService } from './GeminiAuthService.js';
 
 /**
  * ApiService.js
@@ -35,7 +36,16 @@ export const ApiService = {
 
         const settings = await this._getSettings();
         const { geminiApiKey, geminiApiUrl, geminiModel } = settings;
-        if (!geminiApiKey) return null;
+
+        // Prefer Google OAuth token over API key when user is signed in
+        let geminiToken = null;
+        try {
+            geminiToken = await GeminiAuthService.getValidToken();
+        } catch (_) { /* GeminiAuthService may not be available in all contexts */ }
+
+        if (!geminiToken && !geminiApiKey) return null;
+        const authHeader = geminiToken ? `Bearer ${geminiToken}` : `Bearer ${geminiApiKey}`;
+        const authSource = geminiToken ? 'oauth' : 'apikey';
 
         const model = opts.model || geminiModel || 'gemini-2.5-flash';
         const baseUrl = (geminiApiUrl || 'https://generativelanguage.googleapis.com/v1beta').replace(/\/+$/, '');
@@ -54,7 +64,7 @@ export const ApiService = {
                 const response = await fetch(url, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${geminiApiKey}`,
+                        'Authorization': authHeader,
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -73,7 +83,7 @@ export const ApiService = {
                         this._geminiQuotaExhaustedUntil = Date.now() + cooldownMs;
                         console.warn(`AnswerHunter: Gemini rate-limited/quota, cooldown=${cooldownMs}ms`);
                     }
-                    console.warn(`AnswerHunter: Gemini HTTP ${response.status} (model=${callModel}): ${errText.slice(0, 200)}`);
+                    console.warn(`AnswerHunter: Gemini HTTP ${response.status} (model=${callModel}, auth=${authSource}): ${errText.slice(0, 200)}`);
                     return null;
                 }
 
@@ -92,7 +102,7 @@ export const ApiService = {
                     console.warn(`AnswerHunter: Gemini empty content (model=${callModel}, finish=${finishReason}, msgKeys=[${msgKeys}])`);
                     return null;
                 }
-                console.log(`AnswerHunter: Gemini success (model=${callModel}, ${content.length} chars)`);
+                console.log(`AnswerHunter: Gemini success (model=${callModel}, auth=${authSource}, ${content.length} chars)`);
                 return content;
             } catch (err) {
                 console.warn(`AnswerHunter: Gemini error (model=${callModel}):`, err?.message || String(err));

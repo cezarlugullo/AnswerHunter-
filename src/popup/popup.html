@@ -553,6 +553,103 @@
 
   <div id="toast-container" class="toast-container" aria-live="polite"></div>
 
+  <!-- ===== Google / Gemini Auth Section ===== -->
+  <div id="gemini-auth-section" class="chatgpt-auth-section hidden">
+    <div class="chatgpt-auth-card">
+      <div class="chatgpt-auth-header">
+        <span class="material-symbols-rounded" style="font-size: 26px; color: #4285F4;">account_circle</span>
+        <div>
+          <h3 style="margin: 0; font-size: 1rem; color: #ffffff;">Google · Gemini</h3>
+          <p style="margin: 2px 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.7);">Use o Gemini com sua conta Google</p>
+        </div>
+        <button id="gemini-auth-close" class="ob-btn ob-btn-ghost" style="margin-left: auto; padding: 4px;">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- Not logged in state -->
+      <div id="gemini-logged-out" class="chatgpt-auth-body">
+        <p style="font-size: 0.82rem; color: rgba(255,255,255,0.85); margin: 0 0 12px; line-height: 1.5;">
+          Conecte sua conta Google para usar o Gemini sem chave de API.
+          O token fica salvo somente no seu dispositivo.
+        </p>
+
+        <!-- Privacy note -->
+        <div style="background: rgba(66,133,244,0.08); border: 1px solid rgba(66,133,244,0.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+            <span class="material-symbols-rounded" style="font-size: 15px; color: #4285F4;">shield_lock</span>
+            <span style="font-size: 0.78rem; font-weight: 600; color: #4285F4;">100% Local &amp; Privado</span>
+          </div>
+          <p style="font-size: 0.72rem; color: rgba(255,255,255,0.65); margin: 0; line-height: 1.4;">
+            Tokens armazenados apenas neste dispositivo e enviados exclusivamente aos servidores do Google.
+          </p>
+        </div>
+
+        <!-- Setup: client_id input -->
+        <details id="gemini-setup-details" style="margin-bottom: 10px;">
+          <summary style="font-size: 0.78rem; color: rgba(255,255,255,0.7); cursor: pointer; padding: 6px 0; user-select: none;">
+            <span class="material-symbols-rounded" style="font-size: 14px; vertical-align: middle;">settings</span>
+            Configurar OAuth Client ID
+          </summary>
+          <div style="padding: 10px 0 4px;">
+            <p style="font-size: 0.72rem; color: rgba(255,255,255,0.6); margin: 0 0 8px; line-height: 1.5;">
+              1. Acesse <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener" style="color: #4285F4;">Google Cloud Console → Credentials</a><br>
+              2. Crie um OAuth 2.0 Client ID → tipo <strong style="color: rgba(255,255,255,0.85);">Web application</strong><br>
+              3. Ative a <strong style="color: rgba(255,255,255,0.85);">Generative Language API</strong> no projeto<br>
+              4. Adicione URI de redirecionamento: <code id="gemini-redirect-uri" style="font-size: 0.68rem; color: #4285F4; word-break: break-all;"></code><br>
+              5. Cole o <strong style="color: rgba(255,255,255,0.85);">Client ID</strong> abaixo (NÃO o secret)
+            </p>
+            <div class="ob-input-wrapper" style="margin-bottom: 6px;">
+              <span class="material-symbols-rounded ob-input-icon">vpn_key</span>
+              <input type="text" id="gemini-client-id-input" class="ob-input"
+                placeholder="xxxxx.apps.googleusercontent.com" spellcheck="false" autocomplete="off">
+            </div>
+            <button id="gemini-save-client-id" class="ob-btn ob-btn-secondary" style="width: 100%; gap: 5px;">
+              <span class="material-symbols-rounded" style="font-size: 15px;">save</span>
+              <span>Salvar Client ID</span>
+            </button>
+          </div>
+        </details>
+
+        <button id="gemini-login-btn" class="ob-btn ob-btn-primary"
+          style="width: 100%; gap: 8px; border: none;"
+          onclick="this.style.background='linear-gradient(135deg,#357ae8,#1a73e8)'">
+          <span class="material-symbols-rounded">login</span>
+          <span>Entrar com Google</span>
+        </button>
+        <div id="gemini-login-status" class="ob-test-status" style="margin-top: 8px;"></div>
+      </div>
+
+      <!-- Logged in state -->
+      <div id="gemini-logged-in" class="chatgpt-auth-body hidden">
+        <div style="display: flex; align-items: center; gap: 10px; background: rgba(66,133,244,0.1); border: 1px solid rgba(66,133,244,0.3); border-radius: 10px; padding: 12px;">
+          <span class="material-symbols-rounded" style="font-size: 24px; color: #4285F4;">check_circle</span>
+          <div>
+            <p style="margin: 0; font-size: 0.88rem; font-weight: 600; color: #4285F4;">Conectado</p>
+            <p id="gemini-user-email" style="margin: 2px 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.7);"></p>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <select id="select-gemini-oauth-model" class="ob-input"
+            style="flex: 1; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: white; border-radius: 8px; padding: 8px; font-size: 0.8rem;">
+            <optgroup label="★ Recomendado">
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (rápido)</option>
+              <option value="gemini-2.5-pro">Gemini 2.5 Pro (mais inteligente)</option>
+            </optgroup>
+            <optgroup label="Estáveis">
+              <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            </optgroup>
+          </select>
+          <button id="gemini-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
+            <span class="material-symbols-rounded" style="font-size: 16px;">logout</span>
+            <span>Sair</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== MAIN CONTAINER (Hidden during onboarding) ===== -->
   <div class="container" id="main-app-container">
     <header>
@@ -607,6 +704,10 @@
           <button id="chatgptBtn" class="settings-btn" title="ChatGPT Login" style="position: relative;">
             <span class="material-symbols-rounded" style="color: #a78bfa;">smart_toy</span>
             <span id="chatgpt-status-dot" class="chatgpt-dot hidden"></span>
+          </button>
+          <button id="geminiAuthBtn" class="settings-btn" title="Google · Gemini Login" style="position: relative;">
+            <span class="material-symbols-rounded" style="color: #4285F4;">account_circle</span>
+            <span id="gemini-status-dot" class="chatgpt-dot hidden" style="background: #4285F4;"></span>
           </button>
           <button id="settingsBtn" class="settings-btn" data-i18n-title="app.settings">
             <span class="material-symbols-rounded">settings</span>

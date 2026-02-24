@@ -7,6 +7,7 @@ import { SettingsModel } from '../models/SettingsModel.js';
 import { I18nService } from '../i18n/I18nService.js';
 import { isLikelyQuestion } from '../utils/helpers.js';
 import { ChatGPTAuthService } from '../services/ChatGPTAuthService.js';
+import { GeminiAuthService } from '../services/GeminiAuthService.js';
 
 export const PopupController = {
   view: null,
@@ -43,6 +44,8 @@ export const PopupController = {
 
     // Check ChatGPT auth state and update UI
     await this.refreshChatGPTAuthUI();
+    // Check Google/Gemini auth state and update UI
+    await this.refreshGeminiAuthUI();
 
     // Listen for auth success from background service worker
     chrome.runtime.onMessage.addListener((msg) => {
@@ -132,6 +135,16 @@ export const PopupController = {
       document.getElementById('chatgpt-auth-section')?.classList.add('hidden');
     });
     document.getElementById('select-chatgpt-model')?.addEventListener('change', () => this.persistAiConfig());
+
+    // Gemini (Google) Auth buttons
+    document.getElementById('geminiAuthBtn')?.addEventListener('click', () => this.openGeminiAuthPanel());
+    document.getElementById('gemini-auth-close')?.addEventListener('click', () => {
+      document.getElementById('gemini-auth-section')?.classList.add('hidden');
+    });
+    document.getElementById('gemini-save-client-id')?.addEventListener('click', () => this.handleSaveGeminiClientId());
+    document.getElementById('gemini-login-btn')?.addEventListener('click', () => this.handleGeminiLogin());
+    document.getElementById('gemini-logout-btn')?.addEventListener('click', () => this.handleGeminiLogout());
+    document.getElementById('select-gemini-oauth-model')?.addEventListener('change', () => this.persistAiConfig());
 
     this.view.elements.extractBtn?.addEventListener('click', () => this.handleExtract());
     this.view.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
@@ -655,6 +668,61 @@ export const PopupController = {
       } else {
         dot.classList.add('hidden');
       }
+    }
+  },
+
+  // --- Google / Gemini Auth Handlers ---
+
+  openGeminiAuthPanel() {
+    const redirectUri = GeminiAuthService.getRedirectURL();
+    const uriEl = document.getElementById('gemini-redirect-uri');
+    if (uriEl) uriEl.textContent = redirectUri;
+    GeminiAuthService.getClientId().then(id => {
+      const inp = document.getElementById('gemini-client-id-input');
+      if (inp && id) inp.value = id;
+    });
+    document.getElementById('gemini-auth-section')?.classList.remove('hidden');
+  },
+
+  async handleSaveGeminiClientId() {
+    const id = document.getElementById('gemini-client-id-input')?.value?.trim();
+    if (!id) return;
+    await GeminiAuthService.setClientId(id);
+    this.view.showToast('Client ID salvo!', 'success');
+  },
+
+  async handleGeminiLogin() {
+    const btn = document.getElementById('gemini-login-btn');
+    const statusEl = document.getElementById('gemini-login-status');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-rounded spin-loading">sync</span> Entrando...'; }
+    if (statusEl) statusEl.textContent = '';
+    const result = await GeminiAuthService.startLogin();
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span class="material-symbols-rounded">login</span> <span>Entrar com Google</span>'; }
+    if (result.success) {
+      await this.refreshGeminiAuthUI();
+      this.view.showToast(`Google conectado: ${result.email || ''}`, 'success');
+    } else {
+      if (statusEl) statusEl.textContent = result.error || 'Erro ao fazer login';
+      this.view.showToast('Falha no login Google', 'error');
+    }
+  },
+
+  async handleGeminiLogout() {
+    await GeminiAuthService.logout();
+    await this.refreshGeminiAuthUI();
+    this.view.showToast('Desconectado do Google', 'info');
+  },
+
+  async refreshGeminiAuthUI() {
+    const isLoggedIn = await GeminiAuthService.isLoggedIn();
+    const auth = isLoggedIn ? await GeminiAuthService.getAuth() : null;
+    document.getElementById('gemini-logged-out')?.classList.toggle('hidden', isLoggedIn);
+    document.getElementById('gemini-logged-in')?.classList.toggle('hidden', !isLoggedIn);
+    const dot = document.getElementById('gemini-status-dot');
+    if (dot) dot.classList.toggle('hidden', !isLoggedIn);
+    if (isLoggedIn && auth?.email) {
+      const emailEl = document.getElementById('gemini-user-email');
+      if (emailEl) emailEl.textContent = auth.email;
     }
   },
 
