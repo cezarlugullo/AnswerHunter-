@@ -30,6 +30,7 @@ build/
 
 # Local tooling artifacts
 .playwright-cli/
+.playwright-mcp/
 .claude/
 .agents/
 .agent/
@@ -42,6 +43,12 @@ _metadata/
 
 # Local-only files (recycling bin - backups, research, tools, build artifacts)
 _local/
+
+# All local dev resources (backups, research, tools, build artifacts)
+ah_local/
+
+# Dev / localhost preview mock (Chrome Extension API simulator — not for production)
+src/popup/chrome-mock.js
 
 # SyncThing and other sync folders
 qlpge*/

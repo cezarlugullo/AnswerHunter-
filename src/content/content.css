@@ -1,11 +1,11 @@
 /* Estilos para highlight de respostas na página */
 .qa-extractor-highlight {
-    background: rgba(255, 222, 89, 0.22) !important;
-    border-left: 4px solid #ffde59 !important;
-    border-left-color: #1a1a1a !important;
+    background: rgba(77, 171, 247, 0.18) !important;
+    border-left: 4px solid #4DABF7 !important;
+    border-left-color: #4DABF7 !important;
     border-left-width: 4px !important;
     border-left-style: solid !important;
-    outline: 2px solid #ffde59 !important;
+    outline: 2px solid #4DABF7 !important;
     outline-offset: 1px !important;
     border-radius: 4px !important;
     padding-left: 10px !important;
@@ -13,6 +13,6 @@
 }
 
 .qa-extractor-highlight:hover {
-    background: rgba(255, 222, 89, 0.38) !important;
-    outline-color: #1a1a1a !important;
+    background: rgba(255, 107, 107, 0.2) !important;
+    outline-color: #FF6B6B !important;
 }

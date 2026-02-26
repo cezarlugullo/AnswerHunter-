@@ -11,13 +11,13 @@
       display: flex;
       align-items: center;
       padding: 7px 12px;
-      background: #fffdf0;
+      background: #FFF8F5;
       border-bottom: 2px solid #1a1a1a;
       font-size: 11px;
       transition: background 0.3s;
     }
-    .native-bridge-banner.warn { background: #fff5c0; }
-    .native-bridge-banner.err  { background: #ffe0e0; }
+    .native-bridge-banner.warn { background: #FFF0E0; }
+    .native-bridge-banner.err  { background: #FFE8E8; }
     .native-bridge-banner.hidden { display: none; }
     .native-bridge-status {
       display: flex;
@@ -34,19 +34,20 @@
       flex-shrink: 0;
       transition: background 0.3s;
     }
-    .native-bridge-dot.ok   { background: #3ecf6a; }
-    .native-bridge-dot.warn { background: #ffde59; }
-    .native-bridge-dot.err  { background: #ff5a5a; }
+    .native-bridge-dot.ok   { background: #40C057; }
+    .native-bridge-dot.warn { background: #FFA94D; }
+    .native-bridge-dot.err  { background: #FF6B6B; }
     .native-bridge-label { color: #444; flex: 1; font-weight: 700; font-size: 0.74rem; }
     .native-bridge-install-btn {
       display: flex;
       align-items: center;
       gap: 5px;
-      background: #ffde59;
+      background: linear-gradient(135deg, #FF9F43 0%, #FF7B72 100%);
       border: 2px solid #1a1a1a;
       color: #1a1a1a;
       border-radius: 8px;
-      padding: 5px 12px;
+      padding: 8px 14px;
+      min-height: 44px;
       font-size: 0.78rem;
       font-weight: 800;
       cursor: pointer;
@@ -57,7 +58,7 @@
       white-space: nowrap;
     }
     .native-bridge-install-btn:hover {
-      background: #ffe566;
+      background: linear-gradient(135deg, #FFB35C 0%, #FF8E84 100%);
       box-shadow: 3px 3px 0 #1a1a1a;
       transform: translate(-1px, -1px);
     }
@@ -216,7 +217,7 @@
                     <span class="material-symbols-rounded">wifi_tethering</span> <span class="test-btn-text"
                       data-i18n="setup.validateAction">Validate key</span>
                   </button>
-                  <button id="btn-next-groq" class="ob-btn ob-btn-primary" disabled>
+                  <button id="btn-next-groq" class="ob-btn ob-btn-primary" disabled title="Valide a chave primeiro">
                     <span data-i18n="setup.next">Next</span> <span class="material-symbols-rounded">arrow_forward</span>
                   </button>
                   <button id="close-settings-groq" class="ob-btn ob-btn-primary hidden"
@@ -289,7 +290,7 @@
                     <span class="material-symbols-rounded">wifi_tethering</span> <span class="test-btn-text"
                       data-i18n="setup.validateAction">Validate key</span>
                   </button>
-                  <button id="btn-next-serper" class="ob-btn ob-btn-primary" disabled>
+                  <button id="btn-next-serper" class="ob-btn ob-btn-primary" disabled title="Valide a chave primeiro">
                     <span data-i18n="setup.next">Next</span> <span class="material-symbols-rounded">arrow_forward</span>
                   </button>
                   <button id="close-settings-serper" class="ob-btn ob-btn-primary hidden"
@@ -529,12 +530,12 @@
                 <div style="background: #fffdf0; border: 2px solid #1a1a1a; border-radius: 12px; padding: 14px 16px; box-shadow: 3px 3px 0 #1a1a1a;">
                   <p style="font-size: 0.8rem; color: #1a1a1a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; font-family: 'Baloo 2', cursive;">Contas de IA</p>
                   <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                    <button id="chatgptBtn" class="ob-ai-account-btn" style="border-color: #1a1a1a;">
+                    <button id="chatgptBtn" class="ob-ai-account-btn">
                       <span class="material-symbols-rounded" style="font-size: 18px; color: #7c3aed;">smart_toy</span>
                       <span style="font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1a1a1a;">ChatGPT</span>
                       <span id="chatgpt-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto;"></span>
                     </button>
-                    <button id="geminiAuthBtn" class="ob-ai-account-btn" style="border-color: #1a1a1a;">
+                    <button id="geminiAuthBtn" class="ob-ai-account-btn">
                       <svg viewBox="0 0 18 18" width="16" height="16" style="flex-shrink:0;">
                         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
                         <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
@@ -544,7 +545,7 @@
                       <span style="font-size: 0.78rem; font-weight: 600; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Google AI</span>
                       <span id="gemini-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto; background: #4285F4; box-shadow: 0 0 4px #4285F4;"></span>
                     </button>
-                    <button id="copilotBtn" class="ob-ai-account-btn" style="border-color: #1a1a1a;">
+                    <button id="copilotBtn" class="ob-ai-account-btn">
                       <svg viewBox="0 0 16 16" width="16" height="16" fill="#1a1a1a" style="flex-shrink:0;">
                         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
                       </svg>
@@ -1119,9 +1120,11 @@
         <span id="native-bridge-label" class="native-bridge-label">NativeFetch Bridge</span>
         <button id="native-bridge-install-btn" class="native-bridge-install-btn hidden">
           <span class="material-symbols-rounded" style="font-size:14px;">download</span>
-          Instalar
+          ⚡ Instalar Turbo Mode
         </button>
       </div>
+      <!-- Post-download instructions appear here -->
+      <div id="native-bridge-instructions" class="native-bridge-instructions hidden"></div>
     </div>
 
     <!-- ===== TABS & CONTENT (hidden until setup done) ===== -->
@@ -1289,6 +1292,8 @@
     </div>
   </div>
 
+  <!-- Dev-mode Chrome API mock — auto-skipped when running as a real extension -->
+  <script src="chrome-mock.js"></script>
   <script type="module" src="popup.js"></script>
 </body>
 

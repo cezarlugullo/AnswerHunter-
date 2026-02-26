@@ -17,7 +17,8 @@
     "declarativeNetRequest",
     "tabs",
     "identity",
-    "nativeMessaging"
+    "nativeMessaging",
+    "downloads"
   ],
   "host_permissions": [
     "https://api.groq.com/*",
@@ -65,6 +66,16 @@
       ],
       "css": [
         "src/content/content.css"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "src/native/*"
+      ],
+      "matches": [
+        "<all_urls>"
       ]
     }
   ]

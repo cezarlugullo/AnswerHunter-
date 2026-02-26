@@ -106,21 +106,9 @@ export const PopupController = {
       const nativeBridgeInstallBtn = document.getElementById('nativeBridgeInstallBtn');
       const nativeBridgeInstallStatus = document.getElementById('nativeBridgeInstallStatus');
       if (nativeBridgeInstallBtn) {
-        nativeBridgeInstallBtn.addEventListener('click', async () => {
-          nativeBridgeInstallBtn.disabled = true;
-          nativeBridgeInstallStatus.style.display = 'block';
-          nativeBridgeInstallStatus.textContent = 'Instalando Bridge Nativo...';
-          try {
-            // Windows only: launch PowerShell installer
-            const extId = chrome.runtime.id;
-            const scriptPath = 'backend/native/install.ps1';
-            // Chrome extension cannot launch native process directly, so show instructions
-            nativeBridgeInstallStatus.textContent = 'Abra o PowerShell e rode:\n'
-              + `& "${scriptPath}" -ExtensionId "${extId}"\nDepois recarregue a extensão.`;
-          } catch (e) {
-            nativeBridgeInstallStatus.textContent = 'Falha ao iniciar instalação: ' + (e.message || e);
-          }
-          nativeBridgeInstallBtn.disabled = false;
+        nativeBridgeInstallBtn.addEventListener('click', () => {
+          // Delegate to the main install flow (downloads binary + shows instructions)
+          this._downloadBridgeInstaller();
         });
       }
 
@@ -1289,6 +1277,10 @@ export const PopupController = {
 
     this.currentSetupStep = normalizedStep;
     this.view.showSetupStep(normalizedStep);
+    if (normalizedStep === 2) {
+      // Serper is optional; allow continuing without validation.
+      this.view.enableNextButton('serper');
+    }
     if (normalizedStep === 3) {
       // Gemini is optional; allow continuing to preferences without validation.
       this.view.enableNextButton('gemini');
@@ -3788,18 +3780,95 @@ export const PopupController = {
     }
   },
 
-  _downloadBridgeInstaller() {
+  async _downloadBridgeInstaller() {
     const isWin = /Win/i.test(navigator.platform || navigator.userAgent);
     const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
-    const base = 'https://raw.githubusercontent.com/answerhunter/extension/main/backend/native/';
-    if (isWin) {
-      chrome.downloads.download({ url: base + 'install.ps1', filename: 'install-native-bridge.ps1' });
-      alert('Execute o arquivo baixado com PowerShell:\nBotao direito → Run with PowerShell');
-    } else {
-      const script = isMac ? 'install.sh' : 'install.sh';
-      chrome.downloads.download({ url: base + script, filename: 'install-native-bridge.sh' });
-      alert('No terminal execute:\nchmod +x ~/Downloads/install-native-bridge.sh && ~/Downloads/install-native-bridge.sh');
+
+    // Determine which bundled binary to serve
+    const binaryName = isWin ? 'native-fetch-bridge.exe' : 'native-fetch-linux';
+    const saveName   = isWin ? 'native-fetch-bridge.exe' : 'native-fetch-bridge';
+
+    const btn   = document.getElementById('native-bridge-install-btn');
+    const label = document.getElementById('native-bridge-label');
+
+    try {
+      if (btn) { btn.textContent = '⏳ Preparando...'; btn.disabled = true; }
+
+      // Fetch the binary bundled inside the extension
+      const binaryUrl = chrome.runtime.getURL(`native/${binaryName}`);
+      const response  = await fetch(binaryUrl);
+      if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+      const blob      = response.blob ? await response.blob() : await response.arrayBuffer().then(b => new Blob([b]));
+      const objectUrl = URL.createObjectURL(blob);
+
+      if (btn) btn.textContent = '⬇️ Baixando...';
+
+      const extensionId = chrome.runtime.id;
+
+      await new Promise((resolve) => {
+        chrome.downloads.download({
+          url: objectUrl,
+          filename: saveName,
+          saveAs: false,
+        }, resolve);
+      });
+
+      URL.revokeObjectURL(objectUrl);
+
+      // For Windows: also download a .bat launcher that passes --install <EXTENSION_ID>
+      // This way user just double-clicks instalar-bridge.bat (no terminal needed)
+      if (isWin) {
+        const batContent = `@echo off
+echo Instalando AnswerHunter NativeFetch Bridge...
+cd /d "%USERPROFILE%\Downloads"
+native-fetch-bridge.exe --install ${extensionId}
+`;
+        const batBlob = new Blob([batContent], { type: 'application/octet-stream' });
+        const batUrl = URL.createObjectURL(batBlob);
+        await new Promise((resolve) => {
+          chrome.downloads.download({ url: batUrl, filename: 'instalar-bridge.bat', saveAs: false }, resolve);
+        });
+        URL.revokeObjectURL(batUrl);
+      }
+
+      if (label) label.textContent = '✅ Arquivos baixados!';
+      if (btn)   { btn.textContent = '✓ Baixado'; btn.disabled = false; }
+
+      this._showBridgeInstallInstructions(isWin, isMac, extensionId);
+
+    } catch (e) {
+      console.error('[NativeBridge] Download failed', e);
+      if (label) label.textContent = 'Erro no download';
+      if (btn)   { btn.textContent = '⚡ Instalar'; btn.disabled = false; }
     }
+  },
+
+  _showBridgeInstallInstructions(isWin, isMac, extensionId) {
+    const instrEl = document.getElementById('native-bridge-instructions');
+    if (!instrEl) return;
+
+    let html = '';
+    if (isWin) {
+      html = `
+        <div class="nb-instr-title">📋 Próximo passo (2 arquivos baixados):</div>
+        <div class="nb-instr-text">
+          Na pasta <strong>Downloads</strong>, dê <strong>duplo clique</strong> em
+          <code>instalar-bridge.bat</code> para instalar automaticamente.
+        </div>
+        <div class="nb-instr-hint">⚠️ Se o Windows bloquear: clique em <em>"Mais informações" → "Executar mesmo assim"</em>. Apenas 1 vez.</div>
+      `;
+    } else {
+      const binPath = '~/Downloads/native-fetch-bridge';
+      const cmd = `chmod +x ${binPath} && ${binPath} --install ${extensionId}`;
+      html = `
+        <div class="nb-instr-title">📋 Próximo passo (Terminal):</div>
+        <div class="nb-instr-code"><code>${cmd}</code></div>
+        <div class="nb-instr-hint">Cole o comando acima no Terminal e pressione Enter.</div>
+      `;
+    }
+
+    instrEl.innerHTML = html;
+    instrEl.classList.remove('hidden');
   },
 
 };
