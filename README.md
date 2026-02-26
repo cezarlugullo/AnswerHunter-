@@ -47,6 +47,20 @@ Use the language selector in the popup header.
 4. Click `Load unpacked` and select this project folder.
 5. Open the extension popup and run setup.
 
+### BrowserTools MCP (optional, for IDE agents)
+1. Install the BrowserTools Chrome extension from:
+  - `https://github.com/AgentDeskAI/browser-tools-mcp/releases`
+2. Keep the local middleware server running:
+  - `npm run mcp:browser-tools:server`
+3. MCP client config is included in `.mcp.json` using:
+  - `npx -y @agentdeskai/browser-tools-mcp@latest`
+4. Restart your MCP-compatible IDE/client and enable the `browser-tools` server.
+5. Open Chrome DevTools and the BrowserTools panel.
+
+Notes:
+- This integration needs both processes: `browser-tools-server` and `browser-tools-mcp`.
+- If it does not connect, fully close Chrome, restart the local server, and keep only one BrowserTools DevTools panel open.
+
 ### Security model
 - API keys are never hardcoded in source.
 - Keys are stored locally via `chrome.storage.sync`.
@@ -96,6 +110,20 @@ Use o seletor de idioma no cabeçalho do popup.
 3. Ative `Modo do desenvolvedor`.
 4. Clique em `Carregar sem compactação` e selecione esta pasta.
 5. Abra o popup da extensão e execute a configuração.
+
+### BrowserTools MCP (opcional, para agentes no IDE)
+1. Instale a extensão do BrowserTools no Chrome em:
+  - `https://github.com/AgentDeskAI/browser-tools-mcp/releases`
+2. Mantenha o servidor local de middleware em execução:
+  - `npm run mcp:browser-tools:server`
+3. A configuração do cliente MCP já está no `.mcp.json` com:
+  - `npx -y @agentdeskai/browser-tools-mcp@latest`
+4. Reinicie seu IDE/cliente compatível com MCP e habilite o servidor `browser-tools`.
+5. Abra o DevTools do Chrome e o painel BrowserTools.
+
+Notas:
+- Essa integração precisa dos dois processos: `browser-tools-server` e `browser-tools-mcp`.
+- Se não conectar, feche o Chrome por completo, reinicie o servidor local e deixe apenas um painel BrowserTools aberto.
 
 ### Modelo de segurança
 - Nenhuma API key fica hardcoded no código.

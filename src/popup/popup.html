@@ -6,6 +6,67 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AnswerHunter</title>
   <link rel="stylesheet" href="popup.css">
+  <style>
+    .native-bridge-banner {
+      display: flex;
+      align-items: center;
+      padding: 7px 12px;
+      background: #fffdf0;
+      border-bottom: 2px solid #1a1a1a;
+      font-size: 11px;
+      transition: background 0.3s;
+    }
+    .native-bridge-banner.warn { background: #fff5c0; }
+    .native-bridge-banner.err  { background: #ffe0e0; }
+    .native-bridge-banner.hidden { display: none; }
+    .native-bridge-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+    .native-bridge-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #888;
+      border: 1.5px solid #1a1a1a;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .native-bridge-dot.ok   { background: #3ecf6a; }
+    .native-bridge-dot.warn { background: #ffde59; }
+    .native-bridge-dot.err  { background: #ff5a5a; }
+    .native-bridge-label { color: #444; flex: 1; font-weight: 700; font-size: 0.74rem; }
+    .native-bridge-install-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: #ffde59;
+      border: 2px solid #1a1a1a;
+      color: #1a1a1a;
+      border-radius: 8px;
+      padding: 5px 12px;
+      font-size: 0.78rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform 0.08s, box-shadow 0.08s;
+      box-shadow: 2px 2px 0 #1a1a1a;
+      font-family: 'Baloo 2', cursive;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+    .native-bridge-install-btn:hover {
+      background: #ffe566;
+      box-shadow: 3px 3px 0 #1a1a1a;
+      transform: translate(-1px, -1px);
+    }
+    .native-bridge-install-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 0 0 0 #1a1a1a;
+    }
+    .native-bridge-install-btn.hidden { display: none; }
+  </style>
 </head>
 
 <body>
@@ -258,6 +319,14 @@
                     unavailable.</p>
                 </div>
               </div>
+                <!-- NativeFetchBridge Install Button -->
+                <div style="margin: 18px 0 0 0;">
+                  <button id="nativeBridgeInstallBtn" class="native-bridge-install-btn">
+                    <span class="material-symbols-rounded">download</span>
+                    <span>Instalar Bridge Nativo (Windows)</span>
+                  </button>
+                  <div id="nativeBridgeInstallStatus" style="margin-top:6px;font-size:12px;color:#444;display:none"></div>
+                </div>
 
               <div class="ob-form-card gemini-theme">
                 <div class="ob-provider-badge">
@@ -359,10 +428,10 @@
                 <!-- OpenRouter Model Selection -->
                 <div class="ob-input-group" style="margin-top: 15px;">
                   <label for="select-openrouter-model" data-i18n="setup.openrouter.modelLabel"
-                    style="font-size: 0.8rem; color: rgba(255,255,255,0.9); margin-bottom: 5px; display: block;">Select
+                    style="font-size: 0.8rem; color: #1a1a1a; margin-bottom: 5px; display: block;">Select
                     Model</label>
                   <select id="select-openrouter-model" class="ob-input"
-                    style="width: 100%; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: white; border-radius: 8px; padding: 10px;">
+                    style="width: 100%; border: 2px solid #1a1a1a; background: #fffdf0; color: #1a1a1a; border-radius: 8px; padding: 10px;">
                     <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free)</option>
                     <option value="google/gemini-2.5-flash-free">Gemini 2.5 Flash (Free)</option>
                     <option value="qwen/qwen-2.5-coder-32b-instruct:free">Qwen 2.5 Coder 32b (Free)</option>
@@ -400,86 +469,86 @@
           <!-- Slide 6: Preferences & Finish -->
           <div class="ob-slide provider-slide" data-slide="5">
             <div class="ob-slide-layout">
-              <div class="ob-form-card" style="border-top: 2px solid rgba(255,107,0,0.5); gap: 18px;">
+              <div class="ob-form-card" style="border-top: 3px solid #1a1a1a; gap: 18px;">
 
                 <div style="text-align: center; padding: 4px 0 2px;">
                   <span class="material-symbols-rounded" style="font-size: 36px; color: #ff9a40;">auto_awesome</span>
-                  <h3 data-i18n="setup.prefs.title" style="margin: 8px 0 4px; font-size: 1.1rem; color: #ffffff;">Tudo
+                  <h3 data-i18n="setup.prefs.title" style="margin: 8px 0 4px; font-size: 1.2rem; color: #1a1a1a; font-family: 'Baloo 2', cursive; font-weight: 900;">Tudo
                     pronto!</h3>
                   <p data-i18n="setup.prefs.subtitle"
-                    style="font-size: 0.82rem; color: rgba(255,255,255,0.85); margin: 0;">Uma última escolha antes de
+                    style="font-size: 0.82rem; color: #555; margin: 0;">Uma última escolha antes de
                     começar.</p>
                 </div>
 
                 <div
-                  style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 16px;">
+                  style="background: #fffdf0; border: 2px solid #1a1a1a; border-radius: 12px; padding: 14px 16px; box-shadow: 3px 3px 0 #1a1a1a;">
                   <p data-i18n="setup.prefs.aiLabel"
-                    style="font-size: 0.8rem; color: rgba(255,255,255,0.9); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">
+                    style="font-size: 0.8rem; color: #1a1a1a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; font-family: 'Baloo 2', cursive;">
                     Como a IA deve responder?</p>
                   <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between;">
 
                     <button class="ob-btn ob-provider-pill active" id="pill-groq-ob" data-provider="groq"
                       style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
                       <span class="material-symbols-rounded" style="font-size: 20px;">bolt</span>
-                      <span data-i18n="setup.prefs.groqLabel" style="font-size: 0.82rem; font-weight: 600;">Mais rápido</span>
-                      <span style="font-size: 0.62rem; color: rgba(255,255,255,0.5); line-height: 1.2;">Free · Groq</span>
+                      <span data-i18n="setup.prefs.groqLabel" style="font-size: 0.82rem; font-weight: 700;">Mais rápido</span>
+                      <span class="pill-sublabel">Free · Groq</span>
                     </button>
                     <button class="ob-btn ob-provider-pill" id="pill-gemini-ob" data-provider="gemini"
                       style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
                       <span class="material-symbols-rounded" style="font-size: 20px;">psychology</span>
-                      <span data-i18n="setup.prefs.geminiLabel" style="font-size: 0.82rem; font-weight: 600;">Mais inteligente</span>
-                      <span style="font-size: 0.62rem; color: rgba(255,255,255,0.5); line-height: 1.2;">Conta Google</span>
+                      <span data-i18n="setup.prefs.geminiLabel" style="font-size: 0.82rem; font-weight: 700;">Mais inteligente</span>
+                      <span class="pill-sublabel">Conta Google</span>
                     </button>
                     <button class="ob-btn ob-provider-pill" id="pill-openrouter-ob" data-provider="openrouter"
                       style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
                       <span class="material-symbols-rounded" style="font-size: 20px;">public</span>
-                      <span data-i18n="setup.prefs.openrouterLabel" style="font-size: 0.82rem; font-weight: 600;">OpenRouter</span>
-                      <span style="font-size: 0.62rem; color: rgba(255,255,255,0.5); line-height: 1.2;">API key</span>
+                      <span data-i18n="setup.prefs.openrouterLabel" style="font-size: 0.82rem; font-weight: 700;">OpenRouter</span>
+                      <span class="pill-sublabel">API key</span>
                     </button>
                     <button class="ob-btn ob-provider-pill" id="pill-chatgpt-ob" data-provider="chatgpt"
                       style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
                       <span class="material-symbols-rounded" style="font-size: 20px;">smart_toy</span>
-                      <span style="font-size: 0.82rem; font-weight: 600;">ChatGPT</span>
-                      <span style="font-size: 0.62rem; color: rgba(255,255,255,0.5); line-height: 1.2;">Plus/Pro</span>
+                      <span style="font-size: 0.82rem; font-weight: 700;">ChatGPT</span>
+                      <span class="pill-sublabel">Plus/Pro</span>
                     </button>
                     <button class="ob-btn ob-provider-pill" id="pill-copilot-ob" data-provider="copilot"
                       style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
                       <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" class="copilot-pill-icon" style="flex-shrink:0;">
                         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
                       </svg>
-                      <span style="font-size: 0.82rem; font-weight: 600;">Copilot</span>
-                      <span style="font-size: 0.62rem; color: rgba(255,255,255,0.5); line-height: 1.2;">GitHub</span>
+                      <span style="font-size: 0.82rem; font-weight: 700;">Copilot</span>
+                      <span class="pill-sublabel">GitHub</span>
                     </button>
                   </div>
                   <p id="provider-hint-ob" data-i18n="setup.prefs.hintGroq"
-                    style="font-size: 0.76rem; color: rgba(255,255,255,0.7); margin: 10px 0 0; text-align: center;">Você
+                    style="font-size: 0.76rem; color: #666; margin: 10px 0 0; text-align: center;">Você
                     pode mudar isso a qualquer momento nas configurações.</p>
                 </div>
 
                 <!-- AI Account Logins -->
-                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 16px;">
-                  <p style="font-size: 0.8rem; color: rgba(255,255,255,0.9); margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">Contas de IA</p>
+                <div style="background: #fffdf0; border: 2px solid #1a1a1a; border-radius: 12px; padding: 14px 16px; box-shadow: 3px 3px 0 #1a1a1a;">
+                  <p style="font-size: 0.8rem; color: #1a1a1a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; font-family: 'Baloo 2', cursive;">Contas de IA</p>
                   <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                    <button id="chatgptBtn" class="ob-ai-account-btn" style="border-color: rgba(139,92,246,0.4);">
-                      <span class="material-symbols-rounded" style="font-size: 18px; color: #a78bfa;">smart_toy</span>
-                      <span style="font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">ChatGPT</span>
+                    <button id="chatgptBtn" class="ob-ai-account-btn" style="border-color: #1a1a1a;">
+                      <span class="material-symbols-rounded" style="font-size: 18px; color: #7c3aed;">smart_toy</span>
+                      <span style="font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1a1a1a;">ChatGPT</span>
                       <span id="chatgpt-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto;"></span>
                     </button>
-                    <button id="geminiAuthBtn" class="ob-ai-account-btn" style="border-color: rgba(66,133,244,0.4);">
+                    <button id="geminiAuthBtn" class="ob-ai-account-btn" style="border-color: #1a1a1a;">
                       <svg viewBox="0 0 18 18" width="16" height="16" style="flex-shrink:0;">
                         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
                         <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
                         <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
                         <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
                       </svg>
-                      <span style="font-size: 0.78rem; font-weight: 600; color: #4285F4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Google AI</span>
+                      <span style="font-size: 0.78rem; font-weight: 600; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Google AI</span>
                       <span id="gemini-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto; background: #4285F4; box-shadow: 0 0 4px #4285F4;"></span>
                     </button>
-                    <button id="copilotBtn" class="ob-ai-account-btn" style="border-color: rgba(121,192,255,0.4);">
-                      <svg viewBox="0 0 16 16" width="16" height="16" fill="#f0f6fc" style="flex-shrink:0;">
+                    <button id="copilotBtn" class="ob-ai-account-btn" style="border-color: #1a1a1a;">
+                      <svg viewBox="0 0 16 16" width="16" height="16" fill="#1a1a1a" style="flex-shrink:0;">
                         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
                       </svg>
-                      <span style="font-size: 0.78rem; font-weight: 600; color: #f0f6fc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">GitHub</span>
+                      <span style="font-size: 0.78rem; font-weight: 600; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">GitHub</span>
                       <span id="copilot-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto; background: #3fb950; box-shadow: 0 0 4px #3fb950;"></span>
                     </button>
                   </div>
@@ -756,35 +825,229 @@
         <div id="copilot-test-result" style="font-size: 0.75rem; color: rgba(255,255,255,0.7); margin-top: 6px; min-height: 18px; text-align: center;"></div>
 
         <div style="display: flex; gap: 8px; margin-top: 10px;">
-          <select id="select-copilot-model" class="ob-input"
-            style="flex: 1; border: 1px solid rgba(121,192,255,0.25); background: rgba(0,0,0,0.25); color: white; border-radius: 8px; padding: 8px 10px; font-size: 0.8rem; cursor: pointer;">
-            <optgroup label="✨ Recomendado para AnswerHunter  [1×]">
-              <option value="claude-sonnet-4.6" selected>Claude Sonnet 4.6 — ★ melhor custo-benefício</option>
-              <option value="claude-sonnet-4.5">Claude Sonnet 4.5 — análise precisa</option>
-              <option value="gpt-5.3-codex">GPT-5.3-Codex — GPT5 equilibrado</option>
-              <option value="gpt-5.2-codex">GPT-5.2-Codex — GPT5 sólido</option>
-              <option value="gpt-5.1-codex">GPT-5.1-Codex — GPT5 padrão</option>
-              <option value="gemini-3-pro">Gemini 3 Pro (Preview) — Google top</option>
-              <option value="claude-sonnet-4">Claude Sonnet 4 — geração anterior</option>
-            </optgroup>
-            <optgroup label="🆓 Sem custo de quota  [0×]">
-              <option value="gpt-5-mini">GPT-5 Mini — grátis, boa qualidade</option>
-              <option value="gpt-4.1">GPT-4.1 — grátis, muito bom</option>
-            </optgroup>
-            <optgroup label="⚡ Rápido e econômico  [0.33×]">
-              <option value="claude-haiku-4.5">Claude Haiku 4.5 — rápido e barato</option>
-              <option value="gpt-5.1-codex-mini">GPT-5.1-Codex-Mini (Preview) — leve</option>
-            </optgroup>
-            <optgroup label="🧠 GPT-5 Completo  [1×]">
-              <option value="gpt-5.2">GPT-5.2 — sem Codex</option>
-              <option value="gpt-5.1-codex-max">GPT-5.1-Codex-Max — tarefas longas</option>
-              <option value="gpt-5.1">GPT-5.1 — base GPT5</option>
-            </optgroup>
-            <optgroup label="💎 Premium  [3×]">
-              <option value="claude-opus-4.6">Claude Opus 4.6 — máxima inteligência</option>
-              <option value="claude-opus-4.5">Claude Opus 4.5 — geração anterior</option>
-            </optgroup>
+<!-- Hidden select preserved for JS compatibility (PopupController reads/writes .value) -->
+          <select id="select-copilot-model" style="display:none" aria-hidden="true">
+            <option value="claude-sonnet-4.6" selected>Claude Sonnet 4.6</option>
+            <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+            <option value="gpt-5.3-codex">GPT-5.3-Codex</option>
+            <option value="gpt-5.2-codex">GPT-5.2-Codex</option>
+            <option value="gpt-5.1-codex">GPT-5.1-Codex</option>
+            <option value="gemini-3-pro">Gemini 3 Pro</option>
+            <option value="claude-sonnet-4">Claude Sonnet 4</option>
+            <option value="gpt-5-mini">GPT-5 Mini</option>
+            <option value="gpt-4.1">GPT-4.1</option>
+            <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+            <option value="gpt-5.1-codex-mini">GPT-5.1-Codex-Mini</option>
+            <option value="gpt-5.2">GPT-5.2</option>
+            <option value="gpt-5.1-codex-max">GPT-5.1-Codex-Max</option>
+            <option value="gpt-5.1">GPT-5.1</option>
+            <option value="claude-opus-4.6">Claude Opus 4.6</option>
+            <option value="claude-opus-4.5">Claude Opus 4.5</option>
           </select>
+
+          <!-- Custom model picker -->
+          <div class="ah-mpicker" id="copilot-model-picker" style="flex:1">
+            <button class="ah-mpicker-trigger" type="button" id="copilot-model-trigger" aria-haspopup="listbox" aria-expanded="false">
+              <span class="ah-mpicker-trigger-icon material-symbols-rounded">auto_awesome</span>
+              <div class="ah-mpicker-trigger-info">
+                <span class="ah-mpicker-trigger-name">Claude Sonnet 4.6</span>
+                <span class="ah-mpicker-trigger-meta">Recomendado · 1×</span>
+              </div>
+              <span class="ah-mpicker-chevron material-symbols-rounded">expand_more</span>
+            </button>
+
+            <div class="ah-mpicker-panel" id="copilot-model-panel" role="listbox" aria-label="Selecionar modelo">
+
+              <!-- Group: Recommended -->
+              <div class="ah-mpicker-group">
+                <div class="ah-mpicker-group-header">
+                  <span class="material-symbols-rounded">auto_awesome</span>
+                  <span>Recomendado para AnswerHunter</span>
+                  <span class="ah-mpicker-badge ah-mpicker-badge--1x">1×</span>
+                </div>
+                <div class="ah-mpicker-option ah-mpicker-option--selected" role="option" tabindex="0"
+                     data-value="claude-sonnet-4.6" data-icon="auto_awesome" data-group="Recomendado" data-quota="1×" data-meta="Recomendado · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">Claude Sonnet 4.6</span>
+                    <span class="ah-mpicker-opt-tag ah-mpicker-opt-tag--star">Padrão</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Melhor custo-benefício</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="claude-sonnet-4.5" data-icon="auto_awesome" data-group="Recomendado" data-quota="1×" data-meta="Recomendado · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">Claude Sonnet 4.5</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Análise precisa</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-5.3-codex" data-icon="auto_awesome" data-group="Recomendado" data-quota="1×" data-meta="Recomendado · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.3-Codex</span>
+                    <span class="ah-mpicker-opt-tag ah-mpicker-opt-tag--new">Novo</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">GPT-5 equilibrado</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-5.2-codex" data-icon="auto_awesome" data-group="Recomendado" data-quota="1×" data-meta="Recomendado · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.2-Codex</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">GPT-5 sólido</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-5.1-codex" data-icon="auto_awesome" data-group="Recomendado" data-quota="1×" data-meta="Recomendado · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.1-Codex</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">GPT-5 padrão</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gemini-3-pro" data-icon="auto_awesome" data-group="Recomendado" data-quota="1×" data-meta="Recomendado · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">Gemini 3 Pro</span>
+                    <span class="ah-mpicker-opt-tag ah-mpicker-opt-tag--preview">Preview</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Google top</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="claude-sonnet-4" data-icon="auto_awesome" data-group="Recomendado" data-quota="1×" data-meta="Recomendado · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">Claude Sonnet 4</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Geração anterior</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+              </div>
+
+              <div class="ah-mpicker-divider"></div>
+
+              <!-- Group: Free -->
+              <div class="ah-mpicker-group">
+                <div class="ah-mpicker-group-header">
+                  <span class="material-symbols-rounded">sell</span>
+                  <span>Sem custo de quota</span>
+                  <span class="ah-mpicker-badge ah-mpicker-badge--0x">0×</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-5-mini" data-icon="sell" data-group="Sem custo" data-quota="0×" data-meta="Sem custo · 0×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5 Mini</span>
+                    <span class="ah-mpicker-opt-tag ah-mpicker-opt-tag--free">Grátis</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Boa qualidade sem gastar quota</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-4.1" data-icon="sell" data-group="Sem custo" data-quota="0×" data-meta="Sem custo · 0×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-4.1</span>
+                    <span class="ah-mpicker-opt-tag ah-mpicker-opt-tag--free">Grátis</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Muito bom, sem custo</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+              </div>
+
+              <div class="ah-mpicker-divider"></div>
+
+              <!-- Group: Fast -->
+              <div class="ah-mpicker-group">
+                <div class="ah-mpicker-group-header">
+                  <span class="material-symbols-rounded">bolt</span>
+                  <span>Rápido e econômico</span>
+                  <span class="ah-mpicker-badge ah-mpicker-badge--033x">0.33×</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="claude-haiku-4.5" data-icon="bolt" data-group="Rápido" data-quota="0.33×" data-meta="Rápido · 0.33×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">Claude Haiku 4.5</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Rápido e econômico</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-5.1-codex-mini" data-icon="bolt" data-group="Rápido" data-quota="0.33×" data-meta="Rápido · 0.33×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.1-Codex-Mini</span>
+                    <span class="ah-mpicker-opt-tag ah-mpicker-opt-tag--preview">Preview</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Leve e ágil</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+              </div>
+
+              <div class="ah-mpicker-divider"></div>
+
+              <!-- Group: GPT-5 Complete -->
+              <div class="ah-mpicker-group">
+                <div class="ah-mpicker-group-header">
+                  <span class="material-symbols-rounded">memory</span>
+                  <span>GPT-5 Completo</span>
+                  <span class="ah-mpicker-badge ah-mpicker-badge--1x">1×</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-5.2" data-icon="memory" data-group="GPT-5" data-quota="1×" data-meta="GPT-5 · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.2</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Sem Codex, uso geral</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-5.1-codex-max" data-icon="memory" data-group="GPT-5" data-quota="1×" data-meta="GPT-5 · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.1-Codex-Max</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Contexto longo</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="gpt-5.1" data-icon="memory" data-group="GPT-5" data-quota="1×" data-meta="GPT-5 · 1×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.1</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Base GPT-5</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+              </div>
+
+              <div class="ah-mpicker-divider"></div>
+
+              <!-- Group: Premium -->
+              <div class="ah-mpicker-group">
+                <div class="ah-mpicker-group-header">
+                  <span class="material-symbols-rounded">workspace_premium</span>
+                  <span>Premium</span>
+                  <span class="ah-mpicker-badge ah-mpicker-badge--3x">3×</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="claude-opus-4.6" data-icon="workspace_premium" data-group="Premium" data-quota="3×" data-meta="Premium · 3×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">Claude Opus 4.6</span>
+                    <span class="ah-mpicker-opt-tag ah-mpicker-opt-tag--premium">Top</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Máxima inteligência</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                     data-value="claude-opus-4.5" data-icon="workspace_premium" data-group="Premium" data-quota="3×" data-meta="Premium · 3×">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">Claude Opus 4.5</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Geração anterior</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+              </div>
+
+            </div><!-- /ah-mpicker-panel -->
+          </div><!-- /ah-mpicker -->
           <button id="copilot-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
             <span class="material-symbols-rounded" style="font-size: 16px;">logout</span>
             <span>Sair</span>
@@ -849,6 +1112,18 @@
       </div>
     </header>
 
+    <!-- ===== NativeFetchBridge Status Banner ===== -->
+    <div id="native-bridge-banner" class="native-bridge-banner hidden">
+      <div class="native-bridge-status">
+        <span id="native-bridge-dot" class="native-bridge-dot"></span>
+        <span id="native-bridge-label" class="native-bridge-label">NativeFetch Bridge</span>
+        <button id="native-bridge-install-btn" class="native-bridge-install-btn hidden">
+          <span class="material-symbols-rounded" style="font-size:14px;">download</span>
+          Instalar
+        </button>
+      </div>
+    </div>
+
     <!-- ===== TABS & CONTENT (hidden until setup done) ===== -->
     <div class="tabs">
       <button class="tab-btn active" data-tab="search">
@@ -899,6 +1174,9 @@
             <p class="binder-subtitle" data-i18n="binder.subtitle">Saved questions for review</p>
           </div>
         </div>
+        <button id="addQuestionBtn" class="action-btn action-btn--add" data-i18n-title="manual.add.btnTitle" title="Add question manually">
+          <span class="material-symbols-rounded">add_circle</span>
+        </button>
         <button id="clearBinderBtn" class="action-btn" data-i18n-title="binder.clearAll">
           <span class="material-symbols-rounded">delete_sweep</span>
         </button>
@@ -921,6 +1199,94 @@
         <span data-i18n="footer.refined">AI-refined answers with source weighting</span>
       </p>
     </footer>
+  </div>
+
+  <!-- ===== ADD QUESTION MANUALLY MODAL ===== -->
+  <div id="manual-add-overlay" class="manual-add-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="manual-add-title">
+    <div class="manual-add-card">
+      <div class="manual-add-header">
+        <span class="material-symbols-rounded" style="color:var(--ah-primary);font-size:22px;">create</span>
+        <h3 id="manual-add-title" data-i18n="manual.add.title">Add Question</h3>
+        <button class="manual-add-close" id="manualAddCloseBtn" aria-label="Close">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <div class="manual-add-body">
+        <!-- Question -->
+        <div class="manual-field">
+          <label for="manual-question">
+            <span data-i18n="manual.add.questionLabel">Question</span>
+            <span class="manual-required">*</span>
+          </label>
+          <textarea
+            id="manual-question"
+            class="manual-textarea"
+            rows="3"
+            maxlength="2000"
+            placeholder="Ex: Qual das alternativas abaixo..."
+          ></textarea>
+          <div class="manual-char-count"><span id="manual-question-count">0</span>/2000</div>
+        </div>
+
+        <!-- Answer -->
+        <div class="manual-field">
+          <label for="manual-answer">
+            <span data-i18n="manual.add.answerLabel">Answer / Key</span>
+            <span class="manual-required">*</span>
+          </label>
+          <textarea
+            id="manual-answer"
+            class="manual-textarea"
+            rows="3"
+            maxlength="2000"
+            placeholder="Ex: Letra C — porque..."
+          ></textarea>
+          <div class="manual-char-count"><span id="manual-answer-count">0</span>/2000</div>
+        </div>
+
+        <!-- Subject -->
+        <div class="manual-field">
+          <label for="manual-subject" data-i18n="manual.add.subjectLabel">Subject / Topic</label>
+          <input
+            type="text"
+            id="manual-subject"
+            class="manual-input"
+            placeholder="Ex: Biologia, Matemática..."
+            maxlength="100"
+          >
+        </div>
+
+        <!-- Source -->
+        <div class="manual-field">
+          <label for="manual-source" data-i18n="manual.add.sourceLabel">Source (URL or name)</label>
+          <input
+            type="text"
+            id="manual-source"
+            class="manual-input"
+            placeholder="Ex: https://... ou Livro X Cap.3"
+            maxlength="300"
+          >
+        </div>
+
+        <!-- Folder -->
+        <div class="manual-field">
+          <label for="manual-folder" data-i18n="manual.add.folderLabel">Save to folder</label>
+          <select id="manual-folder" class="manual-select"></select>
+        </div>
+
+        <!-- Error message -->
+        <div id="manual-add-error" class="manual-error hidden"></div>
+      </div>
+
+      <div class="manual-add-footer">
+        <button id="manualAddCancelBtn" class="manual-btn manual-btn--ghost" data-i18n="manual.add.cancel">Cancel</button>
+        <button id="manualAddSaveBtn" class="manual-btn manual-btn--primary">
+          <span class="material-symbols-rounded">save</span>
+          <span data-i18n="manual.add.save">Save question</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="popup.js"></script>

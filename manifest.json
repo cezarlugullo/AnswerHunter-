@@ -16,7 +16,8 @@
     "clipboardWrite",
     "declarativeNetRequest",
     "tabs",
-    "identity"
+    "identity",
+    "nativeMessaging"
   ],
   "host_permissions": [
     "https://api.groq.com/*",

@@ -69,9 +69,22 @@ export const FreeTextAnswerService = {
 
         const ANSWER_MARKER = /^(?:resposta|resposta\s+correta|alternativa\s+correta)\s*[:\-]?\s*$/i;
         const INLINE_MARKER = /^(?:resposta|resposta\s+correta|alternativa\s+correta)\s*[:\-]\s*(.+)$/i;
+        // Matches full-sentence Brainly GQL answers like:
+        // "A alternativa correta é a D. O comando..."
+        // "A resposta correta é a alternativa B) Lista..."
+        const SENTENCE_LETTER_MARKER = /^a\s+(?:alternativa|resposta|afirmativa)\s+(?:correta|certa)\s+[ée]+\s+a(?:\s+alternativa)?(?:\s+letra)?\s*([A-E])(?:[)\s\.]|$)/i;
         const NOISE_STOP = /^(?:explica[cç][aã]o|coment[aá]rio|pergunta|quest[aã]o|ver\s+mais|resposta[s]?\s+relacionadas|novas?\s+perguntas|ainda\s+tem|experimente|confira)\b/i;
         // Lines that are clearly UI chrome from Brainly, not answer content
         const UI_NOISE = /^(?:\d+\s+pesso|aluno|entrar|anuncio|bloqueador|avaliacao|para\s+estudantes|para\s+pais|codigo\s+de\s+conduta|brainly\b)/i;
+
+        // 1a. Direct letter from sentence: "A alternativa correta é a D. ..."
+        for (const line of lines) {
+            const ms = line.match(SENTENCE_LETTER_MARKER);
+            if (ms?.[1]) {
+                // Return the FULL line as answer block so downstream can also access evidence
+                return line.trim();
+            }
+        }
 
         // 1. Inline: "Resposta: texto da resposta"
         for (const line of lines) {
@@ -102,6 +115,22 @@ export const FreeTextAnswerService = {
 
     _strategyAnchor(answerBlock, optionsMap) {
         if (!answerBlock || answerBlock.length < 10) return null;
+
+        // ── Direct letter extraction from Portuguese exam answer patterns ────────
+        // Catches: "A alternativa correta é a D.", "é a alternativa B)", "letra C", "(D)"
+        const DIRECT_LETTER_RE = /(?:alternativa|resposta|afirmativa)\s+(?:correta|certa)\s+[ée]+\s+a(?:\s+alternativa)?\s*([A-E])[)\s\.\b]|(?:\bé\s+a\s+|\bletra\s+|\bopcao\s+|\bopção\s+)([A-E])\b|\(([A-E])\)/i;
+        const directMatch = answerBlock.match(DIRECT_LETTER_RE);
+        if (directMatch) {
+            const letter = (directMatch[1] || directMatch[2] || directMatch[3] || '').toUpperCase();
+            if (letter && optionsMap[letter]) {
+                return {
+                    letter,
+                    confidence: 0.88,
+                    method: 'gql-direct-letter',
+                    snippet: answerBlock.slice(0, 200)
+                };
+            }
+        }
 
         const mapped = OptionsMatchService.matchAnswerTextToOptions(answerBlock, optionsMap);
         if (!mapped?.letter) return null;

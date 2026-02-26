@@ -365,6 +365,144 @@ export const BinderController = {
         }
     },
 
+    // === MANUAL ADD QUESTION ===
+
+    handleAddManual() {
+        this._openManualAddModal();
+    },
+
+    _openManualAddModal() {
+        const overlay = document.getElementById('manual-add-overlay');
+        if (!overlay) return;
+
+        // Reset form fields
+        const qTA     = document.getElementById('manual-question');
+        const aTA     = document.getElementById('manual-answer');
+        const subjIn  = document.getElementById('manual-subject');
+        const srcIn   = document.getElementById('manual-source');
+        const errDiv  = document.getElementById('manual-add-error');
+        const saveBtn = document.getElementById('manualAddSaveBtn');
+
+        if (qTA)   { qTA.value = ''; const c = document.getElementById('manual-question-count'); if (c) c.textContent = '0'; }
+        if (aTA)   { aTA.value = ''; const c = document.getElementById('manual-answer-count');   if (c) c.textContent = '0'; }
+        if (subjIn) subjIn.value = '';
+        if (srcIn)  srcIn.value  = '';
+        if (errDiv) errDiv.classList.add('hidden');
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<span class="material-symbols-rounded">save</span><span data-i18n="manual.add.save">' + this.t('manual.add.save') + '</span>';
+        }
+
+        // Populate folder dropdown
+        this._populateManualFolderSelect();
+
+        // Bind events only once
+        if (!overlay.dataset.bound) {
+            overlay.dataset.bound = '1';
+
+            document.getElementById('manualAddCloseBtn')?.addEventListener('click',  () => this._closeManualAddModal());
+            document.getElementById('manualAddCancelBtn')?.addEventListener('click', () => this._closeManualAddModal());
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) this._closeManualAddModal(); });
+
+            // Character counters
+            qTA?.addEventListener('input', () => {
+                const c = document.getElementById('manual-question-count');
+                if (c) c.textContent = qTA.value.length;
+            });
+            aTA?.addEventListener('input', () => {
+                const c = document.getElementById('manual-answer-count');
+                if (c) c.textContent = aTA.value.length;
+            });
+
+            document.getElementById('manualAddSaveBtn')?.addEventListener('click', () => this._submitManualAdd());
+
+            // Keyboard shortcuts
+            overlay.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') this._closeManualAddModal();
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') this._submitManualAdd();
+            });
+        }
+
+        overlay.classList.remove('hidden');
+        setTimeout(() => qTA?.focus(), 60);
+    },
+
+    _closeManualAddModal() {
+        document.getElementById('manual-add-overlay')?.classList.add('hidden');
+    },
+
+    _populateManualFolderSelect() {
+        const select = document.getElementById('manual-folder');
+        if (!select) return;
+        select.innerHTML = '';
+
+        const addOptions = (nodes, prefix = '') => {
+            for (const node of nodes) {
+                if (node.type === 'folder') {
+                    const opt  = document.createElement('option');
+                    opt.value  = node.id;
+                    opt.textContent = prefix + (node.title || node.id);
+                    if (node.id === StorageModel.currentFolderId) opt.selected = true;
+                    select.appendChild(opt);
+                    if (node.children?.length) addOptions(node.children, prefix + '\u00a0\u00a0\u203a ');
+                }
+            }
+        };
+        addOptions(StorageModel.data);
+    },
+
+    async _submitManualAdd() {
+        const question = document.getElementById('manual-question')?.value.trim();
+        const answer   = document.getElementById('manual-answer')?.value.trim();
+        const subject  = document.getElementById('manual-subject')?.value.trim() || '';
+        const source   = document.getElementById('manual-source')?.value.trim()  || '';
+        const folderId = document.getElementById('manual-folder')?.value;
+        const errDiv   = document.getElementById('manual-add-error');
+        const saveBtn  = document.getElementById('manualAddSaveBtn');
+
+        // Validation
+        if (!question || !answer) {
+            if (errDiv) {
+                errDiv.textContent = this.t('manual.add.errorRequired');
+                errDiv.classList.remove('hidden');
+            }
+            return;
+        }
+        if (errDiv) errDiv.classList.add('hidden');
+
+        // Loading state
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span class="material-symbols-rounded spin-loading">sync</span>';
+        }
+
+        // Temporarily switch to target folder and save
+        const prevFolder = StorageModel.currentFolderId;
+        if (folderId) StorageModel.currentFolderId = folderId;
+
+        const added = await StorageModel.addItem(question, answer, source, { subject });
+
+        StorageModel.currentFolderId = prevFolder;
+
+        // Restore button
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<span class="material-symbols-rounded">save</span><span>' + this.t('manual.add.save') + '</span>';
+        }
+
+        if (added === false) {
+            if (errDiv) {
+                errDiv.textContent = this.t('manual.add.errorDuplicate');
+                errDiv.classList.remove('hidden');
+            }
+            return;
+        }
+
+        this._closeManualAddModal();
+        await this.renderBinder();
+        if (this.view?.showToast) this.view.showToast(this.t('manual.add.success'), 'success');
+    },
+
     // === EXPORT / IMPORT / STUDY PAGE ===
 
     _collectAllQuestions(nodes = StorageModel.data, folderPath = '') {

@@ -430,6 +430,54 @@ function persistReviewLaterState(questionId, questionText, isReviewLater) {
   });
 }
 
+function persistAnswerKeyState(questionId, questionText, nextLetter, nextAnswerText) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['binderStructure'], (result) => {
+      const data = result.binderStructure;
+      if (!Array.isArray(data)) {
+        resolve(false);
+        return;
+      }
+
+      const updateInTree = (nodes) => {
+        for (const node of nodes) {
+          if (node.type === 'question' && node.content) {
+            const nodeId = String(node.id ?? '');
+            const targetId = String(questionId ?? '');
+            const byId = targetId && nodeId === targetId;
+            const byContent = !targetId && node.content.question === questionText;
+            if (byId || byContent) {
+              const currentAnswer = String(node.content.answer || '').trim();
+              const parsedCurrent = parseAnswer(currentAnswer);
+              const baseSteps = String(parsedCurrent.steps || '').trim();
+              const finalLine = `Letra ${nextLetter}: ${nextAnswerText}`;
+
+              node.content.answer = baseSteps ? `${baseSteps}\n${finalLine}` : finalLine;
+              node.content.updatedAt = Date.now();
+              return true;
+            }
+          }
+
+          if (node.children && updateInTree(node.children)) {
+            return true;
+          }
+        }
+        return false;
+      };
+
+      const found = updateInTree(data);
+      if (!found) {
+        resolve(false);
+        return;
+      }
+
+      chrome.storage.local.set({ binderStructure: data }, () => {
+        resolve(!chrome.runtime.lastError);
+      });
+    });
+  });
+}
+
 function buildCard(q, index) {
   const article = document.createElement('article');
   article.className = 'card';
@@ -441,7 +489,7 @@ function buildCard(q, index) {
 
   const showFolder = q.folderPath && q.folderPath !== 'Raiz';
   const cleanQuestion = sanitizeQuestionText(q.question);
-  const cleanAnswer = sanitizeAnswerText(q.answer);
+  let cleanAnswer = sanitizeAnswerText(q.answer);
   const parsedQ = parseQuestion(cleanQuestion);
   const parsedA = parseAnswer(cleanAnswer);
 
@@ -454,6 +502,9 @@ function buildCard(q, index) {
         <span class="icon">bookmark</span> Revisar depois
       </span>
       <div class="card-actions">
+        <button class="card-action-btn btn-edit-answer" title="Editar gabarito" type="button">
+          <span class="icon">edit</span>
+        </button>
         <button class="card-action-btn btn-review-card${q.reviewLater ? ' active' : ''}" title="${q.reviewLater ? 'Remover de revisar depois' : 'Marcar para revisar depois'}" type="button">
           <span class="icon">${q.reviewLater ? 'bookmark' : 'bookmark_add'}</span>
         </button>
@@ -849,6 +900,71 @@ function buildCard(q, index) {
     }
   });
 
+  const btnEditAnswer = article.querySelector('.btn-edit-answer');
+  if (btnEditAnswer) {
+    btnEditAnswer.addEventListener('click', async () => {
+      const optionItems = Array.from(article.querySelectorAll('.option-item'));
+      if (!optionItems.length) {
+        showSyncToast('Essa questão não possui alternativas para editar o gabarito.');
+        return;
+      }
+
+      const validLetters = optionItems
+        .map(item => String(item.dataset.letter || '').toUpperCase())
+        .filter(Boolean);
+
+      const currentLetter = String(article.dataset.correctLetter || '').toUpperCase() || validLetters[0];
+      const optionsPreview = optionItems
+        .map(item => `${String(item.dataset.letter || '').toUpperCase()}) ${String(item.textContent || '').replace(/^[A-Ea-e][\)\.\-:]\s*/, '').trim()}`)
+        .join('\n');
+
+      const typed = prompt(
+        `Editar gabarito (digite a letra):\nAtual: ${currentLetter}\n\n${optionsPreview}`,
+        currentLetter
+      );
+      if (typed === null) return;
+
+      const nextLetter = String(typed).trim().charAt(0).toUpperCase();
+      if (!validLetters.includes(nextLetter)) {
+        showSyncToast('Letra inválida. Escolha uma alternativa existente.');
+        return;
+      }
+
+      const targetOption = optionItems.find(item => String(item.dataset.letter || '').toUpperCase() === nextLetter);
+      const nextAnswerText = String(targetOption?.textContent || '')
+        .replace(/^[A-Ea-e][\)\.\-:]\s*/, '')
+        .trim();
+
+      btnEditAnswer.disabled = true;
+      const saved = await persistAnswerKeyState(q.id, q.question, nextLetter, nextAnswerText || nextLetter);
+      btnEditAnswer.disabled = false;
+
+      if (!saved) {
+        showSyncToast('Não foi possível salvar o novo gabarito.');
+        return;
+      }
+
+      const newAnswerLine = `Letra ${nextLetter}: ${nextAnswerText || nextLetter}`;
+      cleanAnswer = newAnswerLine;
+      q.answer = newAnswerLine;
+
+      article.dataset.correctLetter = nextLetter;
+      const answerTextEl = article.querySelector('.answer-text-content');
+      if (answerTextEl) {
+        answerTextEl.innerHTML = `<strong>${nextLetter})</strong> ${escH(nextAnswerText || nextLetter)}`;
+      }
+
+      if (article.classList.contains('answered')) {
+        const selectedEl = article.querySelector('.option-item.selected');
+        const selectedLetter = String(selectedEl?.dataset.letter || '').toUpperCase();
+        const selectedText = selectedEl?.textContent?.trim() || selectedLetter;
+        revealCard(article, { selectedLetter, selectedText });
+      }
+
+      showSyncToast(`Gabarito atualizado para ${nextLetter}.`);
+    });
+  }
+
   article.querySelector('.btn-delete-card').addEventListener('click', async () => {
     if (!confirm('Tem certeza que deseja excluir esta questão?')) return;
     
@@ -1188,10 +1304,10 @@ function filterCards() {
 
   document.querySelectorAll('.card').forEach(card => {
     const text = card.querySelector('.card-question').textContent.toLowerCase();
-    const isAnswered = card.classList.contains('answered');
-    const isReviewLater = card.classList.contains('for-review');
-    const qid = card.dataset.qid;
+    const qid = String(card.dataset.qid || '');
     const sm2Entry = _sm2Cache[qid];
+    const isAnswered = card.classList.contains('answered') || hasAnsweredHistory(qid);
+    const isReviewLater = card.classList.contains('for-review');
     const isDue = onlySm2Due ? sm2IsDue(sm2Entry) : true;
     const hasErrors = onlyErrors ? (sm2Entry && (sm2Entry.errors || 0) > 0) : true;
     const ratedToday = sm2Entry?.lastRated === todayStr;
@@ -1324,12 +1440,14 @@ function buildSubjectHeader(subject, count, icon = 'account_tree') {
 
 function rebuildCardList(questions, mode = 'default') {
   const cardList = document.getElementById('cardList');
+  const toQid = value => String(value ?? '');
 
   // Save answered and review state
   const answeredIds = new Set();
   const reviewIds = new Set();
   document.querySelectorAll('.card').forEach(c => {
-    const qid = c.dataset.qid;
+    const qid = toQid(c.dataset.qid);
+    if (!qid) return;
     if (c.classList.contains('answered')) answeredIds.add(qid);
     if (c.classList.contains('for-review')) reviewIds.add(qid);
   });
@@ -1362,12 +1480,13 @@ function rebuildCardList(questions, mode = 'default') {
     }
 
     const card = buildCard(q, i);
-    if (answeredIds.has(q.id)) {
+    const qid = toQid(q.id);
+    if (answeredIds.has(qid) || hasAnsweredHistory(qid)) {
       card.querySelector('.reveal-btn').hidden = true;
       card.querySelector('.card-answer').hidden = false;
       card.classList.add('answered');
     }
-    if (reviewIds.has(q.id)) {
+    if (reviewIds.has(qid)) {
       applyReviewLaterState(card, true);
     }
     fragment.appendChild(card);
@@ -1600,11 +1719,14 @@ chrome.storage.local.get(['binderStructure'], (result) => {
 });
 
 // Live sync: re-render whenever the binder is updated in the extension
-chrome.storage.onChanged.addListener((changes, area) => {
+chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== 'local' || !changes.binderStructure) return;
   const data = changes.binderStructure.newValue;
   let questions = Array.isArray(data) ? collectQuestions(data) : [];
   _originalOrder = [...questions];
+
+  // Keep SM-2 cache in sync so "Feitas hoje"/answered filters remain correct
+  await loadSm2Data();
 
   // Apply current sort
   const sortSelect = document.getElementById('sortSelect');
@@ -1618,6 +1740,15 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const next = questions.length;
   const diff = next - prev;
   rebuildCardList(questions, sortMode);
+
+  // Rebuild done drawer from SM-2 (rated today) to avoid cards reappearing in main list
+  const doneList = document.getElementById('doneDrwrList');
+  const doneCount = document.getElementById('doneDrwrCount');
+  const doneDrawer = document.getElementById('doneDrwr');
+  if (doneList) doneList.innerHTML = '';
+  if (doneCount) doneCount.textContent = '0';
+  if (doneDrawer) doneDrawer.style.display = 'none';
+  initDoneDrawerFromSm2();
 
   total = questions.length;
   document.getElementById('counterEl').textContent =
@@ -1671,6 +1802,14 @@ let _userAnswers = {}; // qid → user's typed answer (for Comparar)
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+}
+
+function hasAnsweredHistory(qid) {
+  const key = String(qid ?? '');
+  if (!key) return false;
+  const entry = _sm2Cache[key];
+  if (!entry) return false;
+  return (entry.totalRatings || 0) > 0 || Boolean(entry.lastRated);
 }
 
 function addDays(dateStr, days) {
@@ -3520,6 +3659,178 @@ async function restorePomodoroPosition(widget) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════
+//  MANUAL ADD QUESTION
+// ════════════════════════════════════════════════════════════════
+function setupManualAddQuestion() {
+  const triggerBtn = document.getElementById('btnAddQuestion');
+  const overlay    = document.getElementById('maqOverlay');
+  if (!triggerBtn || !overlay) return;
+
+  const closeModal = () => overlay.classList.add('hidden');
+
+  const showError = (msg) => {
+    const el = document.getElementById('maqError');
+    const ms = document.getElementById('maqErrorMsg');
+    if (ms) ms.textContent = msg;
+    if (el) el.classList.remove('hidden');
+  };
+
+  const hideError = () => {
+    document.getElementById('maqError')?.classList.add('hidden');
+  };
+
+  const resetForm = () => {
+    const qTA = document.getElementById('maqQuestion');
+    const aTA = document.getElementById('maqAnswer');
+    const sub = document.getElementById('maqSubject');
+    const src = document.getElementById('maqSource');
+    const saveBtn = document.getElementById('maqSaveBtn');
+    if (qTA)  { qTA.value = ''; document.getElementById('maqQCount').textContent = '0'; }
+    if (aTA)  { aTA.value = ''; document.getElementById('maqACount').textContent = '0'; }
+    if (sub)  sub.value = '';
+    if (src)  src.value = '';
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = '<span class="icon">save</span> Salvar questão';
+    }
+    hideError();
+  };
+
+  const populateFolders = () => {
+    const select = document.getElementById('maqFolder');
+    if (!select) return;
+    select.innerHTML = '';
+    chrome.storage.local.get(['binderStructure'], (result) => {
+      const data = result.binderStructure;
+      if (!Array.isArray(data)) return;
+      const addOpts = (nodes, prefix) => {
+        for (const node of nodes) {
+          if (node.type === 'folder') {
+            const opt = document.createElement('option');
+            opt.value = node.id;
+            opt.textContent = prefix + (node.title || node.id);
+            select.appendChild(opt);
+            if (node.children?.length) addOpts(node.children, prefix + '\u00a0\u00a0\u203a ');
+          }
+        }
+      };
+      addOpts(data, '');
+    });
+  };
+
+  const openModal = () => {
+    resetForm();
+    populateFolders();
+    overlay.classList.remove('hidden');
+    setTimeout(() => document.getElementById('maqQuestion')?.focus(), 60);
+  };
+
+  // Open trigger
+  triggerBtn.addEventListener('click', openModal);
+
+  // Close buttons
+  document.getElementById('maqCloseBtn')?.addEventListener('click', closeModal);
+  document.getElementById('maqCancelBtn')?.addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+  overlay.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeModal();
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') doSave();
+  });
+
+  // Character counters
+  document.getElementById('maqQuestion')?.addEventListener('input', function () {
+    document.getElementById('maqQCount').textContent = this.value.length;
+  });
+  document.getElementById('maqAnswer')?.addEventListener('input', function () {
+    document.getElementById('maqACount').textContent = this.value.length;
+  });
+
+  // Save
+  document.getElementById('maqSaveBtn')?.addEventListener('click', doSave);
+
+  function doSave() {
+    hideError();
+    const question = document.getElementById('maqQuestion')?.value.trim();
+    const answer   = document.getElementById('maqAnswer')?.value.trim();
+    const subject  = document.getElementById('maqSubject')?.value.trim() || '';
+    const source   = document.getElementById('maqSource')?.value.trim()  || '';
+    const folderId = document.getElementById('maqFolder')?.value;
+
+    if (!question || !answer) {
+      showError('Enunciado e resposta são obrigatórios.');
+      return;
+    }
+
+    const saveBtn = document.getElementById('maqSaveBtn');
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.innerHTML = '<span class="icon" style="animation:spin 0.8s linear infinite;display:inline-block">sync</span> Salvando...';
+    }
+
+    chrome.storage.local.get(['binderStructure'], (result) => {
+      let data = result.binderStructure;
+      if (!Array.isArray(data) || !data.length) {
+        data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
+      }
+
+      // Duplicate check
+      const isDupe = ((nodes) => {
+        const check = (nl) => {
+          for (const n of nl) {
+            if (n.type === 'question' && n.content?.question === question) return true;
+            if (n.children && check(n.children)) return true;
+          }
+          return false;
+        };
+        return check(nodes);
+      })(data);
+
+      if (isDupe) {
+        showError('Essa questão já está salva.');
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<span class="icon">save</span> Salvar questão';
+        }
+        return;
+      }
+
+      // Find target folder
+      const findFolder = (nodes, id) => {
+        for (const n of nodes) {
+          if (n.type === 'folder' && n.id === id) return n;
+          if (n.children) { const f = findFolder(n.children, id); if (f) return f; }
+        }
+        return null;
+      };
+
+      const target = (folderId && findFolder(data, folderId)) || data[0];
+      if (!target || !target.children) {
+        showError('Pasta inválida. Tente novamente.');
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<span class="icon">save</span> Salvar questão'; }
+        return;
+      }
+
+      target.children.push({
+        id: 'q' + Date.now(),
+        type: 'question',
+        content: { question, answer, source, subject },
+        createdAt: Date.now()
+      });
+
+      chrome.storage.local.set({ binderStructure: data }, () => {
+        if (chrome.runtime.lastError) {
+          showError('Erro ao salvar: ' + chrome.runtime.lastError.message);
+          if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<span class="icon">save</span> Salvar questão'; }
+          return;
+        }
+        closeModal();
+        // The live chrome.storage.onChanged listener in study.js will auto-reload cards
+      });
+    });
+  }
+}
+
 function setupPomodoroDrag() {
   const widget = document.getElementById('pomodoroWidget');
   if (!widget) return;
@@ -3698,3 +4009,4 @@ setupPomodoroDrag();
 setupStickyOffsets();
 setupSidebarProxyClicks();
 setupSidebarSessionSync();
+setupManualAddQuestion();

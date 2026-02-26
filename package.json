@@ -7,7 +7,9 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "mcp:browser-tools:server": "npx @agentdeskai/browser-tools-server@latest",
+    "mcp:browser-tools:mcp": "npx @agentdeskai/browser-tools-mcp@latest"
   },
   "repository": {
     "type": "git",
@@ -24,5 +26,10 @@
   "dependencies": {
     "axios": "^1.13.5",
     "cheerio": "^1.2.0"
+  },
+  "devDependencies": {
+    "@playwright/mcp": "^0.0.68",
+    "esbuild": "^0.27.3",
+    "playwright": "^1.59.0-alpha-1771104257000"
   }
 }

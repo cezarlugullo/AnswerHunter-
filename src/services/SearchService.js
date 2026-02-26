@@ -47,6 +47,8 @@ import { SearchCacheService } from './search/SearchCacheService.js';
 import { FreeTextAnswerService } from './search/FreeTextAnswerService.js';
 import { PerformanceTimer } from '../utils/PerformanceTimer.js';
 import { BrainlyService } from './BrainlyService.js';
+import { PasseiDiretoService } from './PasseiDiretoService.js';
+import { PasseiDiretoAnswersApiService } from './PasseiDiretoAnswersApiService.js';
 
 // SearchService
 // Coordinates (1) direct extraction and (2) web search + evidence-based refinement.
@@ -955,6 +957,11 @@ export const SearchService = {
   },
   // Flow 2: Google search + evidence-based refine (Search button)
   async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null, pageGabarito = null) {
+    const AH_PERF_ADAPTIVE_TIMEOUT = true;
+    const AH_PERF_GRACE_PREMIUM_MS = 2500;
+    const AH_PERF_EARLY_EXIT_VOTE = 6.0;
+    const AH_PERF_EARLY_EXIT_MARGIN = 2.0;
+
     if (!results || results.length === 0) return [];
 
     // AH-PERF: Performance timer for search flow bottleneck analysis
@@ -968,6 +975,7 @@ export const SearchService = {
     const sources = [];
     // Map: link -> scopedCombinedText — used by AI verification step
     const _scopedTextsMap = new Map();
+    let aiCombinedRan = false; // outer scope — used by AI Combined + AI Verification blocks
     const {
       selected: topResults,
       stats: topResultsDiversity
@@ -1168,6 +1176,46 @@ export const SearchService = {
         }
         return _brainlyGraphQLMap.get(url) || null;
     };
+
+    // ── PasseiDiretoService: pre-fetch via __NEXT_DATA__ (parallel, non-blocking) ──
+    const _passeiUrls = topResults
+        .map(r => r.link || '')
+        .filter(u => PasseiDiretoService.isPasseiDiretoUrl(u));
+    const _passeiPromise = _passeiUrls.length > 0
+        ? PasseiDiretoService.getTextFromUrls(_passeiUrls, 3).catch(e => {
+            console.warn('[PasseiDiretoService] Pre-fetch failed:', e.message);
+            return [];
+          })
+        : Promise.resolve([]);
+    if (_passeiUrls.length > 0) {
+        console.log('[PasseiDiretoService] Pre-fetching ' + _passeiUrls.length + ' URL(s) via __NEXT_DATA__ in parallel');
+    }
+    let _passeiMap = null;
+    const _getPasseiText = async (url) => {
+        if (!_passeiMap) {
+            const docs = await _passeiPromise;
+            _passeiMap = new Map(docs.map(d => [d.url, d.text]));
+        }
+        return _passeiMap.get(url) || null;
+    };
+
+    // ── PasseiDireto material-api answers (complementary fallback) ──
+    console.log('[PD-API] candidate URLs:', _passeiUrls.length);
+    const _passeiApiPromise = _passeiUrls.length > 0
+      ? PasseiDiretoAnswersApiService.getTextsFromUrls(_passeiUrls, 2).catch(() => [])
+      : Promise.resolve([]);
+    let _passeiApiMap = null;
+    const _getPasseiApiText = async (url) => {
+      if (!_passeiApiMap) {
+        const arr = await _passeiApiPromise;
+        console.log('[PD-API] resolved docs:', Array.isArray(arr) ? arr.length : 0);
+        _passeiApiMap = new Map(arr.map(x => [x.url, x.text]));
+      }
+      const hit = _passeiApiMap.get(url) || null;
+      if (hit) console.log('[PD-API] hit for', url, 'len=', hit.length);
+      return hit;
+    };
+
     let aiExtractionCount = 0; // max AI per-page extraction calls per search run
     let aiHtmlExtractionCount = 0; // max AI HTML extraction calls per search run
     const aiKnowledgePool = []; // Accumulated knowledge from AI extraction (partial + full)
@@ -1315,31 +1363,32 @@ export const SearchService = {
         }
       }
     };
-    const _fetchBatch = async batch => {
-      const toFetch = batch.filter(r => !_prefetchedSnaps.has(r.link));
-      if (toFetch.length === 0) return;
-      let idx = 0;
-      const workers = Array.from({
-        length: Math.min(5, toFetch.length)
-      }, async () => {
-        while (idx < toFetch.length) {
-          const r = toFetch[idx++];
-          try {
-            const snap = await ApiService.fetchPageSnapshot(r.link, {
-              timeoutMs: 4500,
-              maxHtmlChars: 1500000,
-              maxTextChars: 12000
-            });
+    // _startFetchBatch: launches all fetches concurrently and returns a Map<link, Promise>.
+    // Each promise resolves as soon as ITS page finishes — no waiting for the others.
+    // This enables streaming analysis: we process each page the moment it arrives.
+    const _startFetchBatch = (batch) => {
+      const promiseMap = new Map();
+      for (const r of batch) {
+        if (_prefetchedSnaps.has(r.link)) {
+          promiseMap.set(r.link, Promise.resolve()); // already in cache — instantly ready
+        } else {
+          const p = ApiService.fetchPageSnapshot(r.link, {
+            timeoutMs: 4500,
+            maxHtmlChars: 1500000,
+            maxTextChars: 12000
+          }).then(snap => {
             _prefetchedSnaps.set(r.link, snap);
-          } catch (e) {
+          }).catch(() => {
             _prefetchedSnaps.set(r.link, null);
-          }
+          });
+          promiseMap.set(r.link, p);
         }
-      });
-      await Promise.all(workers);
+      }
+      return promiseMap;
     };
 
-    // Batch 1: first 5 results
+    // Batch 1: first 5 results — all fetches start in parallel immediately.
+    // Analysis begins for each page as soon as that page's fetch resolves.
     const batch1 = topResults.slice(0, _BATCH_SIZE);
     const batch2 = topResults.slice(_BATCH_SIZE);
     if (typeof onStatus === 'function') {
@@ -1347,34 +1396,37 @@ export const SearchService = {
       const fetching = batch1.length - cached;
       onStatus(fetching > 0 ? `Fetching batch 1/${batch2.length > 0 ? '2' : '1'} (${fetching} sources${cached > 0 ? `, ${cached} cached` : ''})...` : `Analyzing ${batch1.length} cached sources...`);
     }
-    await _fetchBatch(batch1);
-    _storeFetchInCache();
-    console.log(`SearchService: Batch 1 fetch complete — ${_prefetchedSnaps.size} pages ready (${_cacheHits} from cache)`);
-    _ahTimer.mark('Batch 1 Page Fetch');
+    const _batch1FetchMap = _startFetchBatch(batch1); // non-blocking — all 5 start now
+    let _batch2FetchMap = null;
     let _batch2Fetched = batch2.length === 0;
     for (const result of topResults) {
+      // ── Streaming: await ONLY this page's fetch — others continue in parallel ──
+      const _thisPagePromise = _batch1FetchMap.get(result.link) ?? _batch2FetchMap?.get(result.link);
+      if (_thisPagePromise) await _thisPagePromise;
+
       // Batch 2 trigger: after analyzing batch 1, check if we need more sources
       if (!_batch2Fetched && runStats.analyzed >= _BATCH_SIZE) {
+        _storeFetchInCache();
+        console.log(`SearchService: Batch 1 streaming complete — ${_prefetchedSnaps.size} pages processed (${_cacheHits} from cache)`);
+        _ahTimer.mark('Batch 1 Page Fetch');
         const {
           bestLetter,
           votes
         } = EvidenceService.computeVotesAndState(sources);
         const topVote = bestLetter ? votes[bestLetter] || 0 : 0;
-        if (bestLetter && topVote >= 4.5) { // Lowered from 5.5: single strong source (weight~4) should be sufficient
+        if (bestLetter && topVote >= 4.5) { // single strong source is sufficient
           console.log(`SearchService: ⚡ Batch 1 sufficient — skipping batch 2 (votes[${bestLetter}]=${topVote.toFixed(1)})`);
           _batch2Fetched = true; // skip fetch, but still mark as handled
           break; // exit analysis loop early
         }
-        // Need more evidence — fetch batch 2
-        console.log(`SearchService: Batch 1 insufficient (topVote=${topVote.toFixed(1)}) — fetching batch 2 (${batch2.length} sources)...`);
+        // Need more evidence — start all batch 2 fetches in parallel immediately
+        console.log(`SearchService: Batch 1 insufficient (topVote=${topVote.toFixed(1)}) — starting batch 2 in parallel (${batch2.length} sources)...`);
         if (typeof onStatus === 'function') {
           onStatus(`Fetching batch 2 (${batch2.length} more sources)...`);
         }
-        await _fetchBatch(batch2);
-        _storeFetchInCache();
-        console.log(`SearchService: Batch 2 fetch complete — ${_prefetchedSnaps.size} total pages ready`);
-        _ahTimer.mark('Batch 2 Page Fetch (triggered)');
+        _batch2FetchMap = _startFetchBatch(batch2); // non-blocking — all batch2 start now
         _batch2Fetched = true;
+        _ahTimer.mark('Batch 2 Page Fetch (triggered)'); // marks dispatch; per-page wait time flows into Source Analysis Loop
       }
       try {
         const snippet = result.snippet || '';
@@ -1385,7 +1437,16 @@ export const SearchService = {
           onStatus(`Analyzing source ${runStats.analyzed}/${topResults.length}...`);
         }
         const snap = _prefetchedSnaps.get(link) || null;
-        const pageText = (snap?.text || '').trim();
+        // ── PasseiDireto: inject pre-fetched __NEXT_DATA__ text (24KB real content) ──
+        // fetchPageSnapshot returns 50KB partial SSR with no actual question content.
+        // _getPasseiText / _getPasseiApiText were defined but never called — fixed here.
+        const _passeiInjected = PasseiDiretoService.isPasseiDiretoUrl(link)
+            ? (await _getPasseiText(link) || await _getPasseiApiText(link))
+            : null;
+        if (_passeiInjected) {
+            console.log(`[PasseiDireto] ✅ Injecting pre-fetched text (${_passeiInjected.length} chars) for ${link}`);
+        }
+        const pageText = (_passeiInjected || snap?.text || '').trim();
         const combinedText = `${title}. ${snippet}\n\n${pageText}`.trim();
         const scopedCombinedText = EvidenceService.buildQuestionScopedText(combinedText, questionForInference, 3600);
         _scopedTextsMap.set(link, scopedCombinedText.slice(0, 2500)); // AI verification text store
@@ -2641,7 +2702,13 @@ export const SearchService = {
         };
         return hasVeryStrongOptionCoverage(coverage);
       });
-      const minRelevantSources = hasOptions && !hasStrongExplicit ? 2 : 1;
+      const hasSingleStrongDirectFirst = hasOptions && !hasStrongExplicit && relevant.length >= 1 && relevant.some(e => {
+        const host = String(e.hostHint || this._getHostHintFromLink(e.link)).toLowerCase();
+        const coverage = e.optionsCoverage || { hits:0,total:0,ratio:0,hasEnoughOptions:true };
+        const trusted = isTrustedCombinedHost(host) || host.includes("passeidireto.com") || host.includes("studocu.com");
+        return trusted && (e.topicSim || 0) >= 0.55 && (e.optionsMatch === true || hasMediumOptionCoverage(coverage));
+      });
+      const minRelevantSources = hasOptions && !hasStrongExplicit ? (hasSingleStrongDirectFirst ? 1 : 2) : 1;
 
       // ═══ DEBUG: AI Combined Decision ═══
       console.group('🤖 AI Combined Decision');
@@ -2649,7 +2716,7 @@ export const SearchService = {
       relevant.forEach((e, i) => {
         console.log(`  [${i}] origin=${e.origin} host=${e.hostHint} topicSim=${(e.topicSim || 0).toFixed(3)} optMatch=${e.optionsMatch} textLen=${(e.text || '').length}`);
       });
-      console.log(`desperateMode=false | hasStrongExplicit=${hasStrongExplicit} | hasReliableOptionAligned=${hasReliableOptionAlignedSource} | minRelevantSources=${minRelevantSources}`);
+      console.log(`desperateMode=false | hasStrongExplicit=${hasStrongExplicit} | hasReliableOptionAligned=${hasReliableOptionAlignedSource} | singleStrongDirectFirst=${hasSingleStrongDirectFirst} | minRelevantSources=${minRelevantSources}`);
       if (hasOptions && !hasReliableOptionAlignedSource && relevant.length < minRelevantSources) {
         console.log(`⛔ AI combined SKIPPED: weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
         console.log(`SearchService: AI combined skipped - weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
@@ -2726,7 +2793,6 @@ export const SearchService = {
       // source to satisfy minRelevantSources.
       relevant.some(e => e.origin === 'aiEvidence' && (e.topicSim || 0) >= 0.95) && relevant.length >= 2);
       const isSnippetStemSynthesis = canProceedAISynthesisOnly && highConfidenceSnippetStems.length >= 2;
-      let aiCombinedRan = false;
       const canProceedAI = relevant.length > 0 && sources.length > 0 && (!hasOptions || hasReliableOptionAlignedSource && (relevant.length >= minRelevantSources || hasSingleHighTrustAnchor)) || canProceedAISynthesisOnly;
       console.log(`canProceedAI=${canProceedAI}`);
       if (canProceedAISynthesisOnly) {

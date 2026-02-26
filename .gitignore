@@ -2,10 +2,18 @@
 .DS_Store
 Thumbs.db
 *.tmp
-*.bak
 
-# Logs
+# Backup files (all variants with timestamps)
+*.bak
+*.bak*
+*.bak_*
+
+# Logs and build artifacts
 *.log
+build_warnings.txt
+esbuild_out.txt
+diff.txt
+out.js
 
 # IDE folders
 .vscode/
@@ -32,5 +40,37 @@ backend/
 docs/
 _metadata/
 
+# Local-only files (recycling bin - backups, research, tools, build artifacts)
+_local/
+
+# SyncThing and other sync folders
+qlpge*/
+qlpge-p5u2z/
+
+# Dev / maintenance scripts (not part of the extension)
+dedupe.js
+fix_second.js
+fix_translation_dupes.js
+repair_fb.js
+restore_vision.js
+dupes.json
+test_parser.js
+scripts/mock_inject.js
+
+# Research and temp mockup files
+*_RESEARCH.html
+*_RESEARCH.md
+mockup_*.html
+NATIVE_MESSAGING_INSTALL_RESEARCH.html
+NativeFetchBridge_Research.md
+SCRAPING_RESEARCH.html
+
+# Dev test injectors (not for production)
+src/mock_injector.html
+
 # Accidental local files
 nul
+
+# MCP local config
+.mcp.json
+playwright.mcp.config.json

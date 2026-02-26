@@ -163,9 +163,15 @@ export const ApiService = {
     },
 
     _isOpenRouterModelUnavailableError(status, errorText = '') {
-        if (status !== 404) return false;
         const text = String(errorText || '');
-        return /no endpoints found for/i.test(text) || /model[^\n]*not found/i.test(text);
+        if (status === 404) {
+            return /no endpoints found for/i.test(text) || /model[^\n]*not found/i.test(text);
+        }
+        if (status === 400) {
+            // Catches: "X is not a valid model ID", "Invalid model", wrong format (e.g. 'model-free' vs 'model:free')
+            return /not a valid model id/i.test(text) || /invalid model/i.test(text);
+        }
+        return false;
     },
 
     _getOpenRouterFallbackModel(settings = {}, currentModel = '') {
@@ -174,7 +180,7 @@ export const ApiService = {
 
         const candidates = [
             configured,
-            'google/gemini-2.5-flash-free',
+            'google/gemini-2.5-flash:free',  // fixed: was 'google/gemini-2.5-flash-free' (invalid)
             'qwen/qwen-2.5-coder-32b-instruct:free',
             'google/gemini-exp-1121:free',
             'zhipuai/glm-4-plus'
@@ -550,14 +556,20 @@ export const ApiService = {
 
         // Check if user is authenticated
         const loggedIn = await CopilotAuthService.isLoggedIn();
-        if (!loggedIn) return null; // Not logged in — silently skip
+        if (!loggedIn) {
+            console.warn('AnswerHunter: Copilot unavailable — user not logged in (fallback enabled)');
+            return null;
+        }
 
         const settings = await this._getSettings();
         const model = opts.model || settings.copilotModel || 'gpt-4o';
 
         // Get a valid Copilot token (auto-refreshes the 30-min token)
         const copilotToken = await CopilotAuthService.getValidToken();
-        if (!copilotToken) return null;
+        if (!copilotToken) {
+            console.warn('AnswerHunter: Copilot unavailable — no valid token (fallback enabled)');
+            return null;
+        }
 
         const apiUrl = await CopilotAuthService.getApiUrl();
 
@@ -1554,71 +1566,24 @@ ${truncatedQuestion}
 
 Analise o HTML e responda:`;
 
-        /* Try Gemini first (larger context window, free) */
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                console.log(`  🔬 [aiHtml] Trying Gemini...`);
-                return await this._callGemini([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], { temperature: 0.05, max_tokens: 400, model: 'gemini-2.5-flash' });
-            } catch (e) {
-                console.warn(`  🔬 [aiHtml] Gemini error:`, e?.message || e);
-                return null;
-            }
-        };
-
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                // intercept options to overwrite model
-                const opts = Object.assign({}, { temperature: 0.05, max_tokens: 400, model: 'gemini-2.5-flash' });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
-                return await this._callOpenRouter([
-                    { role: 'system', content: systemMsg },
-                    { role: 'user', content: prompt }
-                ], opts);
-            } catch (e) {
-                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
-                return null;
-            }
-        };
-        const tryGroq = async () => {
-            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                console.log(`  🔬 [aiHtml] Trying Groq (${settings.groqModelSmart})...`);
-                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model: settings.groqModelSmart,
-                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                        temperature: 0.05,
-                        max_tokens: 400
-                    })
-                }));
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) {
-                console.warn(`  🔬 [aiHtml] Groq error:`, e?.message || e);
-                return null;
-            }
-        };
-
-        let content = null;
-        const primary = settings.primaryProvider || 'groq';
-        if (primary === 'openrouter') {
-            content = await tryOpenRouter();
-            if (!content) content = await tryGroq();
-            if (!content) content = await tryGemini();
-        } else if (primary === 'gemini') {
-            content = await tryGemini();
-            if (!content) content = await tryGroq();
-            if (!content) content = await tryOpenRouter();
-        } else {
-            content = await tryGroq();
-            if (!content) content = await tryOpenRouter();
-            if (!content) content = await tryGemini();
+        const { content, usedProvider } = await this._callAnyProvider(
+            [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: prompt }
+            ],
+            {
+                temperature: 0.05,
+                max_tokens: 400,
+                model_groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
+                model_openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                model_gemini: settings.geminiModelSmart || settings.geminiModel || 'gemini-2.5-flash',
+                model_chatgpt: settings.chatgptModel || 'gpt-5.2',
+                model_copilot: settings.copilotModel || 'claude-sonnet-4.6'
+            },
+            '🔬 [aiHtml]'
+        );
+        if (usedProvider) {
+            console.log(`  🔬 [aiHtml] provider used: ${usedProvider}`);
         }
 
         if (!content || content.length < 10) {
@@ -1859,10 +1824,17 @@ INCONCLUSIVO: [motivo em 1 linha]`;
         let final = primary;
         const primaryBlockedLike = primary.ok && this._looksBlockedLikeContent(primary.text, url);
         const primaryTooSmall = primary.ok && (primary.text || '').length < 500;
+        // PasseiDireto CDN returns a 50KB partial SSR shell from SW/bot context (ok=true, ~12000
+        // chars text) — correct HTTP 200 but __NEXT_DATA__ is absent. BackgroundTabExtractorService
+        // opens a real Chrome tab and gets the fully JS-rendered DOM with __NEXT_DATA__ intact.
+        const primaryLacksNextData = primary.ok
+            && BackgroundTabExtractorService.isJsHeavySpa(url)
+            && !/id="__NEXT_DATA__"/.test(primary.text || '');
         const shouldTryFallbacks =
             (!primary.ok && (primary.status === 403 || primary.status === 429 || primary.status === 0))
             || primaryTooSmall
-            || primaryBlockedLike;
+            || primaryBlockedLike
+            || primaryLacksNextData;  // JS-heavy SPA returned partial SSR without __NEXT_DATA__
 
         if (shouldTryFallbacks) {
             // ── Background Tab Extraction (JS-heavy SPAs: Studocu, PasseiDireto, Scribd) ──
@@ -2699,6 +2671,32 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 plan.push({ q: normalizeSpace(`${rareTokenQuery} ${cleanQuery.slice(0, 120)} gabarito`), num: 8, boost: 0.52, label: 'rare' });
             }
             plan.push({ q: normalizeSpace(`${cleanQuery} ${siteFilter}`).slice(0, 340), num: 8, boost: 0.5, label: 'site-filter' });
+
+            // ── Options-only queries (busca pelo texto das alternativas) ──────────
+            // Search using ONLY the most distinctive option texts, without the stem.
+            // A site that has the exact option text almost certainly has the exact
+            // question — this avoids snapshot-empty-options-mismatch rejections and
+            // finds documents that topic-only queries miss entirely.
+            if (optionHints && optionHints.length >= 2) {
+                // Sort options by length desc — longer = more specific/distinctive
+                const sortedOpts = [...optionHints]
+                    .filter(o => o && o.length >= 15)
+                    .sort((a, b) => b.length - a.length);
+                if (sortedOpts.length >= 1) {
+                    // Build compact quoted versions (max 50 chars each to keep query short)
+                    const opt1 = normalizeSpace(sortedOpts[0]).slice(0, 52).replace(/["]/g, '');
+                    const opt2 = sortedOpts.length >= 2 ? normalizeSpace(sortedOpts[1]).slice(0, 52).replace(/["]/g, '') : null;
+                    // options-only: just the 2 best options + gabarito (no stem)
+                    const optOnlyQ = opt2
+                        ? normalizeSpace(`"${opt1}" "${opt2}" gabarito`)
+                        : normalizeSpace(`"${opt1}" gabarito`);
+                    plan.push({ q: optOnlyQ.slice(0, 280), num: 10, boost: 0.88, label: 'options-only' });
+                    // options-site: best single option + site filter (very targeted)
+                    const optSiteQ = normalizeSpace(`"${opt1}" gabarito ${siteFilter}`).slice(0, 340);
+                    plan.push({ q: optSiteQ, num: 8, boost: 0.82, label: 'options-site' });
+                    console.log(`AnswerHunter: Options-only query: "${optOnlyQ.slice(0, 120)}"`);
+                }
+            }
             return plan.filter((entry) => entry.q && entry.q.length >= 8);
         };
 

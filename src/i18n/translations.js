@@ -304,6 +304,19 @@ export const TRANSLATIONS = {
     'binder.studyMode.reveal': 'Reveal Answer',
     'setup.removeOpenrouterKey': 'Remove OpenRouter key',
 
+    'manual.add.btnTitle': 'Add question manually',
+    'manual.add.title': 'Add Question',
+    'manual.add.questionLabel': 'Question',
+    'manual.add.answerLabel': 'Answer / Key',
+    'manual.add.subjectLabel': 'Subject / Topic',
+    'manual.add.sourceLabel': 'Source (URL or name)',
+    'manual.add.folderLabel': 'Save to folder',
+    'manual.add.cancel': 'Cancel',
+    'manual.add.save': 'Save question',
+    'manual.add.success': 'Question saved successfully!',
+    'manual.add.errorRequired': 'Question and answer are required.',
+    'manual.add.errorDuplicate': 'This question is already saved.',
+
   },
 
   'pt-BR': {
@@ -606,6 +619,19 @@ export const TRANSLATIONS = {
     'binder.studyMode.disable': 'Desativar Modo Estudo',
     'binder.studyMode.reveal': 'Revelar Resposta',
     'setup.removeOpenrouterKey': 'Remover chave OpenRouter',
+
+    'manual.add.btnTitle': 'Adicionar questão manualmente',
+    'manual.add.title': 'Adicionar Questão',
+    'manual.add.questionLabel': 'Enunciado',
+    'manual.add.answerLabel': 'Resposta / Gabarito',
+    'manual.add.subjectLabel': 'Disciplina / Assunto',
+    'manual.add.sourceLabel': 'Fonte (URL ou nome)',
+    'manual.add.folderLabel': 'Salvar em',
+    'manual.add.cancel': 'Cancelar',
+    'manual.add.save': 'Salvar questão',
+    'manual.add.success': 'Questão salva com sucesso!',
+    'manual.add.errorRequired': 'Enunciado e resposta são obrigatórios.',
+    'manual.add.errorDuplicate': 'Essa questão já está salva.',
 
   }
 };

@@ -10,6 +10,7 @@ import { ChatGPTAuthService } from '../services/ChatGPTAuthService.js';
 import { GeminiCLIAuthService } from '../services/GeminiCLIAuthService.js';
 import { CopilotAuthService } from '../services/CopilotAuthService.js';
 import { PerformanceTimer } from '../utils/PerformanceTimer.js';
+import { NativeFetchBridgeService } from '../services/NativeFetchBridgeService.js';
 
 export const PopupController = {
   view: null,
@@ -48,6 +49,8 @@ export const PopupController = {
     await this.refreshChatGPTAuthUI();
     // Check Google/Gemini auth state and update UI
     await this.refreshGeminiAuthUI();
+    // Check NativeFetchBridge binary status
+    this._checkNativeBridgeStatus().catch(() => {});
     // Check GitHub Copilot auth state and update UI
     await this.refreshCopilotAuthUI();
 
@@ -98,6 +101,28 @@ export const PopupController = {
 
     // New Onboarding Bindings
     this.view.elements.welcomeStartBtn?.addEventListener('click', () => this.handleWelcomeStart());
+
+      // NativeFetchBridge Install Button
+      const nativeBridgeInstallBtn = document.getElementById('nativeBridgeInstallBtn');
+      const nativeBridgeInstallStatus = document.getElementById('nativeBridgeInstallStatus');
+      if (nativeBridgeInstallBtn) {
+        nativeBridgeInstallBtn.addEventListener('click', async () => {
+          nativeBridgeInstallBtn.disabled = true;
+          nativeBridgeInstallStatus.style.display = 'block';
+          nativeBridgeInstallStatus.textContent = 'Instalando Bridge Nativo...';
+          try {
+            // Windows only: launch PowerShell installer
+            const extId = chrome.runtime.id;
+            const scriptPath = 'backend/native/install.ps1';
+            // Chrome extension cannot launch native process directly, so show instructions
+            nativeBridgeInstallStatus.textContent = 'Abra o PowerShell e rode:\n'
+              + `& "${scriptPath}" -ExtensionId "${extId}"\nDepois recarregue a extensão.`;
+          } catch (e) {
+            nativeBridgeInstallStatus.textContent = 'Falha ao iniciar instalação: ' + (e.message || e);
+          }
+          nativeBridgeInstallBtn.disabled = false;
+        });
+      }
 
     // Slide Navigation
     this.view.elements.btnNextGroq?.addEventListener('click', () => this.goToSetupStep(2));
@@ -190,6 +215,7 @@ export const PopupController = {
     this.view.elements.searchBtn?.addEventListener('click', () => this.handleSearch());
     this.view.elements.copyBtn?.addEventListener('click', () => this.handleCopyAll());
     this.view.elements.clearBinderBtn?.addEventListener('click', () => BinderController.handleClearAll());
+    document.getElementById('addQuestionBtn')?.addEventListener('click', () => BinderController.handleAddManual());
 
     this.view.elements.tabs.forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -3715,7 +3741,67 @@ export const PopupController = {
       }
       return;
     }
-  }
+  },
+
+  // ─── NativeFetchBridge Status ──────────────────────────────────────────────
+
+  async _checkNativeBridgeStatus() {
+    const banner  = document.getElementById('native-bridge-banner');
+    const dot     = document.getElementById('native-bridge-dot');
+    const label   = document.getElementById('native-bridge-label');
+    const installBtn = document.getElementById('native-bridge-install-btn');
+    if (!banner || !dot || !label) return;
+
+    // Show banner
+    banner.classList.remove('hidden');
+    dot.className = 'native-bridge-dot';
+    label.textContent = 'NativeFetch Bridge: checking...';
+
+    try {
+      const available = await Promise.race([
+        NativeFetchBridgeService.isAvailable(),
+        new Promise(r => setTimeout(() => r(false), 3000)),
+      ]);
+
+      if (available) {
+        banner.classList.remove('warn', 'err');
+        dot.className = 'native-bridge-dot ok';
+        label.textContent = 'NativeFetch Bridge: ativo ✓';
+        if (installBtn) installBtn.classList.add('hidden');
+      } else {
+        banner.classList.add('warn');
+        dot.className = 'native-bridge-dot warn';
+        label.textContent = 'NativeFetch Bridge não instalado';
+        if (installBtn) installBtn.classList.remove('hidden');
+      }
+    } catch (e) {
+      banner.classList.add('err');
+      dot.className = 'native-bridge-dot err';
+      label.textContent = 'NativeFetch Bridge: erro';
+      if (installBtn) installBtn.classList.remove('hidden');
+    }
+
+    // Install button handler
+    if (installBtn && !installBtn._bridgeHandlerAdded) {
+      installBtn._bridgeHandlerAdded = true;
+      installBtn.addEventListener('click', () => this._downloadBridgeInstaller());
+    }
+  },
+
+  _downloadBridgeInstaller() {
+    const isWin = /Win/i.test(navigator.platform || navigator.userAgent);
+    const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
+    const base = 'https://raw.githubusercontent.com/answerhunter/extension/main/backend/native/';
+    if (isWin) {
+      chrome.downloads.download({ url: base + 'install.ps1', filename: 'install-native-bridge.ps1' });
+      alert('Execute o arquivo baixado com PowerShell:\nBotao direito → Run with PowerShell');
+    } else {
+      const script = isMac ? 'install.sh' : 'install.sh';
+      chrome.downloads.download({ url: base + script, filename: 'install-native-bridge.sh' });
+      alert('No terminal execute:\nchmod +x ~/Downloads/install-native-bridge.sh && ~/Downloads/install-native-bridge.sh');
+    }
+  },
+
 };
 
 
