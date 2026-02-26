@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "check:i18n": "node scripts/check-i18n.js",
     "mcp:browser-tools:server": "npx @agentdeskai/browser-tools-server@latest",
     "mcp:browser-tools:mcp": "npx @agentdeskai/browser-tools-mcp@latest"
   },
