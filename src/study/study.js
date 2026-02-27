@@ -1293,7 +1293,9 @@ function updateProgress() {
 }
 
 function filterCards() {
-  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  const searchInputEl = document.getElementById('searchInput');
+  const anchorTopBefore = searchInputEl?.getBoundingClientRect().top ?? null;
+  const q = (searchInputEl?.value || '').toLowerCase().trim();
   const selectedSubject = document.getElementById('subjectSelect')?.value || 'all';
   const hideAnswered = document.getElementById('chipHideAnswered').classList.contains('active');
   const onlyReview = document.getElementById('chipReviewOnly').classList.contains('active');
@@ -1335,6 +1337,17 @@ function filterCards() {
   });
 
   updateProgress();
+
+  // Keep the search bar visually stable while cards are hidden/shown.
+  if (anchorTopBefore !== null) {
+    const anchorTopAfter = searchInputEl?.getBoundingClientRect().top ?? null;
+    if (anchorTopAfter !== null) {
+      const delta = anchorTopAfter - anchorTopBefore;
+      if (Math.abs(delta) > 1) {
+        window.scrollBy({ top: delta, left: 0, behavior: 'auto' });
+      }
+    }
+  }
 }
 
 /* ═══ Sorting ═══════════════════════════════════════════════════════════════ */

@@ -11,6 +11,8 @@ import { GeminiCLIAuthService } from '../services/GeminiCLIAuthService.js';
 import { CopilotAuthService } from '../services/CopilotAuthService.js';
 import { PerformanceTimer } from '../utils/PerformanceTimer.js';
 import { NativeFetchBridgeService } from '../services/NativeFetchBridgeService.js';
+import { PageGabaritoCache } from '../services/PageGabaritoCache.js';
+import { QuestionParser } from '../services/search/QuestionParser.js';
 
 export const PopupController = {
   view: null,
@@ -2151,6 +2153,7 @@ export const PopupController = {
       const domOptionCount = countDistinctOptions(domQuestion);
       let usedVisionOcr = false;
       let ocrVisionText = null; // Store OCR text for option fallback
+      let ocrVisionOptionCount = 0;
 
       // Also count inline options (A) ... B) ... on same line, no preceding \n)
       const _domInlineRe = /\b([A-Ea-e])\s*[\)\.\-:]\s*\S/g;
@@ -2176,6 +2179,11 @@ export const PopupController = {
               const visionText = await ApiService.extractTextFromScreenshot(base64);
               if (visionText && visionText.length >= 30) {
                 const visionOpts = countDistinctOptions(visionText);
+                const inlineOptRe = /\b([A-Ea-e])\s*[\)\.\-:]\s*\S/g;
+                const inlineLetters = new Set();
+                let iom;
+                while ((iom = inlineOptRe.exec(visionText)) !== null) inlineLetters.add(iom[1].toUpperCase());
+                ocrVisionOptionCount = Math.max(visionOpts, inlineLetters.size);
                 const domOptCount = domEffectiveOptCount;
                 console.log(`AnswerHunter: OCR_COMPARE opts_ocr=${visionOpts} opts_dom=${domOptCount} len_ocr=${visionText.length} len_dom=${(domQuestion || '').length}`);
                 console.log(`AnswerHunter: Vision OCR returned ${visionText.length} chars, ${visionOpts} options`);
@@ -2213,6 +2221,112 @@ export const PopupController = {
           console.log('AnswerHunter: OCR_PRIORITY decision=dom_capture_failed');
         }
       } // end else (domIsSufficient)
+
+      // ── Context recovery: OCR gave short text (question preamble above scroll) ──
+      // Find the element containing the OCR fragment, walk up the DOM tree to get the full context.
+      // Uses textContent (no layout reflow = no scroll) instead of innerText.
+      const preCtxOptionCount = countDistinctOptions(bestQuestion || '');
+      const shouldTryContextRecovery =
+        !!bestQuestion &&
+        bestQuestion.length < 400 &&
+        bestFrameIndex === -1 &&
+        preCtxOptionCount < 4 &&
+        !(usedVisionOcr && ocrVisionOptionCount >= 4); // trusted OCR with full options: don't expand context
+
+      if (shouldTryContextRecovery) {
+        try {
+          const ctxResults = await chrome.scripting.executeScript({
+            target: { tabId: tab.id, allFrames: true },
+            func: (shortText) => {
+              const norm = (s) => String(s||'').toLowerCase().normalize('NFD')
+                .replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+              const clean = (s) => String(s||'').replace(/\s+/g,' ').trim();
+              const shortNorm = norm(shortText).substring(0, 80);
+              if (!shortNorm || shortNorm.length < 15) return '';
+
+              // 1) Find the leaf element that contains the OCR fragment
+              const all = Array.from(document.querySelectorAll('p,span,div,li,td,h1,h2,h3,h4,section,article'));
+              let target = null;
+              for (const el of all) {
+                const tc = clean(el.textContent);
+                if (tc.length < 30 || tc.length > 12000) continue;
+                if (norm(tc).includes(shortNorm)) { target = el; break; }
+              }
+              if (!target) {
+                // fallback: search body text for fragment and return window around it
+                // Use toLowerCase (doesn't change length) so indices stay valid
+                const bodyText = clean(document.body.textContent);
+                const searchFrag = shortText.substring(0, 40).toLowerCase();
+                const idx = bodyText.toLowerCase().indexOf(searchFrag);
+                if (idx >= 0) {
+                  const start = Math.max(0, idx - 600);
+                  return bodyText.substring(start, idx + shortText.length + 300);
+                }
+                return '__NOTFOUND__';
+              }
+
+              // 2) Walk up to find a parent with more context (preamble above question)
+              // Keep the largest ancestor still under 3500 chars (avoids including other questions)
+              let ctx = target;
+              let bestCtx = target;
+              for (let i = 0; i < 10; i++) {
+                const parent = ctx.parentElement;
+                if (!parent || parent === document.body || parent === document.documentElement) break;
+                ctx = parent;
+                const ptc = clean(ctx.textContent);
+                if (ptc.length >= 3500) break; // would include too much
+                if (ptc.length > clean(bestCtx.textContent).length + 30) bestCtx = ctx;
+              }
+              return clean(bestCtx.textContent).substring(0, 3000);
+            },
+            args: [bestQuestion.substring(0, 120)]
+          });
+          const normalizeCtx = (s) => String(s || '')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9 ]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const overlapScore = (a, b) => {
+            const ta = new Set(normalizeCtx(a).split(' ').filter((t) => t.length >= 4).slice(0, 24));
+            const tb = new Set(normalizeCtx(b).split(' ').filter((t) => t.length >= 4).slice(0, 64));
+            if (ta.size === 0 || tb.size === 0) return 0;
+            let hit = 0;
+            ta.forEach((t) => { if (tb.has(t)) hit += 1; });
+            return hit / ta.size;
+          };
+
+          const currentOptCount = countDistinctOptions(bestQuestion || '');
+          const candidates = (ctxResults || [])
+            .map((r) => String(r?.result || ''))
+            .filter((t) => t && t !== '__NOTFOUND__' && t.length > bestQuestion.length + 40);
+
+          let ctxText = '';
+          let bestCtxScore = 0;
+          for (const candidate of candidates) {
+            const similarity = overlapScore(bestQuestion, candidate);
+            const candidateOptCount = countDistinctOptions(candidate);
+            const keepsOptions = candidateOptCount >= Math.max(2, currentOptCount - 1);
+            const likelySameQuestion = similarity >= 0.55;
+            const score = similarity + (keepsOptions ? 0.08 : -0.2);
+            if (likelySameQuestion && score > bestCtxScore) {
+              bestCtxScore = score;
+              ctxText = candidate;
+            }
+          }
+
+          if (ctxText) {
+            console.log(`AnswerHunter: CONTEXT_RECOVERY expanded ${bestQuestion.length} → ${ctxText.length} chars (score=${bestCtxScore.toFixed(2)})`);
+            bestQuestion = ctxText;
+          } else {
+            console.log(`AnswerHunter: CONTEXT_RECOVERY rejected expansion (bestScore=${bestCtxScore.toFixed(2)}; results=${(ctxResults || []).map(r => String(r?.result || '').length).join(',')})`);
+          }
+        } catch (e) {
+          console.warn('AnswerHunter: CONTEXT_RECOVERY failed:', e?.message);
+        }
+      } else if (bestQuestion && bestQuestion.length < 400 && usedVisionOcr && ocrVisionOptionCount >= 4) {
+        console.log(`AnswerHunter: CONTEXT_RECOVERY skipped (trusted OCR options=${ocrVisionOptionCount})`);
+      }
 
       if (!bestQuestion || bestQuestion.length < 5) {
         this.view.showStatus('error', this.t('status.selectQuestionText'));
@@ -2908,6 +3022,9 @@ export const PopupController = {
         console.log(`AnswerHunter: OCR_PRIORITY post-step=dom_options_scan skipped opts_current=${existingOptionCount} (OCR already has full option set)`);
       }
 
+      // Final canonicalization: rebuild stable "stem + options" before cache/search.
+      displayQuestion = this._canonicalizeDisplayQuestion(displayQuestion, bestQuestion);
+
       // 0) Cache: if we already captured the official gabarito for this exact question, return immediately.
       const cached = await this._getOfficialAnswerFromCache(displayQuestion);
       if (cached?.letter) {
@@ -2984,6 +3101,38 @@ export const PopupController = {
         this.view.setButtonDisabled('copyBtn', false);
         return;
       }
+
+      // Bulk page gabarito cache — instant hit if this page was previously extracted
+      const pgCacheHit = await PageGabaritoCache.lookup(tab.url, displayQuestion);
+      if (pgCacheHit?.letter) {
+        const optionsMap = this._extractOptionsMap(displayQuestion);
+        const answerText = optionsMap[pgCacheHit.letter] || pgCacheHit.answerText || '';
+        const direct = [{
+          question: displayQuestion,
+          answer: `Letra ${pgCacheHit.letter}: ${answerText}`.trim(),
+          answerLetter: pgCacheHit.letter,
+          answerText,
+          optionsMap,
+          sources: [{ title: 'Gabarito da página (cache)', link: tab.url || '', type: 'page-cache' }],
+          bestLetter: pgCacheHit.letter,
+          votes: { [pgCacheHit.letter]: 12 },
+          confidence: 0.96,
+          resultState: 'confirmed',
+          reason: 'confirmed_by_sources',
+          title: this.t('result.title'),
+          aiFallback: false
+        }];
+        const withSaved = this._decorateWithSavedMeta(direct, displayQuestion);
+        this.view.appendResults(withSaved);
+        await this.saveLastResults(withSaved);
+        this.view.showStatus('success', this.t('status.answersFound', { count: 1 }));
+        this.view.toggleViewSection('view-search');
+        this.view.setButtonDisabled('copyBtn', false);
+        return;
+      }
+
+      // Fire bulk extraction in background — caches this page's gabarito for future searches
+      this._triggerPageGabaritoExtraction(tab.url).catch(() => {});
 
       _pcTimer.mark('Question Selection + Validation');
       console.log('AnswerHunter: displayQuestion sent to search →', displayQuestion.substring(0, 200));
@@ -3209,6 +3358,40 @@ export const PopupController = {
     return map;
   },
 
+  _canonicalizeDisplayQuestion(rawText, fallbackStemText = '') {
+    const raw = String(rawText || '').replace(/\r/g, '\n').trim();
+    const fallback = String(fallbackStemText || '').replace(/\r/g, '\n').trim();
+    if (!raw && !fallback) return '';
+
+    const baseText = raw || fallback;
+    let stem = QuestionParser.extractQuestionStem(baseText) || '';
+    if (!stem && fallback) stem = QuestionParser.extractQuestionStem(fallback) || fallback;
+
+    let options = QuestionParser.extractOptionsFromQuestion(baseText) || [];
+    if (options.length < 2 && fallback && fallback !== baseText) {
+      const fallbackOptions = QuestionParser.extractOptionsFromQuestion(fallback) || [];
+      if (fallbackOptions.length > options.length) options = fallbackOptions;
+    }
+
+    const optionMap = {};
+    for (const line of options) {
+      const m = String(line || '').match(/^\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i);
+      if (!m) continue;
+      const letter = m[1].toUpperCase();
+      const body = QuestionParser.stripOptionTailNoise(m[2]);
+      if (!body) continue;
+      if (!optionMap[letter] || body.length > optionMap[letter].length) optionMap[letter] = body;
+    }
+
+    const orderedLetters = ['A', 'B', 'C', 'D', 'E'].filter((letter) => !!optionMap[letter]);
+    const rebuiltOptions = orderedLetters.map((letter) => `${letter}) ${optionMap[letter]}`);
+
+    if (stem && rebuiltOptions.length >= 2) return `${stem}\n${rebuiltOptions.join('\n')}`.trim().slice(0, 3500);
+    if (stem) return stem.slice(0, 3500);
+    if (rebuiltOptions.length >= 2) return rebuiltOptions.join('\n').slice(0, 3500);
+    return baseText.slice(0, 3500);
+  },
+
   _normalizeForFingerprint(text) {
     return String(text || '')
       .toLowerCase()
@@ -3288,6 +3471,18 @@ export const PopupController = {
     } catch (_) {
       return null;
     }
+  },
+
+  /** Busca o HTML da página via Jina/NativeFetch (sem tocar no DOM da aba ativa) e cacheia gabarito. */
+  async _triggerPageGabaritoExtraction(pageUrl) {
+    if (!pageUrl) return;
+    if (await PageGabaritoCache.isPageCached(pageUrl)) return;
+    try {
+      let html = await ApiService.fetchViaJina(pageUrl);
+      if (!html || html.length < 300) html = await NativeFetchBridgeService.fetchText(pageUrl);
+      if (!html || html.length < 300) return;
+      await PageGabaritoCache.extractAndStore(html, pageUrl);
+    } catch (_) {}
   },
 
   async renderAiFallback(questionText, displayQuestion) {
