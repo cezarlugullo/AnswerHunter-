@@ -3074,7 +3074,7 @@ export const PopupController = {
         }];
 
         const withSaved = this._decorateWithSavedMeta(direct, displayQuestion);
-
+        this._logExtractionTable(withSaved);
         this.view.appendResults(withSaved);
         await this.saveLastResults(withSaved);
         this.view.showStatus('success', this.t('status.answersFound', { count: 1 }));
@@ -3116,7 +3116,7 @@ export const PopupController = {
         }];
 
         const withSaved = this._decorateWithSavedMeta(direct, displayQuestion);
-
+        this._logExtractionTable(withSaved);
         this.view.appendResults(withSaved);
         await this.saveLastResults(withSaved);
         this.view.showStatus('success', this.t('status.answersFound', { count: 1 }));
@@ -3146,6 +3146,7 @@ export const PopupController = {
           aiFallback: false
         }];
         const withSaved = this._decorateWithSavedMeta(direct, displayQuestion);
+        this._logExtractionTable(withSaved);
         this.view.appendResults(withSaved);
         await this.saveLastResults(withSaved);
         this.view.showStatus('success', this.t('status.answersFound', { count: 1 }));
@@ -3249,6 +3250,7 @@ export const PopupController = {
 
     console.log('AnswerHunter: Final results to display:', finalResults);
     const withSaved = this._decorateWithSavedMeta(finalResults, displayQuestion);
+    this._logExtractionTable(withSaved);
     this.view.appendResults(withSaved);
     await this.saveLastResults(withSaved);
     this.view.showStatus('success', this.t('status.answersFound', { count: finalResults.length }));
@@ -3558,6 +3560,24 @@ export const PopupController = {
         reviewLater: meta.reviewLater
       };
     });
+  },
+
+  /** Logs a user-friendly DevTools table showing extraction source, success, and answer. */
+  _logExtractionTable(results) {
+    const rows = (results || []).map((r, i) => {
+      const sources = Array.isArray(r.sources) && r.sources.length
+        ? r.sources.map(s => s.title || s.link || '?').join(', ')
+        : (r.aiFallback ? 'IA (fallback)' : '—');
+      const letter = String(r.answerLetter || r.bestLetter || '').toUpperCase();
+      const extracted = /^[A-E]$/.test(letter) ? '✅' : '❌';
+      const gabarito = /^[A-E]$/.test(letter)
+        ? `${letter}${r.answerText ? ' — ' + String(r.answerText).slice(0, 60) : ''}`
+        : '—';
+      return { '#': i + 1, 'Fonte': sources, 'Extraiu?': extracted, 'Gabarito': gabarito };
+    });
+    console.groupCollapsed('%c🎯 AnswerHunter — Resultado da Extração', 'color: #0ea5e9; font-weight: bold; font-size: 13px;');
+    console.table(rows);
+    console.groupEnd();
   },
 
   _buildLiveCardData(card, fallback = {}) {
