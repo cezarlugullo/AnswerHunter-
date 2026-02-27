@@ -91,16 +91,26 @@ export class BackgroundTabExtractorService {
   /**
    * Standard background tab extraction (no CF bypass).
    * Used for Brainly, PasseiDireto, Scribd, Slideshare.
+   * Opens a minimized popup window so the tab never appears in the user's tab bar.
    */
   static async _extractStandard(url, site, extractor, options = {}) {
     const waitMs = options.renderWaitMs != null
       ? options.renderWaitMs
       : BackgroundTabExtractorService._getRenderWaitMs(site);
     let tabId = null;
+    let winId  = null;
     try {
       console.log(`[AH-TAB] Opening hidden tab [${site}] → ${url}`);
-      const tab = await chrome.tabs.create({ url, active: false });
-      tabId = tab.id;
+
+      // Open in a minimized popup window — invisible to user, doesn't pollute their tab bar
+      const win = await new Promise(resolve =>
+        chrome.windows.create({ url, type: 'popup', state: 'minimized', focused: false }, resolve)
+      );
+      winId = win?.id ?? null;
+      tabId = win?.tabs?.[0]?.id ?? null;
+
+      if (!tabId) throw new Error('Failed to create hidden window/tab');
+
       await BackgroundTabExtractorService._waitForTabLoad(tabId, options.timeoutMs || 15000);
       await new Promise(r => setTimeout(r, waitMs));
       const results = await chrome.scripting.executeScript({
@@ -116,7 +126,9 @@ export class BackgroundTabExtractorService {
       console.warn(`[AH-TAB] ❌ Error extracting from ${site}:`, err?.message || err);
       return null;
     } finally {
-      if (tabId !== null) { try { chrome.tabs.remove(tabId); } catch (_) {} }
+      // Close the window (removes the tab too)
+      if (winId !== null) { try { chrome.windows.remove(winId); } catch (_) {} }
+      else if (tabId !== null) { try { chrome.tabs.remove(tabId); } catch (_) {} }
     }
   }
 
@@ -137,7 +149,8 @@ export class BackgroundTabExtractorService {
 
   static _getRenderWaitMs(site) {
     const waits = {
-      brainly: 3500, studocu: 4500, passeidireto: 3000,
+      // PasseiDireto uses Next.js SSR — content is in the initial HTML, no JS wait needed
+      brainly: 3500, studocu: 4500, passeidireto: 400,
       gauthmath: 4500, scribd: 3000, slideshare: 2500
     };
     return waits[site] || 3000;
@@ -147,7 +160,7 @@ export class BackgroundTabExtractorService {
     const map = {
       brainly:      BackgroundTabExtractorService._brainlyExtractor,
       studocu:      BackgroundTabExtractorService._studocuExtractor,
-      passeidireto: BackgroundTabExtractorService._genericExtractor,
+      passeidireto: BackgroundTabExtractorService._passeiDiretoExtractor,
       gauthmath:    BackgroundTabExtractorService._gauthmathExtractor,
       scribd:       BackgroundTabExtractorService._scribdExtractor,
       slideshare:   BackgroundTabExtractorService._genericExtractor
@@ -359,6 +372,45 @@ export class BackgroundTabExtractorService {
         }
       }
       return (document.body?.innerText || document.body?.textContent || '').trim().slice(0, 8000);
+    } catch(e) { return ''; }
+  }
+
+  static _passeiDiretoExtractor() {
+    try {
+      // Remove blur CSS (PD blurs paid content via CSS)
+      document.querySelectorAll('[style*="blur"]').forEach(el => {
+        el.style.filter = 'none'; el.style.webkitFilter = 'none';
+      });
+      // Remove overlays, modals, nav noise
+      ['[class*="modal"]', '[class*="Modal"]', '[class*="overlay"]', '[class*="Overlay"]',
+       '[class*="paywall"]', '[class*="login"]', '[class*="cookie"]',
+       'nav', 'header', 'footer'
+      ].forEach(sel =>
+        document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch(_) {} })
+      );
+      const parts = [];
+      // Include __NEXT_DATA__ JSON: PasseiDiretoAnswersApiService uses it to find question IDs
+      const nextDataEl = document.getElementById('__NEXT_DATA__');
+      if (nextDataEl?.textContent?.length > 100) parts.push(nextDataEl.textContent);
+      // Prioritize answer/gabarito sections
+      ['[class*="answer"]', '[class*="Answer"]', '[class*="resposta"]', '[class*="gabarito"]',
+       '[class*="correct"]', '[class*="alternativa"]', '[class*="solution"]'
+      ].forEach(sel =>
+        document.querySelectorAll(sel).forEach(el => {
+          const t = (el.innerText || '').trim();
+          if (t.length > 20) parts.push(t);
+        })
+      );
+      // Main content
+      for (const sel of ['main', 'article', '[class*="content"]', '[class*="question"]']) {
+        const el = document.querySelector(sel);
+        if (el) {
+          const t = (el.innerText || '').trim();
+          if (t.length > 200) { parts.push(t); break; }
+        }
+      }
+      if (parts.length === 0) parts.push((document.body?.innerText || '').trim());
+      return [...new Set(parts)].join('\n\n').slice(0, 100000);
     } catch(e) { return ''; }
   }
 }

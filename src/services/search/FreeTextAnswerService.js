@@ -89,7 +89,7 @@ export const FreeTextAnswerService = {
         // 1. Inline: "Resposta: texto da resposta"
         for (const line of lines) {
             const m = line.match(INLINE_MARKER);
-            if (m?.[1] && m[1].length >= 12) return m[1].trim();
+            if (m?.[1] && m[1].length >= 2) return m[1].trim();
         }
 
         // 2. Block: "Resposta:" followed by content lines
@@ -114,7 +114,7 @@ export const FreeTextAnswerService = {
     // ── Strategy 1: anchor via OptionsMatchService ────────────────────────────
 
     _strategyAnchor(answerBlock, optionsMap) {
-        if (!answerBlock || answerBlock.length < 10) return null;
+        if (!answerBlock || answerBlock.length < 2) return null;
 
         // ── Direct letter extraction from Portuguese exam answer patterns ────────
         // Catches: "A alternativa correta é a D.", "é a alternativa B)", "letra C", "(D)"

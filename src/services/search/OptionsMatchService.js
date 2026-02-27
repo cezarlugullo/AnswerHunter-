@@ -170,7 +170,7 @@ export const OptionsMatchService = {
         if (!answerText || !optionsMap || Object.keys(optionsMap).length < 2) return null;
 
         const normalizedAnswer = QuestionParser.normalizeOption(String(answerText || ''));
-        if (!normalizedAnswer || normalizedAnswer.length < 12) return null;
+        if (!normalizedAnswer || normalizedAnswer.length < 2) return null;
 
         const stop = new Set([
             'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'resposta',
@@ -188,7 +188,7 @@ export const OptionsMatchService = {
 
             const body = QuestionParser.stripOptionTailNoise(bodyRaw);
             const normalizedBody = QuestionParser.normalizeOption(body);
-            if (!normalizedBody || normalizedBody.length < 8) continue;
+            if (!normalizedBody || normalizedBody.length < 2) continue;
 
             const bodyTokens = normalizedBody.split(/\s+/).map(t => t.trim()).filter(t => t.length >= 4 && !stop.has(t));
             const normalizedBodyCompact = normalizedBody.replace(/\s+/g, '');
@@ -228,6 +228,22 @@ export const OptionsMatchService = {
         const top = scored[0];
         const second = scored[1] || null;
         const margin = top.score - (second?.score || 0);
+        if (normalizedAnswer.length < 12) {
+            const strictShortHits = scored.filter((entry) => {
+                const normalizedBody = QuestionParser.normalizeOption(entry.body || '');
+                return normalizedBody && normalizedBody === normalizedAnswer;
+            });
+            if (strictShortHits.length === 1) {
+                return {
+                    letter: strictShortHits[0].letter,
+                    confidence: 0.90,
+                    score: strictShortHits[0].score,
+                    margin,
+                    method: 'text-short-exact',
+                    matchedBody: strictShortHits[0].body
+                };
+            }
+        }
         const topStrong = top.contains || top.reverseContains;
         const topGoodSemantic = !topStrong && top.score >= 0.68 && top.tokenRatio >= 0.42 && top.tokenHits >= 2;
         const secondStrong = !!second && (second.contains || second.reverseContains || second.score >= 0.62);

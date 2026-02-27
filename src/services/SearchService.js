@@ -49,6 +49,7 @@ import { PerformanceTimer } from '../utils/PerformanceTimer.js';
 import { BrainlyService } from './BrainlyService.js';
 import { PasseiDiretoService } from './PasseiDiretoService.js';
 import { PasseiDiretoAnswersApiService } from './PasseiDiretoAnswersApiService.js';
+import { NativeFetchBridgeService } from './NativeFetchBridgeService.js';
 
 // SearchService
 // Coordinates (1) direct extraction and (2) web search + evidence-based refinement.
@@ -294,7 +295,7 @@ export const SearchService = {
       let bestMethod = '';
       for (const [letter, body] of Object.entries(originalOptionsMap)) {
         const normBody = QuestionParser.normalizeOption(body);
-        if (!normBody || normBody.length < 8) continue;
+        if (!normBody || normBody.length < 2) continue;
 
         // Containment check
         if (normText.includes(normBody)) {
@@ -369,6 +370,16 @@ export const SearchService = {
       }
     }
     flush();
+    // ── Sanitize polluted bodies: truncate at first subsequent letter marker ──
+    // Handles single-line PDFs: "A) XML B) CSV C) TXT D) JSON E) HTML..." → A body = "XML" (not the full line)
+    for (const [k, v] of Object.entries(map)) {
+      const pollution = v.match(/\s+[A-E]\s*[\)\.\-:]\s/i);
+      if (pollution) {
+        const cleaned = v.slice(0, pollution.index).trim();
+        if (cleaned.length >= 2) map[k] = cleaned;
+        else delete map[k];
+      }
+    }
     // ── Fallback: inline option parsing (options concatenated on same line/few lines) ──
     // Handles: "...question stem... A) optA B) optB C) optC D) optD"
     if (Object.keys(map).length < 2) {
@@ -963,6 +974,15 @@ export const SearchService = {
     const AH_PERF_EARLY_EXIT_MARGIN = 2.0;
 
     if (!results || results.length === 0) return [];
+    const debugForceAllSources = await new Promise((resolve) => {
+      try {
+        chrome.storage.local.get(['ah_debug_force_all_sources'], (data) => {
+          resolve(Boolean(data?.ah_debug_force_all_sources));
+        });
+      } catch (_) {
+        resolve(false);
+      }
+    });
 
     // AH-PERF: Performance timer for search flow bottleneck analysis
     const _ahTimer = PerformanceTimer.create('🔍 AnswerHunter Search Flow');
@@ -985,6 +1005,9 @@ export const SearchService = {
       maxPerHost: 1
     });
     console.log(`SearchService: Top results diversified => selected=${topResults.length}, uniqueHosts=${topResultsDiversity.uniqueHosts}/${topResultsDiversity.totalPool}, hostsWithDuplicates=${topResultsDiversity.cappedHosts}`);
+    if (debugForceAllSources) {
+      console.log('SearchService: DEBUG_FORCE_ALL_SOURCES enabled — will analyze all selected sources.');
+    }
     const questionForInference = originalQuestionWithOptions || questionText;
     const questionStem = QuestionParser.extractQuestionStem(questionForInference);
     const questionFingerprint = await this._canonicalHash(questionForInference);
@@ -1151,6 +1174,16 @@ export const SearchService = {
     const aiEvidence = [];
     const collectedForCombined = [];
 
+    // ── NativeFetchBridge: warm up probe before spawning parallel PD fetches ──
+    // isAvailable() sends a probe request (up to 5s). If we don't warm it up here,
+    // all 9 parallel PasseiDiretoService._fetchHtml calls start their own 1.5s
+    // Promise.race timeout before the probe completes → all miss the bridge and fall
+    // back to direct fetch → only partial SSR shell (no __NEXT_DATA__).
+    // By calling isAvailable() once here, _pendingProbe is set and caches the result.
+    // All subsequent per-call checks resolve instantly (true/false) once the probe returns.
+    NativeFetchBridgeService.isAvailable().catch(() => {});
+    console.log('[NativeFetchBridge] probe warmed up before PD pre-fetch');
+
     // ── BrainlyService: pre-fetch answers via GraphQL (parallel, non-blocking) ──
     // Brainly pages are JS-heavy SPAs that fail on direct fetch.
     // GraphQL endpoint /graphql/pt returns answers without auth.
@@ -1182,7 +1215,7 @@ export const SearchService = {
         .map(r => r.link || '')
         .filter(u => PasseiDiretoService.isPasseiDiretoUrl(u));
     const _passeiPromise = _passeiUrls.length > 0
-        ? PasseiDiretoService.getTextFromUrls(_passeiUrls, 3).catch(e => {
+        ? PasseiDiretoService.getTextFromUrls(_passeiUrls, 6).catch(e => {
             console.warn('[PasseiDiretoService] Pre-fetch failed:', e.message);
             return [];
           })
@@ -1216,6 +1249,7 @@ export const SearchService = {
       return hit;
     };
 
+    let aiUrlExtractionCount = 0; // max URL→Jina→AI calls per search run
     let aiExtractionCount = 0; // max AI per-page extraction calls per search run
     let aiHtmlExtractionCount = 0; // max AI HTML extraction calls per search run
     const aiKnowledgePool = []; // Accumulated knowledge from AI extraction (partial + full)
@@ -1399,6 +1433,7 @@ export const SearchService = {
     const _batch1FetchMap = _startFetchBatch(batch1); // non-blocking — all 5 start now
     let _batch2FetchMap = null;
     let _batch2Fetched = batch2.length === 0;
+    const debugVisitedSources = [];
     for (const result of topResults) {
       // ── Streaming: await ONLY this page's fetch — others continue in parallel ──
       const _thisPagePromise = _batch1FetchMap.get(result.link) ?? _batch2FetchMap?.get(result.link);
@@ -1414,10 +1449,12 @@ export const SearchService = {
           votes
         } = EvidenceService.computeVotesAndState(sources);
         const topVote = bestLetter ? votes[bestLetter] || 0 : 0;
-        if (bestLetter && topVote >= 4.5) { // single strong source is sufficient
+        if (!debugForceAllSources && bestLetter && topVote >= 4.5) { // single strong source is sufficient
           console.log(`SearchService: ⚡ Batch 1 sufficient — skipping batch 2 (votes[${bestLetter}]=${topVote.toFixed(1)})`);
           _batch2Fetched = true; // skip fetch, but still mark as handled
           break; // exit analysis loop early
+        } else if (debugForceAllSources && bestLetter && topVote >= 4.5) {
+          console.log(`SearchService: DEBUG_FORCE_ALL_SOURCES keeping full analysis (current votes[${bestLetter}]=${topVote.toFixed(1)}).`);
         }
         // Need more evidence — start all batch 2 fetches in parallel immediately
         console.log(`SearchService: Batch 1 insufficient (topVote=${topVote.toFixed(1)}) — starting batch 2 in parallel (${batch2.length} sources)...`);
@@ -1432,7 +1469,15 @@ export const SearchService = {
         const snippet = result.snippet || '';
         const title = result.title || '';
         const link = result.link;
+        const debugHostHint = this._getHostHintFromLink(link);
         runStats.analyzed += 1;
+        if (debugForceAllSources) {
+          debugVisitedSources.push({
+            index: runStats.analyzed,
+            host: debugHostHint,
+            link
+          });
+        }
         if (typeof onStatus === 'function') {
           onStatus(`Analyzing source ${runStats.analyzed}/${topResults.length}...`);
         }
@@ -1446,7 +1491,19 @@ export const SearchService = {
         if (_passeiInjected) {
             console.log(`[PasseiDireto] ✅ Injecting pre-fetched text (${_passeiInjected.length} chars) for ${link}`);
         }
-        const pageText = (_passeiInjected || snap?.text || '').trim();
+
+        // ── Brainly: inject pre-fetched GQL answer as page text ──
+        // BackgroundTabExtractorService often returns 0 chars for Brainly (SPA fails tab
+        // extraction). The GQL pre-fetch returns the best answer text directly from the API.
+        // Without this injection the source contributes 0-char evidence to the pipeline.
+        const _brainlyInjected = BrainlyService.isBrainlyUrl(link)
+            ? (await _getBrainlyAnswer(link) || null)
+            : null;
+        if (_brainlyInjected) {
+            console.log(`[Brainly] ✅ Injecting GQL answer (${_brainlyInjected.length} chars) for ${link}`);
+        }
+
+        const pageText = (_passeiInjected || _brainlyInjected || snap?.text || '').trim();
         const combinedText = `${title}. ${snippet}\n\n${pageText}`.trim();
         const scopedCombinedText = EvidenceService.buildQuestionScopedText(combinedText, questionForInference, 3600);
         _scopedTextsMap.set(link, scopedCombinedText.slice(0, 2500)); // AI verification text store
@@ -1492,12 +1549,77 @@ export const SearchService = {
                   console.log(`  🧠 [BRAINLY-GQL] Bypassing snapshot rejection for ${_curHostHint} — GraphQL answer ready (${_gqlBypassAnswer.length} chars)`);
                   // fall through to full extraction pipeline
                 } else {
+                  // ── URL → Jina Reader → AI (simplified pipeline) ──
+                  const _brainlyHostHint = _curHostHint;
+                  if (aiUrlExtractionCount < 3 && seedTopicSim >= 0.40 && hasOptions) {
+                    console.log(`  🌐 [URL→AI] Brainly GQL empty — trying Jina+AI for ${_brainlyHostHint}`);
+                    try {
+                      const urlAiResult = await ApiService.aiExtractFromUrl(link, questionForInference);
+                      aiUrlExtractionCount += 1;
+                      if (urlAiResult?.letter && originalOptionsMap?.[urlAiResult.letter]) {
+                        console.log(`  🌐 [URL→AI] ✅ Found letter=${urlAiResult.letter} for ${_brainlyHostHint}`);
+                        const domainWeight = getDomainWeight(link);
+                        sources.push({
+                          title, link,
+                          letter: urlAiResult.letter,
+                          weight: Math.min(1.0, (urlAiResult.confidence || 0.65) * domainWeight * 0.90),
+                          evidenceType: 'url-jina-ai',
+                          hostHint: _brainlyHostHint,
+                          sourceId: `${_brainlyHostHint}:url-ai`,
+                          evidenceBlock: urlAiResult.evidence || '',
+                          matchQuality: seedTopicSim,
+                          questionPolarity
+                        });
+                        runStats.acceptedViaAiExtraction += 1;
+                        console.groupEnd();
+                        continue;
+                      }
+                    } catch (_e) {
+                      console.warn(`  🌐 [URL→AI] Error for ${_brainlyHostHint}:`, _e?.message);
+                    }
+                  }
                   console.log(`⛔ Source #${runStats.analyzed} (${_curHostHint}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total}) [no GraphQL]`);
                   runStats.blockedSnapshotMismatch += 1;
                   this._logSourceDiagnostic({ phase: 'decision', hostHint: _curHostHint, type: 'TYPE_SNAPSHOT_WEAK', topicSim: seedTopicSim, optionsMatch: false, obfuscation: null, decision: 'skip', reason: 'snapshot-empty-options-mismatch' });
                   continue;
                 }
               } else {
+                // ── URL → Jina Reader → AI (simplified pipeline) ──
+                // Before discarding the source, try fetching it via Jina Reader and
+                // letting the LLM extract the answer directly from the clean text.
+                // This handles sites where fetchPageSnapshot is blocked/empty but
+                // Jina can render the page (e.g. generic educational sites, quizzes).
+                const _curHostHint2 = this._getHostHintFromLink(link);
+                if (aiUrlExtractionCount < 3 && seedTopicSim >= 0.40 && hasOptions) {
+                  console.log(`  🌐 [URL→AI] Snapshot weak — trying Jina+AI for ${_curHostHint2} (topicSim=${seedTopicSim.toFixed(2)})`);
+                  try {
+                    const urlAiResult = await ApiService.aiExtractFromUrl(link, questionForInference);
+                    aiUrlExtractionCount += 1;
+                    if (urlAiResult?.letter && originalOptionsMap?.[urlAiResult.letter]) {
+                      console.log(`  🌐 [URL→AI] ✅ Found letter=${urlAiResult.letter} conf=${(urlAiResult.confidence||0).toFixed(3)} for ${_curHostHint2}`);
+                      const domainWeight = getDomainWeight(link);
+                      const urlAiWeight = Math.min(1.0, (urlAiResult.confidence || 0.65) * domainWeight * 0.90);
+                      sources.push({
+                        title,
+                        link,
+                        letter: urlAiResult.letter,
+                        weight: urlAiWeight,
+                        evidenceType: 'url-jina-ai',
+                        hostHint: _curHostHint2,
+                        sourceId: `${_curHostHint2}:url-ai`,
+                        evidenceBlock: urlAiResult.evidence || '',
+                        matchQuality: seedTopicSim,
+                        questionPolarity
+                      });
+                      runStats.acceptedViaAiExtraction += 1;
+                      console.groupEnd();
+                      continue;
+                    }
+                    console.log(`  🌐 [URL→AI] No letter found for ${_curHostHint2}`);
+                  } catch (_urlAiErr) {
+                    console.warn(`  🌐 [URL→AI] Error for ${_curHostHint2}:`, _urlAiErr?.message);
+                  }
+                }
                 console.log(`⛔ Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
                 runStats.blockedSnapshotMismatch += 1;
                 this._logSourceDiagnostic({ phase: 'decision', hostHint: this._getHostHintFromLink(link), type: 'TYPE_SNAPSHOT_WEAK', topicSim: seedTopicSim, optionsMatch: false, obfuscation: null, decision: 'skip', reason: 'snapshot-empty-options-mismatch' });
@@ -1559,8 +1681,12 @@ export const SearchService = {
           // Soft-block: if the extracted text is substantial, the content IS
           // readable in the DOM despite paywall CSS (blur/overlay). Only block
           // when text is truly empty or very short.
-          const readableTextLen = (docText || '').length;
-          console.log(`  🔒 Paywall detected: readableTextLen=${readableTextLen}`);
+          // docText comes from DOMParser which is unavailable in ServiceWorker context
+          // (always returns '' there). Use pageText as fallback — it contains either
+          // the _passeiInjected bypass text or the background-tab extracted text,
+          // both of which reflect actual readable content despite the paywall overlay.
+          const readableTextLen = Math.max((docText || '').length, pageText.length);
+          console.log(`  🔒 Paywall detected: readableTextLen=${readableTextLen} (docText=${(docText||'').length} pageText=${pageText.length})`);
           if (readableTextLen < 400) {
             console.log(`  ⛔ BLOCKED: paywall-overlay (text too short: ${readableTextLen} < 400)`);
             console.groupEnd();
@@ -1693,7 +1819,7 @@ export const SearchService = {
             const _graphqlAnswer = await _getBrainlyAnswer(link);
             if (_graphqlAnswer && _graphqlAnswer.length > 20) {
               // Inject GraphQL answer as pageText so FreeTextAnswerService can map it
-              const _injectedText = '[GraphQL] ' + _graphqlAnswer;
+              const _injectedText = _graphqlAnswer;
               console.log('  🧠 [BRAINLY-GQL] Using GraphQL answer for ' + hostHint + ' (' + _graphqlAnswer.length + ' chars): ' + _graphqlAnswer.substring(0, 100));
               try {
                 const ftGql = await FreeTextAnswerService.extractAnswerFromFreeText(_injectedText, originalOptionsMap, questionStem);
@@ -1993,7 +2119,10 @@ export const SearchService = {
           // AI-HTML fallback: when ff1-highlight couldn't find the answer,
           // send a chunk of raw HTML to AI so it can detect visual highlights
           // using any CSS pattern (not just hardcoded ff1/ff4).
-          if (!extracted?.letter && snap?.html && snap.html.length > 5000 && aiHtmlExtractionCount < 2) {
+          // SKIP for PD /pergunta/ discussion pages: they show student-chosen answers (may be WRONG).
+          // Only run ai-html on actual document/PDF pages where the correct answer is highlighted.
+          const _isPdDiscussion = /passeidireto\.com\/pergunta\//i.test(link);
+          if (!extracted?.letter && !_isPdDiscussion && snap?.html && snap.html.length > 5000 && aiHtmlExtractionCount < 2) {
             const reconstructedQ = questionStem + '\n' + (originalOptions || []).join('\n');
             const optTokensForHtml = QuestionParser.extractOptionTokens(reconstructedQ);
             const htmlSnippet = EvidenceService.extractHtmlAroundQuestion(snap.html, questionStem, optTokensForHtml, 12000);
@@ -2038,8 +2167,19 @@ export const SearchService = {
           }
           if (extracted?.letter) {
             console.log(`  📄 PDF-highlight raw letter: ${extracted.letter} — attempting remap via evidence or scopedCombinedText...`);
-            // Remap letter if source has shuffled options
-            extracted.letter = this._remapLetterIfShuffled(extracted.letter, this._bestRemapText(extracted.evidence, scopedCombinedText), originalOptionsMap);
+            // Same user-space guard as aiExtract: if the user option body for the reported letter
+            // is found in the evidence/scoped text, the AI already reported in user-space — skip remap.
+            const _pdfUserOptBody = (originalOptionsMap || {})[extracted.letter];
+            const _pdfProbeRaw = QuestionParser.normalizeOption(_pdfUserOptBody || '').replace(/\s+/g, '');
+            const _pdfProbe = _pdfProbeRaw.slice(0, 8);
+            const _pdfNormEvid = QuestionParser.normalizeOption((extracted.evidence || '') + ' ' + scopedCombinedText.slice(0, 500)).replace(/\s+/g, '');
+            const _pdfEvidenceConfirms = _pdfProbe.length >= 4 && _pdfNormEvid.includes(_pdfProbe);
+            if (_pdfEvidenceConfirms) {
+              console.log(`  📄 PDF probe "${_pdfProbe}" confirms ${extracted.letter} in user-space — skipping remap`);
+            } else {
+              // Remap letter if source has shuffled options
+              extracted.letter = this._remapLetterIfShuffled(extracted.letter, this._bestRemapText(extracted.evidence, scopedCombinedText), originalOptionsMap);
+            }
             console.log(`SearchService: PDF signal detected. host=${hostHint} letter=${extracted.letter} method=${extracted.method || 'ff1-highlight'}`);
             const baseWeight = getDomainWeight(link);
             const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
@@ -2309,7 +2449,20 @@ export const SearchService = {
           }
           if (aiExtracted?.letter) {
             console.log(`  🤖 [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
-            aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, this._bestRemapText(aiExtracted.evidence, scopedCombinedText), originalOptionsMap);
+            // Skip remap when the AI's evidence already references the user-option body for the
+            // reported letter. This means the AI was reasoning in user-option space and remapping
+            // would corrupt a correct answer (e.g. D=JSONB_BUILD_OBJECT evidence → AI says D,
+            // remap sees src-D=jsonb_cte → maps D→C: WRONG).
+            const _userOptBody = (originalOptionsMap || {})[aiExtracted.letter];
+            const _optProbeRaw = QuestionParser.normalizeOption(_userOptBody || '').replace(/\s+/g, '');
+            const _optProbe = _optProbeRaw.slice(0, 8);
+            const _normEvid = QuestionParser.normalizeOption(aiExtracted.evidence || '').replace(/\s+/g, '');
+            const _evidenceConfirmsLetter = _optProbe.length >= 3 && _normEvid.includes(_optProbe);
+            if (_evidenceConfirmsLetter) {
+              console.log(`  🤖 [AI-EXTRACT] Evidence probe "${_optProbe}" confirms ${aiExtracted.letter} in user-space — skipping remap`);
+            } else {
+              aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, this._bestRemapText(aiExtracted.evidence, scopedCombinedText), originalOptionsMap);
+            }
             console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
             // Validate the letter exists in the user's options map.
             // The AI may find a different question on the same page (e.g. one with 5 options)
@@ -2416,6 +2569,14 @@ export const SearchService = {
     // Merge aiEvidence + collectedForCombined, sorted by topic similarity
 
     _ahTimer.mark(`Source Analysis Loop (${runStats.analyzed} pages / ${runStats.acceptedForVotes} accepted)`);
+    if (debugForceAllSources) {
+      const visitedLinks = new Set(debugVisitedSources.map((s) => s.link));
+      const missing = topResults.filter((r) => !visitedLinks.has(r.link)).map((r) => r.link);
+      console.log(`SearchService: DEBUG_FORCE_ALL_SOURCES summary visited=${debugVisitedSources.length}/${topResults.length} missing=${missing.length}`);
+      if (missing.length > 0) {
+        console.log('SearchService: Missing source links:', missing);
+      }
+    }
     // ═══ DEFERRED AI-MISMATCH EXTRACTION ═══
     // Process mismatch sources that were queued during the main loop.
     // Only runs if we still lack strong explicit evidence — skip entirely when
@@ -2802,14 +2963,28 @@ export const SearchService = {
       if (hasSingleHighTrustAnchor) {
         console.log('✅ AI combined single-source override enabled: trusted high-confidence anchor');
       }
-      if (!canProceedAI) {
-        console.log('❌ AI combined will NOT run');
+      // Fix #18: skip AI combined when ≥2 direct sources unanimously agree on same letter
+      const _sourcesWithLetters = sources.filter(s => s.letter);
+      const _directConsensus = _sourcesWithLetters.length >= 2 && _sourcesWithLetters.length === sources.length && new Set(_sourcesWithLetters.map(s => s.letter)).size === 1;
+      if (!canProceedAI || _directConsensus) {
+        if (_directConsensus) {
+          console.log(`⏩ AI combined SKIPPED: ${sources.length} direct sources unanimously agree on ${_sourcesWithLetters[0].letter}`);
+        } else {
+          console.log('❌ AI combined will NOT run');
+        }
         console.groupEnd();
       }
-      if (canProceedAI) {
+      if (canProceedAI && !_directConsensus) {
         aiCombinedRan = true;
         _ahTimer.mark('AI Combined Pass — Prepare Evidence');
-        const merged = relevant.map((e, i) => `SOURCE ${i + 1}: ${e.title}\n${e.text}\nLINK: ${e.link}`).join('\n\n');
+        // Fix #17: prepend knowledge pool (direct extraction results) as high-priority anchors
+        const _knowledgeAnchors = aiKnowledgePool.length > 0
+          ? aiKnowledgePool
+              .filter(k => (k.topicSim || 0) >= 0.5)
+              .map((k, i) => `DIRECT EVIDENCE ${i + 1} [${k.host}]:\n${k.knowledge}`)
+              .join('\n\n') + '\n\n'
+          : '';
+        const merged = _knowledgeAnchors + relevant.map((e, i) => `SOURCE ${i + 1}: ${e.title}\n${e.text}\nLINK: ${e.link}`).join('\n\n');
 
         // Desperate mode disabled: knowledge-only voting is not allowed without explicit evidence.
         const knowledgePromise = Promise.resolve(null);
@@ -3105,14 +3280,15 @@ export const SearchService = {
             _verifText,
             _verifSrc.hostHint || _verifSrc.link || 'unknown'
           );
-          if (_verifResult?.letter && /^[A-E]$/.test(_verifResult.letter)) {
-            const _verifLetter = this._remapLetterIfShuffled(
-              _verifResult.letter,
-              this._bestRemapText(_verifText, ''),
-              originalOptionsMap
-            );
-            console.log(`  🤖 AI verification result: ${_verifResult.letter} → remapped: ${_verifLetter} (original: ${_verifSrc.letter})`);
-            if (_verifLetter !== _verifSrc.letter) {
+          if (_verifResult?.answerText) {
+            // Text-based mapping: robust to shuffled options and year-over-year letter changes.
+            // The AI returned the TEXT of the correct answer from the student's question.
+            // Map that text to the correct letter in the original question.
+            const _verifLetter = OptionsMatchService.findLetterByAnswerText(_verifResult.answerText, originalOptionsMap);
+            console.log(`  🤖 AI verification result: answerText="${_verifResult.answerText.slice(0,60)}" → letter=${_verifLetter || 'no-match'} (source letter was: ${_verifSrc.letter})`);
+            if (!_verifLetter) {
+              console.log(`  ⚠️ AI verification: no option match for text "${_verifResult.answerText.slice(0,60)}" — discarding`);
+            } else if (_verifLetter !== _verifSrc.letter) {
               console.log(`  ⚠️ AI disagrees with source letter — adding verification source for recompute`);
               const _verifEvidBlock = EvidenceService.buildEvidenceBlock({
                 questionFingerprint,
@@ -3151,7 +3327,7 @@ export const SearchService = {
               confidence = Math.min(0.88, (confidence || 0.5) + 0.15);
             }
           } else {
-            console.log(`  ❌ AI verification returned no valid letter: ${JSON.stringify(_verifResult)}`);
+            console.log(`  ❌ AI verification returned no valid result: ${JSON.stringify(_verifResult)}`);
           }
         } catch (_verifErr) {
           console.warn(`  🔎 AI verification error:`, _verifErr?.message || _verifErr);
@@ -3176,6 +3352,29 @@ export const SearchService = {
     let answerText = '';
     if (bestLetter && originalOptionsMap[bestLetter]) {
       answerText = originalOptionsMap[bestLetter];
+    }
+    // Fallback: when OCR missed the option text (e.g. question too tall, option off-screen),
+    // try to recover the text from evidence of winning sources.
+    if (!answerText && bestLetter) {
+      for (const src of sources) {
+        if (src.letter !== bestLetter) continue;
+        const citText = src.evidenceBlock?.citations?.[0]?.text || '';
+        if (!citText) continue;
+        // Pattern 1: "resposta: 'TEXT'" or "answer: `TEXT`" (aiHtml JSON-LD evidence)
+        const m1 = citText.match(/(?:resposta|answer|correct)[^:]*:\s*[`'"«]([^`'"»\n]{10,250})[`'"»]/i);
+        if (m1) { answerText = m1[1].replace(/^["']|["']$/g, '').trim(); break; }
+        // Pattern 2: letter+paren at line start "C) TEXT"
+        const m2 = citText.match(new RegExp(`\\b${bestLetter}\\)\\s*([^\\n]{10,250})`));
+        if (m2) { answerText = m2[1].trim(); break; }
+        // Pattern 3: any backtick/double-quote block long enough to be an option
+        const m3 = citText.match(/[`"]([A-Z(][^`"\n]{15,250})[`"]/);
+        if (m3) { answerText = m3[1].trim(); break; }
+      }
+      if (answerText) {
+        // Also patch optionsMap so the UI can display it in the options list
+        if (originalOptionsMap) originalOptionsMap[bestLetter] = answerText;
+        console.log(`SearchService: recovered answerText for letter=${bestLetter} from evidence: "${answerText.slice(0, 80)}"`);
+      }
     }
     const answer = bestLetter ? `Letra ${bestLetter}: ${answerText}`.trim() : (sources[0]?.answer || '').trim();
 
@@ -3402,4 +3601,3 @@ export const SearchService = {
     return refined;
   }
 };
-

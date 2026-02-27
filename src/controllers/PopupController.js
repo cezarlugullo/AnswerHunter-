@@ -102,13 +102,11 @@ export const PopupController = {
     // New Onboarding Bindings
     this.view.elements.welcomeStartBtn?.addEventListener('click', () => this.handleWelcomeStart());
 
-      // NativeFetchBridge Install Button
+      // NativeFetchBridge Install Button — opens Turbo Wizard
       const nativeBridgeInstallBtn = document.getElementById('nativeBridgeInstallBtn');
-      const nativeBridgeInstallStatus = document.getElementById('nativeBridgeInstallStatus');
       if (nativeBridgeInstallBtn) {
         nativeBridgeInstallBtn.addEventListener('click', () => {
-          // Delegate to the main install flow (downloads binary + shows instructions)
-          this._downloadBridgeInstaller();
+          this._openTurboWizard();
         });
       }
 
@@ -116,7 +114,7 @@ export const PopupController = {
     this.view.elements.btnNextGroq?.addEventListener('click', () => this.goToSetupStep(2));
     this.view.elements.prevGroq?.addEventListener('click', () => this.goToSetupStep(0)); // Back to welcome?
 
-    this.view.elements.btnNextSerper?.addEventListener('click', () => this.goToSetupStep(3));
+    this.view.elements.btnNextSerper?.addEventListener('click', () => this.goToSetupStep(5));
     this.view.elements.prevSerper?.addEventListener('click', () => this.goToSetupStep(1));
 
     this.view.elements.prevGemini?.addEventListener('click', () => this.goToSetupStep(2));
@@ -124,7 +122,7 @@ export const PopupController = {
     this.view.elements.btnNextGemini?.addEventListener('click', () => this.goToSetupStep(4));
     this.view.elements.btnNextOpenrouter?.addEventListener('click', () => this.goToSetupStep(5));
     this.view.elements.prevOpenrouter?.addEventListener('click', () => this.goToSetupStep(3));
-    this.view.elements.prevPrefs?.addEventListener('click', () => this.goToSetupStep(4));
+    this.view.elements.prevPrefs?.addEventListener('click', () => this.goToSetupStep(2));
 
     this.view.elements.saveSetupBtn?.addEventListener('click', () => this.handleSaveSetup());
     this.view.elements.setupSkipBtn?.addEventListener('click', () => this.handleSaveSetup());
@@ -571,24 +569,24 @@ export const PopupController = {
       const noOpenrouterKeyMsg = this.t('setup.toast.noOpenrouterKeySaved');
       this.view.showToast(
         noOpenrouterKeyMsg === 'setup.toast.noOpenrouterKeySaved'
-          ? 'OpenRouter key is not saved yet.'
+          ? 'OpenRouter key not configured yet.'
           : noOpenrouterKeyMsg,
         'warning'
       );
-      this.view.setSetupStatus('openrouter', 'Missing OpenRouter key', 'error');
+      this.view.setSetupStatus('openrouter', this.t('setup.status.openrouterMissing'), 'error');
     }
     if (provider === 'gemini' && !(await this.hasGeminiAccess())) {
       // No API key and not logged in via Google — open login panel
       document.getElementById('gemini-auth-section')?.classList.remove('hidden');
       effectiveProvider = 'groq';
-      this.view.showToast('Faça login com Google ou adicione uma API key', 'warning');
+      this.view.showToast(this.t('setup.toast.geminiAccessRequired'), 'warning');
     }
     if (provider === 'chatgpt') {
       // ChatGPT uses OAuth, not API keys — check login status synchronously
       const loggedIn = await ChatGPTAuthService.isLoggedIn();
       if (!loggedIn) {
         effectiveProvider = 'groq';
-        this.view.showToast('Login to ChatGPT first', 'warning');
+        this.view.showToast(this.t('setup.toast.chatgptLoginRequired'), 'warning');
         document.getElementById('chatgpt-auth-section')?.classList.remove('hidden');
       }
     }
@@ -597,7 +595,7 @@ export const PopupController = {
       const loggedIn = await CopilotAuthService.isLoggedIn();
       if (!loggedIn) {
         effectiveProvider = 'groq';
-        this.view.showToast('Login to GitHub Copilot first', 'warning');
+        this.view.showToast(this.t('setup.toast.copilotLoginRequired'), 'warning');
         document.getElementById('copilot-auth-section')?.classList.remove('hidden');
       }
     }
@@ -772,6 +770,12 @@ export const PopupController = {
         dot.classList.add('hidden');
       }
     }
+    const chatgptUserLabel = document.getElementById('chatgpt-btn-user');
+    if (chatgptUserLabel) {
+      const userText = loggedIn ? (await ChatGPTAuthService.getAuth())?.email || '' : '';
+      chatgptUserLabel.textContent = userText;
+      chatgptUserLabel.classList.toggle('hidden', !userText);
+    }
   },
 
   // --- Google / Gemini Auth Handlers ---
@@ -825,6 +829,12 @@ export const PopupController = {
       const emailEl = document.getElementById('gemini-user-email');
       if (emailEl) emailEl.textContent = auth.email;
     }
+    const geminiUserLabel = document.getElementById('gemini-btn-user');
+    if (geminiUserLabel) {
+      const userText = isLoggedIn && auth?.email ? auth.email : '';
+      geminiUserLabel.textContent = userText;
+      geminiUserLabel.classList.toggle('hidden', !userText);
+    }
   },
 
   // --- GitHub Copilot Auth Handlers ---
@@ -842,12 +852,12 @@ export const PopupController = {
     try {
       const { user_code, verification_uri } = await CopilotAuthService.startLogin();
 
-      // Persist code in storage so it survives popup close/reopen
+      // Persist code + URL in storage so it survives popup close/reopen
       await new Promise(r => chrome.storage.local.set({
-        copilot_pending_code: { user_code, expiresAt: Date.now() + 15 * 60 * 1000 }
+        copilot_pending_code: { user_code, verification_uri, expiresAt: Date.now() + 15 * 60 * 1000 }
       }, r));
 
-      this._showCopilotCode(user_code);
+      this._showCopilotCode(user_code, verification_uri);
     } catch (err) {
       const message = err?.message || String(err);
       if (statusEl) statusEl.textContent = 'Erro: ' + message;
@@ -856,20 +866,36 @@ export const PopupController = {
     }
   },
 
-  _showCopilotCode(user_code) {
+  _showCopilotCode(user_code, verification_uri) {
     const codeDisplay = document.getElementById('copilot-user-code');
     const codeSection = document.getElementById('copilot-code-section');
     const statusEl = document.getElementById('copilot-login-status');
     const loginBtn = document.getElementById('copilot-login-btn');
+    const linkEl = document.getElementById('copilot-open-github-link');
 
     if (codeDisplay) codeDisplay.textContent = user_code;
+
+    // Update the link href with the actual verification URL from GitHub
+    if (linkEl && verification_uri) {
+      linkEl.href = verification_uri;
+      const host = (() => { try { return new URL(verification_uri).host; } catch { return 'github.com/login/device'; } })();
+      linkEl.childNodes[linkEl.childNodes.length - 1].textContent = ` ${host}/login/device`;
+    }
+
     codeSection?.classList.remove('hidden');
+
+    // Auto-copy to clipboard so user can paste immediately after opening the link
+    navigator.clipboard.writeText(user_code).then(() => {
+      const feedbackEl = document.getElementById('copilot-copy-feedback');
+      if (feedbackEl) { feedbackEl.textContent = 'Código copiado automaticamente!'; setTimeout(() => { if (feedbackEl) feedbackEl.textContent = ''; }, 3000); }
+    }).catch(() => {});
+
     if (loginBtn) {
       loginBtn.disabled = false;
       loginBtn.innerHTML = '<span class="material-symbols-rounded" style="font-size:16px;">refresh</span><span>Gerar novo código</span>';
     }
     if (statusEl) {
-      statusEl.innerHTML = 'Insira o código acima em <strong>github.com/login/device</strong> e autorize.';
+      statusEl.innerHTML = 'Abra o link, cole o código e autorize.';
     }
   },
 
@@ -944,7 +970,7 @@ export const PopupController = {
           chrome.storage.local.get(['copilot_pending_code'], d => r(d.copilot_pending_code))
         );
         if (stored?.user_code && stored.expiresAt > Date.now()) {
-          this._showCopilotCode(stored.user_code);
+          this._showCopilotCode(stored.user_code, stored.verification_uri);
 
           const resume = await CopilotAuthService.checkPendingAuthorizationOnce();
           if (resume.status === 'success') {
@@ -981,6 +1007,13 @@ export const PopupController = {
     // Update header dot indicator
     const dot = document.getElementById('copilot-status-dot');
     if (dot) dot.classList.toggle('hidden', !isLoggedIn);
+    const copilotUserLabel = document.getElementById('copilot-btn-user');
+    if (copilotUserLabel) {
+      const rawName = isLoggedIn ? (auth?.username || auth?.email || '') : '';
+      const userText = rawName && auth?.username ? `@${rawName}` : rawName;
+      copilotUserLabel.textContent = userText;
+      copilotUserLabel.classList.toggle('hidden', !userText);
+    }
   },
 
   /** Copy the device code to clipboard with visual feedback */
@@ -1236,7 +1269,9 @@ export const PopupController = {
       this._isReopenMode = isReopen;
 
       this.view.setSetupVisible(true);
-      const startStep = isReopen ? 5 : await this.determineCurrentStep();
+      const suggestedStep = await this.determineCurrentStep();
+      // When not a reopen (first-time setup still incomplete), always start at slide 0 (welcome)
+      const startStep = isReopen ? suggestedStep : 0;
 
       if (isReopen) {
         // Show reopen UX: key status chips, change-key buttons, close-settings buttons
@@ -1265,9 +1300,7 @@ export const PopupController = {
     const settings = await SettingsModel.getSettings();
     if (!SettingsModel.isPresent(settings.groqApiKey)) return 1;
     if (!SettingsModel.isPresent(settings.serperApiKey)) return 2;
-    if (!SettingsModel.isPresent(settings.geminiApiKey)) return 3;
-    if (!SettingsModel.isPresent(settings.openrouterApiKey)) return 4;
-    return 5;
+    return 5; // Gemini and OpenRouter are optional — go straight to last step
   },
 
   goToSetupStep(step) {
@@ -1517,6 +1550,12 @@ export const PopupController = {
     // Hide the change-key button itself
     const changeBtn = this.view.elements[`changeKey${cap}`];
     if (changeBtn) changeBtn.classList.add('hidden');
+    // If the key-mgmt wrapper has no more visible buttons, hide the wrapper too
+    const keyMgmtEl = this.view.elements[`keyMgmt${cap}`];
+    if (keyMgmtEl) {
+      const visibleBtns = keyMgmtEl.querySelectorAll('button:not(.hidden)');
+      if (visibleBtns.length === 0) keyMgmtEl.classList.add('hidden');
+    }
   },
 
   /**
@@ -1580,8 +1619,8 @@ export const PopupController = {
       this.updateProviderHint('groq');
     }
 
-    this.view.setSetupStatus('openrouter', 'OpenRouter missing', 'error');
-    this.view.showToast('OpenRouter key removed', 'success');
+    this.view.setSetupStatus('openrouter', this.t('setup.status.openrouterMissing'), 'error');
+    this.view.showToast(this.t('setup.toast.openrouterKeyRemoved'), 'success');
   },
 
   async handleRemoveGeminiKey() {
@@ -3057,6 +3096,7 @@ export const PopupController = {
     const key = `ah_bg_search_${requestId}`;
     const statusKey = `${key}_status`;
     let lastStatus = '';
+    const pollerStartedAt = Date.now();
 
     this._bgSearchPoller = setInterval(async () => {
       try {
@@ -3070,7 +3110,29 @@ export const PopupController = {
           this.view.showStatus('loading', statusMsg);
         }
 
-        if (!entry || entry.state === 'running') return;
+        // Stale-search guard: protect against service worker crashes that leave
+        // the entry stuck in 'running' (or missing after a cleanup).
+        if (!entry) {
+          // Give the SW 10s to create the entry before assuming it's lost.
+          if (Date.now() - pollerStartedAt < 10000) return;
+          clearInterval(this._bgSearchPoller);
+          this._bgSearchPoller = null;
+          await chrome.storage.local.remove(['ah_pending_search', key, statusKey]).catch(() => {});
+          this.view.showStatus('error', this.t('status.searchError', { message: 'Search lost. Please try again.' }));
+          this.view.setButtonDisabled('searchBtn', false);
+          return;
+        }
+        if (entry.state === 'running') {
+          const elapsed = Date.now() - (entry.startedAt || 0);
+          if (elapsed < 240000) return; // still within 4-min window, keep waiting
+          console.warn('AnswerHunter: BG search timed out (stale running entry) — treating as error');
+          clearInterval(this._bgSearchPoller);
+          this._bgSearchPoller = null;
+          await chrome.storage.local.remove(['ah_pending_search', key, statusKey]).catch(() => {});
+          this.view.showStatus('error', this.t('status.searchError', { message: 'Search timed out. Please try again.' }));
+          this.view.setButtonDisabled('searchBtn', false);
+          return;
+        }
 
         // Reached a terminal state — clear the poller and storage entries
         clearInterval(this._bgSearchPoller);
@@ -3760,23 +3822,156 @@ export const PopupController = {
         dot.className = 'native-bridge-dot ok';
         label.textContent = 'NativeFetch Bridge: ativo ✓';
         if (installBtn) installBtn.classList.add('hidden');
+        // Mark the entry button in settings as active
+        const entryBtn = document.getElementById('nativeBridgeInstallBtn');
+        if (entryBtn) {
+          entryBtn.classList.add('turbo-entry-btn--active');
+          const sub = entryBtn.querySelector('.turbo-entry-sub');
+          if (sub) sub.textContent = 'Ativo · buscando em Turbo Mode ⚡';
+        }
       } else {
-        banner.classList.add('warn');
-        dot.className = 'native-bridge-dot warn';
-        label.textContent = 'NativeFetch Bridge não instalado';
-        if (installBtn) installBtn.classList.remove('hidden');
+        // Bridge not installed — hide the banner entirely.
+        // The extension works without it via BackgroundTabExtractorService (silent fallback).
+        // The install button remains available in the settings panel for users who want Turbo Mode.
+        banner.classList.add('hidden');
+        return;
       }
     } catch (e) {
-      banner.classList.add('err');
-      dot.className = 'native-bridge-dot err';
-      label.textContent = 'NativeFetch Bridge: erro';
-      if (installBtn) installBtn.classList.remove('hidden');
+      // On error, hide banner — extension continues via tab fallback
+      banner.classList.add('hidden');
     }
 
     // Install button handler
     if (installBtn && !installBtn._bridgeHandlerAdded) {
       installBtn._bridgeHandlerAdded = true;
-      installBtn.addEventListener('click', () => this._downloadBridgeInstaller());
+      installBtn.addEventListener('click', () => this._openTurboWizard());
+    }
+  },
+
+  // ─── TURBO WIZARD ─────────────────────────────────────────────────────────
+
+  _openTurboWizard() {
+    const overlay = document.getElementById('turbo-wizard-overlay');
+    if (!overlay) return;
+
+    this._turboWizardStep = 0;
+    this._turboWizardDownloaded = false;
+
+    // Reset all steps
+    overlay.querySelectorAll('.tw-step').forEach(s => s.classList.add('hidden'));
+    const step0 = document.getElementById('tw-step-0');
+    if (step0) step0.classList.remove('hidden');
+    this._turboUpdateDots(0);
+
+    overlay.classList.remove('hidden');
+
+    // Bind buttons (once)
+    if (!overlay._wizardBound) {
+      overlay._wizardBound = true;
+
+      document.getElementById('tw-close-btn')?.addEventListener('click', () => this._closeTurboWizard());
+      document.getElementById('tw-skip-btn')?.addEventListener('click',  () => this._closeTurboWizard());
+      document.getElementById('tw-start-btn')?.addEventListener('click', () => this._turboWizardBeginDownload());
+      document.getElementById('tw-back-btn')?.addEventListener('click',  () => this._turboWizardGoTo('tw-step-1'));
+      document.getElementById('tw-done-install-btn')?.addEventListener('click', () => this._turboWizardVerify());
+      document.getElementById('tw-success-close-btn')?.addEventListener('click', () => {
+        this._closeTurboWizard();
+        this._checkNativeBridgeStatus();
+      });
+      document.getElementById('tw-notfound-skip-btn')?.addEventListener('click', () => this._closeTurboWizard());
+      document.getElementById('tw-retry-btn')?.addEventListener('click',  () => this._turboWizardGoTo('tw-step-2'));
+
+      // Close on backdrop click
+      overlay.querySelector('.tw-backdrop')?.addEventListener('click', () => this._closeTurboWizard());
+    }
+  },
+
+  _closeTurboWizard() {
+    document.getElementById('turbo-wizard-overlay')?.classList.add('hidden');
+  },
+
+  _turboWizardGoTo(stepId) {
+    const overlay = document.getElementById('turbo-wizard-overlay');
+    if (!overlay) return;
+    overlay.querySelectorAll('.tw-step').forEach(s => s.classList.add('hidden'));
+    document.getElementById(stepId)?.classList.remove('hidden');
+    const stepNum = { 'tw-step-0': 0, 'tw-step-1': 1, 'tw-step-2': 2, 'tw-step-3': 3 };
+    this._turboUpdateDots(stepNum[stepId] ?? 3);
+  },
+
+  _turboUpdateDots(activeStep) {
+    document.querySelectorAll('#tw-dots .tw-dot').forEach((dot, i) => {
+      dot.classList.toggle('tw-dot--active', i === activeStep);
+    });
+  },
+
+  async _turboWizardBeginDownload() {
+    this._turboWizardGoTo('tw-step-1');
+    this._turboUpdateDots(1);
+
+    const progressBar   = document.getElementById('tw-progress-bar');
+    const progressLabel = document.getElementById('tw-progress-label');
+
+    const setProgress = (pct, label) => {
+      if (progressBar)   progressBar.style.width = `${pct}%`;
+      if (progressLabel) progressLabel.textContent = label;
+    };
+
+    try {
+      setProgress(10, 'Buscando os arquivos…');
+      await this._downloadBridgeInstaller();
+      setProgress(100, 'Tudo pronto! 🎉');
+      await new Promise(r => setTimeout(r, 600));
+      this._turboWizardGoTo('tw-step-2');
+      this._turboUpdateDots(2);
+    } catch (e) {
+      if (progressLabel) progressLabel.textContent = 'Erro no download — tente novamente';
+    }
+  },
+
+  async _turboWizardVerify() {
+    this._turboWizardGoTo('tw-step-3');
+    this._turboUpdateDots(3);
+
+    // Wait 1.5 s then probe bridge
+    await new Promise(r => setTimeout(r, 1500));
+
+    let available = false;
+    try {
+      available = await Promise.race([
+        NativeFetchBridgeService.isAvailable(),
+        new Promise(r => setTimeout(() => r(false), 4000)),
+      ]);
+    } catch (_) {}
+
+    const overlay = document.getElementById('turbo-wizard-overlay');
+    if (!overlay) return;
+    overlay.querySelectorAll('.tw-step').forEach(s => s.classList.add('hidden'));
+
+    if (available) {
+      document.getElementById('tw-step-success')?.classList.remove('hidden');
+      this._spawnConfetti();
+    } else {
+      document.getElementById('tw-step-notfound')?.classList.remove('hidden');
+    }
+  },
+
+  _spawnConfetti() {
+    const container = document.getElementById('tw-confetti');
+    if (!container) return;
+    container.innerHTML = '';
+    const colors = ['#FF6B6B','#FFA94D','#FFD43B','#69DB7C','#4DABF7','#DA77F2','#F783AC'];
+    for (let i = 0; i < 36; i++) {
+      const el = document.createElement('div');
+      el.className = 'tw-confetti-piece';
+      el.style.left = `${Math.random() * 100}%`;
+      el.style.background = colors[i % colors.length];
+      el.style.width  = `${5 + Math.random() * 6}px`;
+      el.style.height = el.style.width;
+      el.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+      el.style.animationDuration = `${1.2 + Math.random() * 1.2}s`;
+      el.style.animationDelay = `${Math.random() * 0.6}s`;
+      container.appendChild(el);
     }
   },
 
@@ -3784,91 +3979,46 @@ export const PopupController = {
     const isWin = /Win/i.test(navigator.platform || navigator.userAgent);
     const isMac = /Mac/i.test(navigator.platform || navigator.userAgent);
 
-    // Determine which bundled binary to serve
     const binaryName = isWin ? 'native-fetch-bridge.exe' : 'native-fetch-linux';
     const saveName   = isWin ? 'native-fetch-bridge.exe' : 'native-fetch-bridge';
 
-    const btn   = document.getElementById('native-bridge-install-btn');
-    const label = document.getElementById('native-bridge-label');
+    const progressBar   = document.getElementById('tw-progress-bar');
+    const progressLabel = document.getElementById('tw-progress-label');
+    const setProgress = (pct, label) => {
+      if (progressBar)   progressBar.style.width = `${pct}%`;
+      if (progressLabel) progressLabel.textContent = label;
+    };
 
-    try {
-      if (btn) { btn.textContent = '⏳ Preparando...'; btn.disabled = true; }
+    setProgress(15, 'Preparando os arquivos…');
 
-      // Fetch the binary bundled inside the extension
-      const binaryUrl = chrome.runtime.getURL(`native/${binaryName}`);
-      const response  = await fetch(binaryUrl);
-      if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-      const blob      = response.blob ? await response.blob() : await response.arrayBuffer().then(b => new Blob([b]));
-      const objectUrl = URL.createObjectURL(blob);
+    const binaryUrl = chrome.runtime.getURL(`src/native/${binaryName}`);
+    const response  = await fetch(binaryUrl);
+    if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
+    const blob      = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
 
-      if (btn) btn.textContent = '⬇️ Baixando...';
+    setProgress(45, 'Baixando executável…');
 
-      const extensionId = chrome.runtime.id;
+    const extensionId = chrome.runtime.id;
 
-      await new Promise((resolve) => {
-        chrome.downloads.download({
-          url: objectUrl,
-          filename: saveName,
-          saveAs: false,
-        }, resolve);
-      });
+    await new Promise((resolve) => {
+      chrome.downloads.download({ url: objectUrl, filename: saveName, saveAs: false }, resolve);
+    });
+    URL.revokeObjectURL(objectUrl);
 
-      URL.revokeObjectURL(objectUrl);
+    setProgress(70, 'Preparando instalador…');
 
-      // For Windows: also download a .bat launcher that passes --install <EXTENSION_ID>
-      // This way user just double-clicks instalar-bridge.bat (no terminal needed)
-      if (isWin) {
-        const batContent = `@echo off
-echo Instalando AnswerHunter NativeFetch Bridge...
-cd /d "%USERPROFILE%\Downloads"
-native-fetch-bridge.exe --install ${extensionId}
-`;
-        const batBlob = new Blob([batContent], { type: 'application/octet-stream' });
-        const batUrl = URL.createObjectURL(batBlob);
-        await new Promise((resolve) => {
-          chrome.downloads.download({ url: batUrl, filename: 'instalar-bridge.bat', saveAs: false }, resolve);
-        });
-        URL.revokeObjectURL(batUrl);
-      }
-
-      if (label) label.textContent = '✅ Arquivos baixados!';
-      if (btn)   { btn.textContent = '✓ Baixado'; btn.disabled = false; }
-
-      this._showBridgeInstallInstructions(isWin, isMac, extensionId);
-
-    } catch (e) {
-      console.error('[NativeBridge] Download failed', e);
-      if (label) label.textContent = 'Erro no download';
-      if (btn)   { btn.textContent = '⚡ Instalar'; btn.disabled = false; }
-    }
-  },
-
-  _showBridgeInstallInstructions(isWin, isMac, extensionId) {
-    const instrEl = document.getElementById('native-bridge-instructions');
-    if (!instrEl) return;
-
-    let html = '';
     if (isWin) {
-      html = `
-        <div class="nb-instr-title">📋 Próximo passo (2 arquivos baixados):</div>
-        <div class="nb-instr-text">
-          Na pasta <strong>Downloads</strong>, dê <strong>duplo clique</strong> em
-          <code>instalar-bridge.bat</code> para instalar automaticamente.
-        </div>
-        <div class="nb-instr-hint">⚠️ Se o Windows bloquear: clique em <em>"Mais informações" → "Executar mesmo assim"</em>. Apenas 1 vez.</div>
-      `;
-    } else {
-      const binPath = '~/Downloads/native-fetch-bridge';
-      const cmd = `chmod +x ${binPath} && ${binPath} --install ${extensionId}`;
-      html = `
-        <div class="nb-instr-title">📋 Próximo passo (Terminal):</div>
-        <div class="nb-instr-code"><code>${cmd}</code></div>
-        <div class="nb-instr-hint">Cole o comando acima no Terminal e pressione Enter.</div>
-      `;
+      const batContent = `@echo off\necho Instalando AnswerHunter Turbo Mode...\ncd /d "%~dp0"\n"%~dp0native-fetch-bridge.exe" --install ${extensionId}\n`;
+      const batBlob = new Blob([batContent], { type: 'application/octet-stream' });
+      const batUrl  = URL.createObjectURL(batBlob);
+      await new Promise((resolve) => {
+        chrome.downloads.download({ url: batUrl, filename: 'instalar-bridge.bat', saveAs: false }, resolve);
+      });
+      URL.revokeObjectURL(batUrl);
     }
 
-    instrEl.innerHTML = html;
-    instrEl.classList.remove('hidden');
+    setProgress(90, 'Quase pronto…');
   },
 
 };

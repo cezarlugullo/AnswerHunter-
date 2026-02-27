@@ -182,7 +182,8 @@ export const EvidenceService = {
             // Pattern 2: "a resposta/alternativa correta é (a) (letra/alternativa) D"
             // NOTE: (?:a\s+)? + (?:(?:letra|alternativa)\s+)? consumes "a alternativa " so the
             // regex does NOT backtrack and capture the Portuguese article 'a' as letter A.
-            { re: /(?:^|\b)(?:a\s+resposta\s+correta\s+[eé]|a\s+alternativa\s+correta\s+[eé])\s*(?:a\s+)?(?:(?:letra|alternativa)\s+)?([A-E])(?=[)\s.,;:\n]|$)/gi, label: 'resposta-correta', confidence: 0.92 },
+            // [:\-]?\s* handles PasseiDireto format: "A alternativa correta é: b) ..."
+            { re: /(?:^|\b)(?:a\s+resposta\s+correta\s+[eé]|a\s+alternativa\s+correta\s+[eé])\s*[:\-]?\s*(?:a\s+)?(?:(?:letra|alternativa)\s+)?([A-E])(?=[)\s.,;:\n]|$)/gi, label: 'resposta-correta', confidence: 0.92 },
             { re: /(?:^|\b)(?:letra|alternativa)\s+([A-E])\s*(?:[eé]\s+(?:a\s+)?(?:correta|certa|resposta))/gi, label: 'gab-letra', confidence: 0.9 },
             { re: /(?:^|\b)gab(?:arito)?\.?\s*[:\-]?\s*([A-E])(?=[)\s.,;:\n]|$)/gi, label: 'gab-abrev', confidence: 0.88 }
         ];
@@ -295,9 +296,33 @@ export const EvidenceService = {
             }
         }
 
+        // Estácio/PasseiDireto PDF pattern: correct option followed by " x" or " X"
+        // e.g. "CREATE ( : Cliente { nome : 'Léa' } ) x"
+        const xMarked = this.extractXMarkedOption(searchText, optionsMap);
+        if (xMarked) {
+            return { ...xMarked, evidenceType: 'x-marker', blockMethod: block?.method || 'full-text', evidence: searchText };
+        }
+
         const explanationMatch = this.matchExplanationToOption(searchText, questionText, originalOptions);
         if (explanationMatch) return { ...explanationMatch, evidenceType: 'explanation-content-match', blockMethod: block?.method || 'full-text' };
 
+        return null;
+    },
+
+    extractXMarkedOption(sourceText, optionsMap) {
+        if (!sourceText || !optionsMap || Object.keys(optionsMap).length < 2) return null;
+        const text = String(sourceText || '').replace(/\r/g, '');
+        for (const [letter, body] of Object.entries(optionsMap)) {
+            const optionText = String(body || '').trim();
+            if (!optionText) continue;
+            const escaped = optionText
+                .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                .replace(/\s+/g, '\\s+');
+            const re = new RegExp(`${escaped}\\s+[xX](?=\\s|$|\\n)`, 'i');
+            if (re.test(text)) {
+                return { letter, confidence: 0.88, matchLabel: 'x-marker' };
+            }
+        }
         return null;
     },
 

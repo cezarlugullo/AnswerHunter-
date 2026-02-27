@@ -6,68 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AnswerHunter</title>
   <link rel="stylesheet" href="popup.css">
-  <style>
-    .native-bridge-banner {
-      display: flex;
-      align-items: center;
-      padding: 7px 12px;
-      background: #FFF8F5;
-      border-bottom: 2px solid #1a1a1a;
-      font-size: 11px;
-      transition: background 0.3s;
-    }
-    .native-bridge-banner.warn { background: #FFF0E0; }
-    .native-bridge-banner.err  { background: #FFE8E8; }
-    .native-bridge-banner.hidden { display: none; }
-    .native-bridge-status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-    }
-    .native-bridge-dot {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      background: #888;
-      border: 1.5px solid #1a1a1a;
-      flex-shrink: 0;
-      transition: background 0.3s;
-    }
-    .native-bridge-dot.ok   { background: #40C057; }
-    .native-bridge-dot.warn { background: #FFA94D; }
-    .native-bridge-dot.err  { background: #FF6B6B; }
-    .native-bridge-label { color: #444; flex: 1; font-weight: 700; font-size: 0.74rem; }
-    .native-bridge-install-btn {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      background: linear-gradient(135deg, #FF9F43 0%, #FF7B72 100%);
-      border: 2px solid #1a1a1a;
-      color: #1a1a1a;
-      border-radius: 8px;
-      padding: 8px 14px;
-      min-height: 44px;
-      font-size: 0.78rem;
-      font-weight: 800;
-      cursor: pointer;
-      transition: transform 0.08s, box-shadow 0.08s;
-      box-shadow: 2px 2px 0 #1a1a1a;
-      font-family: 'Baloo 2', cursive;
-      letter-spacing: 0.3px;
-      white-space: nowrap;
-    }
-    .native-bridge-install-btn:hover {
-      background: linear-gradient(135deg, #FFB35C 0%, #FF8E84 100%);
-      box-shadow: 3px 3px 0 #1a1a1a;
-      transform: translate(-1px, -1px);
-    }
-    .native-bridge-install-btn:active {
-      transform: translate(2px, 2px);
-      box-shadow: 0 0 0 #1a1a1a;
-    }
-    .native-bridge-install-btn.hidden { display: none; }
-  </style>
 </head>
 
 <body>
@@ -88,8 +26,29 @@
 
         <div class="ob-controls">
           <div class="ob-lang-toggle" id="obLanguageToggle">
-            <button class="ob-lang-btn active" data-lang="en">EN</button>
-            <button class="ob-lang-btn" data-lang="pt-BR">PT</button>
+            <button class="ob-lang-btn active" data-lang="en">
+              <svg viewBox="0 0 640 480" class="lang-flag">
+                <path fill="#bd3d44" d="M0 0h640v37h-640zm0 73.9h640v37h-640zm0 73.8h640v37h-640zm0 73.8h640v37h-640zm0 73.9h640v37h-640zm0 73.8h640v37h-640zm0 73.8h640v36.9h-640z"/>
+                <path fill="#fff" d="M0 37h640v36.9h-640zm0 73.8h640v36.9h-640zm0 73.9h640v36.8h-640zm0 73.8h640v37h-640zm0 73.9h640v36.8h-640zm0 73.8h640v36.9h-640z"/>
+                <path fill="#192f5d" d="M0 0h256v258.5h-256z"/>
+                <g fill="#fff">
+                  <g id="ob-s18"><g id="ob-s9"><g id="ob-s5"><g id="ob-s4">
+                    <path id="ob-s" d="M26.2 17l3.5 10.8h11.4l-9.2 6.7 3.5 10.8-9.2-6.7-9.2 6.7 3.5-10.8-9.2-6.7h11.4z"/>
+                    <use href="#ob-s" x="52.4"/>
+                  </g><use href="#ob-s4" x="104.8"/></g><use href="#ob-s4" x="157.2"/></g>
+                  <use href="#ob-s5" y="39.4"/></g><use href="#ob-s9" y="78.8"/></g>
+                  <use href="#ob-s18" x="26.2" y="19.7"/>
+                </g>
+              </svg>
+            </button>
+            <button class="ob-lang-btn" data-lang="pt-BR">
+              <svg viewBox="0 0 640 480" class="lang-flag">
+                <path fill="#229e45" d="M0 0h640v480H0z"/>
+                <path fill="#f8e509" d="M321.4 36.2 609.7 240 321.4 443.8 33.1 240z"/>
+                <circle fill="#2b49a3" cx="321.4" cy="240" r="113.4"/>
+                <path fill="#fff" d="M195.8 231.5c37.6-58.1 109.8-82.2 169-59a116 116 0 0 0-169 59z"/>
+              </svg>
+            </button>
           </div>
           <button id="setupSkipBtn" class="ob-skip-btn" data-i18n="setup.skip">Skip</button>
         </div>
@@ -115,7 +74,7 @@
 
           <!-- Slide 0: Welcome -->
           <div class="ob-slide welcome-slide" data-slide="0">
-            <div class="ob-slide-content center-content" style="padding-top: 20px;">
+            <div class="ob-slide-content center-content u-pt-20">
 
               <!-- Animated Illustration -->
               <div class="ob-hero-illustration">
@@ -130,7 +89,7 @@
               </div>
 
               <h2 class="ob-title glass-text" data-i18n="setup.new.welcome.title">Welcome to AnswerHunter</h2>
-              <p class="ob-desc" data-i18n="setup.new.welcome.desc" style="margin-bottom: 10px;">We will guide you step
+              <p class="ob-desc u-mb-10" data-i18n="setup.new.welcome.desc">We will guide you step
                 by step. You only need to copy and paste your keys.</p>
 
               <!-- Feature Pills -->
@@ -211,8 +170,6 @@
                 <div class="ob-actions">
                   <button id="prev-groq" class="ob-btn ob-btn-ghost"><span
                       class="material-symbols-rounded">arrow_back</span></button>
-                  <button id="change-key-groq" class="ob-btn ob-btn-secondary hidden" data-i18n="setup.changeKey">Change
-                    Key</button>
                   <button id="test-groq" class="ob-btn ob-btn-secondary test-btn">
                     <span class="material-symbols-rounded">wifi_tethering</span> <span class="test-btn-text"
                       data-i18n="setup.validateAction">Validate key</span>
@@ -222,6 +179,9 @@
                   </button>
                   <button id="close-settings-groq" class="ob-btn ob-btn-primary hidden"
                     data-i18n="setup.closeSettings">Done</button>
+                  <div class="ob-key-mgmt hidden" id="key-mgmt-groq">
+                    <button id="change-key-groq" class="ob-btn ob-btn-secondary" data-i18n="setup.changeKey">Change Key</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -282,10 +242,6 @@
                 <div class="ob-actions">
                   <button id="prev-serper" class="ob-btn ob-btn-ghost"><span
                       class="material-symbols-rounded">arrow_back</span></button>
-                  <button id="change-key-serper" class="ob-btn ob-btn-secondary hidden"
-                    data-i18n="setup.changeKey">Change Key</button>
-                  <button id="remove-key-serper" class="ob-btn ob-btn-secondary hidden"
-                    data-i18n="setup.removeSerperKey">Remove Serper key</button>
                   <button id="test-serper" class="ob-btn ob-btn-secondary test-btn">
                     <span class="material-symbols-rounded">wifi_tethering</span> <span class="test-btn-text"
                       data-i18n="setup.validateAction">Validate key</span>
@@ -295,6 +251,10 @@
                   </button>
                   <button id="close-settings-serper" class="ob-btn ob-btn-primary hidden"
                     data-i18n="setup.closeSettings">Done</button>
+                  <div class="ob-key-mgmt hidden" id="key-mgmt-serper">
+                    <button id="change-key-serper" class="ob-btn ob-btn-secondary" data-i18n="setup.changeKey">Change Key</button>
+                    <button id="remove-key-serper" class="ob-btn ob-btn-danger" data-i18n="setup.removeSerperKey">Remove Serper key</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -320,14 +280,6 @@
                     unavailable.</p>
                 </div>
               </div>
-                <!-- NativeFetchBridge Install Button -->
-                <div style="margin: 18px 0 0 0;">
-                  <button id="nativeBridgeInstallBtn" class="native-bridge-install-btn">
-                    <span class="material-symbols-rounded">download</span>
-                    <span>Instalar Bridge Nativo (Windows)</span>
-                  </button>
-                  <div id="nativeBridgeInstallStatus" style="margin-top:6px;font-size:12px;color:#444;display:none"></div>
-                </div>
 
               <div class="ob-form-card gemini-theme">
                 <div class="ob-provider-badge">
@@ -363,10 +315,6 @@
                 <div class="ob-actions">
                   <button id="prev-gemini" class="ob-btn ob-btn-ghost"><span
                       class="material-symbols-rounded">arrow_back</span></button>
-                  <button id="change-key-gemini" class="ob-btn ob-btn-secondary hidden"
-                    data-i18n="setup.changeKey">Change Key</button>
-                  <button id="remove-key-gemini" class="ob-btn ob-btn-secondary hidden"
-                    data-i18n="setup.removeGeminiKey">Remove Gemini key</button>
                   <button id="test-gemini" class="ob-btn ob-btn-secondary test-btn">
                     <span class="material-symbols-rounded">wifi_tethering</span> <span class="test-btn-text"
                       data-i18n="setup.validateAction">Validate key</span>
@@ -376,6 +324,10 @@
                   </button>
                   <button id="close-settings-gemini" class="ob-btn ob-btn-primary hidden"
                     data-i18n="setup.closeSettings">Done</button>
+                  <div class="ob-key-mgmt hidden" id="key-mgmt-gemini">
+                    <button id="change-key-gemini" class="ob-btn ob-btn-secondary" data-i18n="setup.changeKey">Change Key</button>
+                    <button id="remove-key-gemini" class="ob-btn ob-btn-danger" data-i18n="setup.removeGeminiKey">Remove Gemini key</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -401,8 +353,8 @@
                 </div>
               </div>
 
-              <div class="ob-form-card" style="border-top: 2px solid rgba(80,150,255,0.5);">
-                <div class="ob-provider-badge" style="color: #64b5f6;">
+              <div class="ob-form-card ob-form-card-openrouter">
+                <div class="ob-provider-badge ob-provider-badge-openrouter">
                   <span class="material-symbols-rounded badge-icon">public</span>
                   <span>OPENROUTER ENGINE</span>
                 </div>
@@ -427,12 +379,10 @@
                 </div>
 
                 <!-- OpenRouter Model Selection -->
-                <div class="ob-input-group" style="margin-top: 15px;">
-                  <label for="select-openrouter-model" data-i18n="setup.openrouter.modelLabel"
-                    style="font-size: 0.8rem; color: #1a1a1a; margin-bottom: 5px; display: block;">Select
+                <div class="ob-input-group u-mt-15">
+                  <label for="select-openrouter-model" data-i18n="setup.openrouter.modelLabel" class="u-label-openrouter-model">Select
                     Model</label>
-                  <select id="select-openrouter-model" class="ob-input"
-                    style="width: 100%; border: 2px solid #1a1a1a; background: #fffdf0; color: #1a1a1a; border-radius: 8px; padding: 10px;">
+                  <select id="select-openrouter-model" class="ob-input u-openrouter-select">
                     <option value="deepseek/deepseek-r1:free">DeepSeek R1 (Free)</option>
                     <option value="google/gemini-2.5-flash-free">Gemini 2.5 Flash (Free)</option>
                     <option value="qwen/qwen-2.5-coder-32b-instruct:free">Qwen 2.5 Coder 32b (Free)</option>
@@ -449,10 +399,6 @@
                 <div class="ob-actions">
                   <button id="prev-openrouter" class="ob-btn ob-btn-ghost"><span
                       class="material-symbols-rounded">arrow_back</span></button>
-                  <button id="change-key-openrouter" class="ob-btn ob-btn-secondary hidden"
-                    data-i18n="setup.changeKey">Change Key</button>
-                  <button id="remove-key-openrouter" class="ob-btn ob-btn-secondary hidden"
-                    data-i18n="setup.removeOpenrouterKey">Remove key</button>
                   <button id="test-openrouter" class="ob-btn ob-btn-secondary test-btn">
                     <span class="material-symbols-rounded">wifi_tethering</span> <span class="test-btn-text"
                       data-i18n="setup.validateAction">Validate key</span>
@@ -462,6 +408,10 @@
                   </button>
                   <button id="close-settings-openrouter" class="ob-btn ob-btn-primary hidden"
                     data-i18n="setup.closeSettings">Done</button>
+                  <div class="ob-key-mgmt hidden" id="key-mgmt-openrouter">
+                    <button id="change-key-openrouter" class="ob-btn ob-btn-secondary" data-i18n="setup.changeKey">Change Key</button>
+                    <button id="remove-key-openrouter" class="ob-btn ob-btn-danger" data-i18n="setup.removeOpenrouterKey">Remove key</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -470,92 +420,106 @@
           <!-- Slide 6: Preferences & Finish -->
           <div class="ob-slide provider-slide" data-slide="5">
             <div class="ob-slide-layout">
-              <div class="ob-form-card" style="border-top: 3px solid #1a1a1a; gap: 18px;">
+              <div class="ob-form-card ob-form-card-strong-top">
 
-                <div style="text-align: center; padding: 4px 0 2px;">
-                  <span class="material-symbols-rounded" style="font-size: 36px; color: #ff9a40;">auto_awesome</span>
-                  <h3 data-i18n="setup.prefs.title" style="margin: 8px 0 4px; font-size: 1.2rem; color: #1a1a1a; font-family: 'Baloo 2', cursive; font-weight: 900;">Tudo
+                <div class="prefs-head-center">
+                  <span class="material-symbols-rounded prefs-head-icon">auto_awesome</span>
+                  <h3 data-i18n="setup.prefs.title" class="prefs-head-title">Tudo
                     pronto!</h3>
-                  <p data-i18n="setup.prefs.subtitle"
-                    style="font-size: 0.82rem; color: #555; margin: 0;">Uma última escolha antes de
+                  <p data-i18n="setup.prefs.subtitle" class="prefs-head-subtitle">Uma última escolha antes de
                     começar.</p>
                 </div>
 
-                <div
-                  style="background: #fffdf0; border: 2px solid #1a1a1a; border-radius: 12px; padding: 14px 16px; box-shadow: 3px 3px 0 #1a1a1a;">
-                  <p data-i18n="setup.prefs.aiLabel"
-                    style="font-size: 0.8rem; color: #1a1a1a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; font-family: 'Baloo 2', cursive;">
+                <div class="u-card-soft">
+                  <p data-i18n="setup.prefs.aiLabel" class="u-card-title">
                     Como a IA deve responder?</p>
-                  <div style="display: flex; gap: 8px; flex-wrap: wrap; justify-content: space-between;">
+                  <div class="prefs-pill-grid">
 
-                    <button class="ob-btn ob-provider-pill active" id="pill-groq-ob" data-provider="groq"
-                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
-                      <span class="material-symbols-rounded" style="font-size: 20px;">bolt</span>
-                      <span data-i18n="setup.prefs.groqLabel" style="font-size: 0.82rem; font-weight: 700;">Mais rápido</span>
+                    <button class="ob-btn ob-provider-pill active u-provider-pill-layout" id="pill-groq-ob" data-provider="groq">
+                      <span class="material-symbols-rounded u-fs-20">bolt</span>
+                      <span data-i18n="setup.prefs.groqLabel" class="u-fs-082-700">Mais rápido</span>
                       <span class="pill-sublabel">Free · Groq</span>
                     </button>
-                    <button class="ob-btn ob-provider-pill" id="pill-gemini-ob" data-provider="gemini"
-                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
-                      <span class="material-symbols-rounded" style="font-size: 20px;">psychology</span>
-                      <span data-i18n="setup.prefs.geminiLabel" style="font-size: 0.82rem; font-weight: 700;">Mais inteligente</span>
+                    <button class="ob-btn ob-provider-pill u-provider-pill-layout" id="pill-gemini-ob" data-provider="gemini">
+                      <span class="material-symbols-rounded u-fs-20">psychology</span>
+                      <span data-i18n="setup.prefs.geminiLabel" class="u-fs-082-700">Mais inteligente</span>
                       <span class="pill-sublabel">Conta Google</span>
                     </button>
-                    <button class="ob-btn ob-provider-pill" id="pill-openrouter-ob" data-provider="openrouter"
-                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
-                      <span class="material-symbols-rounded" style="font-size: 20px;">public</span>
-                      <span data-i18n="setup.prefs.openrouterLabel" style="font-size: 0.82rem; font-weight: 700;">OpenRouter</span>
+                    <button class="ob-btn ob-provider-pill u-provider-pill-layout" id="pill-openrouter-ob" data-provider="openrouter">
+                      <span class="material-symbols-rounded u-fs-20">public</span>
+                      <span data-i18n="setup.prefs.openrouterLabel" class="u-fs-082-700">OpenRouter</span>
                       <span class="pill-sublabel">API key</span>
                     </button>
-                    <button class="ob-btn ob-provider-pill" id="pill-chatgpt-ob" data-provider="chatgpt"
-                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
-                      <span class="material-symbols-rounded" style="font-size: 20px;">smart_toy</span>
-                      <span style="font-size: 0.82rem; font-weight: 700;">ChatGPT</span>
+                    <button class="ob-btn ob-provider-pill u-provider-pill-layout" id="pill-chatgpt-ob" data-provider="chatgpt">
+                      <span class="material-symbols-rounded u-fs-20">smart_toy</span>
+                      <span class="u-fs-082-700">ChatGPT</span>
                       <span class="pill-sublabel">Plus/Pro</span>
                     </button>
-                    <button class="ob-btn ob-provider-pill" id="pill-copilot-ob" data-provider="copilot"
-                      style="flex: 1; min-width: 90px; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px;">
-                      <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" class="copilot-pill-icon" style="flex-shrink:0;">
+                    <button class="ob-btn ob-provider-pill u-provider-pill-layout" id="pill-copilot-ob" data-provider="copilot">
+                      <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" class="copilot-pill-icon u-flex-shrink-0">
                         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
                       </svg>
-                      <span style="font-size: 0.82rem; font-weight: 700;">Copilot</span>
+                      <span class="u-fs-082-700">Copilot</span>
                       <span class="pill-sublabel">GitHub</span>
                     </button>
                   </div>
                   <p id="provider-hint-ob" data-i18n="setup.prefs.hintGroq"
-                    style="font-size: 0.76rem; color: #666; margin: 10px 0 0; text-align: center;">Você
+                    class="prefs-provider-hint">Você
                     pode mudar isso a qualquer momento nas configurações.</p>
                 </div>
 
                 <!-- AI Account Logins -->
-                <div style="background: #fffdf0; border: 2px solid #1a1a1a; border-radius: 12px; padding: 14px 16px; box-shadow: 3px 3px 0 #1a1a1a;">
-                  <p style="font-size: 0.8rem; color: #1a1a1a; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; font-family: 'Baloo 2', cursive;">Contas de IA</p>
-                  <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <div class="u-card-soft">
+                  <p class="u-card-title">Contas de IA</p>
+                  <div class="prefs-ai-account-grid">
                     <button id="chatgptBtn" class="ob-ai-account-btn">
-                      <span class="material-symbols-rounded" style="font-size: 18px; color: #7c3aed;">smart_toy</span>
-                      <span style="font-size: 0.78rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1a1a1a;">ChatGPT</span>
-                      <span id="chatgpt-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto;"></span>
+                      <span class="material-symbols-rounded prefs-chatgpt-icon">smart_toy</span>
+                      <span class="u-ai-btn-label">
+                        <span class="u-fs-078-600-ellipsis prefs-dark-text">ChatGPT</span>
+                        <span id="chatgpt-btn-user" class="u-ai-btn-user hidden"></span>
+                      </span>
+                      <span id="chatgpt-status-dot" class="ai-status-dot hidden u-status-dot-static"></span>
                     </button>
                     <button id="geminiAuthBtn" class="ob-ai-account-btn">
-                      <svg viewBox="0 0 18 18" width="16" height="16" style="flex-shrink:0;">
+                      <svg viewBox="0 0 18 18" width="16" height="16" class="u-flex-shrink-0">
                         <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
                         <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
                         <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
                         <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
                       </svg>
-                      <span style="font-size: 0.78rem; font-weight: 600; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Google AI</span>
-                      <span id="gemini-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto; background: #4285F4; box-shadow: 0 0 4px #4285F4;"></span>
+                      <span class="u-ai-btn-label">
+                        <span class="u-fs-078-600-ellipsis prefs-dark-text">Google AI</span>
+                        <span id="gemini-btn-user" class="u-ai-btn-user u-ai-btn-user--gemini hidden"></span>
+                      </span>
+                      <span id="gemini-status-dot" class="ai-status-dot hidden u-status-dot-static prefs-dot-gemini"></span>
                     </button>
                     <button id="copilotBtn" class="ob-ai-account-btn">
-                      <svg viewBox="0 0 16 16" width="16" height="16" fill="#1a1a1a" style="flex-shrink:0;">
+                      <svg viewBox="0 0 16 16" width="16" height="16" fill="#1a1a1a" class="u-flex-shrink-0">
                         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
                       </svg>
-                      <span style="font-size: 0.78rem; font-weight: 600; color: #1a1a1a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">GitHub</span>
-                      <span id="copilot-status-dot" class="ai-status-dot hidden" style="position: static; width: 7px; height: 7px; margin-left: auto; background: #3fb950; box-shadow: 0 0 4px #3fb950;"></span>
+                      <span class="u-ai-btn-label">
+                        <span class="u-fs-078-600-ellipsis prefs-dark-text">GitHub</span>
+                        <span id="copilot-btn-user" class="u-ai-btn-user u-ai-btn-user--copilot hidden"></span>
+                      </span>
+                      <span id="copilot-status-dot" class="ai-status-dot hidden u-status-dot-static prefs-dot-copilot"></span>
                     </button>
                   </div>
                 </div>
 
-                <div class="ob-actions" style="margin-top: 4px;">
+                <!-- Turbo Mode (NativeFetchBridge) -->
+                <div class="u-mt-18 turbo-entry-wrap">
+                  <button id="nativeBridgeInstallBtn" class="turbo-entry-btn">
+                    <span class="turbo-entry-rocket">⚡</span>
+                    <span class="turbo-entry-text">
+                      <span class="turbo-entry-title">Turbo Mode</span>
+                      <span class="turbo-entry-sub">Opcional · respostas 3× mais rápidas</span>
+                    </span>
+                    <span class="material-symbols-rounded turbo-entry-arrow">chevron_right</span>
+                  </button>
+                  <div id="nativeBridgeInstallStatus" class="native-bridge-install-status"></div>
+                </div>
+
+                <div class="ob-actions u-mt-4">
                   <button id="prev-prefs" class="ob-btn ob-btn-ghost">
                     <span class="material-symbols-rounded">arrow_back</span>
                   </button>
@@ -568,7 +532,7 @@
             </div>
           </div>
         </div>
-        <div style="display:none;">
+        <div class="u-display-none-inline">
           <input id="provider-toggle" type="checkbox" />
           <span id="pill-groq"></span>
           <span id="pill-gemini"></span>
@@ -594,55 +558,51 @@
   <div id="chatgpt-auth-section" class="chatgpt-auth-section hidden">
     <div class="chatgpt-auth-card">
       <div class="chatgpt-auth-header">
-        <span class="material-symbols-rounded" style="font-size: 28px; color: #a78bfa;">smart_toy</span>
+        <span class="material-symbols-rounded auth-icon-chatgpt">smart_toy</span>
         <div>
-          <h3 style="margin: 0; font-size: 1rem; color: #ffffff;">ChatGPT Subscription</h3>
-          <p style="margin: 2px 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.7);">Use your ChatGPT Plus/Pro
+          <h3 class="u-auth-title">ChatGPT Subscription</h3>
+          <p class="u-auth-subtitle">Use your ChatGPT Plus/Pro
             credits</p>
         </div>
-        <button id="chatgpt-auth-close" class="ob-btn ob-btn-ghost" style="margin-left: auto; padding: 4px;">
+        <button id="chatgpt-auth-close" class="ob-btn ob-btn-ghost u-auth-close">
           <span class="material-symbols-rounded">close</span>
         </button>
       </div>
 
       <!-- Not logged in state -->
       <div id="chatgpt-logged-out" class="chatgpt-auth-body">
-        <p style="font-size: 0.82rem; color: rgba(255,255,255,0.85); margin: 0 0 12px; line-height: 1.5;">
+        <p class="u-auth-body-copy">
           Login with your ChatGPT account to use your subscription credits (Plus/Pro/Team).
           No API key needed — uses the same auth as the Codex CLI.
         </p>
-        <div
-          style="background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-            <span class="material-symbols-rounded" style="font-size: 16px; color: #a78bfa;">shield_lock</span>
-            <span style="font-size: 0.78rem; font-weight: 600; color: #a78bfa;">100% Local &amp; Private</span>
+        <div class="u-privacy-box-violet">
+          <div class="u-auth-privacy-row">
+            <span class="material-symbols-rounded u-privacy-icon-violet">shield_lock</span>
+            <span class="u-privacy-title-violet">100% Local &amp; Private</span>
           </div>
-          <p style="font-size: 0.72rem; color: rgba(255,255,255,0.65); margin: 0; line-height: 1.4;">
+          <p class="u-privacy-copy">
             Your tokens are stored only on this device and sent exclusively to OpenAI's servers.
             This project is open source — no secrets are hardcoded.
           </p>
         </div>
-        <button id="chatgpt-login-btn" class="ob-btn ob-btn-primary"
-          style="width: 100%; background: linear-gradient(135deg, #8b5cf6, #7c3aed); border: none; gap: 8px;">
+        <button id="chatgpt-login-btn" class="ob-btn ob-btn-primary u-login-btn-chatgpt">
           <span class="material-symbols-rounded">login</span>
           <span>Login with ChatGPT</span>
         </button>
-        <div id="chatgpt-login-status" class="ob-test-status" style="margin-top: 8px;"></div>
+        <div id="chatgpt-login-status" class="ob-test-status u-auth-status"></div>
       </div>
 
       <!-- Logged in state -->
       <div id="chatgpt-logged-in" class="chatgpt-auth-body hidden">
-        <div
-          style="display: flex; align-items: center; gap: 10px; background: rgba(139,92,246,0.1); border: 1px solid rgba(139,92,246,0.3); border-radius: 10px; padding: 12px;">
-          <span class="material-symbols-rounded" style="font-size: 24px; color: #a78bfa;">check_circle</span>
+        <div class="u-login-card-violet">
+          <span class="material-symbols-rounded u-login-icon-violet">check_circle</span>
           <div>
-            <p style="margin: 0; font-size: 0.88rem; font-weight: 600; color: #a78bfa;">Connected</p>
-            <p id="chatgpt-user-email" style="margin: 2px 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.7);"></p>
+            <p class="u-login-title-violet">Connected</p>
+            <p id="chatgpt-user-email" class="u-auth-user-sub"></p>
           </div>
         </div>
-        <div style="display: flex; gap: 8px; margin-top: 12px;">
-          <select id="select-chatgpt-model" class="ob-input"
-            style="flex: 1; border: 1px solid rgba(16,163,127,0.25); background: rgba(0,0,0,0.25); color: white; border-radius: 8px; padding: 8px 10px; font-size: 0.8rem; cursor: pointer;">
+        <div class="u-auth-row">
+          <select id="select-chatgpt-model" class="ob-input u-model-select-chatgpt">
             <optgroup label="✨ Recomendado">
               <option value="gpt-5.2-codex">GPT-5.2 Codex — ★ mais inteligente</option>
               <option value="gpt-5.1-codex-max">GPT-5.1 Codex Max — tarefas longas</option>
@@ -652,8 +612,8 @@
               <option value="gpt-5.1-codex-mini">GPT-5.1 Codex Mini — rápido</option>
             </optgroup>
           </select>
-          <button id="chatgpt-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
-            <span class="material-symbols-rounded" style="font-size: 16px;">logout</span>
+          <button id="chatgpt-logout-btn" class="ob-btn ob-btn-secondary u-nowrap-gap-4">
+            <span class="material-symbols-rounded u-fs-16">logout</span>
             <span>Logout</span>
           </button>
         </div>
@@ -667,55 +627,53 @@
   <div id="gemini-auth-section" class="chatgpt-auth-section hidden">
     <div class="chatgpt-auth-card">
       <div class="chatgpt-auth-header">
-        <span class="material-symbols-rounded" style="font-size: 26px; color: #4285F4;">account_circle</span>
+        <span class="material-symbols-rounded auth-icon-gemini">account_circle</span>
         <div>
-          <h3 style="margin: 0; font-size: 1rem; color: #ffffff;">Google · Gemini</h3>
-          <p style="margin: 2px 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.7);">Use o Gemini com sua conta Google</p>
+          <h3 class="u-auth-title">Google · Gemini</h3>
+          <p class="u-auth-subtitle">Use o Gemini com sua conta Google</p>
         </div>
-        <button id="gemini-auth-close" class="ob-btn ob-btn-ghost" style="margin-left: auto; padding: 4px;">
+        <button id="gemini-auth-close" class="ob-btn ob-btn-ghost u-auth-close">
           <span class="material-symbols-rounded">close</span>
         </button>
       </div>
 
       <!-- Not logged in state -->
       <div id="gemini-logged-out" class="chatgpt-auth-body">
-        <p style="font-size: 0.82rem; color: rgba(255,255,255,0.85); margin: 0 0 12px; line-height: 1.5;">
+        <p class="u-auth-body-copy">
           Conecte sua conta Google para usar o Gemini sem chave de API.
           O token fica salvo somente no seu dispositivo.
         </p>
 
         <!-- Privacy note -->
-        <div style="background: rgba(66,133,244,0.08); border: 1px solid rgba(66,133,244,0.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-            <span class="material-symbols-rounded" style="font-size: 15px; color: #4285F4;">shield_lock</span>
-            <span style="font-size: 0.78rem; font-weight: 600; color: #4285F4;">100% Local &amp; Privado</span>
+        <div class="u-privacy-box-blue">
+          <div class="u-auth-privacy-row-tight">
+            <span class="material-symbols-rounded u-privacy-icon-blue">shield_lock</span>
+            <span class="u-privacy-title-blue">100% Local &amp; Privado</span>
           </div>
-          <p style="font-size: 0.72rem; color: rgba(255,255,255,0.65); margin: 0; line-height: 1.4;">
+          <p class="u-privacy-copy">
             Tokens armazenados apenas neste dispositivo e enviados exclusivamente aos servidores do Google.
           </p>
         </div>
 
         <!-- Setup: client_id input (Removed for Gemini CLI Auth) -->
-        <button id="gemini-login-btn" class="ob-btn ob-btn-primary"
-          style="width: 100%; gap: 8px; border: none;">
+        <button id="gemini-login-btn" class="ob-btn ob-btn-primary u-login-btn-gemini">
           <span class="material-symbols-rounded">login</span>
           <span>Entrar com Google</span>
         </button>
-        <div id="gemini-login-status" class="ob-test-status" style="margin-top: 8px;"></div>
+        <div id="gemini-login-status" class="ob-test-status u-auth-status"></div>
       </div>
 
       <!-- Logged in state -->
       <div id="gemini-logged-in" class="chatgpt-auth-body hidden">
-        <div style="display: flex; align-items: center; gap: 10px; background: rgba(66,133,244,0.1); border: 1px solid rgba(66,133,244,0.3); border-radius: 10px; padding: 12px;">
-          <span class="material-symbols-rounded" style="font-size: 24px; color: #4285F4;">check_circle</span>
+        <div class="u-login-card-blue">
+          <span class="material-symbols-rounded u-login-icon-blue">check_circle</span>
           <div>
-            <p style="margin: 0; font-size: 0.88rem; font-weight: 600; color: #4285F4;">Conectado</p>
-            <p id="gemini-user-email" style="margin: 2px 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.7);"></p>
+            <p class="u-login-title-blue">Conectado</p>
+            <p id="gemini-user-email" class="u-auth-user-sub"></p>
           </div>
         </div>
-        <div style="display: flex; gap: 8px; margin-top: 12px;">
-          <select id="select-gemini-oauth-model" class="ob-input"
-            style="flex: 1; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.2); color: white; border-radius: 8px; padding: 8px; font-size: 0.8rem;">
+        <div class="u-auth-row">
+          <select id="select-gemini-oauth-model" class="ob-input u-model-select-gemini">
             <optgroup label="★ Recomendado">
               <option value="gemini-2.5-flash">Gemini 2.5 Flash (rápido)</option>
               <option value="gemini-2.5-pro">Gemini 2.5 Pro (mais inteligente)</option>
@@ -725,8 +683,8 @@
               <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
             </optgroup>
           </select>
-          <button id="gemini-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
-            <span class="material-symbols-rounded" style="font-size: 16px;">logout</span>
+          <button id="gemini-logout-btn" class="ob-btn ob-btn-secondary u-nowrap-gap-4">
+            <span class="material-symbols-rounded u-fs-16">logout</span>
             <span>Sair</span>
           </button>
         </div>
@@ -738,96 +696,85 @@
   <div id="copilot-auth-section" class="chatgpt-auth-section hidden">
     <div class="chatgpt-auth-card">
       <div class="chatgpt-auth-header">
-        <svg viewBox="0 0 16 16" width="26" height="26" fill="#f0f6fc" style="flex-shrink:0;">
+        <svg viewBox="0 0 16 16" width="26" height="26" fill="#f0f6fc" class="u-flex-shrink-0">
           <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
         </svg>
         <div>
-          <h3 style="margin: 0; font-size: 1rem; color: #ffffff;">GitHub Copilot</h3>
-          <p style="margin: 2px 0 0; font-size: 0.78rem; color: rgba(255,255,255,0.7);">Use seus créditos de assinatura do Copilot</p>
+          <h3 class="u-auth-title">GitHub Copilot</h3>
+          <p class="u-auth-subtitle">Use seus créditos de assinatura do Copilot</p>
         </div>
-        <button id="copilot-auth-close" class="ob-btn ob-btn-ghost" style="margin-left: auto; padding: 4px;">
+        <button id="copilot-auth-close" class="ob-btn ob-btn-ghost u-auth-close">
           <span class="material-symbols-rounded">close</span>
         </button>
       </div>
 
       <!-- Not logged in state -->
       <div id="copilot-logged-out" class="chatgpt-auth-body">
-        <p style="font-size: 0.82rem; color: rgba(255,255,255,0.85); margin: 0 0 12px; line-height: 1.5;">
+        <p class="u-auth-body-copy">
           Faça login com sua conta GitHub para usar sua assinatura do Copilot
           (Individual, Business, Enterprise). Nenhuma API key necessária.
         </p>
-        <div
-          style="background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.25); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
-          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
-            <span class="material-symbols-rounded" style="font-size: 16px; color: #3fb950;">shield_lock</span>
-            <span style="font-size: 0.78rem; font-weight: 600; color: #3fb950;">100% Local &amp; Privado</span>
+        <div class="u-privacy-box-green">
+          <div class="u-auth-privacy-row">
+            <span class="material-symbols-rounded u-privacy-icon-green">shield_lock</span>
+            <span class="u-privacy-title-green">100% Local &amp; Privado</span>
           </div>
-          <p style="font-size: 0.72rem; color: rgba(255,255,255,0.65); margin: 0; line-height: 1.4;">
+          <p class="u-privacy-copy">
             Tokens armazenados apenas neste dispositivo. Token GitHub enviado apenas ao GitHub, token Copilot enviado apenas para api.githubcopilot.com.
           </p>
         </div>
 
         <!-- Device code display (hidden until login starts) -->
-        <div id="copilot-code-section" class="hidden"
-          style="background: rgba(13,17,23,0.9); border: 2px solid rgba(63,185,80,0.6); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; text-align: center;">
-          <p style="margin: 0 0 10px; font-size: 0.75rem; color: rgba(255,255,255,0.7);">Cole este código em <strong style="color:#f0f6fc;">github.com/login/device</strong>:</p>
-          <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px;">
-            <p id="copilot-user-code"
-              style="margin: 0; font-size: 2.2rem; font-weight: 800; letter-spacing: 0.25em; color: #f0f6fc; font-family: 'Courier New', monospace; background: rgba(63,185,80,0.15); border-radius: 8px; padding: 10px 18px; display: inline-block; border: 1px solid rgba(63,185,80,0.3);">
-              --------</p>
-            <button id="copilot-copy-code-btn" title="Copiar código"
-              style="background: rgba(63,185,80,0.15); border: 1px solid rgba(63,185,80,0.4); border-radius: 8px; padding: 10px; cursor: pointer; color: #3fb950; display: flex; align-items: center; transition: background 0.15s; flex-shrink: 0;">
-              <span class="material-symbols-rounded" style="font-size: 20px;">content_copy</span>
+        <div id="copilot-code-section" class="hidden u-copilot-code-box">
+          <a id="copilot-open-github-link" href="https://github.com/login/device" target="_blank" class="u-copilot-open-link">
+            <span class="material-symbols-rounded u-fs-16">open_in_new</span>
+            github.com/login/device
+          </a>
+          <div class="u-copilot-code-row" style="margin-top:10px;margin-bottom:4px;">
+            <p id="copilot-user-code" class="u-copilot-user-code">--------</p>
+            <button id="copilot-copy-code-btn" title="Copiar código" class="u-copilot-copy-btn">
+              <span class="material-symbols-rounded u-fs-20">content_copy</span>
             </button>
           </div>
-          <p id="copilot-copy-feedback" style="margin: 0 0 10px; font-size: 0.72rem; color: #3fb950; height: 16px;"></p>
-          <a id="copilot-open-github-link" href="https://github.com/login/device" target="_blank"
-            style="display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 9px; background: rgba(63,185,80,0.12); border: 1px solid rgba(63,185,80,0.35); border-radius: 8px; color: #3fb950; font-size: 0.8rem; font-weight: 600; text-decoration: none; cursor: pointer; box-sizing: border-box;">
-            <span class="material-symbols-rounded" style="font-size: 16px;">open_in_new</span>
-            Abrir github.com/login/device
-          </a>
+          <p id="copilot-copy-feedback" class="u-copilot-copy-feedback"></p>
         </div>
 
-        <button id="copilot-login-btn" class="ob-btn ob-btn-primary"
-          style="width: 100%; background: linear-gradient(135deg, #238636, #2ea043); border: none; gap: 8px;">
-          <svg viewBox="0 0 16 16" width="16" height="16" fill="#ffffff" style="flex-shrink:0;">
+        <button id="copilot-login-btn" class="ob-btn ob-btn-primary u-login-btn-copilot">
+          <svg viewBox="0 0 16 16" width="16" height="16" fill="#ffffff" class="u-flex-shrink-0">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
           </svg>
           <span>Login com GitHub</span>
         </button>
-        <div id="copilot-login-status" class="ob-test-status" style="margin-top: 8px;"></div>
+        <div id="copilot-login-status" class="ob-test-status u-auth-status"></div>
       </div>
 
       <!-- Logged in state -->
       <div id="copilot-logged-in" class="chatgpt-auth-body hidden">
-        <div
-          style="display: flex; align-items: center; gap: 10px; background: rgba(63,185,80,0.1); border: 1px solid rgba(63,185,80,0.3); border-radius: 10px; padding: 12px;">
-          <svg viewBox="0 0 16 16" width="22" height="22" fill="#3fb950" style="flex-shrink:0;">
+        <div class="u-login-card-green">
+          <svg viewBox="0 0 16 16" width="22" height="22" fill="#3fb950" class="u-flex-shrink-0">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
           </svg>
-          <div style="flex: 1; min-width: 0;">
-            <p style="margin: 0; font-size: 0.88rem; font-weight: 600; color: #3fb950;">Conectado ao GitHub</p>
-            <p id="copilot-user-name" style="margin: 2px 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.7); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"></p>
+          <div class="u-flex-1-min0">
+            <p class="u-login-title-green">Conectado ao GitHub</p>
+            <p id="copilot-user-name" class="u-auth-user-sub-ellipsis"></p>
           </div>
-          <button id="copilot-test-btn" title="Testar conexão"
-            style="background: transparent; border: 1px solid rgba(63,185,80,0.4); border-radius: 7px; padding: 5px 8px; cursor: pointer; color: #3fb950; font-size: 0.7rem; white-space: nowrap; display: flex; align-items: center; gap: 3px; transition: background 0.15s;">
-            <span class="material-symbols-rounded" style="font-size: 14px;">bolt</span>
+          <button id="copilot-test-btn" title="Testar conexão" class="u-copilot-test-btn">
+            <span class="material-symbols-rounded u-copilot-test-icon">bolt</span>
             Testar
           </button>
         </div>
 
         <!-- Token info row -->
-        <div id="copilot-token-info"
-          style="display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; margin-top: 8px; background: rgba(0,0,0,0.2); border-radius: 7px; font-size: 0.72rem; color: rgba(255,255,255,0.5);">
-          <span id="copilot-plan-badge" style="background: rgba(121,192,255,0.15); color: #79c0ff; border-radius: 4px; padding: 2px 6px; font-weight: 600; font-size: 0.68rem;"></span>
-          <span id="copilot-token-expiry" style="font-size: 0.7rem;"></span>
+        <div id="copilot-token-info" class="u-copilot-token-info">
+          <span id="copilot-plan-badge" class="u-copilot-plan-badge"></span>
+          <span id="copilot-token-expiry" class="u-fs-07"></span>
         </div>
 
-        <div id="copilot-test-result" style="font-size: 0.75rem; color: rgba(255,255,255,0.7); margin-top: 6px; min-height: 18px; text-align: center;"></div>
+        <div id="copilot-test-result" class="u-copilot-test-result"></div>
 
-        <div style="display: flex; gap: 8px; margin-top: 10px;">
+        <div class="u-auth-row-tight">
 <!-- Hidden select preserved for JS compatibility (PopupController reads/writes .value) -->
-          <select id="select-copilot-model" style="display:none" aria-hidden="true">
+          <select id="select-copilot-model" class="u-display-none-inline" aria-hidden="true">
             <option value="claude-sonnet-4.6" selected>Claude Sonnet 4.6</option>
             <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
             <option value="gpt-5.3-codex">GPT-5.3-Codex</option>
@@ -847,7 +794,7 @@
           </select>
 
           <!-- Custom model picker -->
-          <div class="ah-mpicker" id="copilot-model-picker" style="flex:1">
+          <div class="ah-mpicker u-flex-1" id="copilot-model-picker">
             <button class="ah-mpicker-trigger" type="button" id="copilot-model-trigger" aria-haspopup="listbox" aria-expanded="false">
               <span class="ah-mpicker-trigger-icon material-symbols-rounded">auto_awesome</span>
               <div class="ah-mpicker-trigger-info">
@@ -1049,8 +996,8 @@
 
             </div><!-- /ah-mpicker-panel -->
           </div><!-- /ah-mpicker -->
-          <button id="copilot-logout-btn" class="ob-btn ob-btn-secondary" style="white-space: nowrap; gap: 4px;">
-            <span class="material-symbols-rounded" style="font-size: 16px;">logout</span>
+          <button id="copilot-logout-btn" class="ob-btn ob-btn-secondary u-nowrap-gap-4">
+            <span class="material-symbols-rounded u-fs-16">logout</span>
             <span>Sair</span>
           </button>
         </div>
@@ -1119,7 +1066,7 @@
         <span id="native-bridge-dot" class="native-bridge-dot"></span>
         <span id="native-bridge-label" class="native-bridge-label">NativeFetch Bridge</span>
         <button id="native-bridge-install-btn" class="native-bridge-install-btn hidden">
-          <span class="material-symbols-rounded" style="font-size:14px;">download</span>
+          <span class="material-symbols-rounded u-native-install-icon">download</span>
           ⚡ Instalar Turbo Mode
         </button>
       </div>
@@ -1198,7 +1145,7 @@
 
     <footer>
       <p>
-        <span class="material-symbols-rounded" style="font-size:16px;">smart_toy</span>
+        <span class="material-symbols-rounded u-footer-icon">smart_toy</span>
         <span data-i18n="footer.refined">AI-refined answers with source weighting</span>
       </p>
     </footer>
@@ -1208,7 +1155,7 @@
   <div id="manual-add-overlay" class="manual-add-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="manual-add-title">
     <div class="manual-add-card">
       <div class="manual-add-header">
-        <span class="material-symbols-rounded" style="color:var(--ah-primary);font-size:22px;">create</span>
+        <span class="material-symbols-rounded u-manual-icon">create</span>
         <h3 id="manual-add-title" data-i18n="manual.add.title">Add Question</h3>
         <button class="manual-add-close" id="manualAddCloseBtn" aria-label="Close">
           <span class="material-symbols-rounded">close</span>
@@ -1289,6 +1236,165 @@
           <span data-i18n="manual.add.save">Save question</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== TURBO WIZARD MODAL ===== -->
+  <div id="turbo-wizard-overlay" class="tw-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="tw-heading">
+    <div class="tw-backdrop"></div>
+    <div class="tw-card">
+
+      <!-- Step dots -->
+      <div class="tw-dots" id="tw-dots">
+        <span class="tw-dot tw-dot--active" data-step="0"></span>
+        <span class="tw-dot" data-step="1"></span>
+        <span class="tw-dot" data-step="2"></span>
+        <span class="tw-dot" data-step="3"></span>
+      </div>
+
+      <!-- Close button -->
+      <button class="tw-close" id="tw-close-btn" data-i18n-aria-label="turbo.wizard.close">
+        <span class="material-symbols-rounded">close</span>
+      </button>
+
+      <!-- ── STEP 0: Teaser ── -->
+      <div class="tw-step" id="tw-step-0">
+        <div class="tw-hero">
+          <div class="tw-hero-badge tw-hero-badge--orange">⚡</div>
+        </div>
+        <h2 class="tw-heading" id="tw-heading" data-i18n="turbo.wizard.teaser.title">Turbo Mode</h2>
+        <p class="tw-sub" data-i18n-html="turbo.wizard.teaser.sub">Suas respostas chegam <strong>3× mais rápido</strong> com este mini-programa opcional.</p>
+
+        <div class="tw-compare">
+          <div class="tw-compare-col tw-compare-col--off">
+            <span class="tw-compare-icon">🐢</span>
+            <span class="tw-compare-label" data-i18n="turbo.wizard.teaser.compareOff">Sem Turbo</span>
+            <span class="tw-compare-val">8–15 s</span>
+          </div>
+          <div class="tw-compare-divider">vs</div>
+          <div class="tw-compare-col tw-compare-col--on">
+            <span class="tw-compare-icon">🚀</span>
+            <span class="tw-compare-label" data-i18n="turbo.wizard.teaser.compareOn">Com Turbo</span>
+            <span class="tw-compare-val">3–5 s</span>
+          </div>
+        </div>
+
+        <p class="tw-fine" data-i18n="turbo.wizard.teaser.fine">Não coleta dados · funciona offline · 100% local</p>
+
+        <div class="tw-actions">
+          <button class="tw-btn tw-btn--ghost" id="tw-skip-btn" data-i18n="turbo.wizard.skip">Usar sem Turbo</button>
+          <button class="tw-btn tw-btn--primary" id="tw-start-btn" data-i18n="turbo.wizard.start">Quero o Turbo! 🚀</button>
+        </div>
+      </div>
+
+      <!-- ── STEP 1: Baixando ── -->
+      <div class="tw-step hidden" id="tw-step-1">
+        <div class="tw-hero">
+          <div class="tw-hero-badge tw-hero-badge--blue tw-hero-badge--spin">⏳</div>
+        </div>
+        <h2 class="tw-heading" data-i18n="turbo.wizard.downloading.title">Preparando…</h2>
+        <p class="tw-sub" data-i18n-html="turbo.wizard.downloading.sub">Estamos baixando os arquivos direto da extensão para a sua pasta <strong>Downloads</strong>.</p>
+
+        <div class="tw-progress-wrap">
+          <div class="tw-progress-bar" id="tw-progress-bar"></div>
+        </div>
+        <p class="tw-progress-label" id="tw-progress-label" data-i18n="turbo.wizard.downloading.wait">Aguarde um segundo…</p>
+      </div>
+
+      <!-- ── STEP 2: Instruções ── -->
+      <div class="tw-step hidden" id="tw-step-2">
+        <div class="tw-hero">
+          <div class="tw-hero-badge tw-hero-badge--green">📂</div>
+        </div>
+        <h2 class="tw-heading" data-i18n="turbo.wizard.instructions.title">Quase lá!</h2>
+        <p class="tw-sub" data-i18n-html="turbo.wizard.instructions.sub">2 arquivos foram baixados em <strong>Downloads</strong>. Agora siga:</p>
+
+        <div class="tw-step-scroll">
+          <ol class="tw-steps-list">
+            <li class="tw-step-item">
+              <span class="tw-step-num">1</span>
+              <div class="tw-step-body">
+                <strong data-i18n="turbo.wizard.step1.title">Abra a pasta Downloads</strong>
+                <span class="tw-step-hint" data-i18n="turbo.wizard.step1.hint">Win+E → clique em "Downloads"</span>
+              </div>
+            </li>
+            <li class="tw-step-item">
+              <span class="tw-step-num">2</span>
+              <div class="tw-step-body">
+                <strong data-i18n="turbo.wizard.step2.title">Dê duplo clique em</strong>
+                <code class="tw-code">instalar-bridge.bat</code>
+              </div>
+            </li>
+            <li class="tw-step-item tw-step-item--warn">
+              <span class="tw-step-num">3</span>
+              <div class="tw-step-body">
+                <strong data-i18n="turbo.wizard.step3.title">Se aparecer aviso do Windows:</strong>
+                <span class="tw-step-hint" data-i18n-html="turbo.wizard.step3.hint">Clique em <em>"Mais informações"</em> e depois <em>"Executar mesmo assim"</em></span>
+                <details class="tw-why">
+                  <summary data-i18n="turbo.wizard.step3.why.summary">Por que esse aviso aparece? 🤔</summary>
+                  <p data-i18n-html="turbo.wizard.step3.why.body">O Windows avisa sobre programas novos que ainda não têm um certificado digital. Esse certificado custa R$&nbsp;1.000/ano — caro para um projeto estudantil! O programa só faz <em>uma coisa</em>: deixar o AnswerHunter mais veloz. Nenhum dado seu é coletado.</p>
+                </details>
+              </div>
+            </li>
+            <li class="tw-step-item">
+              <span class="tw-step-num">4</span>
+              <div class="tw-step-body">
+                <strong data-i18n="turbo.wizard.step4.title">Uma janelinha preta abre e fecha</strong>
+                <span class="tw-step-hint" data-i18n="turbo.wizard.step4.hint">Normal! É o instalador terminando o trabalho 🙂</span>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="tw-actions tw-actions--sticky">
+          <button class="tw-btn tw-btn--ghost" id="tw-back-btn" data-i18n="turbo.wizard.back">← Voltar</button>
+          <button class="tw-btn tw-btn--primary" id="tw-done-install-btn" data-i18n="turbo.wizard.doneInstall">Instalei! Verificar ✓</button>
+        </div>
+      </div>
+
+      <!-- ── STEP 3: Verificando ── -->
+      <div class="tw-step hidden" id="tw-step-3">
+        <div class="tw-hero">
+          <div class="tw-hero-badge tw-hero-badge--blue tw-hero-badge--pulse">🔍</div>
+        </div>
+        <h2 class="tw-heading" data-i18n="turbo.wizard.checking.title">Verificando…</h2>
+        <p class="tw-sub" data-i18n="turbo.wizard.checking.sub">Estamos checando se o Turbo Mode foi instalado corretamente.</p>
+        <div class="tw-progress-wrap">
+          <div class="tw-progress-bar tw-progress-bar--indeterminate"></div>
+        </div>
+      </div>
+
+      <!-- ── STEP 4a: Sucesso ── -->
+      <div class="tw-step hidden" id="tw-step-success">
+        <div class="tw-hero">
+          <div class="tw-hero-badge tw-hero-badge--green tw-hero-badge--bounce">🎉</div>
+        </div>
+        <h2 class="tw-heading" data-i18n="turbo.wizard.success.title">Turbo Mode ativado!</h2>
+        <p class="tw-sub" data-i18n="turbo.wizard.success.sub">Perfeito! A partir de agora suas buscas vão ser muito mais rápidas. 🚀</p>
+        <div class="tw-confetti" id="tw-confetti" aria-hidden="true"></div>
+        <div class="tw-actions tw-actions--center">
+          <button class="tw-btn tw-btn--primary" id="tw-success-close-btn" data-i18n="turbo.wizard.success.close">Incrível, vamos lá! 🎊</button>
+        </div>
+      </div>
+
+      <!-- ── STEP 4b: Não encontrado ── -->
+      <div class="tw-step hidden" id="tw-step-notfound">
+        <div class="tw-hero">
+          <div class="tw-hero-badge tw-hero-badge--orange">🤔</div>
+        </div>
+        <h2 class="tw-heading" data-i18n="turbo.wizard.notfound.title">Hmm, não encontrei…</h2>
+        <p class="tw-sub" data-i18n="turbo.wizard.notfound.sub">Pode ter faltado algum passo. Não tem problema — tente de novo ou continue sem o Turbo.</p>
+        <ul class="tw-tips">
+          <li data-i18n="turbo.wizard.notfound.tip1">Conferiu o passo 3 (aviso do Windows)?</li>
+          <li data-i18n="turbo.wizard.notfound.tip2">A janelinha preta apareceu?</li>
+          <li data-i18n="turbo.wizard.notfound.tip3">Às vezes leva alguns segundos a mais.</li>
+        </ul>
+        <div class="tw-actions">
+          <button class="tw-btn tw-btn--ghost" id="tw-notfound-skip-btn" data-i18n="turbo.wizard.notfound.skip">Continuar sem Turbo</button>
+          <button class="tw-btn tw-btn--primary" id="tw-retry-btn" data-i18n="turbo.wizard.retry">Tentar de novo 🔄</button>
+        </div>
+      </div>
+
     </div>
   </div>
 

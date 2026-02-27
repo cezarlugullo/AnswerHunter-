@@ -1,4 +1,5 @@
 import { NativeFetchBridgeService } from './NativeFetchBridgeService.js';
+import { BackgroundTabExtractorService } from './BackgroundTabExtractorService.js';
 /**
  * PasseiDiretoService.js
  *
@@ -19,11 +20,11 @@ import { NativeFetchBridgeService } from './NativeFetchBridgeService.js';
 export const PasseiDiretoService = {
 
     isPasseiDiretoUrl(url) {
-        return /passeidireto\.com\/(arquivo|file)\/\d+/i.test(String(url || ''));
+        return /passeidireto\.com\/(arquivo|file|pergunta)\/\d+/i.test(String(url || ''));
     },
 
     extractFileId(url) {
-        const m = String(url || '').match(/passeidireto\.com\/(?:arquivo|file)\/(\d+)/i);
+        const m = String(url || '').match(/passeidireto\.com\/(?:arquivo|file|pergunta)\/(\d+)/i);
         return m ? m[1] : null;
     },
 
@@ -34,7 +35,7 @@ export const PasseiDiretoService = {
         try {
             const bridgeAvailable = await Promise.race([
                 NativeFetchBridgeService.isAvailable(),
-                new Promise(r => setTimeout(() => r(false), 1500)),
+                new Promise(r => setTimeout(() => r(false), 6000)), // 6s > PROBE_TIMEOUT_MS(5s)
             ]);
             if (bridgeAvailable) {
                 console.log('[PasseiDiretoService] _fetchHtml via NativeFetchBridge:', url);
@@ -81,8 +82,34 @@ export const PasseiDiretoService = {
     async getTextFromUrl(url, timeoutMs = 12000) {
         try {
             const html = await PasseiDiretoService._fetchHtml(url, timeoutMs);
-            if (!html) return null;
-            return PasseiDiretoService._extractFromHtml(html, url);
+            if (html) {
+                const result = PasseiDiretoService._extractFromHtml(html, url);
+                if (result) return result;
+            }
+
+            // Silent fallback: real Chrome tab (zero-install, bypasses CDN like the bridge does)
+            // Works for /pergunta/ pages where the answer is rendered in the DOM.
+            // For /arquivo/ pages the __NEXT_DATA__ is also captured by _passeiDiretoExtractor.
+            console.log('[PasseiDiretoService] tab fallback for:', url);
+            try {
+                const tabText = await BackgroundTabExtractorService.extractFromUrl(url, { timeoutMs: 20000 });
+                if (tabText && tabText.length > 200) {
+                    console.log(`[PasseiDiretoService] tab fallback: ${tabText.length} chars`);
+                    // If this is a /pergunta/ page, run the pergunta extractor on the tab text
+                    if (/\/pergunta\/\d+/i.test(url)) {
+                        return PasseiDiretoService._extractFromPerguntaHtml(tabText);
+                    }
+                    // For /arquivo/ pages: try __NEXT_DATA__ extraction on the tab text
+                    const result = PasseiDiretoService._extractFromHtml(tabText, url);
+                    if (result) return result;
+                    // Return raw text as last resort
+                    return { text: tabText, pageCount: 1, isPremium: false, contentRestriction: null, fileName: '', fileId: PasseiDiretoService.extractFileId(url) };
+                }
+            } catch (tabErr) {
+                console.warn('[PasseiDiretoService] tab fallback error:', tabErr.message);
+            }
+
+            return null;
         } catch (e) {
             if (e.name === 'AbortError') console.warn('[PasseiDiretoService] Timeout:', url);
             else console.error('[PasseiDiretoService] Error:', e.message);
@@ -92,6 +119,11 @@ export const PasseiDiretoService = {
 
     _extractFromHtml(html, url = '') {
         try {
+            // /pergunta/ pages: extract visible text directly (no __NEXT_DATA__ needed)
+            if (/\/pergunta\/\d+/i.test(url)) {
+                return PasseiDiretoService._extractFromPerguntaHtml(html);
+            }
+
             const m = html.match(/id="__NEXT_DATA__"[^>]*>(\{[\s\S]*?\})<\/script>/);
             if (!m) {
                 console.warn('[PasseiDiretoService] __NEXT_DATA__ not found');
@@ -149,6 +181,23 @@ export const PasseiDiretoService = {
             console.error('[PasseiDiretoService] Parse error:', e.message);
             return null;
         }
+    },
+
+    // Extracts answer text from /pergunta/ pages.
+    // These pages render server-side and contain "A alternativa correta é: b) ..."
+    _extractFromPerguntaHtml(html) {
+        const text = PasseiDiretoService._stripHtml(html);
+        if (!text || text.length < 50) return null;
+        if (!/alternativa\s+correta/i.test(text)) return null;
+        console.log('[PasseiDiretoService] /pergunta/ page — extracted ' + text.length + ' chars');
+        return {
+            text,
+            pageCount: 1,
+            isPremium: false,
+            contentRestriction: null,
+            fileName: '',
+            fileId: null,
+        };
     },
 
     _stripHtml(html) {

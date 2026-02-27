@@ -591,6 +591,21 @@ export const ApiService = {
                     return null;
                 }
                 if (result.status === 429) {
+                    // Premium model quota exhausted — retry with gpt-4o-mini (always free on all Copilot plans)
+                    const FREE_FALLBACK = 'gpt-4o-mini';
+                    if (model !== FREE_FALLBACK && model !== 'gpt-4o') {
+                        console.warn(`AnswerHunter: Copilot 429 on ${model} — retrying with ${FREE_FALLBACK}`);
+                        try {
+                            const fallback = await CopilotApiAdapter.chatCompletion(
+                                copilotToken, apiUrl, messages,
+                                { model: FREE_FALLBACK, temperature: opts.temperature, max_tokens: opts.max_tokens }
+                            );
+                            if (fallback && typeof fallback === 'string') {
+                                console.log(`%c[AH] ✅ Copilot fallback success (${FREE_FALLBACK}, ${fallback.length} chars)`, 'color:#79c0ff');
+                                return fallback;
+                            }
+                        } catch (_) { /* fall through to cooldown */ }
+                    }
                     const cooldownMs = 120000;
                     this._copilotQuotaExhaustedUntil = Date.now() + cooldownMs;
                     console.warn(`AnswerHunter: Copilot rate-limited (429), cooldown=${cooldownMs}ms`);
@@ -1172,6 +1187,55 @@ export const ApiService = {
     },
 
 
+    /**
+     * aiExtractFromUrl — simplified pipeline: URL → Jina Reader → aiExtractFromPage
+     *
+     * Instead of the full fetch+parse+evidence pipeline, this method:
+     *   1. Fetches the URL via Jina Reader (r.jina.ai) — free proxy that renders JS,
+     *      bypasses 403/CORS, and returns clean markdown text.
+     *   2. Passes the clean text directly to aiExtractFromPage (LLM extraction).
+     *
+     * Ideal as a fast fallback when fetchPageSnapshot returns a weak snapshot
+     * (blocked, too short, or JS-heavy SPA with no pre-fetcher).
+     *
+     * @param {string} url           - the source page URL
+     * @param {string} questionText  - full question + options text
+     * @returns {Promise<{letter, confidence, method, evidence, knowledge}|null>}
+     */
+    async aiExtractFromUrl(url, questionText) {
+        if (!url || !questionText) return null;
+
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        let hostHint = '';
+        try { hostHint = new URL(url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
+
+        console.log(`  🌐 [aiExtractFromUrl] Fetching via Jina: ${hostHint}`);
+        try {
+            const snap = await this._fetchTextWithTimeout(jinaUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/plain,text/markdown,*/*',
+                    'X-Return-Format': 'text',
+                    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+                },
+                mode: 'cors',
+                credentials: 'omit'
+            }, 12000);
+
+            const text = (snap?.text || '').trim();
+            if (!snap?.ok || text.length < 100) {
+                console.log(`  🌐 [aiExtractFromUrl] Jina failed (ok=${snap?.ok} len=${text.length}) for ${hostHint}`);
+                return null;
+            }
+
+            console.log(`  🌐 [aiExtractFromUrl] Jina OK — ${text.length} chars for ${hostHint}`);
+            return await this.aiExtractFromPage(text, questionText, hostHint);
+        } catch (e) {
+            console.warn(`  🌐 [aiExtractFromUrl] Error for ${hostHint}:`, e?.message || e);
+            return null;
+        }
+    },
+
     async aiExtractFromPage(pageText, questionText, hostHint = '') {
         if (!pageText || pageText.length < 100 || !questionText) {
             console.log(`  🔬 [aiExtract] SKIP: text too short (${(pageText || '').length} chars)`);
@@ -1731,12 +1795,12 @@ Letra B: TCP
         const truncatedQuestion = questionText.substring(0, 1800);
         console.log(`  🔎 [aiVerify] START host=${host} suggestedLetter=${suggestedLetter} sourceLen=${truncatedSource.length}`);
 
-        const systemMsg = `Você é um especialista em questões de múltipla escolha brasileiras. Sua tarefa é verificar se a letra de resposta encontrada em uma fonte está correta para a questão do aluno. As alternativas podem estar em ordem diferente entre a fonte e a questão — identifique a letra CORRETA na questão do aluno com base no CONTEÚDO. Responda APENAS no formato solicitado.`;
+        const systemMsg = `Você é um especialista em questões de múltipla escolha brasileiras. Sua tarefa é identificar qual é a resposta correta para a questão do aluno com base no texto de uma fonte. As alternativas podem estar embaralhadas ou com letras diferentes entre a fonte e a questão — identifique pelo CONTEÚDO (texto), não pela letra. Responda APENAS no formato solicitado.`;
 
         const prompt = `# Verificação de Gabarito
 
-A análise automática encontrou a resposta **Letra ${suggestedLetter}** em uma fonte (${host}).
-Verifique se essa letra é realmente a correta para a questão do aluno, considerando que as alternativas PODEM estar em ordem diferente.
+A análise automática encontrou algo relacionado à resposta **Letra ${suggestedLetter}** em uma fonte (${host}).
+Com base no texto da fonte, identifique qual é a resposta correta para a questão do aluno.
 
 # Questão do aluno (com as alternativas na ordem dele):
 ${truncatedQuestion}
@@ -1745,40 +1809,38 @@ ${truncatedQuestion}
 ${truncatedSource}
 
 # Tarefa:
-1. Leia o texto da fonte e identifique qual é a resposta correta (pelo CONTEÚDO, não pela letra)
-2. Compare com as alternativas da questão do aluno
-3. Determine qual letra na questão do aluno corresponde à resposta correta
+1. Leia o texto da fonte e identifique qual é a resposta correta (pelo CONTEÚDO do texto, não pela letra)
+2. Encontre na questão do aluno qual alternativa tem esse conteúdo
+3. Copie o TEXTO EXATO da alternativa correta da questão do aluno
 
-# Responda EXATAMENTE em um dos formatos:
+# Responda EXATAMENTE neste formato:
 
 ## Se conseguiu verificar:
-CONFIRMADO: Letra ${suggestedLetter} (a fonte e a questão concordam)
-OU
-CORRECAO: Letra X (a letra correta na questão do aluno é X, não ${suggestedLetter})
-RAZAO: [explicação em 1 linha de por que]
+RESPOSTA: [texto exato da alternativa correta — copie da questão do aluno, sem a letra]
+RAZAO: [explicação em 1 linha]
 
 ## Se não conseguiu verificar:
 INCONCLUSIVO: [motivo em 1 linha]`;
 
         const parseVerifyResponse = (text) => {
             if (!text) return null;
-            const confirmMatch = text.match(/CONFIRMADO:\s*Letra\s*([A-E])/i);
-            if (confirmMatch) return { letter: confirmMatch[1].toUpperCase(), confidence: 0.80, reasoning: 'confirmed', action: 'confirm' };
-            const correctMatch = text.match(/CORRECAO:\s*Letra\s*([A-E])/i);
             const reasonMatch = text.match(/RAZAO:\s*(.+)/i);
-            if (correctMatch) return {
-                letter: correctMatch[1].toUpperCase(),
-                confidence: 0.72,
-                reasoning: reasonMatch?.[1]?.trim() || '',
-                action: 'correct'
-            };
+            const reasoning = reasonMatch?.[1]?.trim() || '';
+            // Primary: extract answer TEXT (robust to shuffled options / year changes)
+            const textMatch = text.match(/RESPOSTA:\s*(.+?)(?:\n|RAZAO:|$)/si);
+            if (textMatch) {
+                const answerText = textMatch[1].trim().replace(/^[A-E][)\s.\-:]+\s*/i, '');
+                if (answerText.length >= 3) {
+                    return { answerText, confidence: 0.85, reasoning, action: 'text' };
+                }
+            }
             return null;
         };
 
         // Use primaryProvider cascade — respects user's chosen provider with automatic fallback
         const { content: _verifRaw, usedProvider: _verifProvider } = await this._callAnyProvider(
             [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-            { temperature: 0.05, max_tokens: 200, model_groq: settings.groqModelFast || settings.groqModel, model_gemini: settings.geminiModelFast || 'gemini-2.0-flash' },
+            { temperature: 0.05, max_tokens: 200, model_groq: settings.groqModelSmart || settings.groqModelFast || 'llama-3.3-70b-versatile', model_gemini: settings.geminiModelSmart || settings.geminiModelFast || 'gemini-2.5-flash' },
             '🔎 [aiVerify]'
         );
         const result = parseVerifyResponse(_verifRaw);

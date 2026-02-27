@@ -75,10 +75,11 @@ export const SearchCacheService = {
      * Returns a stable cache key: hostname + first 80 chars of question stem.
      */
     getAiResultCacheKey(url, questionStem) {
-        let host = url;
-        try { host = new URL(url).hostname; } catch (_) { /* keep full url */ }
+        // Use full URL (not just hostname) to prevent cross-document cache collisions
+        // on hosts with many pages (e.g. PasseiDireto: each /arquivo/ or /pergunta/ is
+        // a distinct document with potentially different option ordering).
         const stem = String(questionStem || '').replace(/\s+/g, ' ').trim().slice(0, 80);
-        return `${host}|${stem}`;
+        return `${url}|${stem}`;
     },
 
     /**

@@ -35,7 +35,7 @@ export const QuestionParser = {
             .toLowerCase()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
-            .replace(/->>|/g, ' op_json_text ')
+            .replace(/->>/g, ' op_json_text ')
             .replace(/->/g, ' op_json_obj ')
             .replace(/=>/g, ' op_arrow ')
             .replace(/::/g, ' op_dcolon ')
@@ -253,12 +253,17 @@ export const QuestionParser = {
     findLetterByAnswerText(answerBody, optionsMap) {
         if (!answerBody || !optionsMap) return null;
         const normalizedAnswer = this.normalizeOption(answerBody);
-        if (!normalizedAnswer || normalizedAnswer.length < 20) return null;
+        if (!normalizedAnswer || normalizedAnswer.length < 2) return null;
 
         const normalizedEntries = Object.entries(optionsMap)
             .map(([letter, body]) => [letter, this.normalizeOption(body)])
-            .filter(([, body]) => !!body && body.length >= 8);
+            .filter(([, body]) => !!body && body.length >= 2);
         if (normalizedEntries.length < 2) return null;
+
+        if (normalizedAnswer.length < 20) {
+            const strictHits = normalizedEntries.filter(([, body]) => body === normalizedAnswer);
+            if (strictHits.length === 1) return strictHits[0][0];
+        }
 
         const containsHits = normalizedEntries.filter(([, body]) => normalizedAnswer.includes(body));
         if (containsHits.length >= 2) return null;

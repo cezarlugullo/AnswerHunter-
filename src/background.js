@@ -52,11 +52,34 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 chrome.runtime.onInstalled.addListener(() => {
     _syncCopilotPollingAlarm().catch(() => {});
+    _clearStaleSearches().catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(() => {
     _syncCopilotPollingAlarm().catch(() => {});
+    _clearStaleSearches().catch(() => {});
 });
+
+/**
+ * Clears any background search entries stuck in 'running' state (service worker
+ * was killed mid-search). Without this the popup poller loops forever on reload.
+ */
+async function _clearStaleSearches() {
+    try {
+        const all = await chrome.storage.local.get(null);
+        const staleKeys = [];
+        for (const [k, v] of Object.entries(all || {})) {
+            if (k.startsWith('ah_bg_search_') && v?.state === 'running') {
+                staleKeys.push(k);
+                staleKeys.push(`${k}_status`);
+            }
+        }
+        if (staleKeys.length) {
+            await chrome.storage.local.remove(['ah_pending_search', ...staleKeys]);
+            console.log(`AnswerHunter BG: cleared ${staleKeys.length} stale search entries`);
+        }
+    } catch (_) {}
+}
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
@@ -121,6 +144,7 @@ chrome.storage.local.get(['chatgpt_pkce_pending', 'gemini_cli_pkce_pending'], (r
 });
 
 _syncCopilotPollingAlarm().catch(() => {});
+_clearStaleSearches().catch(() => {});
 
 // ─── Background Search Phase 2 ───────────────────────────────────────────────
 // Receives { type: 'SEARCH_PHASE2', requestId, question, displayQuestion }

@@ -1,3 +1,5 @@
+import { NativeFetchBridgeService } from './NativeFetchBridgeService.js';
+import { BackgroundTabExtractorService } from './BackgroundTabExtractorService.js';
 /**
  * PasseiDiretoAnswersApiService
  *
@@ -55,11 +57,31 @@ function _extractQuestionIdsFromText(text = '') {
 
 /**
  * Fetch raw text from a URL.
- * Primary: direct fetch (works when SW has access to full HTML).
- * Fallback: Jina mirror (https://r.jina.ai/<url>) when direct fetch returns < MIN_FULL_HTML_BYTES.
+ * Priority 1: NativeFetchBridge (Go binary, Chrome_131 TLS fingerprint) — bypasses CDN block.
+ * Priority 2: Direct SW fetch (may return partial 50 KB SSR shell).
+ * Fallback: Jina mirror when direct fetch returns < MIN_FULL_HTML_BYTES.
  * Jina renders the full SPA including __NEXT_DATA__, giving us embedded question IDs.
  */
 async function _fetchText(url, timeoutMs = 12000) {
+  // ── Priority 1: NativeFetchBridge ────────────────────────────────────────────────────────
+  try {
+    const bridgeAvailable = await Promise.race([
+      NativeFetchBridgeService.isAvailable(),
+      new Promise(r => setTimeout(() => r(false), 6000)), // 6s > PROBE_TIMEOUT_MS(5s)
+    ]);
+    if (bridgeAvailable) {
+      console.log('[PD-API] _fetchText via NativeFetchBridge:', url);
+      const html = await NativeFetchBridgeService.fetchText(url, { timeoutMs });
+      if (html && html.length >= MIN_FULL_HTML_BYTES) return html;
+      if (html && html.length > 1000) {
+        console.warn(`[PD-API] NativeFetchBridge returned short response (${html.length} B), falling back`);
+      }
+    }
+  } catch (e) {
+    console.warn('[PD-API] NativeFetchBridge error, falling back:', e.message);
+  }
+
+  // ── Priority 2: Direct SW fetch ───────────────────────────────────────────────────────────
   const _get = async (target) => {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), timeoutMs);
@@ -92,6 +114,19 @@ async function _fetchText(url, timeoutMs = 12000) {
   if (jina.length > 0) {
     console.log(`[PD-API] Jina returned ${jina.length} chars for ${url}`);
     return jina;
+  }
+
+  // Priority 3: BackgroundTabExtractorService (zero-install, real Chrome tab)
+  // Captures __NEXT_DATA__ JSON embedded in the page, which contains question IDs.
+  console.log('[PD-API] trying tab fallback for:', url);
+  try {
+    const tabText = await BackgroundTabExtractorService.extractFromUrl(url, { timeoutMs: 20000 });
+    if (tabText && tabText.length > 500) {
+      console.log(`[PD-API] tab fallback: ${tabText.length} chars for ${url}`);
+      return tabText;
+    }
+  } catch (tabErr) {
+    console.warn('[PD-API] tab fallback error:', tabErr.message);
   }
 
   // Return whatever we got
@@ -206,9 +241,28 @@ export const PasseiDiretoAnswersApiService = {
   },
 
   async getAnswersTextByUrl(url) {
-    const ids = await this.extractQuestionIdsFromPage(url);
+    // Fetch once — reuse for both ID extraction AND text fallback
+    const html = await _fetchText(url, 15000);
+    if (!html) return null;
+
+    let ids = _extractQuestionIdsFromText(html);
+    // Also try extracting from __NEXT_DATA__ script for robustness
+    if (ids.length === 0) {
+      const m = html.match(/<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (m && m[1]) ids.push(..._extractQuestionIdsFromText(m[1]));
+    }
+    ids = [...new Set(ids)].slice(0, 10);
+
     if (!ids.length) {
       console.log('[PD-API] No question IDs found for', url);
+      // Fallback: return the fetched text so the extraction pipeline can use it
+      if (html.length > 5000) {
+        const text = _stripHtml(html).slice(0, 14000);
+        if (text.length > 500) {
+          console.log(`[PD-API] Returning page text fallback (${text.length} chars) for`, url);
+          return { questionId: null, encodedId: null, answerCount: 0, text };
+        }
+      }
       return null;
     }
 

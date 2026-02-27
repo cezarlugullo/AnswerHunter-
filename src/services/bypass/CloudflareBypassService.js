@@ -38,6 +38,7 @@ export class CloudflareBypassService {
     const cfg  = { ...CloudflareBypassService.CONFIG, ...options };
     const site = CloudflareBypassService._parseSite(url);
     let   tabId = null;
+    let   _winId = null;
 
     try {
       // LAYER 1: reuse existing cf_clearance if available
@@ -49,7 +50,9 @@ export class CloudflareBypassService {
 
       // LAYER 2 + 3 + 4: open stealth tab with early injection
       console.log(`[CF-BYPASS] Opening stealth tab for ${site}`);
-      tabId = await CloudflareBypassService._openAndInjectEarly(url, site, cfg);
+      const opened = await CloudflareBypassService._openAndInjectEarly(url, site, cfg);
+      tabId  = opened?.tabId  ?? null;
+      _winId = opened?.winId  ?? null;
 
       if (!tabId) {
         return { text: '', method: 'failed', cookieReused: false };
@@ -83,7 +86,10 @@ export class CloudflareBypassService {
       console.error(`[CF-BYPASS] ❌ Error:`, err?.message || err);
       return { text: '', method: 'error', cookieReused: false };
     } finally {
-      if (tabId !== null) {
+      // Close the minimized popup window (not just the tab) if we have a winId.
+      if (_winId !== null) {
+        try { chrome.windows.remove(_winId); } catch (_) {}
+      } else if (tabId !== null) {
         try { chrome.tabs.remove(tabId); } catch (_) {}
       }
     }
@@ -101,9 +107,10 @@ export class CloudflareBypassService {
 
       console.log(`[CF-BYPASS] Found existing cf_clearance for ${site} — trying direct tab`);
 
-      // Already have clearance — open tab and extract directly
-      const tab = await chrome.tabs.create({ url, active: false });
-      const tid = tab.id;
+      // Already have clearance — open minimized popup window and extract directly
+      const win = await chrome.windows.create({ url, type: 'popup', state: 'minimized', focused: false });
+      const tid = win?.tabs?.[0]?.id;
+      if (!tid) return null;
 
       // Still inject stealth patches even with clearance (for good measure)
       await CloudflareBypassService._earlyPatchLoop(tid, cfg.earlyInjectWindowMs);
@@ -111,7 +118,7 @@ export class CloudflareBypassService {
       await new Promise(r => setTimeout(r, CloudflareBypassService._humanDelay(cfg)));
 
       const text = await CloudflareBypassService._runExtractor(tid, extractorFn);
-      try { chrome.tabs.remove(tid); } catch (_) {}
+      try { chrome.windows.remove(win.id); } catch (_) {}
       return text && text.length > 80 ? text : null;
     } catch (_) {
       return null;
@@ -130,6 +137,7 @@ export class CloudflareBypassService {
   static async _openAndInjectEarly(url, site, cfg) {
     return new Promise(async (resolve) => {
       let tabId = null;
+      let winId  = null;
       let patchCount = 0;
       const maxPatches = 8;  // inject up to 8 times during loading
       let resolved = false;
@@ -169,16 +177,22 @@ export class CloudflareBypassService {
       chrome.tabs.onUpdated.addListener(earlyListener);
 
       try {
-        const tab = await chrome.tabs.create({ url, active: false });
-        tabId = tab.id;
+        // Open as a minimized popup so it never appears in the user's tab bar
+        const win = await chrome.windows.create({ url, type: 'popup', state: 'minimized', focused: false });
+        winId  = win?.id ?? null;
+        tabId  = win?.tabs?.[0]?.id ?? null;
+        if (!tabId) {
+          resolve(null);
+          return;
+        }
 
         // Also run rapid-fire injection loop (belt + suspenders)
         CloudflareBypassService._earlyPatchLoop(tabId, cfg.earlyInjectWindowMs);
 
-        // Give listener time to work, then resolve with tabId
+        // Give listener time to work, then resolve with {tabId, winId}
         setTimeout(() => {
           chrome.tabs.onUpdated.removeListener(earlyListener);
-          resolve(tabId);
+          resolve({ tabId, winId });
         }, cfg.earlyInjectWindowMs + 500);
 
       } catch (err) {

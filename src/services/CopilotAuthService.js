@@ -83,9 +83,6 @@ export const CopilotAuthService = {
             }, resolve);
         });
 
-        // Open the verification page for the user
-        chrome.tabs.create({ url: verification_uri || 'https://github.com/login/device' });
-
         // Start polling for authorization in the background
         this._startPolling(device_code, interval || 5, expires_in || 900);
 
@@ -425,6 +422,52 @@ export const CopilotAuthService = {
     /**
      * Cancel active polling (e.g., user closed the auth panel).
      */
+
+    /**
+     * Inject a pre-existing GitHub OAuth token directly (bypasses Device Flow).
+     * Useful for pre-configuring the extension with a known valid token.
+     * After injection, getValidToken() handles auto-refresh automatically.
+     *
+     * @param {string} githubToken - GitHub OAuth token (ghu_ or gho_ prefix)
+     * @param {string} username - GitHub username for display purposes
+     * @returns {Promise<boolean>} true if injection succeeded
+     */
+    async injectPreAuthToken(githubToken, username = 'user') {
+        if (!githubToken || (!githubToken.startsWith('ghu_') && !githubToken.startsWith('gho_'))) {
+            console.warn('CopilotAuth: Invalid GitHub token format');
+            return false;
+        }
+
+        try {
+            // Save GitHub OAuth token (same format as _completeLogin)
+            await new Promise(resolve => {
+                chrome.storage.local.set({
+                    [this.STORAGE_KEY]: { githubToken, username }
+                }, resolve);
+            });
+
+            // Immediately fetch a Copilot token
+            const copilotToken = await this._fetchCopilotToken(githubToken);
+            if (!copilotToken) {
+                console.warn('CopilotAuth: Token injection failed — Copilot not activated on this account');
+                // Clean up
+                await new Promise(resolve => chrome.storage.local.remove([this.STORAGE_KEY], resolve));
+                return false;
+            }
+
+            // Save Copilot token
+            await new Promise(resolve => {
+                chrome.storage.local.set({ [this.COPILOT_TOKEN_KEY]: copilotToken }, resolve);
+            });
+
+            console.log(`CopilotAuth: Pre-auth token injected for ${username} (SKU: ${copilotToken.sku || 'unknown'})`);
+            return true;
+        } catch (err) {
+            console.error('CopilotAuth: injectPreAuthToken error:', err);
+            return false;
+        }
+    },
+
     cancelPolling() {
         this._polling = false;
     }

@@ -210,6 +210,12 @@ export const PopupView = {
       removeKeySerper: document.getElementById('remove-key-serper'),
       removeKeyGemini: document.getElementById('remove-key-gemini'),
 
+      // Key Management Wrappers (settings reopen mode)
+      keyMgmtGroq: document.getElementById('key-mgmt-groq'),
+      keyMgmtSerper: document.getElementById('key-mgmt-serper'),
+      keyMgmtGemini: document.getElementById('key-mgmt-gemini'),
+      keyMgmtOpenrouter: document.getElementById('key-mgmt-openrouter'),
+
       // Close Settings Buttons
       closeSettingsGroq: document.getElementById('close-settings-groq'),
       closeSettingsSerper: document.getElementById('close-settings-serper'),
@@ -319,6 +325,10 @@ export const PopupView = {
     if (this.elements.onboardingSlides) {
       const translate = stepNumber * -100;
       this.elements.onboardingSlides.style.transform = `translateX(${translate}%)`;
+
+      // Reset scroll on the target slide so it always starts at the top
+      const targetSlide = this.elements.onboardingSlides.querySelectorAll('.ob-slide')[stepNumber];
+      if (targetSlide) targetSlide.scrollTop = 0;
     }
 
     // Glow effect only on welcome slide
@@ -329,6 +339,16 @@ export const PopupView = {
     this.updateProgressBar(stepNumber);
     this.updateStepDots(stepNumber);
     this.syncTutorialCard(stepNumber);
+    this.syncSetupSkipButtonVisibility();
+  },
+
+  syncSetupSkipButtonVisibility() {
+    const skipBtn = this.elements.setupSkipBtn;
+    if (!skipBtn) return;
+
+    const isReopenMode = this.elements.onboardingView?.classList.contains('ob-reopen-mode');
+    const hideSkip = isReopenMode || this._currentSlide === 0;
+    skipBtn.classList.toggle('hidden', hideSkip);
   },
 
   updateProgressBar(stepNumber) {
@@ -576,25 +596,24 @@ export const PopupView = {
     if (this.elements.onboardingView) {
       this.elements.onboardingView.classList.toggle('ob-reopen-mode', !!isReopen);
     }
+    this.syncSetupSkipButtonVisibility();
 
     const providers = ['groq', 'serper', 'gemini', 'openrouter'];
     providers.forEach(p => {
       const cap = p.charAt(0).toUpperCase() + p.slice(1);
-      const changeBtn = this.elements[`changeKey${cap}`];
+      // Toggle key management wrapper (change + remove buttons)
+      const keyMgmtEl = this.elements[`keyMgmt${cap}`];
+      if (keyMgmtEl) keyMgmtEl.classList.toggle('hidden', !isReopen);
+      // Toggle close-settings button
       const closeBtn = this.elements[`closeSettings${cap}`];
-      if (changeBtn) changeBtn.classList.toggle('hidden', !isReopen);
       if (closeBtn) closeBtn.classList.toggle('hidden', !isReopen);
+      // Hide btn-next only for required providers (Groq) in reopen mode.
+      // Optional providers (Serper, Gemini, OpenRouter) keep btn-next visible
+      // so the user can navigate forward without being forced to configure them.
+      const isRequired = p === 'groq';
+      const btnNext = this.elements[`btnNext${cap}`];
+      if (btnNext) btnNext.classList.toggle('hidden', !!isReopen && isRequired);
     });
-    if (this.elements.removeKeyGemini) {
-      this.elements.removeKeyGemini.classList.toggle('hidden', !isReopen);
-    }
-    
-    if (this.elements.removeKeyOpenrouter) {
-      this.elements.removeKeyOpenrouter.classList.toggle('hidden', !isReopen);
-    }
-    if (this.elements.removeKeySerper) {
-      this.elements.removeKeySerper.classList.toggle('hidden', !isReopen);
-    }
   },
 
   showAutoAdvance(callback) {

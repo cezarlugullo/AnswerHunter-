@@ -7,6 +7,19 @@ export const StorageModel = {
     currentFolderId: 'root',
 
     /**
+     * Normalizes a question string for consistent storage/lookup.
+     * Must match normalizeSavedQuestion in PopupController._buildLiveCardData.
+     */
+    _normalizeKey(s) {
+        return String(s || '')
+            .replace(/\r\n/g, '\n')
+            .replace(/^\s*(?:ENUNCIADO|STATEMENT)\s*[:\-]?\s*/i, '')
+            .replace(/\n\s*(?:ALTERNATIVAS?|OPTIONS)\s*[:\-]?\s*\n/gi, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    },
+
+    /**
      * Initializes storage, loading data from chrome.storage.local
      * @returns {Promise<void>}
      */
@@ -80,16 +93,30 @@ export const StorageModel = {
     async addItem(question, answer, source, extraContent = {}) {
         if (!this.data.length) await this.init();
 
-        if (this.isSaved(question)) {
+        const normQ = this._normalizeKey(question);
+        if (this.isSaved(normQ)) {
             return false;
         }
 
         const current = this.findNode(this.currentFolderId);
         if (current && current.type === 'folder') {
+            // Strip heavy evidence fields from sources to keep binder storage lean
+            const rawSources = Array.isArray(extraContent?.sources) ? extraContent.sources : null;
+            const leanSources = rawSources
+                ? rawSources.map(s => {
+                    if (!s || typeof s !== 'object') return s;
+                    const { evidenceBlock, pageText, rawContent, fullText, rawText, snippetExtended, ...rest } = s;
+                    return rest;
+                })
+                : undefined;
+            const mergedExtra = {
+                ...(extraContent || {}),
+                ...(leanSources !== undefined ? { sources: leanSources } : {})
+            };
             current.children.push({
                 id: 'q' + Date.now(),
                 type: 'question',
-                content: { question, answer, source, ...(extraContent || {}) },
+                content: { question: normQ, answer, source, ...mergedExtra },
                 createdAt: Date.now()
             });
             await this.save();
@@ -136,9 +163,10 @@ export const StorageModel = {
      */
     findQuestionNodeByContent(questionText, nodes = this.data) {
         if (!questionText) return null;
+        const needle = this._normalizeKey(questionText);
         const search = (nodes) => {
             for (const node of nodes) {
-                if (node.type === 'question' && node.content && node.content.question === questionText) return node;
+                if (node.type === 'question' && node.content && this._normalizeKey(node.content.question) === needle) return node;
                 if (node.children) {
                     const found = search(node.children);
                     if (found) return found;
@@ -199,9 +227,10 @@ export const StorageModel = {
      * @returns {boolean} Sucesso
      */
     async removeByContent(questionText) {
+        const normTarget = this._normalizeKey(questionText);
         const removeFromTree = (nodes) => {
             for (let i = 0; i < nodes.length; i++) {
-                if (nodes[i].type === 'question' && nodes[i].content && nodes[i].content.question === questionText) {
+                if (nodes[i].type === 'question' && nodes[i].content && this._normalizeKey(nodes[i].content.question) === normTarget) {
                     nodes.splice(i, 1);
                     return true;
                 }

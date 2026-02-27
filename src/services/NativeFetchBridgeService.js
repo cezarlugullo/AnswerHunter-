@@ -13,7 +13,7 @@
  *   const avail = await NativeFetchBridgeService.isAvailable();
  */
 
-const NATIVE_HOST = 'com.answerhunter.fetch';
+const NATIVE_HOST = 'com.answerhunter.bridge';
 const DEFAULT_TIMEOUT_MS = 20000;
 const PROBE_TIMEOUT_MS   = 5000;
 
@@ -184,11 +184,12 @@ export const NativeFetchBridgeService = (() => {
       body:      options.body      || '',
       timeoutMs: options.timeoutMs || DEFAULT_TIMEOUT_MS,
     });
-    // Decode base64 body
+    // Decode base64 body as UTF-8 (atob alone gives Latin-1 bytes)
     let bodyText = '';
     if (resp.body) {
       try {
-        bodyText = atob(resp.body);
+        const bytes = Uint8Array.from(atob(resp.body), c => c.charCodeAt(0));
+        bodyText = new TextDecoder('utf-8').decode(bytes);
       } catch (_) {
         bodyText = resp.body; // fallback if not b64
       }
