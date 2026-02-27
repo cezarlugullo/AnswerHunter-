@@ -2711,10 +2711,8 @@ export const PopupController = {
           }
         }
 
-        // Auto-scroll fallback (same frame):
-        // Some platforms lazy-render alternatives D/E only after scrolling.
-        // This pass scrolls programmatically, captures options, and restores scroll position.
-        if (Number.isFinite(bestFrameIndex) && bestFrameIndex >= 0 && countDistinctOptions(optionsText || '') < 5) {
+        // Auto-scroll fallback disabled — caused visible page scroll on first question.
+        if (false && Number.isFinite(bestFrameIndex) && bestFrameIndex >= 0 && countDistinctOptions(optionsText || '') < 5) {
           try {
             const [scannedResult] = await chrome.scripting.executeScript({
               target: { tabId: tab.id, frameIds: [bestFrameIndex] },
