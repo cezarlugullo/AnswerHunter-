@@ -3576,12 +3576,16 @@ export const PopupController = {
       'page-cache':'📄',
       ai:          '🤖',
     };
+    const getDomain = (url) => {
+      try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
+    };
     const rows = (results || []).map((r, i) => {
       const srcList = Array.isArray(r.sources) && r.sources.length ? r.sources : [];
       const sources = srcList.length
         ? srcList.map(s => {
             const icon = SOURCE_ICON[s.type] ?? '🌐';
-            return `${icon} ${s.title || s.link || '?'}`;
+            const label = getDomain(s.link) || String(s.title || s.link || '?').slice(0, 30);
+            return `${icon} ${label}`;
           }).join(' · ')
         : (r.aiFallback ? '🤖 IA (fallback)' : '—');
       const letter = String(r.answerLetter || r.bestLetter || '').toUpperCase();
