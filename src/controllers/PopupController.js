@@ -698,6 +698,14 @@ export const PopupController = {
 
     await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel, copilotModel });
 
+    const providerModelMap = {
+      groq:       groqModel,
+      gemini:     geminiModel,
+      openrouter: openrouterModelSmart,
+      chatgpt:    chatgptModel,
+      copilot:    copilotModel,
+    };
+
     const PROVIDER_LABEL = {
       groq:       '🔶 Groq',
       gemini:     '💎 Gemini',
@@ -3579,31 +3587,39 @@ export const PopupController = {
     const getDomain = (url) => {
       try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
     };
-    const rows = (results || []).map((r, i) => {
+    const rows = [];
+    (results || []).forEach((r, i) => {
       const srcList = Array.isArray(r.sources) && r.sources.length ? r.sources : [];
-      const sources = srcList.length
-        ? srcList.map(s => {
-            const icon = SOURCE_ICON[s.type] ?? '🌐';
-            const label = getDomain(s.link) || String(s.title || s.link || '?').slice(0, 30);
-            return `${icon} ${label}`;
-          }).join(' · ')
-        : (r.aiFallback ? '🤖 IA (fallback)' : '—');
       const letter = String(r.answerLetter || r.bestLetter || '').toUpperCase();
       const ok = /^[A-E]$/.test(letter);
       const confidence = r.confidence != null ? `${Math.round(r.confidence * 100)}%` : '—';
       const gabarito = ok
         ? `${letter}${r.answerText ? '  →  ' + String(r.answerText).slice(0, 55) : ''}`
         : '—';
-      return {
-        '#': i + 1,
-        'Fonte': sources,
-        'Extraiu?': ok ? '✅' : '❌',
-        'Gabarito': gabarito,
-        'Confiança': confidence,
-      };
+      if (srcList.length > 0) {
+        srcList.forEach((s, j) => {
+          const icon = SOURCE_ICON[s.type] ?? '🌐';
+          const label = s.link || getDomain(s.link) || String(s.title || '?').slice(0, 80);
+          rows.push({
+            '#': j === 0 ? i + 1 : '  └',
+            'Fonte': `${icon} ${label}`,
+            'Extraiu?': ok ? '✅' : '❌',
+            'Gabarito': gabarito,
+            'Confiança': j === 0 ? confidence : '',
+          });
+        });
+      } else {
+        rows.push({
+          '#': i + 1,
+          'Fonte': r.aiFallback ? '🤖 IA (fallback)' : '—',
+          'Extraiu?': ok ? '✅' : '❌',
+          'Gabarito': gabarito,
+          'Confiança': confidence,
+        });
+      }
     });
 
-    const found = rows.filter(r => r['Extraiu?'] === '✅').length;
+    const found = (results || []).filter(r => /^[A-E]$/.test(String(r.answerLetter || r.bestLetter || '').toUpperCase())).length;
     const badge = found > 0 ? `%c ✅ ${found} gabarito(s) encontrado(s) ` : `%c ❌ Sem gabarito `;
     const badgeStyle = found > 0
       ? 'background:#16a34a;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;'

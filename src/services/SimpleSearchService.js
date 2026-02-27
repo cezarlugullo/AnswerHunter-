@@ -241,7 +241,21 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
         const cancel = { cancelled: false };
 
         const checkDone = () => {
-            if (!resolved && (sources.length >= maxSources || settled >= total)) {
+            if (resolved) return;
+            // Early exit: 3+ sources agree with dominance ≥ 0.80 → no need to wait for more
+            if (sources.length >= 3) {
+                const votes = {};
+                for (const src of sources) votes[src.letter] = (votes[src.letter] || 0) + src.confidence;
+                const totalScore = Object.values(votes).reduce((a, b) => a + b, 0);
+                const bestScore = Math.max(...Object.values(votes));
+                if (totalScore > 0 && bestScore / totalScore >= 0.80) {
+                    resolved = true;
+                    cancel.cancelled = true;
+                    resolve({ sources: [...sources], allAttempts: [...allAttempts] });
+                    return;
+                }
+            }
+            if (sources.length >= maxSources || settled >= total) {
                 resolved = true;
                 cancel.cancelled = true;
                 resolve({ sources: [...sources], allAttempts: [...allAttempts] });

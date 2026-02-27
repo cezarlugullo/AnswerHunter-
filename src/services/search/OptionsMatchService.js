@@ -204,7 +204,9 @@ export const OptionsMatchService = {
                 for (const tk of answerTokens) {
                     if (bodyTokenSet.has(tk)) tokenHits += 1;
                 }
-                tokenRatio = tokenHits / Math.max(1, Math.min(answerTokens.length, bodyTokens.length));
+                // Use answerTokens.length as denominator so shorter options don't
+                // get artificially high scores when the answer has more context tokens
+                tokenRatio = tokenHits / Math.max(1, answerTokens.length);
             }
 
             const dice = QuestionParser.diceSimilarity(normalizedAnswer, normalizedBody);
@@ -247,7 +249,8 @@ export const OptionsMatchService = {
         const topStrong = top.contains || top.reverseContains;
         const topGoodSemantic = !topStrong && top.score >= 0.68 && top.tokenRatio >= 0.42 && top.tokenHits >= 2;
         const secondStrong = !!second && (second.contains || second.reverseContains || second.score >= 0.62);
-        const ambiguous = !!second && secondStrong && margin < (topStrong ? 0.12 : 0.10);
+        // If top has exact text containment, it's never ambiguous — containment is definitive
+        const ambiguous = !topStrong && !!second && secondStrong && margin < (topStrong ? 0.12 : 0.10);
 
         if (!topStrong && !topGoodSemantic) return null;
         if (ambiguous) return null;

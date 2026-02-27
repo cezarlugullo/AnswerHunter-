@@ -590,6 +590,11 @@ export const ApiService = {
                     console.warn('AnswerHunter: Copilot 401 — token will refresh on next call');
                     return null;
                 }
+                if (result.status === 408) {
+                    // Request timed out — skip Copilot this round, fall through to next provider
+                    console.warn('AnswerHunter: Copilot timeout — skipping to next provider');
+                    return null;
+                }
                 if (result.status === 429) {
                     // Premium model quota exhausted — retry with gpt-4o-mini (always free on all Copilot plans)
                     const FREE_FALLBACK = 'gpt-4o-mini';
@@ -967,8 +972,16 @@ export const ApiService = {
                         throw new Error(`GROQ_QUOTA_EXHAUSTED: retry-after=${retryAfter}s (~${waitMin}min)`);
                     }
 
-                    // Short retry-after (< 30s): per-minute rate limit, wait once and retry
-                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 30) {
+                    // Medium retry-after (10–30s): too long for parallel extraction — block Groq
+                    // temporarily so other parallel calls skip to Copilot immediately
+                    if (retryAfter > 10) {
+                        this._groqQuotaExhaustedUntil = Date.now() + retryAfter * 1000;
+                        console.warn(`AnswerHunter: Groq 429 retry-after=${retryAfter}s — blocking Groq for ${retryAfter}s, falling back to next provider`);
+                        throw new Error(`GROQ_QUOTA_EXHAUSTED: retry-after=${retryAfter}s (temp block)`);
+                    }
+
+                    // Short retry-after (≤ 10s): per-minute rate limit, wait once and retry
+                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 10) {
                         const backoffMs = Math.ceil(retryAfter * 1000) + 500;
                         console.log(`AnswerHunter: Rate limit 429, aguardando ${backoffMs}ms (retry-after=${retryAfter}s, tentativa ${attempt + 1}/${maxRetries})...`);
                         await new Promise(resolve => setTimeout(resolve, backoffMs));
@@ -1120,11 +1133,16 @@ export const ApiService = {
             try {
                 const model = opts.model_groq || settings.groqModelSmart || 'llama-3.3-70b-versatile';
                 console.log(`  ${logPrefix} Trying Groq (${model})...`);
-                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                const fetchFn = () => this._fetch(settings.groqApiUrl, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model, messages, temperature: opts.temperature, max_tokens: opts.max_tokens })
-                }));
+                });
+                // fastParallel: skips the serialization queue — used for bulk page extraction
+                // (parallel calls, fail fast on 429, fallback to Copilot instantly)
+                const data = opts.fastParallel
+                    ? await fetchFn()
+                    : await this._withGroqRateLimit(fetchFn);
                 return data?.choices?.[0]?.message?.content?.trim() || null;
             } catch (e) { console.warn(`  ${logPrefix} Groq error:`, e?.message || e); return null; }
         };
@@ -1236,6 +1254,221 @@ export const ApiService = {
         }
     },
 
+    /**
+     * fetchViaJina — Busca o conteúdo de uma URL via Jina Reader (r.jina.ai).
+     *
+     * COMO FUNCIONA
+     * ─────────────────────────────────────────────────────────────
+     * Jina Reader é um proxy gratuito que recebe uma URL e retorna o conteúdo
+     * da página como texto limpo (markdown), renderizando JS no servidor.
+     *
+     * Requisição: GET https://r.jina.ai/{url}
+     * Não requer autenticação nem chave de API.
+     *
+     * VANTAGENS
+     * - Contorna CORS (a requisição parte do servidor Jina, não do navegador)
+     * - Contorna bloqueios 403 básicos (user-agent real, IP de servidor confiável)
+     * - Renderiza SPAs JavaScript (React, Vue, etc.)
+     * - Retorna texto limpo sem HTML/CSS/scripts — ideal para enviar à IA
+     * - Grátis, sem limite documentado para uso moderado
+     *
+     * LIMITAÇÕES / QUANDO FALHA
+     * - Sites com Cloudflare Bot Management ou Akamai avançado (Studocu, Gauthmath)
+     *   → Jina recebe página de challenge JS → texto < 150 chars → descartado
+     * - Sites que exigem login/sessão real (alguns PDFs do PasseiDireto)
+     * - Sites com rate limit agressivo contra proxies
+     * - Timeout: se Jina demorar mais que timeoutMs (default 10s) → retorna null
+     *
+     * Quando falha, SimpleSearchService usa BackgroundTabExtractorService como fallback.
+     *
+     * @param {string} url          - URL completa a buscar (https://...)
+     * @param {number} [timeoutMs=10000]
+     * @returns {Promise<string|null>} Texto limpo da página ou null
+     */
+    async fetchViaJina(url, timeoutMs = 10000) {
+        if (!url) return null;
+        let hostHint = '';
+        try { hostHint = new URL(url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
+        try {
+            const jinaUrl = `https://r.jina.ai/${url}`;
+            console.log(`  [Jina] Fetching ${hostHint}...`);
+            const snap = await this._fetchTextWithTimeout(jinaUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/plain,text/markdown,*/*',
+                    'X-Return-Format': 'text',      // força retorno em texto puro
+                    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+                },
+                mode: 'cors',
+                credentials: 'omit'                 // não envia cookies (proxy público)
+            }, timeoutMs);
+            const text = (snap?.text || '').trim();
+            if (!snap?.ok || text.length < 150) {
+                // Menos de 150 chars = página de CAPTCHA, erro ou redirect vazio
+                console.log(`  [Jina] ⛔ Failed (ok=${snap?.ok}, len=${text.length}) for ${hostHint}`);
+                return null;
+            }
+            console.log(`  [Jina] ✅ Got ${text.length} chars from ${hostHint}`);
+            return text;
+        } catch (e) {
+            console.warn(`  [Jina] ❌ Error for ${hostHint}:`, e?.message);
+            return null;
+        }
+    },
+
+    /**
+     * aiExtractTextFromPage — Extrai o TEXTO da alternativa correta de uma página.
+     *
+     * DIFERENÇA CRÍTICA em relação a aiExtractFromPage() (método mais abaixo)
+     * ─────────────────────────────────────────────────────────────────────────
+     * - aiExtractFromPage  (ANTIGO): retorna "Letra C: [texto]" → usa a LETRA da fonte
+     *   BUG: se a fonte tem C=tabela e o usuário tem A=tabela, o sistema retornava C errado
+     *
+     * - aiExtractTextFromPage (ESTE): retorna "TEXTO_CORRETO: [texto exato da opção do usuário]"
+     *   CORRETO: o texto "tabela" é mapeado para a letra A nas opções do usuário
+     *
+     * COMO FUNCIONA
+     * ─────────────────────────────────────────────────────────────────────────
+     * 1. Trunca o texto da página para 8000 chars e a questão para 1800 chars
+     * 2. Envia à IA via _callAnyProvider() (tenta Gemini → OpenRouter → Groq → ChatGPT → Copilot)
+     * 3. O prompt instrui a IA a:
+     *    - Localizar a resposta na página (gabarito explícito ou por raciocínio)
+     *    - Retornar EXATAMENTE o texto de UMA das alternativas da questão DO ALUNO
+     *    - NÃO retornar a letra da fonte (que pode estar em ordem diferente)
+     * 4. Parse do output: extrai TEXTO_CORRETO e EVIDÊNCIA
+     * 5. Remove aspas que o modelo pode adicionar ao redor do texto
+     *
+     * O CALLER (SimpleSearchService) passa o resultado para:
+     * OptionsMatchService.matchAnswerTextToOptions(answerText, userOptionsMap)
+     * que localiza o texto nas opções do usuário e retorna a letra correta.
+     *
+     * LIMITAÇÕES
+     * - Confiança fixa em 0.85 (nunca muda — não há sinal direto de certeza da IA aqui)
+     * - Se a IA alucinar um texto que não existe nas opções → matchAnswerTextToOptions retorna null
+     * - Páginas com muitas questões: a IA pode confundir questões similares
+     *   (mitigado pelo prompt que exige comparar enunciado + alternativas exatos)
+     * - Se nenhum provider IA estiver configurado → _callAnyProvider lança erro → retorna null
+     *
+     * @param {string} pageText      - Texto limpo da página (de Jina ou BackgroundTab)
+     * @param {string} questionText  - Questão completa com alternativas no formato A) ... B) ...
+     * @param {string} [hostHint=''] - Domínio da fonte (para logging)
+     * @returns {Promise<{answerText:string, evidence:string, confidence:number}|null>}
+     */
+    async aiExtractTextFromPage(pageText, questionText, hostHint = '') {
+        if (!pageText || pageText.length < 100 || !questionText) {
+            console.log(`  [aiExtractText] SKIP: texto muito curto (${(pageText || '').length} chars)`);
+            return null;
+        }
+
+        const settings = await this._getSettings();
+        const truncatedPage = pageText.substring(0, 8000);
+        const truncatedQuestion = questionText.substring(0, 1800);
+
+        console.log(`  [aiExtractText] START host=${hostHint} pageLen=${truncatedPage.length}`);
+
+        const systemMsg = `Você é um especialista em encontrar respostas de questões de múltipla escolha dentro de textos acadêmicos. Analise o texto fornecido com rigor. Responda APENAS com base no texto — nunca invente informações.`;
+
+        const prompt = `# Tarefa
+Analise o TEXTO abaixo e encontre a resposta para a QUESTÃO do aluno.
+
+# REGRA CRÍTICA
+A fonte pode ter as alternativas em ORDEM DIFERENTE da questão do aluno, ou até com letras diferentes.
+NÃO retorne a letra da fonte — retorne o TEXTO EXATO de uma das alternativas da questão do aluno.
+
+# ATENÇÃO: Páginas com múltiplas questões
+Se o texto contiver várias questões, compare o ENUNCIADO e as ALTERNATIVAS EXATAS da questão do aluno.
+Use APENAS o gabarito que pertence a esta questão específica.
+
+# PRIORIDADE DE BUSCA (verifique nesta ordem)
+1. DECLARAÇÃO EXPLÍCITA da resposta correta — procure por frases como:
+   "A resposta correta é: [texto]"
+   "Resposta correta: [texto]"
+   "A alternativa correta é: [texto]"
+   "Gabarito: [letra ou texto]"
+   "Resposta: [letra ou texto]"
+   "A alternativa X está correta"
+   Se encontrar, use o TEXTO dessa declaração para identificar qual alternativa da questão do aluno corresponde.
+2. Explicação que conclua claramente em uma alternativa
+3. Conceitos que confirmem uma das alternativas
+
+# Formato de resposta
+
+## Se encontrou a resposta:
+RESULTADO: ENCONTRADO
+EVIDÊNCIA: [trecho exato do texto que indica a resposta]
+TEXTO_CORRETO: [copie EXATAMENTE o texto de UMA das alternativas da questão do aluno abaixo]
+
+## Se não encontrou:
+RESULTADO: NAO_ENCONTRADO
+
+───────────────────────────────
+TEXTO DA FONTE (${hostHint}):
+${truncatedPage}
+───────────────────────────────
+QUESTÃO DO ALUNO (copie o TEXTO_CORRETO de UMA dessas alternativas):
+${truncatedQuestion}
+───────────────────────────────
+
+Responda no formato acima:`;
+
+        // _callAnyProvider tenta providers na ordem de prioridade configurada pelo usuário:
+        // Gemini → OpenRouter → Groq → ChatGPT → Copilot
+        // temperature=0.05: máximo determinismo (menos criatividade = menos alucinação)
+        // max_tokens=500: suficiente para RESULTADO+EVIDÊNCIA+TEXTO_CORRETO (aumentado de 280)
+        // model_groq=groqModelFast: usa 8b-instant (14.4K RPD) — tarefa simples de extração de texto
+        // fastParallel=true: ignora a fila de serialização (chamadas paralelas, fail-fast no 429)
+        const { content, usedProvider } = await this._callAnyProvider(
+            [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
+            { temperature: 0.05, max_tokens: 500, model_groq: settings.groqModelFast || 'llama-3.1-8b-instant', fastParallel: true },
+            '[aiExtractText]'
+        );
+
+        if (!content || /RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
+            console.log(`  [aiExtractText] RESULT: NAO_ENCONTRADO (provider=${usedProvider})`);
+            return null;
+        }
+
+        // Parse: EVIDÊNCIA pode conter quebras de linha, então usamos [\s\S]*? (lazy)
+        const evidenceMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_CORRETO:|$)/i);
+        // TEXTO_CORRETO: deve estar em uma única linha
+        const textMatch = content.match(/TEXTO_CORRETO:\s*(.+)/i);
+
+        if (!textMatch?.[1]) {
+            // O modelo disse ENCONTRADO mas não incluiu TEXTO_CORRETO — resposta malformada
+            console.log(`  [aiExtractText] RESULT: sem TEXTO_CORRETO na resposta`);
+            return null;
+        }
+
+        // Remove aspas e prefixos de letra que modelos frequentemente incluem
+        // Ex: TEXTO_CORRETO: "Chave de partição"  → "Chave de partição"
+        // Ex: TEXTO_CORRETO: A) Chave de partição → "Chave de partição"
+        // Ex: TEXTO_CORRETO: A - Chave de partição → "Chave de partição"
+        const answerText = textMatch[1].trim()
+            .replace(/^["""''`]+|["""''`]+$/g, '')
+            .replace(/^[A-E]\s*[\)\.\-:]\s*/i, '')
+            .trim();
+        const evidence = (evidenceMatch?.[1] || '').trim();
+
+        console.log(`  [aiExtractText] RESULT: answerText="${answerText.slice(0, 100)}" (provider=${usedProvider})`);
+
+        return {
+            answerText,
+            evidence: evidence.slice(0, 900),
+            confidence: 0.85  // fixo — não há como medir certeza da IA de forma confiável aqui
+        };
+    },
+
+    /**
+     * aiExtractFromPage — [MÉTODO ANTIGO — NÃO USADO PELO NOVO PIPELINE]
+     *
+     * Retornava "Letra X: [texto]" — a LETRA vinha da fonte, não das opções do usuário.
+     * Isso causava o bug de remapeamento (ver SimpleSearchService.js para detalhes).
+     *
+     * Mantido porque ainda pode ser chamado por partes do pipeline LEGADO em SearchService.js
+     * (código que fica após o return do SimpleSearchService — dead code, mas não deletado).
+     *
+     * Para novo código: use aiExtractTextFromPage() em vez deste.
+     */
     async aiExtractFromPage(pageText, questionText, hostHint = '') {
         if (!pageText || pageText.length < 100 || !questionText) {
             console.log(`  🔬 [aiExtract] SKIP: text too short (${(pageText || '').length} chars)`);
@@ -2710,7 +2943,24 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             const compactTokens = toTokens(cleanQuery).slice(0, 10).join(' ');
             const rareTokenQuery = rareTokens.slice(0, 3).join(' ');
             const exactQuery = safe ? `"${safe}"` : '';
+
+            // ── "plain" query: enunciado + alternativas sem palavra-chave ─────────
+            // Imita o que o usuário faz numa busca manual no Google:
+            // apenas o texto da questão + trechos das alternativas, sem "gabarito".
+            // É a query mais natural e frequentemente traz as fontes mais relevantes.
+            const buildPlainQuery = (stem, options) => {
+                if (!options || options.length < 2) return normalizeSpace(stem).slice(0, 340);
+                const sortedOpts = [...options].filter(o => o && o.length >= 8).sort((a, b) => b.length - a.length);
+                const picked = sortedOpts.slice(0, 3).map(o => `"${normalizeSpace(o).slice(0, 45).replace(/["]/g, '')}"`);
+                const hintPart = picked.join(' ');
+                const maxStem = Math.max(60, 340 - hintPart.length - 1);
+                return normalizeSpace(`${normalizeSpace(stem).slice(0, maxStem)} ${hintPart}`).slice(0, 340);
+            };
+            const plainQuery = buildPlainQuery(cleanQuery, optionHints);
+
             const plan = [
+                // plain (sem "gabarito") — prioridade máxima, imita busca manual
+                { q: plainQuery, num: 10, boost: 0.95, label: 'plain' },
                 { q: normalizeSpace(`${cleanQuery} resposta correta`), num: 10, boost: 0.55, label: 'base' },
                 { q: normalizeSpace(`${cleanQuery} gabarito`), num: 10, boost: 0.6, label: 'gabarito' }
             ];
@@ -2816,15 +3066,23 @@ INCONCLUSIVO: [motivo em 1 linha]`;
 
             let ranked = dedupeAndRank(pooled);
 
-            // Expansion pass when recall is weak.
+            // Expansion pass when recall is weak — run all tasks in parallel.
             if (hasSerperKey && (ranked.length < 10 || !hasTrustedCoverage(ranked.slice(0, 7)))) {
-                for (const task of plan.slice(4)) {
-                    if (seenQueries.has(task.q)) continue;
+                const expansionTasks = plan.slice(4).filter(task => {
+                    if (seenQueries.has(task.q)) return false;
                     seenQueries.add(task.q);
-                    const data = await runSerper(task.q, task.num);
-                    captureSerperMeta(data);
-                    pushScored(data?.organic || [], task.boost, providerMode === 'serpapi' ? 'serpapi' : 'serper');
-                    serperCalls += 1;
+                    return true;
+                });
+                if (expansionTasks.length > 0) {
+                    const expansionResults = await Promise.all(
+                        expansionTasks.map(task => runSerper(task.q, task.num))
+                    );
+                    for (let _ei = 0; _ei < expansionTasks.length; _ei++) {
+                        const data = expansionResults[_ei];
+                        captureSerperMeta(data);
+                        pushScored(data?.organic || [], expansionTasks[_ei].boost, providerMode === 'serpapi' ? 'serpapi' : 'serper');
+                        serperCalls += 1;
+                    }
                 }
                 ranked = dedupeAndRank(pooled);
             }
@@ -4114,14 +4372,16 @@ REGRAS:
             if (copilotPrimary) {
                 // ── Copilot PRIMARY for MC ──
                 console.log(`AnswerHunter: MC via Copilot (primary, model=${settings.copilotModel || 'gpt-4o'})...`);
-                const copilotAttempts = [];
-                for (let i = 0; i < 2; i++) {
-                    const content = await this._callCopilot([
+                const copilotAttempts = (await Promise.all([
+                    this._callCopilot([
                         { role: 'system', content: mcSystemMsg },
                         { role: 'user', content: prompt }
-                    ], { model: settings.copilotModel || 'gpt-4o' });
-                    if (content) copilotAttempts.push(content);
-                }
+                    ], { model: settings.copilotModel || 'gpt-4o' }),
+                    this._callCopilot([
+                        { role: 'system', content: mcSystemMsg },
+                        { role: 'user', content: prompt }
+                    ], { model: settings.copilotModel || 'gpt-4o' })
+                ])).filter(Boolean);
                 if (copilotAttempts.length > 0) {
                     const tabulated = tabulateGroqAttempts(copilotAttempts);
                     if (tabulated) return tabulated;
@@ -4132,14 +4392,16 @@ REGRAS:
             if (chatgptPrimary) {
                 // ── ChatGPT PRIMARY for MC ──
                 console.log(`AnswerHunter: MC via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
-                const chatgptAttempts = [];
-                for (let i = 0; i < 2; i++) {
-                    const content = await this._callChatGPT([
+                const chatgptAttempts = (await Promise.all([
+                    this._callChatGPT([
                         { role: 'system', content: mcSystemMsg },
                         { role: 'user', content: prompt }
-                    ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
-                    if (content) chatgptAttempts.push(content);
-                }
+                    ], { model: settings.chatgptModel || 'gpt-5.2-codex' }),
+                    this._callChatGPT([
+                        { role: 'system', content: mcSystemMsg },
+                        { role: 'user', content: prompt }
+                    ], { model: settings.chatgptModel || 'gpt-5.2-codex' })
+                ])).filter(Boolean);
                 if (chatgptAttempts.length > 0) {
                     const tabulated = tabulateGroqAttempts(chatgptAttempts);
                     if (tabulated) return tabulated;

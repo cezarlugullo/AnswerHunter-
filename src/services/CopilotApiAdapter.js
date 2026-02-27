@@ -40,6 +40,10 @@ export const CopilotApiAdapter = {
             stream: false
         };
 
+        const timeoutMs = opts.timeoutMs ?? 20000;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+
         try {
             const response = await fetch(url, {
                 method: 'POST',
@@ -52,8 +56,10 @@ export const CopilotApiAdapter = {
                     'Openai-Intent': 'conversation-panel',
                     'User-Agent': 'GithubCopilot/1.300.0'
                 },
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                signal: controller.signal
             });
+            clearTimeout(timer);
 
             if (!response.ok) {
                 const errText = await response.text().catch(() => '');
@@ -64,6 +70,11 @@ export const CopilotApiAdapter = {
             const data = await response.json();
             return this._extractResponseText(data);
         } catch (err) {
+            clearTimeout(timer);
+            if (err.name === 'AbortError') {
+                console.warn(`CopilotApi: chatCompletion timeout (${timeoutMs}ms) — model=${model}`);
+                return { error: true, status: 408, text: 'timeout' };
+            }
             console.error('CopilotApi: chatCompletion error:', err);
             return null;
         }
