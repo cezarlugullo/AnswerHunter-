@@ -2711,13 +2711,14 @@ export const PopupController = {
           }
         }
 
-        // Auto-scroll fallback disabled — caused visible page scroll on first question.
-        if (false && Number.isFinite(bestFrameIndex) && bestFrameIndex >= 0 && countDistinctOptions(optionsText || '') < 5) {
+        // DOM-structural fallback: find the question container via text matching, then extract
+        // options using textContent (reads full DOM tree, no layout/visibility restriction)
+        // and structural selectors (li, label, radio groups). No scroll needed.
+        if (Number.isFinite(bestFrameIndex) && bestFrameIndex >= 0 && countDistinctOptions(optionsText || '') < 5) {
           try {
             const [scannedResult] = await chrome.scripting.executeScript({
               target: { tabId: tab.id, frameIds: [bestFrameIndex] },
-              function: async (anchorText, preferCode) => {
-                const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+              function: (anchorText, preferCode) => {
                 const normalize = (s) => String(s || '')
                   .toLowerCase()
                   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -2725,6 +2726,7 @@ export const PopupController = {
                   .replace(/\s+/g, ' ')
                   .trim();
                 const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
+                const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
 
                 const stop = new Set([
                   'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'questão',
@@ -2739,6 +2741,13 @@ export const PopupController = {
                   .slice(0, 18);
                 if (anchorTokens.length < 4) return '';
 
+                const cleanBody = (s) => {
+                  let b = String(s || '').replace(/\s+/g, ' ').trim();
+                  const idx = b.search(noise);
+                  if (idx > 1) b = b.slice(0, idx).trim();
+                  return b.replace(/[;:,\-.\s]+$/, '');
+                };
+
                 const extractOptionLines = (rawText) => {
                   if (!rawText) return [];
                   const normalized = String(rawText)
@@ -2749,36 +2758,18 @@ export const PopupController = {
                   const seen = new Set();
                   const startRe = /^["']?\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
                   let current = null;
-
                   const flush = () => {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
-                    let body = String(current.body || '').replace(/\s+/g, ' ').trim();
-                    const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
-                    const idx = body.search(noise);
-                    if (idx > 1) body = body.slice(0, idx).trim();
-                    body = body.replace(/[;:,\-.\s]+$/, '');
-
-                    if (!/^[A-E]$/.test(letter)) {
-                      current = null;
-                      return;
-                    }
-                    if (!body || body.length < 1 || seen.has(letter)) {
-                      current = null;
-                      return;
-                    }
+                    const body = cleanBody(current.body);
+                    if (!/^[A-E]$/.test(letter) || !body || seen.has(letter)) { current = null; return; }
                     seen.add(letter);
                     out.push(`${letter}) ${body}`);
                     current = null;
                   };
-
                   for (const line of lines) {
                     const m = line.match(startRe);
-                    if (m) {
-                      flush();
-                      current = { letter: m[1], body: m[2] };
-                      continue;
-                    }
+                    if (m) { flush(); current = { letter: m[1], body: m[2] }; continue; }
                     if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[aã]o|aula)\b/i.test(line)) {
                       current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
                     }
@@ -2787,87 +2778,103 @@ export const PopupController = {
                   return out.slice(0, 5);
                 };
 
-                const pickBestOptions = () => {
-                  const containers = Array.from(document.querySelectorAll('section, article, main, form, div, [data-section], [data-testid]'));
+                // ── Strategy 1: structural selectors (li, label, radio groups) ─────────────
+                // Finds the question container first via text matching, then queries option
+                // elements within it. Uses textContent so off-screen elements are included.
+                const tryStructural = () => {
+                  const OPTION_SELECTORS = [
+                    'li[data-letra]', 'li[data-letter]', 'li[data-option]', 'li[data-alternativa]',
+                    '[class*="alternativ"] li', '[class*="option"] li', '[class*="opcao"] li',
+                    '[class*="choice"] li', '[class*="alternativ"]', '[class*="resposta"]',
+                    'label:has(input[type="radio"])', 'label:has(input[type="checkbox"])',
+                    '[role="radio"]', '[role="option"]',
+                  ];
+
+                  const containers = Array.from(document.querySelectorAll(
+                    'section, article, main, form, [data-question], [data-questao], [data-testid], div'
+                  ));
+
+                  // Find best-matching container via textContent token hits
+                  let bestContainer = null;
+                  let bestHits = 3; // require at least 4 hits
+                  for (const el of containers) {
+                    const tc = String(el?.textContent || '');
+                    if (tc.length < 100 || tc.length > 200000) continue;
+                    const norm = normalize(tc);
+                    let hits = 0;
+                    for (const tk of anchorTokens) if (norm.includes(tk)) hits++;
+                    // Prefer smaller containers (more specific) when hits are equal
+                    if (hits > bestHits || (hits === bestHits && bestContainer && tc.length < String(bestContainer.textContent || '').length)) {
+                      bestHits = hits;
+                      bestContainer = el;
+                    }
+                  }
+                  if (!bestContainer) return [];
+
+                  // Try each selector group within the identified container
+                  for (const sel of OPTION_SELECTORS) {
+                    try {
+                      const items = Array.from(bestContainer.querySelectorAll(sel));
+                      if (items.length < 2) continue;
+                      const merged = new Map();
+                      const startRe = /^["']?\s*([A-E])\s*[\)\.\-:\s]/i;
+                      for (const item of items.slice(0, 10)) {
+                        const text = String(item?.textContent || '').replace(/\s+/g, ' ').trim();
+                        if (!text || text.length < 2) continue;
+                        const m = text.match(startRe);
+                        const letter = m ? m[1].toUpperCase() : null;
+                        if (letter && !merged.has(letter)) {
+                          const body = cleanBody(text.replace(startRe, '').trim());
+                          if (body) merged.set(letter, body);
+                        } else if (!letter && merged.size < 5) {
+                          // Unlabeled items: assign letters in order
+                          const next = ['A','B','C','D','E'].find(l => !merged.has(l));
+                          if (next) merged.set(next, cleanBody(text));
+                        }
+                      }
+                      if (merged.size >= 2) {
+                        const order = ['A','B','C','D','E'];
+                        return order.filter(l => merged.has(l)).map(l => `${l}) ${merged.get(l)}`);
+                      }
+                    } catch (_) { /* selector may not be supported */ }
+                  }
+
+                  // Fallback within container: use textContent of the best container
+                  const raw = String(bestContainer.textContent || '').replace(/\r/g, '\n').trim();
+                  return extractOptionLines(raw);
+                };
+
+                // ── Strategy 2: full-DOM textContent scan (like anchored, but textContent) ─
+                const tryTextContent = () => {
+                  const containers = Array.from(document.querySelectorAll(
+                    'section, article, main, form, div, [data-section], [data-testid]'
+                  ));
                   let best = { score: -1, options: [] };
                   for (const el of containers) {
-                    const raw = String(el?.innerText || '').replace(/\r/g, '\n').trim();
+                    // Use textContent (no layout, reads hidden/off-screen elements)
+                    const raw = String(el?.textContent || '').replace(/\r/g, '\n').trim();
                     if (!raw || raw.length < 140 || raw.length > 160000) continue;
                     const norm = normalize(raw);
-                    if (!norm) continue;
-
                     let hits = 0;
-                    for (const tk of anchorTokens) if (norm.includes(tk)) hits += 1;
+                    for (const tk of anchorTokens) if (norm.includes(tk)) hits++;
                     if (hits < 4) continue;
-
                     const extracted = extractOptionLines(raw);
                     if (extracted.length < 2) continue;
-
                     const codeCount = extracted.filter((line) => {
                       const m = String(line || '').match(/^([A-E])\s*[\)\.\-:]\s*(.+)$/i);
                       return m ? isCodeLike(m[2]) : false;
                     }).length;
                     const codeBonus = preferCode ? (codeCount >= Math.max(2, extracted.length - 1) ? 60 : -50) : 0;
-
                     const score = (hits * 16) + (extracted.length * 38) + codeBonus - Math.min(40, Math.abs(raw.length - 7000) / 300);
                     if (score > best.score) best = { score, options: extracted };
                   }
                   return best.options;
                 };
 
-                const mergeByLetter = (targetMap, lines) => {
-                  for (const line of lines || []) {
-                    const m = String(line || '').match(/^([A-E])\s*[\)\.\-:]\s*(.+)$/i);
-                    if (!m) continue;
-                    const letter = m[1].toUpperCase();
-                    const body = String(m[2] || '').replace(/\s+/g, ' ').trim();
-                    if (!body || targetMap.has(letter)) continue;
-                    targetMap.set(letter, body);
-                    if (targetMap.size >= 5) break;
-                  }
-                };
-
-                const centerEl = document.elementFromPoint(Math.floor(window.innerWidth * 0.5), Math.floor(window.innerHeight * 0.5));
-                const findScrollableParent = (startEl) => {
-                  let el = startEl;
-                  while (el && el !== document.body && el !== document.documentElement) {
-                    const style = window.getComputedStyle(el);
-                    const canScroll = /(auto|scroll)/i.test(`${style.overflowY} ${style.overflow}`);
-                    if (canScroll && el.scrollHeight - el.clientHeight > 140) return el;
-                    el = el.parentElement;
-                  }
-                  return document.scrollingElement || document.documentElement || document.body;
-                };
-
-                const scrollEl = findScrollableParent(centerEl);
-                const startTop = Number(scrollEl.scrollTop || 0);
-                const maxTop = Math.max(0, (scrollEl.scrollHeight || 0) - (scrollEl.clientHeight || window.innerHeight));
-                const merged = new Map();
-
-                try {
-                  for (let step = 0; step < 8; step += 1) {
-                    mergeByLetter(merged, pickBestOptions());
-                    if (merged.size >= 5) break;
-                    const currentTop = Number(scrollEl.scrollTop || 0);
-                    if (currentTop >= maxTop - 2) break;
-                    const delta = Math.max(180, Math.floor((scrollEl.clientHeight || window.innerHeight) * 0.78));
-                    const nextTop = Math.min(maxTop, currentTop + delta);
-                    if (nextTop <= currentTop + 1) break;
-                    scrollEl.scrollTop = nextTop;
-                    await sleep(180);
-                  }
-                } finally {
-                  scrollEl.scrollTop = startTop;
-                }
-
-                if (merged.size < 2) return '';
-                const order = ['A', 'B', 'C', 'D', 'E'];
-                const out = [];
-                for (const letter of order) {
-                  if (!merged.has(letter)) continue;
-                  out.push(`${letter}) ${merged.get(letter)}`);
-                }
-                return out.join('\n');
+                const structural = tryStructural();
+                if (structural.length >= 2) return structural.join('\n');
+                const tc = tryTextContent();
+                return tc.length >= 2 ? tc.join('\n') : '';
               },
               args: [anchorSeedText, preferCodeLikeOptions]
             });
@@ -2877,15 +2884,15 @@ export const PopupController = {
             const currentCount = countDistinctOptions(optionsText || '');
             const scannedRelated = optionsAreContextuallyRelated(stemForOptions || bestQuestion, scannedText);
             if (scannedCount >= 2 && !scannedRelated) {
-              console.log(`AnswerHunter: AUTO_SCROLL_OPTIONS rejected=${scannedCount} (context mismatch)`);
+              console.log(`AnswerHunter: DOM_STRUCTURAL_OPTIONS rejected=${scannedCount} (context mismatch)`);
             } else if (scannedCount >= 2 && scannedCount > currentCount) {
               optionsText = scannedText;
-              console.log(`AnswerHunter: AUTO_SCROLL_OPTIONS used=${scannedCount} (replaced previous=${currentCount})`);
+              console.log(`AnswerHunter: DOM_STRUCTURAL_OPTIONS used=${scannedCount} (replaced previous=${currentCount})`);
             } else if (scannedCount >= 2) {
-              console.log(`AnswerHunter: AUTO_SCROLL_OPTIONS found=${scannedCount} (kept current=${currentCount})`);
+              console.log(`AnswerHunter: DOM_STRUCTURAL_OPTIONS found=${scannedCount} (kept current=${currentCount})`);
             }
           } catch (scrollErr) {
-            console.warn('AnswerHunter: Auto-scroll options scan failed:', scrollErr?.message || scrollErr);
+            console.warn('AnswerHunter: DOM structural options scan failed:', scrollErr?.message || scrollErr);
           }
         }
 
