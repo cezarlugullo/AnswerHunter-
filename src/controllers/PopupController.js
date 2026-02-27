@@ -697,7 +697,25 @@ export const PopupController = {
     const copilotModel = document.getElementById('select-copilot-model')?.value || 'gpt-4o';
 
     await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel, copilotModel });
-    console.log(`AnswerHunter: AI config saved — primary=${primaryProvider}, groq=${groqModel}, gemini=${geminiModel}, or=${openrouterModelSmart}, chatgpt=${chatgptModel}, copilot=${copilotModel}`);
+
+    const providerModelMap = {
+      groq: groqModel,
+      gemini: geminiModel,
+      openrouter: openrouterModelSmart,
+      chatgpt: chatgptModel,
+      copilot: copilotModel,
+    };
+    const activeModel = providerModelMap[primaryProvider] ?? '—';
+    console.groupCollapsed('%c🤖 AnswerHunter — AI Config Saved', 'color: #7c3aed; font-weight: bold; font-size: 13px;');
+    console.table(
+      Object.entries(providerModelMap).map(([provider, model]) => ({
+        'Provider': provider,
+        'Model': model,
+        'Active': provider === primaryProvider ? '✅' : '',
+      }))
+    );
+    console.log(`%cActive: ${primaryProvider} › ${activeModel}`, 'color: #16a34a; font-weight: bold;');
+    console.groupEnd();
   },
 
   // --- ChatGPT Auth Handlers ---
