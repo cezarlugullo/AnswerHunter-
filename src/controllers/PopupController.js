@@ -698,23 +698,29 @@ export const PopupController = {
 
     await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel, copilotModel });
 
-    const providerModelMap = {
-      groq: groqModel,
-      gemini: geminiModel,
-      openrouter: openrouterModelSmart,
-      chatgpt: chatgptModel,
-      copilot: copilotModel,
+    const PROVIDER_LABEL = {
+      groq:       '🔶 Groq',
+      gemini:     '💎 Gemini',
+      openrouter: '🔗 OpenRouter',
+      chatgpt:    '💬 ChatGPT',
+      copilot:    '🐙 Copilot',
     };
     const activeModel = providerModelMap[primaryProvider] ?? '—';
-    console.groupCollapsed('%c🤖 AnswerHunter — AI Config Saved', 'color: #7c3aed; font-weight: bold; font-size: 13px;');
+    const activeLabel = PROVIDER_LABEL[primaryProvider] ?? primaryProvider;
+
+    console.group(
+      '%c AnswerHunter  %c🤖 Provedor de IA atualizado',
+      'background:#7c3aed;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;',
+      'color:#7c3aed;font-weight:bold;font-size:13px;'
+    );
+    console.log(`%c⚡ Ativo agora: ${activeLabel}  ›  ${activeModel}`, 'color:#16a34a;font-weight:bold;font-size:12px;');
     console.table(
       Object.entries(providerModelMap).map(([provider, model]) => ({
-        'Provider': provider,
-        'Model': model,
-        'Active': provider === primaryProvider ? '✅' : '',
+        'Provider': (PROVIDER_LABEL[provider] ?? provider),
+        'Modelo': model,
+        'Status': provider === primaryProvider ? '✅ ATIVO' : '○',
       }))
     );
-    console.log(`%cActive: ${primaryProvider} › ${activeModel}`, 'color: #16a34a; font-weight: bold;');
     console.groupEnd();
   },
 
@@ -3564,19 +3570,52 @@ export const PopupController = {
 
   /** Logs a user-friendly DevTools table showing extraction source, success, and answer. */
   _logExtractionTable(results) {
+    const SOURCE_ICON = {
+      cache:       '💾',
+      page:        '📄',
+      'page-cache':'📄',
+      ai:          '🤖',
+    };
     const rows = (results || []).map((r, i) => {
-      const sources = Array.isArray(r.sources) && r.sources.length
-        ? r.sources.map(s => s.title || s.link || '?').join(', ')
-        : (r.aiFallback ? 'IA (fallback)' : '—');
+      const srcList = Array.isArray(r.sources) && r.sources.length ? r.sources : [];
+      const sources = srcList.length
+        ? srcList.map(s => {
+            const icon = SOURCE_ICON[s.type] ?? '🌐';
+            return `${icon} ${s.title || s.link || '?'}`;
+          }).join(' · ')
+        : (r.aiFallback ? '🤖 IA (fallback)' : '—');
       const letter = String(r.answerLetter || r.bestLetter || '').toUpperCase();
-      const extracted = /^[A-E]$/.test(letter) ? '✅' : '❌';
-      const gabarito = /^[A-E]$/.test(letter)
-        ? `${letter}${r.answerText ? ' — ' + String(r.answerText).slice(0, 60) : ''}`
+      const ok = /^[A-E]$/.test(letter);
+      const confidence = r.confidence != null ? `${Math.round(r.confidence * 100)}%` : '—';
+      const gabarito = ok
+        ? `${letter}${r.answerText ? '  →  ' + String(r.answerText).slice(0, 55) : ''}`
         : '—';
-      return { '#': i + 1, 'Fonte': sources, 'Extraiu?': extracted, 'Gabarito': gabarito };
+      return {
+        '#': i + 1,
+        'Fonte': sources,
+        'Extraiu?': ok ? '✅' : '❌',
+        'Gabarito': gabarito,
+        'Confiança': confidence,
+      };
     });
-    console.groupCollapsed('%c🎯 AnswerHunter — Resultado da Extração', 'color: #0ea5e9; font-weight: bold; font-size: 13px;');
-    console.table(rows);
+
+    const found = rows.filter(r => r['Extraiu?'] === '✅').length;
+    const badge = found > 0 ? `%c ✅ ${found} gabarito(s) encontrado(s) ` : `%c ❌ Sem gabarito `;
+    const badgeStyle = found > 0
+      ? 'background:#16a34a;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;'
+      : 'background:#dc2626;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;';
+
+    console.group(
+      '%c AnswerHunter  %c🎯 Resultado da Extração  ' + badge,
+      'background:#0ea5e9;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;',
+      'color:#0ea5e9;font-weight:bold;font-size:13px;',
+      badgeStyle
+    );
+    if (rows.length === 0) {
+      console.warn('Nenhum resultado para exibir.');
+    } else {
+      console.table(rows);
+    }
     console.groupEnd();
   },
 
