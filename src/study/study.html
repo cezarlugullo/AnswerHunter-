@@ -4403,7 +4403,173 @@
       .compact-subject { display: none; }
       .compact-meta { gap: 4px; }
     }
-  </style>
+  
+/* ════════════════════════════════════════
+   Playful Toy-like Theme (ADHD-friendly)
+   - Alto contraste
+   - Alvos maiores
+   - Menos ruído visual por bloco
+   - Feedback rápido e previsível
+════════════════════════════════════════ */
+:root {
+  --toy-coral: #ff7a8a;
+  --toy-yellow: #ffd85c;
+  --toy-blue: #6ec8ff;
+  --toy-mint: #66d9a6;
+  --toy-ink: #1f2430;
+  --toy-surface: #ffffff;
+  --toy-bg: #fffaf2;
+  --toy-border: #2f3542;
+}
+
+body {
+  background:
+    radial-gradient(circle at 24px 24px, rgba(255, 216, 92, 0.12) 2px, transparent 2.5px),
+    radial-gradient(circle at 12px 12px, rgba(110, 200, 255, 0.08) 1.5px, transparent 2px),
+    var(--toy-bg);
+  background-size: 36px 36px, 28px 28px, auto;
+}
+
+header {
+  background: linear-gradient(125deg, var(--toy-coral) 0%, #ff9f68 48%, var(--toy-yellow) 100%);
+  box-shadow: 0 8px 24px rgba(255, 122, 138, 0.28);
+}
+
+.logo-mark {
+  border-radius: 12px;
+  border: 2px solid rgba(0,0,0,0.16);
+}
+
+.chip,
+.tool-btn,
+.main-mode-tab,
+.reveal-toggle,
+.btn-header,
+.sort-wrap select,
+.subject-wrap select,
+.answer-tool-btn,
+.btn-tags,
+.btn-voice {
+  min-height: 36px;
+  border-radius: 999px;
+  border-width: 2px;
+}
+
+.main-mode-tab.active,
+.chip.active {
+  background: var(--toy-yellow);
+  border-color: var(--toy-border);
+  color: var(--toy-ink);
+}
+
+.card {
+  border: 2px solid var(--toy-border);
+  border-radius: 20px;
+  box-shadow: 0 8px 0 rgba(47, 53, 66, 0.14);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 0 rgba(47, 53, 66, 0.18);
+}
+
+.card-meta {
+  background: linear-gradient(180deg, #fff 0%, #fff8ef 100%);
+  border-bottom: 2px dashed rgba(47, 53, 66, 0.18);
+}
+
+.question-enunciado {
+  font-size: 0.98rem;
+  line-height: 1.85;
+  letter-spacing: 0.01em;
+  max-width: 72ch;
+}
+
+.option-item {
+  border-width: 2px;
+  border-radius: 14px;
+  padding: 11px 14px;
+}
+
+.option-item:hover {
+  border-color: #3c7de0;
+  background: #f2f8ff;
+}
+
+.option-item.selected {
+  border-color: #3c7de0;
+  box-shadow: inset 0 0 0 2px rgba(60, 125, 224, 0.26);
+}
+
+.option-item.correct {
+  border-color: #1ea86a;
+  background: #ebfff5;
+}
+
+.option-item.wrong {
+  border-color: #ef5350;
+  background: #fff1f1;
+}
+
+.reveal-btn,
+.tool-btn.add-question-btn,
+.maq-btn--primary,
+.quiz-confirm-btn,
+.sim-start-btn {
+  background: linear-gradient(135deg, var(--toy-coral), #ff9f68);
+  border: 2px solid var(--toy-border) !important;
+  color: #1f2430 !important;
+  box-shadow: 0 6px 0 rgba(47, 53, 66, 0.22);
+}
+
+.reveal-btn:hover,
+.tool-btn.add-question-btn:hover,
+.maq-btn--primary:hover,
+.quiz-confirm-btn:hover,
+.sim-start-btn:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.08);
+}
+
+.progress-track,
+.daily-progress-track {
+  height: 10px;
+  border-radius: 999px;
+}
+
+.progress-fill,
+.daily-progress-fill {
+  background: linear-gradient(90deg, var(--toy-blue), var(--toy-mint));
+}
+
+/* Menos sobrecarga visual no modo compacto */
+.compact-meta {
+  font-size: 0.74rem;
+}
+
+/* Ajuda foco visual para teclado e TDAH */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.option-item:focus-visible {
+  outline: 3px solid #3c7de0;
+  outline-offset: 2px;
+}
+
+/* Motion mais confortável */
+@media (prefers-reduced-motion: no-preference) {
+  .chip,
+  .tool-btn,
+  .reveal-btn,
+  .main-mode-tab,
+  .card {
+    transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+  }
+}
+
+.mastered-badge { display:inline-flex; align-items:center; gap:3px; background:linear-gradient(135deg,#ffd700,#ff9500); color:#1a1a1a; font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:12px; }
+</style>
 </head>
 <body>
 
@@ -4431,6 +4597,10 @@
   </div>
 
   <div class="header-right">
+        <button class="btn-header" id="btnExportFull" type="button" title="Exportar tudo (SM2 + XP)"><span class="icon">download</span> Exportar</button>
+        <button class="btn-header" id="btnImportFull" type="button" title="Importar backup v2"><span class="icon">upload</span> Importar</button>
+        <input type="file" id="importFileInput" accept=".json" style="display:none">
+
     <div class="header-pill">
       <span class="icon">auto_stories</span>
       <span id="counterEl">0 questões</span>
@@ -4472,8 +4642,13 @@
     <!-- Sorting -->
     <div class="sort-wrap">
       <span class="icon sort-icon">swap_vert</span>
-      <select id="sortSelect" title="Ordenar questões">
-        <option value="default">Padrão</option>
+            <button id="chipModoEstudo" class="chip" type="button" title="Alterna entre Treino (livre) e Prova (obrigatório clicar alternativa)">
+        <span class="icon">school</span> <span id="modoEstudoLabel">Modo Prova</span>
+      </button>
+      <button class="chip" id="newCardsLimitBadge" type="button" title="Novas por dia">20 novas hoje</button>
+<select id="sortSelect" title="Ordenar questões">
+        <option value="interleaved">🔀 Intercalado (por assunto)</option>
+                <option value="default">Padrão</option>
         <option value="subject">Por assunto</option>
         <option value="subject_grouped" selected>Assunto (agrupado)</option>
         <option value="newest">Mais recentes</option>
