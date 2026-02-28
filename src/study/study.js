@@ -790,7 +790,7 @@ function buildCard(q, index) {
   const btnTest = article.querySelector('.btn-test-learning');
   if (btnTest) {
     btnTest.addEventListener('click', () => {
-      openQuizModal(cleanQuestion, cleanAnswer);
+      openQuizModal(cleanQuestion, cleanAnswer, q.id);
     });
   }
 
@@ -1398,6 +1398,24 @@ function getSortedQuestions(questions, mode) {
       });
       break;
     }
+    case 'interleaved': {
+      const bySubject = new Map();
+      sorted.forEach(q => {
+        const subj = getQuestionSubject(q);
+        if (!bySubject.has(subj)) bySubject.set(subj, []);
+        bySubject.get(subj).push(q);
+      });
+      const subjects = [...bySubject.keys()].sort();
+      const result = [];
+      const maxLen = Math.max(...[...bySubject.values()].map(a => a.length), 0);
+      for (let i = 0; i < maxLen; i++) {
+        for (const subj of subjects) {
+          const arr = bySubject.get(subj);
+          if (arr && i < arr.length) result.push(arr[i]);
+        }
+      }
+      return result;
+    }
     default: // 'default' — original insertion order
       return _originalOrder.length ? [..._originalOrder] : sorted;
   }
@@ -1587,7 +1605,7 @@ function init(questions) {
     if (subjectSelect && res.ah_subjectFilter) {
       subjectSelect.value = res.ah_subjectFilter;
     }
-    const saved = res.ah_sortMode;
+    const saved = res.ah_sortMode || 'interleaved';
     if (sortSelect && saved) {
       sortSelect.value = saved;
     }
@@ -1600,6 +1618,7 @@ function init(questions) {
   });
 
   loadSm2Data().then(() => {
+    migrateSmToStorage().catch((e) => console.warn('migrateSmToStorage:', e));
     populateSubjectSelect(_originalOrder);
     const mode = sortSelect ? sortSelect.value : 'default';
     const sorted = getSortedQuestions(_originalOrder, mode);
@@ -1616,6 +1635,15 @@ function init(questions) {
   document.getElementById('chipHideAnswered').addEventListener('click', function () {
     this.classList.toggle('active');
     filterCards();
+
+    // Aplicar modo prova inicial aos cards
+    document.querySelectorAll('.card:not(.answered)').forEach(card => {
+      const hasOptions = card.querySelectorAll('.option-item').length > 0;
+      const revealBtn = card.querySelector('.reveal-btn');
+      if (revealBtn && _modoProva && hasOptions) revealBtn.hidden = true;
+    });
+
+    updateNewCardsLimitBadge();
   });
 
   // Review later filter chip
@@ -1662,6 +1690,31 @@ function init(questions) {
     updateModeToggle(reveal);
   });
 
+  // BK-03: modo estudo Prova/Treino
+  const chipModo = document.getElementById('chipModoEstudo');
+  if (chipModo) {
+    const applyModo = () => {
+      const label = document.getElementById('modoEstudoLabel');
+      if (label) label.textContent = _modoProva ? 'Modo Prova' : 'Modo Treino';
+      chipModo.classList.toggle('active', _modoProva);
+      document.querySelectorAll('.card:not(.hidden-card):not(.answered)').forEach(card => {
+        const revealBtn = card.querySelector('.reveal-btn');
+        if (!revealBtn) return;
+        const hasOptions = card.querySelectorAll('.option-item').length > 0;
+        revealBtn.hidden = _modoProva && hasOptions;
+      });
+    };
+    chipModo.addEventListener('click', () => {
+      _modoProva = !_modoProva;
+      applyModo();
+      try { chrome.storage.local.set({ ah_modoProva: _modoProva }); } catch(_){}
+    });
+    chrome.storage.local.get(['ah_modoProva'], r => {
+      if (r.ah_modoProva !== undefined) _modoProva = r.ah_modoProva;
+      applyModo();
+    });
+  }
+
   // Reset progress
   document.getElementById('btnReset').addEventListener('click', () => {
     if (!confirm('Reiniciar todo o progresso desta sessão?')) return;
@@ -1678,6 +1731,18 @@ function init(questions) {
     if (subjectSelect) subjectSelect.value = 'all';
     try { chrome.storage.local.set({ ah_subjectFilter: 'all' }); } catch (_) {}
     filterCards();
+  });
+
+  document.getElementById('newCardsLimitBadge')?.addEventListener('click', async () => {
+    const current = await new Promise(r => chrome.storage.local.get(['ah_newCardsPerDay'], d => r(d.ah_newCardsPerDay || 20)));
+    const input = prompt(`Limite de novas questões por dia (atual: ${current}):`, current);
+    if (input === null) return;
+    const n = parseInt(input);
+    if (n > 0) {
+      await new Promise(r => chrome.storage.local.set({ ah_newCardsPerDay: n }, r));
+      await updateNewCardsLimitBadge();
+      showSyncToast(`Limite: ${n} novas por dia`);
+    }
   });
 
   // Print
@@ -1810,6 +1875,7 @@ function showSyncToast(msg) {
 // ══ Revisão Espaçada SM-2 ════════════════════════════════════════════════════
 
 const SM2_STORAGE_KEY = 'ah_sm2Data';
+let _modoProva = true; // BK-03 exam mode
 let _sm2Cache = {};
 let _userAnswers = {}; // qid → user's typed answer (for Comparar)
 
@@ -1987,6 +2053,131 @@ function initDoneDrawerFromSm2() {
   }
 }
 
+
+
+// === BK-01/BK-04/BK-05 helpers ===
+async function persistSm2ToNode(qid, sm2Partial) {
+  return new Promise((resolve) => {
+    try {
+      chrome.storage.local.get(['binderStructure'], (result) => {
+        const data = result && result.binderStructure;
+        if (!Array.isArray(data)) { resolve(false); return; }
+        const findAndUpdate = (nodes) => {
+          for (const node of nodes) {
+            if (node && node.id === qid && node.type === 'question') {
+              node.content = node.content || {};
+              node.content.sm2 = { ...(node.content.sm2 || {}), ...sm2Partial };
+              node.updatedAt = Date.now();
+              return true;
+            }
+            if (node && Array.isArray(node.children) && findAndUpdate(node.children)) return true;
+          }
+          return false;
+        };
+        const found = findAndUpdate(data);
+        if (!found) { resolve(false); return; }
+        chrome.storage.local.set({ binderStructure: data }, () => resolve(!chrome.runtime.lastError));
+      });
+    } catch (_) { resolve(false); }
+  });
+}
+
+async function migrateSmToStorage() {
+  try {
+    if (!Array.isArray(allQuestions) || !allQuestions.length || !_sm2Cache) return;
+    const pending = allQuestions
+      .filter(q => q && q.id && _sm2Cache[q.id] && (_sm2Cache[q.id].lastRated || _sm2Cache[q.id].nextReview))
+      .map(q => q.id);
+    for (let i = 0; i < pending.length; i += 10) {
+      const chunk = pending.slice(i, i + 10);
+      await Promise.all(chunk.map(async (qid) => {
+        try {
+          await persistSm2ToNode(qid, _sm2Cache[qid] || {});
+        } catch (_) {}
+      }));
+      await new Promise(r => setTimeout(r, 0));
+    }
+  } catch (e) {
+    console.warn('migrateSmToStorage error:', e);
+  }
+}
+
+async function checkMastery(qid, entry) {
+  try {
+    const wasMastered = !!(entry && entry.mastered);
+    const nowMastered = ((entry && entry.interval) || 0) >= 21 && ((entry && entry.repetition) || 0) >= 3;
+    if (nowMastered && !wasMastered) {
+      entry.mastered = true;
+      const data = await loadSm2Data();
+      if (data[qid]) { data[qid].mastered = true; await saveSm2Data(data); }
+      await persistSm2ToNode(qid, { mastered: true });
+      setTimeout(() => {
+        try { microCelebrate('complete'); } catch (_) {}
+        try { showSyncToast('🎓 Questão dominada! Intervalo ≥21 dias.'); } catch (_) {}
+      }, 500);
+      const card = document.querySelector(`.card[data-qid="${qid}"]`);
+      if (card && !card.querySelector('.mastered-badge')) {
+        const badge = document.createElement('span');
+        badge.className = 'mastered-badge';
+        badge.innerHTML = '<span class="icon">workspace_premium</span> Dominada';
+        const cm = card.querySelector('.card-meta');
+        if (cm) cm.appendChild(badge);
+      }
+    }
+    return nowMastered;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function rateSm2Silent(qid, quality) {
+  try {
+    const data = await loadSm2Data();
+    const entry = data[qid] || {};
+    const newEntry = sm2Calculate(entry, quality);
+    newEntry.errors = (entry.errors || 0) + (quality === 0 ? 1 : 0);
+    newEntry.totalRatings = (entry.totalRatings || 0) + 1;
+    newEntry.attempt_count = (entry.attempt_count || entry.totalRatings || 0) + 1;
+    newEntry.correct_count = (entry.correct_count || 0) + (quality >= 2 ? 1 : 0);
+    data[qid] = newEntry;
+    await saveSm2Data(data);
+    await persistSm2ToNode(qid, newEntry);
+    updateSm2DueBadge();
+    await checkMastery(qid, newEntry);
+  } catch (e) {
+    console.warn('rateSm2Silent error:', e);
+  }
+}
+
+async function getSessionQueue(questions) {
+  const data = await loadSm2Data();
+  const settings = await new Promise(r => chrome.storage.local.get(['ah_newCardsPerDay'], d => r(d || {})));
+  const limit = parseInt(settings.ah_newCardsPerDay || 20);
+  const todayStr = todayISO();
+  const dueCards = (questions || []).filter(q => {
+    const e = data[q.id];
+    return e && e.lastRated && e.nextReview && e.nextReview <= todayStr;
+  });
+  const newCardsAll = (questions || []).filter(q => {
+    const e = data[q.id];
+    return !e || !e.lastRated;
+  });
+  const newStudiedToday = (questions || []).filter(q => (data[q.id] && data[q.id].lastRated === todayStr && (!data[q.id].repetition || data[q.id].repetition <= 1))).length;
+  const newAllowed = Math.max(0, limit - newStudiedToday);
+  return { dueCards, newCards: newCardsAll.slice(0, newAllowed), newLimit: limit, newStudiedToday };
+}
+
+async function updateNewCardsLimitBadge() {
+  try {
+    const queue = await getSessionQueue(allQuestions || []);
+    const badge = document.getElementById('newCardsLimitBadge');
+    if (badge) {
+      badge.textContent = `${queue.newCards.length} novas hoje`;
+      badge.title = `Limite diário: ${queue.newLimit} novas | Estudadas hoje: ${queue.newStudiedToday}`;
+    }
+  } catch (_) {}
+}
+
 async function rateSm2(qid, quality, sm2Bar, doneEl) {
   const data = await loadSm2Data();
   const entry = data[qid] || {};
@@ -1994,8 +2185,12 @@ async function rateSm2(qid, quality, sm2Bar, doneEl) {
   // Track error count for Caderno de Erros
   newEntry.errors = (entry.errors || 0) + (quality === 0 ? 1 : 0);
   newEntry.totalRatings = (entry.totalRatings || 0) + 1;
+  newEntry.attempt_count = (entry.attempt_count || entry.totalRatings || 0) + 1;
+  newEntry.correct_count = (entry.correct_count || 0) + (quality >= 2 ? 1 : 0);
   data[qid] = newEntry;
   await saveSm2Data(data);
+  await persistSm2ToNode(qid, newEntry);
+  await checkMastery(qid, newEntry);
 
   // Update XP (also triggers streak + daily progress inside awardXP)
   awardXP(quality === 0 ? 2 : quality === 1 ? 5 : quality === 2 ? 10 : 15);
@@ -2132,8 +2327,8 @@ const quizRetryBtn = document.getElementById('quizRetryBtn');
 
 let _quizState = { current: null, total: 0, correct: 0 };
 
-function openQuizModal(question, answer) {
-  _quizState.current = { question, answer };
+function openQuizModal(question, answer, sourceQid = null) {
+  _quizState.current = { question, answer, sourceQid };
   quizOverlay.removeAttribute('hidden');
   // rAF to trigger CSS transition
   requestAnimationFrame(() => {
@@ -2240,6 +2435,10 @@ function renderQuizQuestion(data) {
 
 function revealQuizResult(selected, correct, optionBtns, questionText, optionsMap) {
   const isCorrect = selected === correct;
+  if (_quizState.current?.sourceQid) {
+    rateSm2Silent(_quizState.current.sourceQid, isCorrect ? 2 : 0);
+    showSyncToast(isCorrect ? '✓ SM2 da questão original atualizado (+acerto)' : '✗ SM2 da questão original atualizado (+erro)');
+  }
 
   // Update score
   _quizState.total += 1;
@@ -2852,6 +3051,62 @@ function closeDashboard() {
   setMainView('study');
 }
 
+function buildEvidenceBasedPlan(state) {
+  if (!state) return 'Plano sugerido: 10 min de revisão espaçada + 1 simulado curto.';
+  if (state.dueToday > 0) {
+    return `Prioridade máxima: revisar ${state.dueToday} questões vencidas hoje (efeito de espaçamento).`;
+  }
+  if (state.errorRate >= 35) {
+    return 'Prioridade: foco em recuperação ativa de erros (retrieval practice) antes de conteúdo novo.';
+  }
+  if (state.totalReviewed < Math.max(10, Math.round(state.totalAvailable * 0.3))) {
+    return 'Prioridade: aumentar cobertura com blocos curtos e intercalados entre matérias.';
+  }
+  return 'Plano sugerido: intercalar assuntos + 1 simulado + revisão dos erros críticos.';
+}
+
+async function runEvidenceProtocol(type) {
+  if (type === 'spacing') {
+    setMainView('study', { rerender: false });
+    const chip = document.getElementById('chipSm2Due');
+    if (chip && !chip.classList.contains('active')) chip.click();
+    return;
+  }
+
+  if (type === 'retrieval') {
+    setMainView('study', { rerender: false });
+    const chipMode = document.getElementById('chipModoEstudo');
+    if (chipMode && !_modoProva) chipMode.click();
+    const simBtn = document.getElementById('btnSimulado');
+    if (simBtn) simBtn.click();
+    return;
+  }
+
+  if (type === 'interleaving') {
+    setMainView('study', { rerender: false });
+    const sortSelect = document.getElementById('sortSelect');
+    if (sortSelect) {
+      sortSelect.value = 'interleaved';
+      applySortFromSelect();
+      showSyncToast('Modo intercalado ativado (prática intercalada).');
+    }
+    return;
+  }
+
+  if (type === 'error-first') {
+    setMainView('study', { rerender: false });
+    const chip = document.getElementById('chipErrors');
+    if (chip && !chip.classList.contains('active')) chip.click();
+    return;
+  }
+
+  if (type === 'focus') {
+    setMainView('study', { rerender: false });
+    const pomBtn = document.getElementById('btnPomodoro');
+    if (pomBtn) pomBtn.click();
+  }
+}
+
 async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
   if (!targetEl) return;
   targetEl.innerHTML = `<div class="quiz-loading"><span class="icon spin-icon">autorenew</span><p>Carregando dados...</p></div>`;
@@ -3148,6 +3403,20 @@ async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
       </div>
     </div>
 
+    <div class="dash-panel" style="margin-bottom:14px;">
+      <div class="dash-panel-title"><span class="icon">science</span> Protocolo de estudo comprovado</div>
+      <div style="font-size:0.78rem;color:var(--text-2);line-height:1.55;margin-bottom:10px;">
+        ${escH(buildEvidenceBasedPlan(state))}
+      </div>
+      <div class="dash-actions-grid" style="margin-bottom:0;">
+        <button class="dash-action-btn" id="dashProtocolSpacing" type="button"><span class="icon">event_repeat</span> Revisão espaçada</button>
+        <button class="dash-action-btn" id="dashProtocolRetrieval" type="button"><span class="icon">psychology</span> Recuperação ativa</button>
+        <button class="dash-action-btn" id="dashProtocolInterleaving" type="button"><span class="icon">shuffle</span> Intercalar matérias</button>
+        <button class="dash-action-btn" id="dashProtocolErrorFirst" type="button"><span class="icon">error</span> Priorizar erros</button>
+        <button class="dash-action-btn" id="dashProtocolFocus" type="button"><span class="icon">timer</span> Bloco de foco (Pomodoro)</button>
+      </div>
+    </div>
+
     <div class="dash-insights">
       <div class="dash-insight-line"><strong>Predição de nota:</strong> ${state.predictedScore !== null ? `${state.predictedScore}%` : 'dados insuficientes'}</div>
       <div class="dash-insight-line"><strong>Ranking estimado:</strong> top ${100 - state.rankEstimate}% (base local)</div>
@@ -3207,7 +3476,14 @@ async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
   targetEl.querySelector('#dashActionOpenQuestions')?.addEventListener('click', () => {
     exitDashboard();
   });
+
+  targetEl.querySelector('#dashProtocolSpacing')?.addEventListener('click', () => runEvidenceProtocol('spacing'));
+  targetEl.querySelector('#dashProtocolRetrieval')?.addEventListener('click', () => runEvidenceProtocol('retrieval'));
+  targetEl.querySelector('#dashProtocolInterleaving')?.addEventListener('click', () => runEvidenceProtocol('interleaving'));
+  targetEl.querySelector('#dashProtocolErrorFirst')?.addEventListener('click', () => runEvidenceProtocol('error-first'));
+  targetEl.querySelector('#dashProtocolFocus')?.addEventListener('click', () => runEvidenceProtocol('focus'));
 }
+
 
 btnDashboard?.addEventListener('click', () => {
   if (_mainView === 'dashboard') setMainView('study', { rerender: false });
@@ -4023,3 +4299,61 @@ setupStickyOffsets();
 setupSidebarProxyClicks();
 setupSidebarSessionSync();
 setupManualAddQuestion();
+
+
+// === BK-08: Export/Import Full ===
+document.getElementById('btnExportFull')?.addEventListener('click', async () => {
+  try {
+    const xpData = await loadXPData();
+    const sm2Data = await loadSm2Data();
+    const binderData = await new Promise(r => chrome.storage.local.get(['binderStructure'], d => r(d.binderStructure || [])));
+    const payload = { version: 2, exportedAt: Date.now(), exportedAtISO: new Date().toISOString(), binderStructure: binderData, sm2Data, xpData };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `AnswerHunter_backup_v2_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+    showSyncToast(`✓ Backup v2 exportado: ${allQuestions.length} questões + SM2 + XP`);
+  } catch(err) { showSyncToast('Erro ao exportar: ' + err.message); }
+});
+
+document.getElementById('btnImportFull')?.addEventListener('click', () => {
+  document.getElementById('importFileInput')?.click();
+});
+
+document.getElementById('importFileInput')?.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!data || typeof data !== 'object') throw new Error('JSON inválido');
+    const isV2 = data.version === 2 && data.binderStructure;
+    const isLegacy = Array.isArray(data) || (data.binderStructure && !data.version);
+    if (!isV2 && !isLegacy) throw new Error('Formato não reconhecido. Esperado v2 ou legacy.');
+    const questionCount = isV2 ? countQuestionsInTree(data.binderStructure) : countQuestionsInTree(Array.isArray(data) ? data : data.binderStructure);
+    if (!confirm(`Importar backup ${isV2 ? 'v2' : 'legado'} com ${questionCount} questões?
+
+ISTO SUBSTITUIRÁ todos os dados atuais!`)) { e.target.value=''; return; }
+    showSyncToast('Importando...');
+    const structure = Array.isArray(data) ? data : data.binderStructure;
+    await new Promise(r => chrome.storage.local.set({ binderStructure: structure }, r));
+    if (isV2 && data.sm2Data) await new Promise(r => chrome.storage.local.set({ ah_sm2Data: data.sm2Data }, r));
+    if (isV2 && data.xpData) await new Promise(r => chrome.storage.local.set({ ah_xpData: data.xpData }, r));
+    showSyncToast(`✓ Importado: ${questionCount} questões` + (isV2 ? ' + SM2 + XP' : ' (legado)'));
+    setTimeout(() => window.location.reload(), 1500);
+  } catch(err) { showSyncToast('Erro ao importar: ' + (err.message || 'arquivo inválido')); }
+  e.target.value='';
+});
+
+function countQuestionsInTree(nodes) {
+  if (!Array.isArray(nodes)) return 0;
+  let count = 0;
+  for (const n of nodes) {
+    if (n.type === 'question') count++;
+    if (n.children) count += countQuestionsInTree(n.children);
+  }
+  return count;
+}
