@@ -18,6 +18,18 @@ const parseMarkdown = text => {
   return html;
 };
 
+const MARK_OK = String.fromCodePoint(0x2705);
+const MARK_SUMMARY = String.fromCodePoint(0x1F4A1);
+const MARK_WRONG = String.fromCodePoint(0x274C);
+const REV_MARKERS = {
+  concept: String.fromCodePoint(0x1F4CC),
+  definition: String.fromCodePoint(0x1F4D6),
+  memorize: String.fromCodePoint(0x1F511),
+  pitfall: String.fromCodePoint(0x26A0, 0xFE0F),
+  mnemonic: String.fromCodePoint(0x1F9E0),
+  related: String.fromCodePoint(0x1F517),
+};
+
 const formatExplanation = text => {
   if (!text) return '';
   let html = escH(text);
@@ -39,21 +51,21 @@ const formatExplanation = text => {
       continue;
     }
     
-    // Correct answer header line (✅)
-    if (line.startsWith('✅')) {
-      result += `<div class="exp-correct-answer">${line}</div>`;
+    // Correct answer header line
+    if (line.startsWith(MARK_OK)) {
+      result += `<div class="exp-correct-answer"><span class="icon">check_circle</span> ${line.slice(MARK_OK.length).trim()}</div>`;
       continue;
     }
     
-    // Summary line (💡)
-    if (line.startsWith('💡')) {
-      result += `<div class="exp-summary">${line}</div>`;
+    // Summary line
+    if (line.startsWith(MARK_SUMMARY)) {
+      result += `<div class="exp-summary"><span class="icon">lightbulb</span> ${line.slice(MARK_SUMMARY.length).trim()}</div>`;
       continue;
     }
     
-    // Wrong alternative line (❌)
-    if (line.startsWith('❌')) {
-      result += `<div class="exp-wrong">${line}</div>`;
+    // Wrong alternative line
+    if (line.startsWith(MARK_WRONG)) {
+      result += `<div class="exp-wrong"><span class="icon">cancel</span> ${line.slice(MARK_WRONG.length).trim()}</div>`;
       continue;
     }
     
@@ -94,22 +106,22 @@ const formatReviewCard = text => {
     const line = lines[i].trim();
     if (!line) continue;
 
-    // Section headers with emoji (📌 📖 🔑 ⚠️ 🧠 🔗)
-    if (/^(📌|📖|🔑|⚠️|🧠|🔗)\s+/.test(line)) {
-      const emojiMatch = line.match(/^(📌|📖|🔑|⚠️|🧠|🔗)\s+(.*)/);
-      if (emojiMatch) {
-        const emoji = emojiMatch[1];
-        const title = emojiMatch[2];
-        let cls = 'rev-section';
-        if (emoji === '📌') cls += ' rev-concept';
-        else if (emoji === '📖') cls += ' rev-definition';
-        else if (emoji === '🔑') cls += ' rev-memorize';
-        else if (emoji === '⚠️') cls += ' rev-pitfall';
-        else if (emoji === '🧠') cls += ' rev-mnemonic';
-        else if (emoji === '🔗') cls += ' rev-related';
-        result += `<div class="${cls}"><span class="rev-emoji">${emoji}</span><span class="rev-title">${title}</span></div>`;
-        continue;
-      }
+    // Section headers with markers (legacy marker-compatible)
+    const reviewMarkerRegex = new RegExp(`^(${REV_MARKERS.concept}|${REV_MARKERS.definition}|${REV_MARKERS.memorize}|${REV_MARKERS.pitfall}|${REV_MARKERS.mnemonic}|${REV_MARKERS.related})\\s+(.*)`);
+    const markerMatch = line.match(reviewMarkerRegex);
+    if (markerMatch) {
+      const marker = markerMatch[1];
+      const title = markerMatch[2];
+      let cls = 'rev-section';
+      let icon = 'label';
+      if (marker === REV_MARKERS.concept) { cls += ' rev-concept'; icon = 'push_pin'; }
+      else if (marker === REV_MARKERS.definition) { cls += ' rev-definition'; icon = 'book_2'; }
+      else if (marker === REV_MARKERS.memorize) { cls += ' rev-memorize'; icon = 'key'; }
+      else if (marker === REV_MARKERS.pitfall) { cls += ' rev-pitfall'; icon = 'warning'; }
+      else if (marker === REV_MARKERS.mnemonic) { cls += ' rev-mnemonic'; icon = 'neurology'; }
+      else if (marker === REV_MARKERS.related) { cls += ' rev-related'; icon = 'link'; }
+      result += `<div class="${cls}"><span class="rev-emoji icon">${icon}</span><span class="rev-title">${title}</span></div>`;
+      continue;
     }
 
     // Bullet items
@@ -2113,7 +2125,7 @@ async function checkMastery(qid, entry) {
       await persistSm2ToNode(qid, { mastered: true });
       setTimeout(() => {
         try { microCelebrate('complete'); } catch (_) {}
-        try { showSyncToast('🎓 Questão dominada! Intervalo ≥21 dias.'); } catch (_) {}
+        try { showSyncToast('Questão dominada! Intervalo ≥21 dias.'); } catch (_) {}
       }, 500);
       const card = document.querySelector(`.card[data-qid="${qid}"]`);
       if (card && !card.querySelector('.mastered-badge')) {
@@ -2437,7 +2449,7 @@ function revealQuizResult(selected, correct, optionBtns, questionText, optionsMa
   const isCorrect = selected === correct;
   if (_quizState.current?.sourceQid) {
     rateSm2Silent(_quizState.current.sourceQid, isCorrect ? 2 : 0);
-    showSyncToast(isCorrect ? '✓ SM2 da questão original atualizado (+acerto)' : '✗ SM2 da questão original atualizado (+erro)');
+    showSyncToast(isCorrect ? 'SM2 da questão original atualizado (+acerto)' : 'SM2 da questão original atualizado (+erro)');
   }
 
   // Update score
@@ -2812,7 +2824,7 @@ async function awardXP(amount) {
 
   if (leveledUp) {
     setTimeout(() => {
-      showSyncToast(`🏆 Nível ${newLevel} alcançado!`);
+      showSyncToast(`Nível ${newLevel} alcançado!`);
       microCelebrate('levelup');
     }, 400);
   }
@@ -2868,7 +2880,7 @@ async function updateStreak() {
   if ([3, 7, 14, 30, 50, 100].includes(data.count)) {
     setTimeout(() => {
       microCelebrate('streak');
-      showSyncToast(`🔥 ${data.count} ${data.count === 1 ? 'dia seguido' : 'dias seguidos'}! Continue assim!`);
+      showSyncToast(`Streak: ${data.count} ${data.count === 1 ? 'dia seguido' : 'dias seguidos'}! Continue assim!`);
     }, 600);
   }
 
@@ -2884,10 +2896,11 @@ function renderStreakUI(data) {
   // Update text for singular/plural
   const textEl = container.querySelector('.streak-text');
   if (textEl) textEl.textContent = data.count === 1 ? 'dia seguido' : 'dias seguidos';
-  // Fire emoji based on streak length
+  // Streak icon by level
   const fireEl = container.querySelector('.streak-fire');
   if (fireEl) {
-    fireEl.textContent = data.count >= 30 ? '🏆' : data.count >= 14 ? '💎' : data.count >= 7 ? '⚡' : '🔥';
+    const iconName = data.count >= 30 ? 'military_tech' : data.count >= 14 ? 'diamond' : data.count >= 7 ? 'bolt' : 'local_fire_department';
+    fireEl.innerHTML = `<span class="icon">${iconName}</span>`;
   }
 }
 
@@ -2931,16 +2944,16 @@ async function updateDailyProgress() {
 // ══ Micro-Celebrations (dopamine-friendly feedback — research backed) ════════
 
 const MOTIVATIONAL_MESSAGES = [
-  '💪 Cada questão revisada fortalece suas conexões neurais!',
-  '🧠 Espaçamento ativo: seu cérebro está consolidando agora!',
-  '🎯 Retrieval practice: testar > reler. Você está no caminho certo!',
-  '⚡ Elaboração: você está construindo pontes entre conceitos!',
-  '🌟 Consistência > intensidade. Continue assim!',
-  '🔄 Seu hipocampo agradece cada revisão espaçada!',
-  '📈 Progresso real acontece no longo prazo. Você está investindo!',
-  '🧩 Cada peça de conhecimento se conecta com as outras!',
-  '💡 Micro-learning funciona: sessões curtas = retenção longa!',
-  '🏗️ Você está construindo memória de longo prazo agora!',
+  'Cada questão revisada fortalece suas conexões neurais.',
+  'Espaçamento ativo: seu cérebro está consolidando agora.',
+  'Retrieval practice: testar > reler. Você está no caminho certo.',
+  'Elaboração: você está construindo pontes entre conceitos.',
+  'Consistência > intensidade. Continue assim.',
+  'Seu hipocampo agradece cada revisão espaçada.',
+  'Progresso real acontece no longo prazo. Você está investindo.',
+  'Cada peça de conhecimento se conecta com as outras.',
+  'Micro-learning funciona: sessões curtas = retenção longa.',
+  'Você está construindo memória de longo prazo agora.',
 ];
 
 function microCelebrate(type = 'generic') {
@@ -2949,19 +2962,19 @@ function microCelebrate(type = 'generic') {
   container.setAttribute('aria-hidden', 'true');
 
   if (type === 'levelup') {
-    container.innerHTML = '🏆';
+    container.innerHTML = '<span class="icon">military_tech</span>';
     container.classList.add('celebrate-levelup');
   } else if (type === 'streak') {
-    container.innerHTML = '🔥';
+    container.innerHTML = '<span class="icon">local_fire_department</span>';
     container.classList.add('celebrate-streak');
   } else if (type === 'complete') {
-    container.innerHTML = '🎉';
+    container.innerHTML = '<span class="icon">celebration</span>';
     container.classList.add('celebrate-complete');
   } else if (type === 'halfway') {
-    container.innerHTML = '⭐';
+    container.innerHTML = '<span class="icon">star</span>';
     container.classList.add('celebrate-halfway');
   } else {
-    container.innerHTML = '✨';
+    container.innerHTML = '<span class="icon">auto_awesome</span>';
   }
 
   document.body.appendChild(container);
@@ -3307,7 +3320,7 @@ async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
       <div class="dash-bar-row">
         <div class="dash-bar-label">${escH(row.subject)}</div>
         <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${Math.min(100, row.errors * 10)}%;background:linear-gradient(90deg,#EF4444,#F97316)"></div></div>
-        <div class="dash-bar-val">${row.errors}✗</div>
+        <div class="dash-bar-val">${row.errors} <span class="icon" style="font-size:12px;vertical-align:middle">close</span></div>
       </div>
     `).join('')
     : '<div style="font-size:0.78rem;color:var(--muted)">Ainda sem erros registrados.</div>';
@@ -4315,7 +4328,7 @@ document.getElementById('btnExportFull')?.addEventListener('click', async () => 
     a.download = `AnswerHunter_backup_v2_${new Date().toISOString().slice(0,10)}.json`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
-    showSyncToast(`✓ Backup v2 exportado: ${allQuestions.length} questões + SM2 + XP`);
+    showSyncToast(`Backup v2 exportado: ${allQuestions.length} questões + SM2 + XP`);
   } catch(err) { showSyncToast('Erro ao exportar: ' + err.message); }
 });
 
@@ -4342,7 +4355,7 @@ ISTO SUBSTITUIRÁ todos os dados atuais!`)) { e.target.value=''; return; }
     await new Promise(r => chrome.storage.local.set({ binderStructure: structure }, r));
     if (isV2 && data.sm2Data) await new Promise(r => chrome.storage.local.set({ ah_sm2Data: data.sm2Data }, r));
     if (isV2 && data.xpData) await new Promise(r => chrome.storage.local.set({ ah_xpData: data.xpData }, r));
-    showSyncToast(`✓ Importado: ${questionCount} questões` + (isV2 ? ' + SM2 + XP' : ' (legado)'));
+    showSyncToast(`Importado: ${questionCount} questões` + (isV2 ? ' + SM2 + XP' : ' (legado)'));
     setTimeout(() => window.location.reload(), 1500);
   } catch(err) { showSyncToast('Erro ao importar: ' + (err.message || 'arquivo inválido')); }
   e.target.value='';
