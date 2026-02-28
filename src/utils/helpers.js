@@ -124,7 +124,11 @@ export function formatQuestionText(text) {
         normalized = normalized.replace(compactInlineAltRe, (_m, punct, letter) => `${punct}\n${letter.toUpperCase()}) `);
     }
 
-    const inlineAltBreakRe = /(?:^|\s)([A-E])\s*(?:[\)\.\-:]|->>|->|=>)(?=\s*\S)/gi;
+    // Inline alternative break: "A) text B) text" on the same line.
+    // IMPORTANT: standalone hyphen `-` is excluded because "e-commerce", "auto-completar" etc.
+    // would be misread as "E) commerce". Only ->> and -> (arrow operators) are kept.
+    // A bare dash as option delimiter ("E - texto") is intentionally not supported here.
+    const inlineAltBreakRe = /(?:^|\s)([A-E])\s*(?:[\)\.\:]|->>|->|=>)(?=\s*\S)/gi;
     const inlineAltMatches = normalized.match(inlineAltBreakRe) || [];
     if (inlineAltMatches.length >= 2) {
         normalized = normalized.replace(inlineAltBreakRe, (_m, letter) => `\n${letter.toUpperCase()}) `);
@@ -181,8 +185,8 @@ export function formatQuestionText(text) {
         const enunciadoParts = [];
         let currentAlt = null;
         const altStartRe = allowLoose
-            ? /^([A-E])\s*(?:(?:[\)\.\-:]|->>|->|=>)\s*|\s+)(.+)$/i
-            : /^([A-E])\s*(?:[\)\.\-:]|->>|->|=>)\s*(.+)$/i;
+            ? /^([A-E])\s*(?:(?:[\)\.\:]|->>|->|=>)\s*|\s+)(.+)$/i
+            : /^([A-E])\s*(?:[\)\.\:]|->>|->|=>)\s*(.+)$/i;
         const altSoloRe = /^([A-E])$/i;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -200,8 +204,23 @@ export function formatQuestionText(text) {
             }
             const solo = line.match(altSoloRe);
             if (solo) {
-                if (currentAlt) alternatives.push(currentAlt);
-                currentAlt = { letter: solo[1].toUpperCase(), body: '' };
+                const soloLetter = solo[1].toUpperCase();
+                // Only treat a bare letter as an option start if it is the
+                // sequentially-expected next letter (A first, then B, C, D, E).
+                // This prevents "e" from a broken "e-commerce" line being
+                // parsed as option E before any real alternatives appear.
+                const expectedLetter = String.fromCharCode(65 + alternatives.length + (currentAlt ? 1 : 0));
+                if (soloLetter === expectedLetter) {
+                    if (currentAlt) alternatives.push(currentAlt);
+                    currentAlt = { letter: soloLetter, body: '' };
+                    continue;
+                }
+                // Not the expected letter — treat as part of current context
+                if (currentAlt) {
+                    currentAlt.body = trimNoise(clean(`${currentAlt.body} ${line}`));
+                } else {
+                    enunciadoParts.push(line);
+                }
                 continue;
             }
 

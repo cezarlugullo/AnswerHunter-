@@ -24,6 +24,12 @@ export const SearchCacheService = {
     AI_RESULT_CACHE_KEY: 'ahAiResultCacheV1',
     AI_RESULT_CACHE_MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
     AI_RESULT_CACHE_MAX_ENTRIES: 500,
+    _saveDebounceTimer: null, // debounce handle for saveAiResultCache
+
+    // ── Decision bucket memory cache (avoids redundant storage reads) ──────────
+    _decisionBucketMem: null,
+    _decisionBucketExpiry: 0,
+    DECISION_BUCKET_TTL: 2000, // ms — short TTL so changes are visible quickly
 
     // ── Low-level storage helpers ──────────────────────────────────────────────
 
@@ -58,9 +64,11 @@ export const SearchCacheService = {
 
     setSnapshot(url, snap) {
         if (this.snapshotCache.size >= this.SNAPSHOT_CACHE_MAX) {
-            const oldest = [...this.snapshotCache.entries()]
-                .sort((a, b) => a[1].fetchedAt - b[1].fetchedAt)[0];
-            if (oldest) this.snapshotCache.delete(oldest[0]);
+            let oldestUrl = null, oldestTime = Infinity;
+            for (const [u, entry] of this.snapshotCache) {
+                if (entry.fetchedAt < oldestTime) { oldestUrl = u; oldestTime = entry.fetchedAt; }
+            }
+            if (oldestUrl) this.snapshotCache.delete(oldestUrl);
         }
         this.snapshotCache.set(url, { snap, fetchedAt: Date.now() });
     },
@@ -139,25 +147,38 @@ export const SearchCacheService = {
     },
 
     /**
-     * Stores an AI extraction result and persists asynchronously.
+     * Stores an AI extraction result and persists asynchronously (debounced 500ms).
      */
     setCachedAiResult(url, questionStem, result) {
         if (!this._aiResultCache) return;
         const key = this.getAiResultCacheKey(url, questionStem);
         this._aiResultCache.set(key, { ...result, cachedAt: Date.now() });
-        this.saveAiResultCache(); // fire-and-forget
+        if (!this._saveDebounceTimer) {
+            this._saveDebounceTimer = setTimeout(() => {
+                this._saveDebounceTimer = null;
+                this.saveAiResultCache();
+            }, 500);
+        }
     },
 
     // ── Decision cache ─────────────────────────────────────────────────────────
 
     async _getDecisionCacheBucket() {
+        if (this._decisionBucketMem !== null && Date.now() < this._decisionBucketExpiry) {
+            return this._decisionBucketMem;
+        }
         const data = await this.storageGet([this.SEARCH_CACHE_KEY]);
         const bucket = data?.[this.SEARCH_CACHE_KEY];
-        return (bucket && typeof bucket === 'object') ? bucket : {};
+        this._decisionBucketMem = (bucket && typeof bucket === 'object') ? bucket : {};
+        this._decisionBucketExpiry = Date.now() + this.DECISION_BUCKET_TTL;
+        return this._decisionBucketMem;
     },
 
     async _setDecisionCacheBucket(bucket) {
         const safeBucket = bucket && typeof bucket === 'object' ? bucket : {};
+        // Invalidate memory cache so next read reflects new data
+        this._decisionBucketMem = safeBucket;
+        this._decisionBucketExpiry = Date.now() + this.DECISION_BUCKET_TTL;
         await this.storageSet({ [this.SEARCH_CACHE_KEY]: safeBucket });
     },
 
@@ -165,6 +186,8 @@ export const SearchCacheService = {
         const { keepMetrics = true } = options || {};
         const payload = { [this.SEARCH_CACHE_KEY]: {} };
         if (!keepMetrics) payload[this.SEARCH_METRICS_KEY] = {};
+        this._decisionBucketMem = {};
+        this._decisionBucketExpiry = Date.now() + this.DECISION_BUCKET_TTL;
         await this.storageSet(payload);
     },
 
@@ -227,11 +250,15 @@ export const SearchCacheService = {
 
         const keys = Object.keys(bucket);
         if (keys.length > this.CACHE_MAX_ENTRIES) {
-            keys
-                .map((k) => ({ k, t: Number(bucket[k]?.updatedAt || 0) }))
-                .sort((a, b) => a.t - b.t)
-                .slice(0, keys.length - this.CACHE_MAX_ENTRIES)
-                .forEach((entry) => { delete bucket[entry.k]; });
+            const toRemove = keys.length - this.CACHE_MAX_ENTRIES;
+            // O(n) pass: collect the `toRemove` oldest entries without full sort
+            const oldest = [];
+            for (const k of keys) {
+                const t = Number(bucket[k]?.updatedAt || 0);
+                oldest.push([k, t]);
+            }
+            oldest.sort((a, b) => a[1] - b[1]);
+            for (let _di = 0; _di < toRemove; _di++) delete bucket[oldest[_di][0]];
         }
 
         await this._setDecisionCacheBucket(bucket);

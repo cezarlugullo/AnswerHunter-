@@ -7,8 +7,9 @@ export const SettingsModel = {
         language: '',
         groqApiKey: '',
         groqApiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-        // Fast model for simple tasks (1000 t/s): validation, extraction, parsing
-        groqModelFast: 'openai/gpt-oss-20b',
+        // Fast model for simple tasks: validation, extraction, parsing
+        // llama-3.1-8b-instant: 14.4K RPD (vs 1K for 70b) — ideal for parallel page extraction
+        groqModelFast: 'llama-3.1-8b-instant',
         // Smart model for complex reasoning (280 t/s): inference, consensus, analysis
         groqModelSmart: 'llama-3.3-70b-versatile',
         // Most capable model for Google-like overview synthesis (tries this first)
@@ -111,6 +112,11 @@ export const SettingsModel = {
                 // Force hot-migrate any old 'gemini-2.5-pro' to 'gemini-2.5-flash'
                 if (merged.geminiModelSmart === 'gemini-2.5-pro') {
                     merged.geminiModelSmart = 'gemini-2.5-flash';
+                }
+
+                // Hot-migrate old groqModelFast default — gpt-oss-20b had same 1K RPD as 70b (no benefit)
+                if (merged.groqModelFast === 'openai/gpt-oss-20b') {
+                    merged.groqModelFast = 'llama-3.1-8b-instant';
                 }
 
                 merged.language = this.normalizeLanguage(merged.language || this.getBrowserDefaultLanguage());

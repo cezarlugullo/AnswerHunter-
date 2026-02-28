@@ -14,9 +14,14 @@
  */
 
 import { CloudflareBypassService } from './bypass/CloudflareBypassService.js';
+import { StealthEvasions } from './bypass/StealthEvasions.js';
+import { HumanMouseSimulator } from './bypass/HumanMouseSimulator.js';
 
 // Sites protected by Cloudflare Bot Management / Akamai — use full bypass pipeline
 const CF_PROTECTED_SITES = new Set(['studocu', 'gauthmath']);
+
+// Sites with heavy behavior analysis (mouse tracking, scroll detection) — use HumanMouseSimulator
+const HUMAN_SIM_SITES = new Set(['brainly', 'scribd']);
 
 export class BackgroundTabExtractorService {
 
@@ -102,16 +107,34 @@ export class BackgroundTabExtractorService {
     try {
       console.log(`[AH-TAB] Opening hidden tab [${site}] → ${url}`);
 
-      // Open in a minimized popup window — invisible to user, doesn't pollute their tab bar
-      const win = await new Promise(resolve =>
-        chrome.windows.create({ url, type: 'popup', state: 'minimized', focused: false }, resolve)
-      );
+      // Open as a tiny off-screen popup — invisible to user, doesn't pollute tab bar.
+      // state:'minimized' is not valid in chrome.windows.create (causes "Invalid value for state").
+      // We position it off-screen at (-9999,-9999) and immediately minimize via windows.update.
+      const win = await new Promise((resolve, reject) => {
+        chrome.windows.create({ url, type: 'popup', focused: false, left: -9999, top: -9999, width: 1, height: 1 }, (w) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          resolve(w);
+        });
+      });
       winId = win?.id ?? null;
       tabId = win?.tabs?.[0]?.id ?? null;
+      // Force minimized state — chrome.windows.create ignores the state param reliably
+      if (winId !== null) { try { chrome.windows.update(winId, { state: 'minimized' }); } catch (_) {} }
 
       if (!tabId) throw new Error('Failed to create hidden window/tab');
 
       await BackgroundTabExtractorService._waitForTabLoad(tabId, options.timeoutMs || 15000);
+
+      // Inject stealth evasions immediately after load — patches webdriver flag, plugins,
+      // visibility API, WebGL, etc. before React/Vue SPA scripts run their checks.
+      try { await StealthEvasions.injectAll(tabId); } catch (_) {}
+
+      // For sites with mouse/behavior tracking: simulate human interaction during renderWait.
+      // Runs in parallel with the renderWait so it doesn't add extra time.
+      if (HUMAN_SIM_SITES.has(site)) {
+        HumanMouseSimulator.interact(tabId, { doClick: false, doScroll: true }).catch(() => {});
+      }
+
       await new Promise(r => setTimeout(r, waitMs));
       const results = await chrome.scripting.executeScript({
         target: { tabId },

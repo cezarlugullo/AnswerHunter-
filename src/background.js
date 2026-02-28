@@ -15,6 +15,7 @@ import { GeminiCLIAuthService } from './services/GeminiCLIAuthService.js';
 import { CopilotAuthService } from './services/CopilotAuthService.js';
 import { SearchService } from './services/SearchService.js';
 import { PerformanceTimer } from './utils/PerformanceTimer.js';
+import { SearchCacheService } from './services/search/SearchCacheService.js';
 
 const CHATGPT_CALLBACK_PATTERN = 'http://localhost:1455/auth/callback';
 const GEMINI_CLI_CALLBACK_PATTERN = 'http://localhost:11235/auth/callback';
@@ -53,11 +54,13 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 chrome.runtime.onInstalled.addListener(() => {
     _syncCopilotPollingAlarm().catch(() => {});
     _clearStaleSearches().catch(() => {});
+    SearchCacheService.loadAiResultCache().catch(() => {});
 });
 
 chrome.runtime.onStartup.addListener(() => {
     _syncCopilotPollingAlarm().catch(() => {});
     _clearStaleSearches().catch(() => {});
+    SearchCacheService.loadAiResultCache().catch(() => {});
 });
 
 /**
@@ -145,6 +148,7 @@ chrome.storage.local.get(['chatgpt_pkce_pending', 'gemini_cli_pkce_pending'], (r
 
 _syncCopilotPollingAlarm().catch(() => {});
 _clearStaleSearches().catch(() => {});
+SearchCacheService.loadAiResultCache().catch(() => {});
 
 // ─── Background Search Phase 2 ───────────────────────────────────────────────
 // Receives { type: 'SEARCH_PHASE2', requestId, question, displayQuestion }

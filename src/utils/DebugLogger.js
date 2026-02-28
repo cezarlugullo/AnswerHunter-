@@ -16,25 +16,75 @@ export const DebugLogger = {
       this._enabled = window.AH_DEBUG;
     }
 
-    // Optional persisted switch via settings.debugLoggingEnabled
+    // Load settings — first visible message in DevTools will be the model banner
+    let storedSettings = {};
     try {
       if (typeof chrome !== 'undefined' && chrome?.storage?.sync?.get) {
         const result = await new Promise((resolve) => {
           chrome.storage.sync.get(['settings'], resolve);
         });
-        const fromSettings = result?.settings?.debugLoggingEnabled;
+        storedSettings = result?.settings || {};
+        const fromSettings = storedSettings.debugLoggingEnabled;
         if (typeof fromSettings === 'boolean') this._enabled = fromSettings;
       }
     } catch (_) {
       // Ignore storage bootstrap errors.
     }
 
+    this.printModelTable(storedSettings);
     this._installGlobalHooks();
     this.info('debug.bootstrap', {
       enabled: this._enabled,
       location: typeof location !== 'undefined' ? location.href : 'n/a',
       userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'n/a'
     });
+  },
+
+  /**
+   * Prints a styled model banner to the DevTools console.
+   * Green = active/in-use. Gray = configured but not primary.
+   * Groq fast + OCR are always green (used regardless of primary provider).
+   */
+  printModelTable(s = {}) {
+    const primary = (s.primaryProvider || 'groq').toLowerCase();
+    const fast    = s.groqModelFast        || 'llama-3.1-8b-instant';
+    const smart   = s.groqModelSmart       || 'llama-3.3-70b-versatile';
+    const vision  = s.groqModelVision      || 'llama-4-scout-17b-16e-instruct';
+    const gemini  = s.geminiModel          || 'gemini-2.5-flash';
+    const orModel = s.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+    const chatgpt = s.chatgptModel         || 'gpt-5.2-codex';
+    const copilot = s.copilotModel         || 'claude-sonnet-4.6';
+
+    const H   = 'background:#0f172a;color:#f59e0b;font-weight:700;padding:3px 12px;border-radius:4px;font-size:12px;letter-spacing:.5px';
+    const SEP = 'color:#1e293b;font-family:monospace;font-size:11px';
+    const CAP = 'color:#475569;font-size:10px;font-weight:700;letter-spacing:1.5px;font-family:monospace';
+    const ON  = 'color:#4ade80;font-weight:700;font-family:monospace;font-size:12px';
+    const LBL = 'color:#64748b;font-family:monospace;font-size:12px';
+    const VAL_ON  = 'color:#86efac;font-family:monospace;font-size:12px';
+    const VAL_OFF = 'color:#334155;font-family:monospace;font-size:12px';
+
+    const row = (active, icon, label, model) =>
+      console.log(
+        `%c  ${active ? '✅' : '○ '} ${icon}  ${label.padEnd(24)}%c${model}`,
+        active ? ON : LBL,
+        active ? VAL_ON : VAL_OFF
+      );
+
+    const SEP_LINE = ' ────────────────────────────────────────────────────';
+
+    console.log('%c 🤖 AnswerHunter · Modelos ', H);
+    console.log('%c' + SEP_LINE, SEP);
+    console.log('%c  SEMPRE ATIVOS', CAP);
+    row(true, '⚡', 'Groq · extração fast',  fast);
+    row(true, '📷', 'Groq · OCR vision',     vision);
+    console.log('%c' + SEP_LINE, SEP);
+    console.log('%c  PROVIDER PRINCIPAL', CAP);
+    row(primary === 'groq',        '🔶', 'Groq · raciocínio',  smart);
+    row(primary === 'gemini',      '💎', 'Gemini',              gemini);
+    row(primary === 'openrouter',  '🔗', 'OpenRouter',          orModel);
+    row(primary === 'chatgpt',     '💬', 'ChatGPT',             chatgpt);
+    row(primary === 'copilot',     '🐙', 'Copilot',             copilot);
+    console.log('%c' + SEP_LINE, SEP);
   },
 
   setEnabled(enabled) {

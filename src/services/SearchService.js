@@ -50,9 +50,34 @@ import { BrainlyService } from './BrainlyService.js';
 import { PasseiDiretoService } from './PasseiDiretoService.js';
 import { PasseiDiretoAnswersApiService } from './PasseiDiretoAnswersApiService.js';
 import { NativeFetchBridgeService } from './NativeFetchBridgeService.js';
+import { SimpleSearchService } from './SimpleSearchService.js';
 
 // SearchService
 // Coordinates (1) direct extraction and (2) web search + evidence-based refinement.
+//
+// ══════════════════════════════════════════════════════════════════════════════════
+// ⚠️  PIPELINE ATIVO: SimpleSearchService (reescrito em fev/2026)
+// ══════════════════════════════════════════════════════════════════════════════════
+//
+// Os métodos searchOnly() e refineFromResults() abaixo redirecionam IMEDIATAMENTE
+// para SimpleSearchService e retornam. Todo o código legado neste arquivo (a partir
+// da linha ~980) é DEAD CODE e não executa mais.
+//
+// POR QUE O CÓDIGO LEGADO FOI MANTIDO (e não deletado):
+//   - Segurança: se o novo pipeline tiver bugs, é fácil reverter removendo as
+//     2 linhas de redirect.
+//   - Referência: BrainlyService, PasseiDiretoAnswersApiService, EvidenceService,
+//     SearchCacheService etc. ainda estão funcionais caso seja necessário reativar.
+//
+// POR QUE O NOVO PIPELINE É MELHOR:
+//   - Bug crítico corrigido: o antigo retornava a LETRA da fonte sem remapear
+//     para as opções do usuário (ex: fonte tinha C=schema, usuário tinha A=schema →
+//     retornava C errado). Novo retorna TEXTO → mapeado para letra correta.
+//   - Simples e previsível: Serper → Jina+AI × 5 fontes → votação
+//   - Sem dependências frágeis (BrainlyGQL e PasseiDireto API erravam com frequência)
+//
+// PARA REVERTER ao pipeline antigo:
+//   Remova (ou comente) as linhas de redirect em searchOnly() e refineFromResults().
 // Sub-services handle the heavy lifting; this file remains the orchestrator.
 export const SearchService = {
   // 7 days
@@ -873,9 +898,10 @@ export const SearchService = {
     console.log(`SearchService: SourceDiag[${phase}] host=${host} type=${type} sim=${sim} opts=${opts} obf=${obf} pw=${paywall}${textLen}${decision}${method}${letter}${reason}`);
   },
   async searchOnly(questionText) {
-    const results = await ApiService.searchWithSerper(questionText);
-    const fingerprint = await this._canonicalHash(questionText || '');
-    return this._mergeCachedSourcesIntoResults(fingerprint, results || []);
+    // ── NOVO PIPELINE ─────────────────────────────────────────────────────────
+    // Delega para SimpleSearchService. Retorna array de resultados Serper.
+    // Ver SimpleSearchService.js para documentação completa do pipeline.
+    return SimpleSearchService.searchOnly(questionText);
   },
   async answerFromAi(questionText) {
     const extractedOptions = QuestionParser.extractOptionsFromQuestion(questionText);
@@ -968,6 +994,26 @@ export const SearchService = {
   },
   // Flow 2: Google search + evidence-based refine (Search button)
   async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null, pageGabarito = null) {
+    // ── NOVO PIPELINE ─────────────────────────────────────────────────────────
+    // Delega COMPLETAMENTE para SimpleSearchService e retorna.
+    // Nada do código abaixo executa mais.
+    //
+    // O parâmetro pageGabarito (gabarito extraído direto da página pelo content script)
+    // não é passado — o novo pipeline faz sua própria extração via Jina+IA.
+    //
+    // Ver SimpleSearchService.js para documentação completa do fluxo,
+    // incluindo o bug de remapeamento de letra que motivou esta reescrita.
+    return SimpleSearchService.refineFromResults(questionText, results, originalQuestionWithOptions, onStatus);
+
+    // ─── PIPELINE LEGADO ─────────────────────────────────────────────────────
+    // ⛔ DEAD CODE — não executa mais (return acima interrompe antes de chegar aqui)
+    // Preservado para facilitar rollback: basta remover o return acima.
+    //
+    // Contém: BrainlyService (GQL), PasseiDiretoAnswersApiService,
+    // EvidenceService, SearchCacheService, NativeFetchBridgeService,
+    // fetchPageSnapshot (Cloudflare bypass), aiExtractFromUrl (com bug de letra),
+    // votação por evidência ponderada, early-exit, cache de resultados.
+    /* eslint-disable no-unreachable */
     const AH_PERF_ADAPTIVE_TIMEOUT = true;
     const AH_PERF_GRACE_PREMIUM_MS = 2500;
     const AH_PERF_EARLY_EXIT_VOTE = 6.0;
