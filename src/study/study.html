@@ -4405,173 +4405,396 @@
     }
   
 /* ════════════════════════════════════════
-   Playful Toy-like Theme (ADHD-friendly)
-   - Alto contraste
-   - Alvos maiores
-   - Menos ruído visual por bloco
-   - Feedback rápido e previsível
+   NEW VISUAL IDENTITY — ToyLab ADHD v2
+   Component-by-component full override
 ════════════════════════════════════════ */
-:root {
-  --toy-coral: #ff7a8a;
-  --toy-yellow: #ffd85c;
-  --toy-blue: #6ec8ff;
-  --toy-mint: #66d9a6;
-  --toy-ink: #1f2430;
+body.toylab-v2 {
+  --toy-bg: #f6f2ff;
   --toy-surface: #ffffff;
-  --toy-bg: #fffaf2;
-  --toy-border: #2f3542;
-}
-
-body {
+  --toy-ink: #1d2433;
+  --toy-muted: #56607a;
+  --toy-border: #1f2430;
+  --toy-coral: #ff6f91;
+  --toy-orange: #ffb454;
+  --toy-yellow: #ffe066;
+  --toy-blue: #61dafb;
+  --toy-purple: #8b7bff;
+  --toy-mint: #53d6a9;
+  --toy-shadow: 0 9px 0 rgba(31,36,48,.2);
+  --toy-shadow-soft: 0 5px 0 rgba(31,36,48,.14);
+  --toy-radius: 18px;
+  --toy-pill: 999px;
   background:
-    radial-gradient(circle at 24px 24px, rgba(255, 216, 92, 0.12) 2px, transparent 2.5px),
-    radial-gradient(circle at 12px 12px, rgba(110, 200, 255, 0.08) 1.5px, transparent 2px),
-    var(--toy-bg);
-  background-size: 36px 36px, 28px 28px, auto;
+    radial-gradient(circle at 18px 18px, rgba(139, 123, 255, .14) 2px, transparent 2.5px),
+    radial-gradient(circle at 9px 9px, rgba(97, 218, 251, .1) 1.5px, transparent 2px),
+    linear-gradient(180deg, #f8f5ff, #f2ecff 45%, #f7f2ff 100%);
+  background-size: 34px 34px, 22px 22px, auto;
 }
 
-header {
-  background: linear-gradient(125deg, var(--toy-coral) 0%, #ff9f68 48%, var(--toy-yellow) 100%);
-  box-shadow: 0 8px 24px rgba(255, 122, 138, 0.28);
+body.toylab-v2,
+body.toylab-v2 button,
+body.toylab-v2 input,
+body.toylab-v2 select,
+body.toylab-v2 textarea {
+  font-family: 'Baloo 2', 'Lexend', sans-serif !important;
 }
 
-.logo-mark {
-  border-radius: 12px;
-  border: 2px solid rgba(0,0,0,0.16);
+body.toylab-v2 header {
+  height: 66px;
+  background: linear-gradient(125deg, #8b7bff 0%, #61dafb 45%, #53d6a9 100%) !important;
+  box-shadow: 0 10px 24px rgba(97,218,251,.35);
+  border-bottom: 2px solid rgba(31,36,48,.22);
 }
 
-.chip,
-.tool-btn,
-.main-mode-tab,
-.reveal-toggle,
-.btn-header,
-.sort-wrap select,
-.subject-wrap select,
-.answer-tool-btn,
-.btn-tags,
-.btn-voice {
-  min-height: 36px;
-  border-radius: 999px;
-  border-width: 2px;
+body.toylab-v2 .logo-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  border: 2px solid rgba(31,36,48,.25);
+  box-shadow: 0 4px 0 rgba(31,36,48,.18);
 }
 
-.main-mode-tab.active,
-.chip.active {
-  background: var(--toy-yellow);
-  border-color: var(--toy-border);
+body.toylab-v2 .header-search input {
+  height: 40px;
+  border: 2px solid rgba(31,36,48,.18);
+  background: rgba(255,255,255,.88);
+  border-radius: var(--toy-pill);
+}
+
+body.toylab-v2 .header-search input:focus {
+  border-color: #3a7de1;
+  box-shadow: 0 0 0 4px rgba(58,125,225,.22);
+}
+
+body.toylab-v2 .toolbar-wrap {
+  border-bottom: 2px solid rgba(31,36,48,.12);
+  box-shadow: 0 5px 14px rgba(31,36,48,.08);
+}
+
+body.toylab-v2 .toolbar-row-nav,
+body.toylab-v2 .toolbar-row-tools {
+  background: rgba(255,255,255,.96);
+}
+
+body.toylab-v2 .main-mode-tab,
+body.toylab-v2 .chip,
+body.toylab-v2 .tool-btn,
+body.toylab-v2 .tool-btn-icon,
+body.toylab-v2 .reveal-toggle,
+body.toylab-v2 .btn-header,
+body.toylab-v2 .sort-wrap select,
+body.toylab-v2 .subject-wrap select,
+body.toylab-v2 .density-btn {
+  min-height: 38px;
+  border-radius: var(--toy-pill) !important;
+  border: 2px solid rgba(31,36,48,.2) !important;
+  box-shadow: 0 3px 0 rgba(31,36,48,.12);
+  color: var(--toy-ink);
+  background: #fffefb;
+}
+
+body.toylab-v2 .chip.active,
+body.toylab-v2 .main-mode-tab.active,
+body.toylab-v2 .density-btn.active {
+  background: linear-gradient(135deg, #8b7bff, #61dafb) !important;
+  border-color: rgba(31,36,48,.55) !important;
+  color: #ffffff !important;
+}
+
+body.toylab-v2 .tool-btn.simulado-btn { background: #fff2d9 !important; border-color: #f59f00 !important; }
+body.toylab-v2 .tool-btn.pomodoro-btn { background: #ffe4e4 !important; border-color: #ff6b6b !important; }
+body.toylab-v2 .tool-btn.map-btn { background: #e6fff6 !important; border-color: #20c997 !important; }
+
+body.toylab-v2 .app-shell {
+  gap: 18px;
+  padding: 16px 16px 22px;
+}
+
+body.toylab-v2 .sidebar {
+  border: 2px solid #141a2a;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #202a44 0%, #172036 100%);
+  box-shadow: var(--toy-shadow-soft);
+}
+
+body.toylab-v2 .sidebar-nav-item {
+  border: 2px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  color: #eef3ff;
+}
+body.toylab-v2 .sidebar-nav-item:hover {
+  border-color: rgba(255,255,255,.28);
+  background: rgba(255,255,255,.12);
+}
+
+body.toylab-v2 .sidebar,
+body.toylab-v2 .sidebar * {
+  color: #eef3ff;
+}
+
+body.toylab-v2 .progress-strip,
+body.toylab-v2 .gamification-bar,
+body.toylab-v2 .stats-bar {
+  border: 2px solid rgba(31,36,48,.14);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--toy-shadow-soft);
+}
+
+body.toylab-v2 .progress-track,
+body.toylab-v2 .daily-progress-track {
+  height: 10px;
+  border: 2px solid rgba(31,36,48,.1);
+}
+
+body.toylab-v2 .progress-fill,
+body.toylab-v2 .daily-progress-fill {
+  background: linear-gradient(90deg, var(--toy-blue), var(--toy-mint));
+}
+
+body.toylab-v2 .card {
+  border: 2px solid rgba(31,36,48,.3);
+  border-radius: 22px;
+  background: var(--toy-surface);
+  box-shadow: var(--toy-shadow);
+}
+
+body.toylab-v2 .card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 0 rgba(31,36,48,.2);
+}
+
+body.toylab-v2 .card-meta {
+  border-bottom: 2px dashed rgba(31,36,48,.16);
+  background: linear-gradient(180deg, #fff 0%, #fff9ef 100%);
+}
+
+body.toylab-v2 .question-enunciado {
+  font-size: 1rem;
+  line-height: 1.9;
+  letter-spacing: .01em;
+  max-width: 70ch;
   color: var(--toy-ink);
 }
 
-.card {
-  border: 2px solid var(--toy-border);
-  border-radius: 20px;
-  box-shadow: 0 8px 0 rgba(47, 53, 66, 0.14);
-}
-
-.card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 0 rgba(47, 53, 66, 0.18);
-}
-
-.card-meta {
-  background: linear-gradient(180deg, #fff 0%, #fff8ef 100%);
-  border-bottom: 2px dashed rgba(47, 53, 66, 0.18);
-}
-
-.question-enunciado {
-  font-size: 0.98rem;
-  line-height: 1.85;
-  letter-spacing: 0.01em;
-  max-width: 72ch;
-}
-
-.option-item {
-  border-width: 2px;
+body.toylab-v2 .option-item {
+  border: 2px solid rgba(31,36,48,.2);
   border-radius: 14px;
-  padding: 11px 14px;
+  padding: 12px 14px;
+  background: #fff;
+  color: #243047;
+  font-weight: 600;
 }
 
-.option-item:hover {
-  border-color: #3c7de0;
-  background: #f2f8ff;
+body.toylab-v2 .option-item:hover {
+  border-color: #4285f4;
+  background: #f1f7ff;
 }
 
-.option-item.selected {
-  border-color: #3c7de0;
-  box-shadow: inset 0 0 0 2px rgba(60, 125, 224, 0.26);
+body.toylab-v2 .option-item.selected {
+  border-color: #4285f4;
+  background: #e8f1ff;
 }
 
-.option-item.correct {
-  border-color: #1ea86a;
-  background: #ebfff5;
+body.toylab-v2 .option-item.correct {
+  border-color: #1da76d;
+  background: #ecfff6;
 }
 
-.option-item.wrong {
+body.toylab-v2 .option-item.wrong {
   border-color: #ef5350;
   background: #fff1f1;
 }
 
-.reveal-btn,
-.tool-btn.add-question-btn,
-.maq-btn--primary,
-.quiz-confirm-btn,
-.sim-start-btn {
-  background: linear-gradient(135deg, var(--toy-coral), #ff9f68);
-  border: 2px solid var(--toy-border) !important;
-  color: #1f2430 !important;
-  box-shadow: 0 6px 0 rgba(47, 53, 66, 0.22);
+body.toylab-v2 .reveal-btn,
+body.toylab-v2 .maq-btn--primary,
+body.toylab-v2 .quiz-confirm-btn,
+body.toylab-v2 .sim-start-btn,
+body.toylab-v2 .tool-btn.add-question-btn {
+  background: linear-gradient(135deg, #ff6f91, #8b7bff) !important;
+  border: 2px solid rgba(31,36,48,.5) !important;
+  color: #ffffff !important;
+  box-shadow: 0 7px 0 rgba(31,36,48,.2) !important;
 }
 
-.reveal-btn:hover,
-.tool-btn.add-question-btn:hover,
-.maq-btn--primary:hover,
-.quiz-confirm-btn:hover,
-.sim-start-btn:hover {
-  transform: translateY(-1px);
+body.toylab-v2 .reveal-btn:hover,
+body.toylab-v2 .maq-btn--primary:hover,
+body.toylab-v2 .quiz-confirm-btn:hover,
+body.toylab-v2 .sim-start-btn:hover,
+body.toylab-v2 .tool-btn.add-question-btn:hover {
+  transform: translateY(-2px);
   filter: saturate(1.08);
 }
 
-.progress-track,
-.daily-progress-track {
-  height: 10px;
-  border-radius: 999px;
+body.toylab-v2 .answer-tool-btn,
+body.toylab-v2 .btn-tags,
+body.toylab-v2 .btn-voice {
+  border-radius: 12px !important;
+  min-height: 36px;
+  border: 2px solid rgba(31,36,48,.16) !important;
 }
 
-.progress-fill,
-.daily-progress-fill {
-  background: linear-gradient(90deg, var(--toy-blue), var(--toy-mint));
+body.toylab-v2 .answer-tool-btn.active {
+  background: #fff0d6;
+  border-color: #ff9f43 !important;
+  color: #9a4b00;
 }
 
-/* Menos sobrecarga visual no modo compacto */
-.compact-meta {
-  font-size: 0.74rem;
+body.toylab-v2 .answer-final-box {
+  border: 2px solid #1da76d !important;
+  border-left: 6px solid #1da76d !important;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f1fff7 0%, #e9fff2 100%);
 }
 
-/* Ajuda foco visual para teclado e TDAH */
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible,
-.option-item:focus-visible {
-  outline: 3px solid #3c7de0;
+body.toylab-v2 .answer-explanation,
+body.toylab-v2 .answer-review,
+body.toylab-v2 .answer-chat,
+body.toylab-v2 .sim-overlay .modal-box,
+body.toylab-v2 .quiz-overlay .modal-box,
+body.toylab-v2 .dash-overlay .modal-box,
+body.toylab-v2 .mindmap-modal {
+  border: 2px solid rgba(31,36,48,.2);
+  border-radius: 18px;
+  box-shadow: 0 16px 34px rgba(31,36,48,.25);
+}
+
+body.toylab-v2 .status-section,
+body.toylab-v2 .subject-group-header,
+body.toylab-v2 .compact-row,
+body.toylab-v2 .stat-card,
+body.toylab-v2 .dash-panel,
+body.toylab-v2 .dash-insights,
+body.toylab-v2 .dash-goals,
+body.toylab-v2 .dash-kpi,
+body.toylab-v2 .dash-action-btn {
+  border-width: 2px !important;
+  border-color: rgba(31,36,48,.18) !important;
+  border-radius: 14px;
+}
+
+body.toylab-v2 .dash-action-btn:hover {
+  background: #fff2d8;
+  border-color: #f59f00 !important;
+  color: #734000;
+}
+
+body.toylab-v2 button:focus-visible,
+body.toylab-v2 input:focus-visible,
+body.toylab-v2 select:focus-visible,
+body.toylab-v2 textarea:focus-visible,
+body.toylab-v2 .option-item:focus-visible {
+  outline: 3px solid #3b82f6 !important;
   outline-offset: 2px;
 }
 
-/* Motion mais confortável */
-@media (prefers-reduced-motion: no-preference) {
-  .chip,
-  .tool-btn,
-  .reveal-btn,
-  .main-mode-tab,
-  .card {
-    transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+@media (max-width: 860px) {
+  body.toylab-v2 .card {
+    border-radius: 18px;
   }
 }
 
-.mastered-badge { display:inline-flex; align-items:center; gap:3px; background:linear-gradient(135deg,#ffd700,#ff9500); color:#1a1a1a; font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:12px; }
+/* PASS 2 — hard identity separation by component */
+body.toylab-v2 {
+  color: var(--toy-ink) !important;
+}
+
+body.toylab-v2 .toolbar-row-nav,
+body.toylab-v2 .toolbar-row-tools {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+
+body.toylab-v2 .toolbar-row-nav {
+  border-bottom: 2px dashed rgba(31,36,48,.15) !important;
+}
+
+body.toylab-v2 .toolbar-row-tools {
+  gap: 10px !important;
+}
+
+body.toylab-v2 .filter-row .chip:nth-child(1) { background:#fff !important; border-color:#8d99ae !important; }
+body.toylab-v2 .filter-row .chip:nth-child(2) { background:#fff4e6 !important; border-color:#f59f00 !important; }
+body.toylab-v2 .filter-row .chip:nth-child(3) { background:#eef2ff !important; border-color:#5c7cfa !important; }
+body.toylab-v2 .filter-row .chip:nth-child(4) { background:#fff1f1 !important; border-color:#ff6b6b !important; }
+body.toylab-v2 .filter-row .chip:nth-child(5) { background:#ecfff6 !important; border-color:#20c997 !important; }
+
+body.toylab-v2 .sidebar {
+  background: linear-gradient(180deg, #222b45 0%, #1b2238 100%) !important;
+  border-color: #0f1423 !important;
+}
+body.toylab-v2 .sidebar,
+body.toylab-v2 .sidebar * {
+  color: #f4f7ff !important;
+}
+body.toylab-v2 .sidebar-section-label {
+  color: #b6c4ff !important;
+}
+body.toylab-v2 .sidebar-stat,
+body.toylab-v2 .sidebar-nav-item {
+  background: rgba(255,255,255,.06) !important;
+  border-color: rgba(255,255,255,.14) !important;
+}
+body.toylab-v2 .sidebar-nav-item:hover {
+  background: rgba(255,255,255,.14) !important;
+}
+
+body.toylab-v2 .stats-bar {
+  grid-template-columns: repeat(2,1fr) !important;
+  gap: 10px !important;
+}
+
+body.toylab-v2 .stat-card {
+  border-radius: 16px !important;
+  box-shadow: 0 5px 0 rgba(31,36,48,.12) !important;
+  background: linear-gradient(180deg, #fff 0%, #fffaf0 100%) !important;
+}
+
+body.toylab-v2 #cardList {
+  max-width: 1040px !important;
+}
+
+body.toylab-v2 .subject-group-header {
+  background: linear-gradient(135deg, #fff0d9, #fff8ef) !important;
+  border-color: #f59f00 !important;
+  color: #8d4b00 !important;
+}
+
+body.toylab-v2 .compact-row {
+  border-left: 4px solid #72caff !important;
+  background: #fff !important;
+}
+body.toylab-v2 .compact-row:hover {
+  background: #f8fbff !important;
+}
+
+body.toylab-v2 .dash-panel,
+body.toylab-v2 .dash-insights,
+body.toylab-v2 .dash-goals {
+  background: linear-gradient(180deg, #fff 0%, #fff8ef 100%) !important;
+}
+
+body.toylab-v2 .modal-header,
+body.toylab-v2 .mindmap-header {
+  background: linear-gradient(135deg, #ff8b7a, #ffb35e) !important;
+  color: #1f2430 !important;
+}
+body.toylab-v2 .modal-title,
+body.toylab-v2 .modal-subtitle,
+body.toylab-v2 .mindmap-header-title {
+  color: #1f2430 !important;
+}
+
+body.toylab-v2 .empty-state {
+  border: 2px dashed #72caff !important;
+  border-radius: 20px !important;
+  background: linear-gradient(180deg, #f6fbff 0%, #eef7ff 100%) !important;
+}
+
+.mastered-badge { display:inline-flex; align-items:center; gap:3px; background:linear-gradient(135deg,#ffd700,#ff9500); color:#1a1a1a; font-size:.72rem; font-weight:800; padding:3px 10px; border-radius:999px; border:2px solid rgba(31,36,48,.2); }
 </style>
 </head>
-<body>
+<body class="toylab-v2">
 
 <!-- ════════════════════════════════════════
      HEADER
@@ -5054,3 +5277,4 @@ textarea:focus-visible,
 <script src="study.js" type="module"></script>
 </body>
 </html>
+
