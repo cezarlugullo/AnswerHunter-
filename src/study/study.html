@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AnswerHunter — Caderno de Estudos</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800;900&family=Lexend:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800;900&family=Lexend:wght@300;400;500;600;700&family=Fredoka+One&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-25..200" rel="stylesheet">
   <style>
     /* ── Design Tokens ── */
@@ -4409,25 +4409,25 @@
    Component-by-component full override
 ════════════════════════════════════════ */
 body.toylab-v2 {
-  --toy-bg: #f6f2ff;
-  --toy-surface: #ffffff;
-  --toy-ink: #1d2433;
-  --toy-muted: #56607a;
-  --toy-border: #1f2430;
-  --toy-coral: #ff6f91;
-  --toy-orange: #ffb454;
-  --toy-yellow: #ffe066;
-  --toy-blue: #61dafb;
-  --toy-purple: #8b7bff;
-  --toy-mint: #53d6a9;
-  --toy-shadow: 0 9px 0 rgba(31,36,48,.2);
-  --toy-shadow-soft: 0 5px 0 rgba(31,36,48,.14);
-  --toy-radius: 18px;
+  --toy-bg: #fdf6ec;
+  --toy-surface: #fffefb;
+  --toy-ink: #3e2723;
+  --toy-muted: #7b5a4f;
+  --toy-border: #3e2723;
+  --toy-coral: #ff6b6b;
+  --toy-orange: #e07b39;
+  --toy-yellow: #f5c842;
+  --toy-blue: #4ecdc4;
+  --toy-purple: #8e6cd1;
+  --toy-mint: #a8e6cf;
+  --toy-shadow: 4px 6px 0 rgba(62,39,35,.85);
+  --toy-shadow-soft: 2px 3px 0 rgba(62,39,35,.65);
+  --toy-radius: 20px;
   --toy-pill: 999px;
   background:
-    radial-gradient(circle at 18px 18px, rgba(139, 123, 255, .14) 2px, transparent 2.5px),
-    radial-gradient(circle at 9px 9px, rgba(97, 218, 251, .1) 1.5px, transparent 2px),
-    linear-gradient(180deg, #f8f5ff, #f2ecff 45%, #f7f2ff 100%);
+    radial-gradient(circle at 18px 18px, rgba(224, 123, 57, .14) 2px, transparent 2.5px),
+    radial-gradient(circle at 9px 9px, rgba(78, 205, 196, .1) 1.5px, transparent 2px),
+    linear-gradient(180deg, #fdf6ec, #fff9f0 48%, #fdf6ec 100%);
   background-size: 34px 34px, 22px 22px, auto;
 }
 
@@ -4436,30 +4436,43 @@ body.toylab-v2 button,
 body.toylab-v2 input,
 body.toylab-v2 select,
 body.toylab-v2 textarea {
-  font-family: 'Baloo 2', 'Lexend', sans-serif !important;
+  font-family: 'Lexend', 'Nunito', sans-serif !important;
+}
+body.toylab-v2 .logo-text,
+body.toylab-v2 .streak-label strong,
+body.toylab-v2 .main-mode-tab,
+body.toylab-v2 .reveal-toggle,
+body.toylab-v2 .btn-header {
+  font-family: 'Fredoka One', 'Baloo 2', cursive !important;
+  letter-spacing: .02em;
 }
 
 body.toylab-v2 header {
   height: 66px;
-  background: linear-gradient(125deg, #8b7bff 0%, #61dafb 45%, #53d6a9 100%) !important;
-  box-shadow: 0 10px 24px rgba(97,218,251,.35);
-  border-bottom: 2px solid rgba(31,36,48,.22);
+  background: #3e2723 !important;
+  box-shadow: none;
+  border-bottom: 3px solid #e07b39;
 }
 
 body.toylab-v2 .logo-mark {
   width: 38px;
   height: 38px;
   border-radius: 14px;
-  border: 2px solid rgba(31,36,48,.25);
-  box-shadow: 0 4px 0 rgba(31,36,48,.18);
+  border: 2px solid rgba(255,255,255,.35);
+  background: rgba(255,255,255,.18);
+  box-shadow: 0 3px 0 rgba(0,0,0,.25);
 }
+body.toylab-v2 .logo-text { color: #f5c842 !important; }
+body.toylab-v2 .logo-text span { color: #ff6b6b !important; }
+body.toylab-v2 .logo-sub { color: #f8d7c6 !important; }
 
 body.toylab-v2 .header-search input {
   height: 40px;
-  border: 2px solid rgba(31,36,48,.18);
-  background: rgba(255,255,255,.88);
+  border: 2px solid rgba(62,39,35,.5);
+  background: #fff9f0;
   border-radius: var(--toy-pill);
 }
+body.toylab-v2 .header-search .icon { color: #7b5a4f !important; }
 
 body.toylab-v2 .header-search input:focus {
   border-color: #3a7de1;
@@ -4487,8 +4500,8 @@ body.toylab-v2 .subject-wrap select,
 body.toylab-v2 .density-btn {
   min-height: 38px;
   border-radius: var(--toy-pill) !important;
-  border: 2px solid rgba(31,36,48,.2) !important;
-  box-shadow: 0 3px 0 rgba(31,36,48,.12);
+  border: 3px solid var(--toy-border) !important;
+  box-shadow: var(--toy-shadow-soft);
   color: var(--toy-ink);
   background: #fffefb;
 }
@@ -4496,9 +4509,9 @@ body.toylab-v2 .density-btn {
 body.toylab-v2 .chip.active,
 body.toylab-v2 .main-mode-tab.active,
 body.toylab-v2 .density-btn.active {
-  background: linear-gradient(135deg, #8b7bff, #61dafb) !important;
-  border-color: rgba(31,36,48,.55) !important;
-  color: #ffffff !important;
+  background: linear-gradient(135deg, #f5c842, #e07b39) !important;
+  border-color: #3e2723 !important;
+  color: #fffefb !important;
 }
 
 body.toylab-v2 .tool-btn.simulado-btn { background: #fff2d9 !important; border-color: #f59f00 !important; }
@@ -4535,7 +4548,7 @@ body.toylab-v2 .sidebar * {
 body.toylab-v2 .progress-strip,
 body.toylab-v2 .gamification-bar,
 body.toylab-v2 .stats-bar {
-  border: 2px solid rgba(31,36,48,.14);
+  border: 3px solid var(--toy-border);
   border-radius: 16px;
   background: #fff;
   box-shadow: var(--toy-shadow-soft);
@@ -4553,7 +4566,7 @@ body.toylab-v2 .daily-progress-fill {
 }
 
 body.toylab-v2 .card {
-  border: 2px solid rgba(31,36,48,.3);
+  border: 3px solid var(--toy-border);
   border-radius: 22px;
   background: var(--toy-surface);
   box-shadow: var(--toy-shadow);
@@ -4611,10 +4624,10 @@ body.toylab-v2 .maq-btn--primary,
 body.toylab-v2 .quiz-confirm-btn,
 body.toylab-v2 .sim-start-btn,
 body.toylab-v2 .tool-btn.add-question-btn {
-  background: linear-gradient(135deg, #ff6f91, #8b7bff) !important;
-  border: 2px solid rgba(31,36,48,.5) !important;
-  color: #ffffff !important;
-  box-shadow: 0 7px 0 rgba(31,36,48,.2) !important;
+  background: linear-gradient(135deg, #e07b39, #f5c842) !important;
+  border: 3px solid #3e2723 !important;
+  color: #fffefb !important;
+  box-shadow: var(--toy-shadow) !important;
 }
 
 body.toylab-v2 .reveal-btn:hover,
