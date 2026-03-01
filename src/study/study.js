@@ -3333,8 +3333,20 @@ async function runEvidenceProtocol(type) {
 
 async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
   if (!targetEl) return;
-  targetEl.innerHTML = `<div class="quiz-loading"><span class="icon spin-icon">autorenew</span><p>Carregando dados...</p></div>`;
 
+  // Use the standalone dashboard page inside an iframe
+  const existing = targetEl.querySelector('iframe.dash-iframe');
+  if (existing) return; // already loaded
+
+  targetEl.innerHTML = '';
+  const iframe = document.createElement('iframe');
+  iframe.className = 'dash-iframe';
+  iframe.src = chrome.runtime.getURL('src/dashboard/dashboard.html');
+  iframe.style.cssText = 'width:100%;border:none;min-height:calc(100vh - 60px);border-radius:8px;';
+  targetEl.appendChild(iframe);
+  return; // skip old inline rendering below
+
+  /* ── legacy inline dashboard (kept for reference) ── */
   const [sm2Data, simHistory, xpData] = await Promise.all([
     loadSm2Data(), loadSimHistory(), loadXPData()
   ]);

@@ -73,7 +73,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "src/native/*"
+        "src/native/*",
+        "src/dashboard/dashboard.html"
       ],
       "matches": [
         "<all_urls>"
