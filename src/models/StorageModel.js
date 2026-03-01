@@ -113,11 +113,30 @@ export const StorageModel = {
                 ...(extraContent || {}),
                 ...(leanSources !== undefined ? { sources: leanSources } : {})
             };
+            const nowTs = Date.now();
+            const baseSm2 = {
+                interval: 0,
+                repetition: 0,
+                ef: 2.5,
+                nextReview: '',
+                lastRated: '',
+                attempts: 0,
+                correct: 0,
+                errors: 0,
+                mastered: false,
+                tags: [],
+                hintUsedLast: false
+            };
+            const mergedSm2 = {
+                ...baseSm2,
+                ...((mergedExtra && mergedExtra.sm2 && typeof mergedExtra.sm2 === 'object') ? mergedExtra.sm2 : {})
+            };
             current.children.push({
-                id: 'q' + Date.now(),
+                id: 'q' + nowTs,
                 type: 'question',
-                content: { question: normQ, answer, source, ...mergedExtra },
-                createdAt: Date.now()
+                content: { question: normQ, answer, source, ...mergedExtra, sm2: mergedSm2 },
+                createdAt: nowTs,
+                updatedAt: nowTs
             });
             await this.save();
             return true;
@@ -384,5 +403,120 @@ export const StorageModel = {
         this.data = importedData;
         this.currentFolderId = 'root';
         await this.save();
-    }
+    },
+
+    /**
+     * Returns all question nodes flattened
+     * @param {Array} nodes
+     * @returns {Array}
+     */
+    getAllQuestions(nodes = this.data) {
+        const result = [];
+        for (const node of nodes) {
+            if (node.type === 'question') result.push(node);
+            if (node.children) result.push(...this.getAllQuestions(node.children));
+        }
+        return result;
+    },
+
+    /**
+     * Updates SM2 entry for a given question node id
+     * @param {string} questionId
+     * @param {Object} sm2Entry
+     * @returns {Promise<boolean>}
+     */
+    async updateSm2(questionId, sm2Entry = {}) {
+        if (!questionId || typeof sm2Entry !== 'object') return false;
+        if (!this.data.length) await this.init();
+        const node = this.findNode(questionId);
+        if (!node || node.type !== 'question' || !node.content) return false;
+
+        const baseSm2 = {
+            interval: 0,
+            repetition: 0,
+            ef: 2.5,
+            nextReview: '',
+            lastRated: '',
+            attempts: 0,
+            correct: 0,
+            errors: 0,
+            mastered: false,
+            tags: [],
+            hintUsedLast: false
+        };
+
+        node.content.sm2 = {
+            ...baseSm2,
+            ...(node.content.sm2 || {}),
+            ...sm2Entry
+        };
+        node.updatedAt = Date.now();
+        await this.save();
+        return true;
+    },
+
+    /**
+     * Full export preserving pedagogical state
+     * @returns {Promise<Object>}
+     */
+    async exportFull() {
+        if (!this.data.length) await this.init();
+        const xpData = await new Promise((resolve) => {
+            chrome.storage.local.get(['ah_xpData'], (d) => resolve(d.ah_xpData || {}));
+        });
+        return {
+            version: 2,
+            exportedAt: Date.now(),
+            binderStructure: this.data,
+            xpData
+        };
+    },
+
+    /**
+     * Imports full payload (v2) or legacy structure
+     * @param {Object|Array} data
+     * @returns {Promise<boolean>}
+     */
+    async importFull(data) {
+        const isLegacy = Array.isArray(data) || (data && !data.version);
+        const structure = isLegacy
+            ? (Array.isArray(data) ? data : data?.binderStructure)
+            : data?.binderStructure;
+
+        if (!Array.isArray(structure)) return false;
+        this.data = structure;
+        this.currentFolderId = 'root';
+        await this.save();
+
+        if (!isLegacy && data?.xpData && typeof data.xpData === 'object') {
+            await new Promise((resolve) => chrome.storage.local.set({ ah_xpData: data.xpData }, () => resolve()));
+        }
+        return true;
+    },
+
+    /**
+     * Returns unseen/new question nodes
+     * @param {number} limit
+     * @returns {Array}
+     */
+    getNewQuestions(limit = 20) {
+        const n = Number(limit) > 0 ? Number(limit) : 20;
+        return this.getAllQuestions()
+            .filter(q => !q?.content?.sm2?.lastRated)
+            .slice(0, n);
+    },
+
+    /**
+     * Returns due question nodes by date string YYYY-MM-DD
+     * @param {string} todayStr
+     * @returns {Array}
+     */
+    getDueQuestions(todayStr) {
+        const today = todayStr || new Date().toISOString().slice(0, 10);
+        return this.getAllQuestions().filter(q => {
+            const next = q?.content?.sm2?.nextReview;
+            return !next || next <= today;
+        });
+    },
+
 };

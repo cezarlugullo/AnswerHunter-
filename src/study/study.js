@@ -2,6 +2,8 @@
 // Reads binder data from chrome.storage.local and renders interactive study cards.
 
 import { ApiService } from '../services/ApiService.js';
+import { PedagogicalPromptsService } from '../services/PedagogicalPromptsService.js';
+import { FSRSService } from '../services/FSRSService.js';
 
 const escH = s => String(s || '')
   .replace(/&/g, '&amp;')
@@ -576,6 +578,21 @@ function buildCard(q, index) {
       </div>
     </div>
 
+    <div class="jol-confidence-bar" id="jolBar_${escH(q.id || '')}" style="display:none">
+  <div class="jol-label"><span class="icon">psychology</span> Antes de revelar — como você se sente?</div>
+  <div class="jol-buttons">
+    <button class="jol-btn" data-confidence="unsure" type="button">
+      <span class="icon">help_outline</span> Não sei
+    </button>
+    <button class="jol-btn" data-confidence="think_so" type="button">
+      <span class="icon">thumbs_up_down</span> Acho que sei
+    </button>
+    <button class="jol-btn" data-confidence="certain" type="button">
+      <span class="icon">check_circle</span> Tenho certeza
+    </button>
+  </div>
+</div>
+<div class="jol-calibration-badge" id="jolBadge_${escH(q.id || '')}" style="display:none"></div>
     <div class="card-bottom-zone">
       <div class="card-primary-actions">
         <button class="reveal-btn" type="button">
@@ -607,6 +624,15 @@ function buildCard(q, index) {
           </button>
           <button class="btn-tags" type="button" title="Gerar tags por IA" data-qid="${escH(q.id || '')}">
             <span class="icon">local_offer</span> Tags
+          </button>
+          <button class="answer-tool-btn btn-why-wrong" type="button" style="display:none">
+            <span class="icon">psychology</span> Por que errei?
+          </button>
+          <button class="answer-tool-btn btn-hint" type="button">
+            <span class="icon">lightbulb_circle</span> Dica
+          </button>
+          <button class="answer-tool-btn btn-mnemonic" type="button">
+            <span class="icon">neurology</span> Mnemônico
           </button>
         </div>
         <div class="card-tags" id="tags_${escH(q.id || '')}"></div>
@@ -672,6 +698,30 @@ function buildCard(q, index) {
         <div class="sm2-done-badge" id="sm2Done_${escH(q.id || '')}">
           <span class="icon">check_circle</span>
           <span class="sm2-done-text"></span>
+        </div>
+      </div>
+      <div class="why-wrong-panel" id="whyWrong_${escH(q.id || '')}" style="display:none">
+        <div class="why-wrong-header"><span class="icon">psychology</span> Por que errei?</div>
+        <div class="why-wrong-content"></div>
+        <div class="why-wrong-loading" style="display:none">
+          <span class="icon" style="animation:spin 1s linear infinite">autorenew</span> Analisando seu erro...
+        </div>
+      </div>
+      <div class="hint-panel" id="hintPanel_${escH(q.id || '')}" style="display:none">
+        <div class="hint-header"></div>
+        <div class="hint-content"></div>
+        <div class="hint-loading" style="display:none">
+          <span class="icon" style="animation:spin 1s linear infinite">autorenew</span> Gerando dica...
+        </div>
+        <button class="btn-next-hint" type="button" style="display:none">
+          <span class="icon">arrow_forward</span> Próxima dica
+        </button>
+      </div>
+      <div class="mnemonic-panel" id="mnemonicPanel_${escH(q.id || '')}" style="display:none">
+        <div class="mnemonic-header"><span class="icon">neurology</span> Mnemônico</div>
+        <div class="mnemonic-content"></div>
+        <div class="mnemonic-loading" style="display:none">
+          <span class="icon" style="animation:spin 1s linear infinite">autorenew</span> Criando mnemônico...
         </div>
       </div>
     </div>
@@ -1041,6 +1091,144 @@ function buildCard(q, index) {
     });
   }
 
+  // ── JOL Confidence buttons ──
+  const jolBar = article.querySelector(`#jolBar_${q.id || ''}`);
+  const jolBadge = article.querySelector(`#jolBadge_${q.id || ''}`);
+  let userConfidence = null;
+
+  if (jolBar) {
+    jolBar.querySelectorAll('.jol-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        userConfidence = btn.dataset.confidence;
+        jolBar.querySelectorAll('.jol-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        // Enable reveal button visually
+        const revealBtn = article.querySelector('.reveal-btn');
+        if (revealBtn) revealBtn.classList.add('jol-ready');
+      });
+    });
+  }
+
+  // Show JOL bar when question has options (retrieval gate)
+  if (jolBar && parsedQ.alternativas.length > 0) {
+    jolBar.style.display = 'block';
+  }
+
+  // ── Por que errei? button ──
+  const btnWhyWrong = article.querySelector('.btn-why-wrong');
+  const whyWrongPanel = article.querySelector(`#whyWrong_${q.id || ''}`);
+  if (btnWhyWrong && whyWrongPanel) {
+    btnWhyWrong.addEventListener('click', async () => {
+      const isVisible = whyWrongPanel.style.display !== 'none';
+      if (isVisible) { whyWrongPanel.style.display = 'none'; return; }
+      whyWrongPanel.style.display = 'block';
+      const contentDiv = whyWrongPanel.querySelector('.why-wrong-content');
+      const loadingDiv = whyWrongPanel.querySelector('.why-wrong-loading');
+      if (contentDiv.innerHTML.trim()) return; // already generated
+      contentDiv.style.display = 'none';
+      loadingDiv.style.display = 'flex';
+      try {
+        const selectedEl = article.querySelector('.option-item.selected');
+        const wrongLetter = String(selectedEl?.dataset.letter || '').toUpperCase();
+        const wrongText = selectedEl?.textContent?.trim() || wrongLetter;
+        const correctLetter = String(article.dataset.correctLetter || '').toUpperCase();
+        const correctEl = article.querySelector(`.option-item[data-letter="${correctLetter}"]`);
+        const correctText = correctEl?.textContent?.trim() || correctLetter;
+        const subject = article.dataset.subject || '';
+        const analysis = await PedagogicalPromptsService.generateWhyWrong(
+          cleanQuestion, wrongLetter, wrongText, correctLetter, correctText, subject
+        );
+        contentDiv.innerHTML = parseMarkdown(analysis || 'Não foi possível gerar a análise.');
+        contentDiv.style.display = 'block';
+      } catch (e) {
+        contentDiv.textContent = 'Erro ao gerar análise. Tente novamente.';
+        contentDiv.style.display = 'block';
+      } finally {
+        loadingDiv.style.display = 'none';
+      }
+    });
+  }
+
+  // ── Dica Socrática button ──
+  const btnHint = article.querySelector('.btn-hint');
+  const hintPanel = article.querySelector(`#hintPanel_${q.id || ''}`);
+  let currentHintLevel = 0;
+  let lastHint = '';
+  if (btnHint && hintPanel) {
+    const hintHeader = hintPanel.querySelector('.hint-header');
+    const hintContent = hintPanel.querySelector('.hint-content');
+    const hintLoading = hintPanel.querySelector('.hint-loading');
+    const btnNextHint = hintPanel.querySelector('.btn-next-hint');
+
+    const loadHint = async () => {
+      currentHintLevel = Math.min(currentHintLevel + 1, 3);
+      hintHeader.innerHTML = `<span class="icon">lightbulb_circle</span> Dica ${currentHintLevel}/3`;
+      hintContent.style.display = 'none';
+      hintLoading.style.display = 'flex';
+      try {
+        const optMap = {};
+        parsedQ.alternativas.forEach((alt, idx) => {
+          optMap[String.fromCharCode(65 + idx)] = alt;
+        });
+        const hint = await PedagogicalPromptsService.generateSocraticHint(
+          cleanQuestion, optMap, currentHintLevel, lastHint
+        );
+        lastHint = hint || '';
+        hintContent.innerHTML = parseMarkdown(lastHint || 'Nenhuma dica disponível.');
+        hintContent.style.display = 'block';
+        if (btnNextHint) btnNextHint.style.display = currentHintLevel < 3 ? 'inline-flex' : 'none';
+      } catch (e) {
+        hintContent.textContent = 'Erro ao gerar dica. Tente novamente.';
+        hintContent.style.display = 'block';
+      } finally {
+        hintLoading.style.display = 'none';
+      }
+    };
+
+    btnHint.addEventListener('click', async () => {
+      const isVisible = hintPanel.style.display !== 'none';
+      if (isVisible && currentHintLevel > 0) { hintPanel.style.display = 'none'; return; }
+      hintPanel.style.display = 'block';
+      if (currentHintLevel === 0) await loadHint();
+    });
+
+    if (btnNextHint) {
+      btnNextHint.addEventListener('click', loadHint);
+    }
+  }
+
+  // ── Mnemônico button ──
+  const btnMnemonic = article.querySelector('.btn-mnemonic');
+  const mnemonicPanel = article.querySelector(`#mnemonicPanel_${q.id || ''}`);
+  if (btnMnemonic && mnemonicPanel) {
+    const mnemonicContent = mnemonicPanel.querySelector('.mnemonic-content');
+    const mnemonicLoading = mnemonicPanel.querySelector('.mnemonic-loading');
+    btnMnemonic.addEventListener('click', async () => {
+      const isVisible = mnemonicPanel.style.display !== 'none';
+      if (isVisible) { mnemonicPanel.style.display = 'none'; return; }
+      mnemonicPanel.style.display = 'block';
+      if (mnemonicContent.innerHTML.trim()) return; // already generated
+      mnemonicContent.style.display = 'none';
+      mnemonicLoading.style.display = 'flex';
+      try {
+        const concept = await PedagogicalPromptsService.extractConceptTag(cleanQuestion);
+        const result = await PedagogicalPromptsService.generateMnemonic(concept, cleanQuestion);
+        mnemonicContent.innerHTML = `
+          <div class="mnemonic-emoji">${result.emoji || '🧠'}</div>
+          <div class="mnemonic-text">${parseMarkdown(result.mnemonic || '')}</div>
+          <div class="mnemonic-type">Tipo: ${result.type || 'associação'}</div>
+          <div class="mnemonic-howto">💡 ${escH(result.howToUse || '')}</div>
+        `;
+        mnemonicContent.style.display = 'block';
+      } catch (e) {
+        mnemonicContent.textContent = 'Erro ao gerar mnemônico.';
+        mnemonicContent.style.display = 'block';
+      } finally {
+        mnemonicLoading.style.display = 'none';
+      }
+    });
+  }
+
   // Compare toggle
   const optionItems = Array.from(article.querySelectorAll('.option-item'));
   const correctLetter = (parsedA.letter || '').toUpperCase();
@@ -1054,6 +1242,8 @@ function buildCard(q, index) {
 
       const selectedLetter = String(optionEl.dataset.letter || '').toUpperCase();
       const selectedText = optionEl.textContent?.trim() || selectedLetter;
+      // Save JOL confidence in element for revealCard to read
+      article._jolConfidence = userConfidence;
       revealCard(article, { selectedLetter, selectedText });
     });
   });
@@ -1085,6 +1275,23 @@ function revealCard(card, context = {}) {
       const correctEl = optionItems.find(el => String(el.dataset.letter || '').toUpperCase() === correctLetter);
       if (correctEl) correctEl.classList.add('correct');
       if (selectedEl && selectedLetter !== correctLetter) selectedEl.classList.add('wrong');
+
+    // JOL Calibration feedback
+    const jolBadgeEl = card.querySelector('[id^="jolBadge_"]');
+    const jolBarEl = card.querySelector('[id^="jolBar_"]');
+    const cardUserConfidence = card._jolConfidence || null;
+    if (jolBadgeEl && cardUserConfidence) {
+      const wasCorrect = selectedLetter === correctLetter;
+      const fb = PedagogicalPromptsService.getCalibrationFeedback(cardUserConfidence, wasCorrect);
+      jolBadgeEl.innerHTML = `<span style="color:${fb.color};font-weight:600">${escH(fb.badge)}</span> ${escH(fb.message)}`;
+      jolBadgeEl.style.display = 'block';
+      if (jolBarEl) jolBarEl.style.display = 'none';
+    }
+    // Show 'Por que errei?' button if wrong
+    const btnWW = card.querySelector('.btn-why-wrong');
+    if (btnWW) {
+      btnWW.style.display = selectedLetter !== correctLetter ? 'inline-flex' : 'none';
+    }
     }
 
     const comparePanel = card.querySelector('.compare-panel');
@@ -1097,6 +1304,9 @@ function revealCard(card, context = {}) {
   }
 
   card.classList.add('answered');
+  // Hide JOL bar on reveal
+  const jolBarOnReveal = card.querySelector('[id^="jolBar_"]');
+  if (jolBarOnReveal) jolBarOnReveal.style.display = 'none';
   // Show SM-2 rating bar if not already rated today
   const sm2Bar = card.querySelector('.sm2-rating-bar');
   if (sm2Bar) {
@@ -1884,7 +2094,7 @@ function showSyncToast(msg) {
   toast._timer = setTimeout(() => { toast.style.display = 'none'; }, 3000);
 }
 
-// ══ Revisão Espaçada SM-2 ════════════════════════════════════════════════════
+// ══ Revisão Espaçada FSRS-5 (migrado de SM-2) ═════════════════════════════════
 
 const SM2_STORAGE_KEY = 'ah_sm2Data';
 let _modoProva = true; // BK-03 exam mode
@@ -1937,11 +2147,8 @@ function sm2IsDue(entry) {
 }
 
 function sm2NextLabel(entry, quality) {
-  const next = sm2Calculate(entry, quality);
-  if (next.interval === 1) return 'amanhã';
-  if (next.interval < 7) return `${next.interval} dias`;
-  if (next.interval < 30) return `${Math.round(next.interval / 7)}sem`;
-  return `${Math.round(next.interval / 30)}mês`;
+  // 🔄 Delegado ao FSRS (inclui anos, semanas, meses)
+  return FSRSService.nextLabel(entry, quality);
 }
 
 function updateSm2Labels(bar, entry) {
@@ -1960,7 +2167,9 @@ function showSm2DoneBadge(bar, doneEl, entry) {
     doneEl.classList.add('show');
     const interval = entry.interval || 1;
     const label = interval === 1 ? 'amanhã' : `em ${interval} dia${interval !== 1 ? 's' : ''}`;
-    doneEl.querySelector('.sm2-done-text').textContent = `Avaliado hoje — próxima revisão ${label}`;
+    const retrievability = FSRSService.retrievability(entry);
+    const retStr = retrievability !== null ? ` · Retenção: ${retrievability}%` : '';
+    doneEl.querySelector('.sm2-done-text').textContent = `Avaliado hoje — próxima revisão ${label}${retStr}`;
   }
 }
 
@@ -2146,7 +2355,8 @@ async function rateSm2Silent(qid, quality) {
   try {
     const data = await loadSm2Data();
     const entry = data[qid] || {};
-    const newEntry = sm2Calculate(entry, quality);
+    const migratedEntry = FSRSService.migrateSm2Entry(entry);
+  const newEntry = FSRSService.calculate(migratedEntry, quality);
     newEntry.errors = (entry.errors || 0) + (quality === 0 ? 1 : 0);
     newEntry.totalRatings = (entry.totalRatings || 0) + 1;
     newEntry.attempt_count = (entry.attempt_count || entry.totalRatings || 0) + 1;
@@ -2193,7 +2403,8 @@ async function updateNewCardsLimitBadge() {
 async function rateSm2(qid, quality, sm2Bar, doneEl) {
   const data = await loadSm2Data();
   const entry = data[qid] || {};
-  const newEntry = sm2Calculate(entry, quality);
+  const migratedEntry = FSRSService.migrateSm2Entry(entry);
+  const newEntry = FSRSService.calculate(migratedEntry, quality);
   // Track error count for Caderno de Erros
   newEntry.errors = (entry.errors || 0) + (quality === 0 ? 1 : 0);
   newEntry.totalRatings = (entry.totalRatings || 0) + 1;

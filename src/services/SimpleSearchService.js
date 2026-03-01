@@ -146,7 +146,7 @@ async function _processSingleSource(result, idx, total, questionForInference, or
     if (!link) return _fail('URL vazia');
 
     if (typeof onStatus === 'function') {
-        onStatus(`Analisando fonte ${idx}/${total}: ${hostHint}...`);
+        onStatus(`🔍 Lendo fonte ${idx} de ${total}: ${hostHint}`);
     }
 
     console.group(`[SimpleSearch] 🔍 Fonte ${idx}: ${hostHint}`);
@@ -191,6 +191,50 @@ async function _processSingleSource(result, idx, total, questionForInference, or
     const aiResult = await ApiService.aiExtractTextFromPage(pageText, questionForInference, hostHint);
 
     if (!aiResult?.answerText) {
+        // Check for ENCONTRADO_FORA: source has the answer but alternatives are mismatched
+        if (aiResult?.rawSourceAnswer) {
+            // First: try to match the raw answer text against current alternatives
+            // This handles the "position shift" case: same question, different year, letter moved from B to D
+            const rawMatch = OptionsMatchService.matchAnswerTextToOptions(aiResult.rawSourceAnswer, originalOptionsMap);
+            if (rawMatch?.letter) {
+                const letter = rawMatch.letter;
+                const confidence = Math.min(aiResult.confidence || 0.70, rawMatch.confidence || 0.70);
+                const shifted = !!(aiResult.sourceLetter && aiResult.sourceLetter !== letter);
+                if (shifted) {
+                    console.log(`[SimpleSearch] 🔀 ${hostHint}: POSIÇÃO DIFERENTE — fonte diz "${aiResult.sourceLetter}" mas texto está em "${letter}" na questão atual`);
+                } else {
+                    console.log(`[SimpleSearch] 🔀 ${hostHint}: rawAnswer matched → ${letter}) conf=${confidence.toFixed(2)}`);
+                }
+                console.groupEnd();
+                return {
+                    success: true,
+                    hostHint,
+                    link: link || '',
+                    title: title || hostHint,
+                    letter,
+                    answerText: originalOptionsMap[letter],
+                    confidence,
+                    evidence: aiResult.evidence || snippet || '',
+                    positionShifted: shifted || true,
+                    sourceOriginalLetter: aiResult.sourceLetter || null
+                };
+            }
+            console.log(`[SimpleSearch] 📌 ${hostHint}: fonte tem gabarito mas não casa com alternativas: "${aiResult.rawSourceAnswer.slice(0, 80)}"`);
+            console.groupEnd();
+            return {
+                success: false,
+                hasRawAnswer: true,
+                rawAnswer: aiResult.rawSourceAnswer,
+                sourceLetter: aiResult.sourceLetter || null,
+                evidence: aiResult.evidence || snippet || '',
+                hostHint,
+                link: link || '',
+                title: title || hostHint,
+                letter: null,
+                answerText: null,
+                confidence: null
+            };
+        }
         return _fail('IA: nenhum texto de resposta encontrado');
     }
 
@@ -201,6 +245,12 @@ async function _processSingleSource(result, idx, total, questionForInference, or
     }
 
     const letter = matchResult.letter;
+    // Detect position shift: source explicitly cited a different letter than what text matching found
+    const sourceLetter = aiResult.sourceLetter || null;
+    const positionShifted = !!(sourceLetter && sourceLetter !== letter);
+    if (positionShifted) {
+        console.log(`[SimpleSearch] 🔀 ${hostHint}: POSIÇÃO DIFERENTE — fonte cita "${sourceLetter}" mas texto atual está em "${letter}"`);
+    }
     const confidence = Math.min(
         aiResult.confidence || 0.85,
         matchResult.confidence || 0.85
@@ -218,7 +268,9 @@ async function _processSingleSource(result, idx, total, questionForInference, or
         evidence: aiResult.evidence || snippet || '',
         confidence,
         hostHint,
-        evidenceType: 'jina-ai-text'
+        evidenceType: 'jina-ai-text',
+        positionShifted: positionShifted || false,
+        sourceOriginalLetter: sourceLetter
     };
 }
 
@@ -278,6 +330,54 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
                 });
         });
     });
+}
+
+/**
+ * Retorna o candidato com maior score de votos ponderados das fontes coletadas até agora.
+ * Usado pela Fase 3 para construir a query de confirmação (espelha "Turno 6" do fluxo humano).
+ * @returns {{ letter: string, answerText: string, avgConf: number }|null}
+ */
+function _getLeadingCandidate(sources) {
+    if (!sources || sources.length === 0) return null;
+    const votes = {};
+    for (const src of sources) {
+        if (!votes[src.letter]) votes[src.letter] = { score: 0, answerText: src.answerText, count: 0 };
+        votes[src.letter].score += src.confidence || 0;
+        votes[src.letter].count += 1;
+    }
+    // Desempate estável: score → count → ordem alfabética
+    const best = Object.entries(votes).sort((a, b) =>
+        b[1].score - a[1].score || b[1].count - a[1].count || a[0].localeCompare(b[0])
+    )[0];
+    if (!best) return null;
+    const [letter, data] = best;
+    return { letter, answerText: data.answerText || '', avgConf: data.count > 0 ? data.score / data.count : 0 };
+}
+
+/**
+ * Retorna TODOS os candidatos empatados com o líder (mesmo score).
+ * Usado pela Fase 3 para confirmar todos os candidatos em disputa.
+ */
+function _getTiedCandidates(sources) {
+    if (!sources || sources.length === 0) return [];
+    const votes = {};
+    for (const src of sources) {
+        if (!votes[src.letter]) votes[src.letter] = { score: 0, answerText: src.answerText, count: 0 };
+        votes[src.letter].score += src.confidence || 0;
+        votes[src.letter].count += 1;
+    }
+    const sorted = Object.entries(votes).sort((a, b) =>
+        b[1].score - a[1].score || b[1].count - a[1].count || a[0].localeCompare(b[0])
+    );
+    if (sorted.length === 0) return [];
+    const topScore = sorted[0][1].score;
+    return sorted
+        .filter(([, data]) => Math.abs(data.score - topScore) < 0.001)
+        .map(([letter, data]) => ({
+            letter,
+            answerText: data.answerText || '',
+            avgConf: data.count > 0 ? data.score / data.count : 0
+        }));
 }
 
 export const SimpleSearchService = {
@@ -345,23 +445,203 @@ export const SimpleSearchService = {
 
         console.log('[SimpleSearch] Mapa de opções:', originalOptionsMap);
 
+        // ── Validação de coerência enunciado↔alternativas ─────────────────────────
+        // Reproduz o raciocínio humano: antes de buscar, perguntar à IA se as
+        // alternativas fazem sentido para o enunciado — detecta casos como questão
+        // sobre IHC com alternativas coladas de outra questão ("Segurança de mensagens",
+        // "Integração com redes sociais", etc.).
+        // Falha silenciosa: se a IA não responder, a busca continua normalmente.
+        let optionsMismatchWarning = '';
+        try {
+            const stemForValidation = questionText.slice(0, 600);
+            const optsText = Object.entries(originalOptionsMap).map(([l, t]) => `${l}) ${t}`).join('\n');
+            const validation = await ApiService.validateOptionsCoherence(stemForValidation, optsText);
+            if (!validation.coherent) {
+                optionsMismatchWarning = validation.reason;
+                console.log(`[SimpleSearch] ⚠️ Alternativas incoerentes: ${optionsMismatchWarning}`);
+            }
+        } catch (_) { /* silencioso */ }
+
         const topResults = results.slice(0, MAX_CANDIDATES);
 
         if (typeof onStatus === 'function') {
-            onStatus(`Verificando ${topResults.length} fontes...`);
+            onStatus(`📋 ${topResults.length} fontes encontradas, iniciando análise…`);
+        }
+
+        // ── Fase 0: Extração de snippets — UM call de IA para todos os snippets ──
+        // Antes de abrir qualquer página, envia todos os snippets do Serper para a IA.
+        // Muitos sites de questões (passeidireto, brainly, studocu) expõem o gabarito
+        // no snippet → resultado em < 3s sem nenhum fetch de página.
+        const snippetInputs = topResults
+            .filter(r => r.snippet && r.snippet.length >= 30)
+            .map(r => {
+                let host = '';
+                try { host = new URL(r.link).hostname.replace(/^www\./, ''); } catch { host = r.link || ''; }
+                return { host, title: r.title || '', snippet: r.snippet };
+            });
+
+        const snippetSources = [];
+        const snippetAttempts = [];
+
+        if (snippetInputs.length >= 2) {
+            try {
+                if (typeof onStatus === 'function') onStatus('⚡ Leitura rápida dos resultados de busca…');
+                const snipResult = await ApiService.aiExtractFromSnippets(snippetInputs, questionForInference);
+                if (snipResult?.answerText) {
+                    const matchResult = OptionsMatchService.matchAnswerTextToOptions(snipResult.answerText, originalOptionsMap);
+                    if (matchResult?.letter) {
+                        const letter = matchResult.letter;
+                        const sourceLetter = snipResult.sourceLetter || null;
+                        const positionShifted = !!(sourceLetter && sourceLetter !== letter);
+                        const conf = Math.min(snipResult.confidence || 0.78, matchResult.confidence || 0.78);
+                        console.log(`[SimpleSearch] ✅ Fase 0 (snippets): ${letter}) conf=${conf.toFixed(2)}${positionShifted ? ` [POSIÇÃO_DIFERENTE: fonte=${sourceLetter}]` : ''}`);
+                        snippetSources.push({
+                            success: true,
+                            hostHint: 'search-snippets',
+                            link: '',
+                            title: `${snippetInputs.length} snippets de busca`,
+                            letter,
+                            answerText: originalOptionsMap[letter],
+                            confidence: conf,
+                            evidence: snipResult.evidence || '',
+                            evidenceType: 'snippet',
+                            positionShifted,
+                            sourceOriginalLetter: sourceLetter
+                        });
+                    }
+                } else if (snipResult?.rawSourceAnswer) {
+                    // Snippets found answer but it doesn't match current alternatives
+                    const rawMatch = OptionsMatchService.matchAnswerTextToOptions(snipResult.rawSourceAnswer, originalOptionsMap);
+                    if (rawMatch?.letter) {
+                        const letter = rawMatch.letter;
+                        const conf = Math.min(snipResult.confidence || 0.72, rawMatch.confidence || 0.72);
+                        console.log(`[SimpleSearch] 🔀 Fase 0 (snippets POSIÇÃO_DIFERENTE): rawAnswer → ${letter}) conf=${conf.toFixed(2)}`);
+                        snippetSources.push({
+                            success: true,
+                            hostHint: 'search-snippets',
+                            link: '',
+                            title: `${snippetInputs.length} snippets de busca`,
+                            letter,
+                            answerText: originalOptionsMap[letter],
+                            confidence: conf,
+                            evidence: snipResult.evidence || '',
+                            evidenceType: 'snippet',
+                            positionShifted: true,
+                            sourceOriginalLetter: snipResult.sourceLetter || null
+                        });
+                    } else {
+                        console.log(`[SimpleSearch] 📌 Fase 0 (snippets ENCONTRADO_FORA): "${snipResult.rawSourceAnswer.slice(0, 80)}"`);
+                        snippetAttempts.push({
+                            success: false,
+                            hasRawAnswer: true,
+                            rawAnswer: snipResult.rawSourceAnswer,
+                            sourceLetter: snipResult.sourceLetter || null,
+                            hostHint: 'search-snippets',
+                            link: '',
+                            title: 'search-snippets',
+                            letter: null,
+                            answerText: null,
+                            confidence: null
+                        });
+                    }
+                }
+            } catch (snipErr) {
+                console.warn('[SimpleSearch] Fase 0 (snippets) erro:', snipErr?.message);
+            }
         }
 
         // ── Fase 1: Jina + NativeFetch em paralelo (sem abrir abas) ─────────────
+        // Scholar search runs concurrently with Fase 1 — no extra latency on the happy path
+        const _scholarStem = QuestionParser.extractQuestionStem(questionForInference);
+        const scholarPromise = _scholarStem && _scholarStem.length >= 15
+            ? ApiService.searchWithScholar(_scholarStem.slice(0, 220), 5).catch(() => [])
+            : Promise.resolve([]);
         const { sources, allAttempts } = await _collectFirstNSources(
             topResults, questionForInference, originalOptionsMap, MAX_SOURCES, onStatus, false
         );
+
+        // Merge snippet results into the main arrays
+        sources.unshift(...snippetSources);
+        allAttempts.unshift(...snippetAttempts);
+
+        // ── Fase 0.5: Scholar snippets (Google Scholar) ──────────────────────
+        // Already running in parallel since before Fase 1; now collect results.
+        const scholarResults = await scholarPromise;
+        if (scholarResults.length > 0) {
+            const scholarInputs = scholarResults
+                .filter(r => r.snippet && r.snippet.length >= 30)
+                .map(r => ({ host: 'scholar.google.com', title: r.title || '', snippet: r.snippet }));
+            if (scholarInputs.length >= 1) {
+                try {
+                    const scholarExtracted = await ApiService.aiExtractFromSnippets(scholarInputs, questionForInference);
+                    if (scholarExtracted?.answerText) {
+                        const matchResult = OptionsMatchService.matchAnswerTextToOptions(scholarExtracted.answerText, originalOptionsMap);
+                        if (matchResult?.letter) {
+                            const letter = matchResult.letter;
+                            const conf = Math.min(scholarExtracted.confidence || 0.75, matchResult.confidence || 0.75);
+                            const positionShifted = !!(scholarExtracted.sourceLetter && scholarExtracted.sourceLetter !== letter);
+                            console.log(`[SimpleSearch] 📚 Fase 0.5 (Scholar): ${letter}) conf=${conf.toFixed(2)}`);
+                            sources.unshift({
+                                success: true,
+                                hostHint: 'scholar.google.com',
+                                link: scholarResults[0]?.link || '',
+                                title: `Google Scholar (${scholarResults.length} artigos)`,
+                                letter,
+                                answerText: originalOptionsMap[letter],
+                                confidence: conf,
+                                evidence: scholarExtracted.evidence || '',
+                                evidenceType: 'scholar',
+                                positionShifted,
+                                sourceOriginalLetter: scholarExtracted.sourceLetter || null
+                            });
+                        }
+                    } else if (scholarExtracted?.rawSourceAnswer) {
+                        const rawMatch = OptionsMatchService.matchAnswerTextToOptions(scholarExtracted.rawSourceAnswer, originalOptionsMap);
+                        if (rawMatch?.letter) {
+                            const letter = rawMatch.letter;
+                            const conf = Math.min(scholarExtracted.confidence || 0.70, rawMatch.confidence || 0.70);
+                            console.log(`[SimpleSearch] 📚 Fase 0.5 (Scholar POSIÇÃO_DIFERENTE): ${letter}) conf=${conf.toFixed(2)}`);
+                            sources.unshift({
+                                success: true,
+                                hostHint: 'scholar.google.com',
+                                link: scholarResults[0]?.link || '',
+                                title: `Google Scholar (${scholarResults.length} artigos)`,
+                                letter,
+                                answerText: originalOptionsMap[letter],
+                                confidence: conf,
+                                evidence: scholarExtracted.evidence || '',
+                                evidenceType: 'scholar',
+                                positionShifted: true,
+                                sourceOriginalLetter: scholarExtracted.sourceLetter || null
+                            });
+                        } else {
+                            console.log(`[SimpleSearch] 📚 Fase 0.5 (Scholar ENCONTRADO_FORA): "${scholarExtracted.rawSourceAnswer.slice(0, 80)}"`);
+                            allAttempts.unshift({
+                                success: false,
+                                hasRawAnswer: true,
+                                rawAnswer: scholarExtracted.rawSourceAnswer,
+                                sourceLetter: scholarExtracted.sourceLetter || null,
+                                hostHint: 'scholar.google.com',
+                                link: '',
+                                title: 'google-scholar',
+                                letter: null,
+                                answerText: null,
+                                confidence: null
+                            });
+                        }
+                    }
+                } catch (scholarErr) {
+                    console.warn('[SimpleSearch] Fase 0.5 (Scholar) erro:', scholarErr?.message);
+                }
+            }
+        }
 
         // ── Fase 2: BackgroundTab — só se Fase 1 não encontrou nada ─────────────
         // Filtra apenas os candidatos que são SPAs JS-pesadas e ainda não tiveram sucesso
         if (sources.length === 0) {
             const spaResults = topResults.filter(r => r.link && BackgroundTabExtractorService.isJsHeavySpa(r.link));
             if (spaResults.length > 0) {
-                if (typeof onStatus === 'function') onStatus('Tentando extração via aba oculta (último recurso)...');
+                if (typeof onStatus === 'function') onStatus('🔄 Tentando método alternativo de extração…');
                 const bgResult = await _collectFirstNSources(
                     spaResults, questionForInference, originalOptionsMap, MAX_SOURCES, onStatus, true
                 );
@@ -371,20 +651,165 @@ export const SimpleSearchService = {
         }
 
         if (sources.length === 0) {
+            // Nenhuma URL retornou resultado útil via match de alternativas.
+            // Verificar se há respostas ENCONTRADO_FORA (fonte tem gabarito mas alternativas são erradas)
+            const rawAnswerItems = allAttempts.filter(a => a.hasRawAnswer && a.rawAnswer);
+
+            if (rawAnswerItems.length > 0) {
+                // First: try to match raw answers against current alternatives (position shift case)
+                // Example: source from last year says "B. Sistematização..." but current question
+                // has the same text as "D" → we find D by text matching
+                const matchedFromRaw = [];
+                for (const item of rawAnswerItems) {
+                    const m = OptionsMatchService.matchAnswerTextToOptions(item.rawAnswer, originalOptionsMap);
+                    if (m?.letter) {
+                        matchedFromRaw.push({
+                            letter: m.letter,
+                            confidence: Math.min(0.78, m.confidence || 0.70),
+                            rawAnswer: item.rawAnswer,
+                            sourceOriginalLetter: item.sourceLetter || null,
+                            hostHint: item.hostHint
+                        });
+                    }
+                }
+
+                if (matchedFromRaw.length > 0) {
+                    const fakeVotes = {};
+                    for (const m of matchedFromRaw) {
+                        fakeVotes[m.letter] = (fakeVotes[m.letter] || 0) + m.confidence;
+                    }
+                    const sortedFake = Object.entries(fakeVotes).sort((a, b) => b[1] - a[1]);
+                    const [bestFakeLetter, bestFakeScore] = sortedFake[0];
+                    const totalFakeScore = Object.values(fakeVotes).reduce((a, b) => a + b, 0);
+                    const fakeDominance = bestFakeScore / totalFakeScore;
+                    const fakeResultState = matchedFromRaw.length >= 2 && fakeDominance >= 0.6 ? 'confirmed' : 'suggested';
+                    const fakeConf = Math.min(0.88, 0.55 + matchedFromRaw.length * 0.10);
+                    // Find sources that explicitly mentioned a different letter (true position shift)
+                    const withShift = matchedFromRaw.filter(m => m.sourceOriginalLetter && m.sourceOriginalLetter !== bestFakeLetter);
+                    const shiftLetters = [...new Set(withShift.map(m => m.sourceOriginalLetter))].join('/');
+                    const shiftNote = shiftLetters
+                        ? `⚠️ Fonte(s) de anos anteriores indicam a letra ${shiftLetters}, mas o mesmo texto está na alternativa ${bestFakeLetter} da questão atual.`
+                        : `⚠️ Gabarito encontrado por correspondência de texto em fonte(s) externas. A posição pode ter mudado em relação a versões anteriores da questão.`;
+                    console.log(`[SimpleSearch] 🔀 POSIÇÃO_DIFERENTE (${matchedFromRaw.length} fontes raw → ${bestFakeLetter}${shiftLetters ? `, antes: ${shiftLetters}` : ''})`);
+                    return [{
+                        question: questionText,
+                        answer: `Letra ${bestFakeLetter}: ${originalOptionsMap[bestFakeLetter] || ''}`,
+                        answerLetter: bestFakeLetter,
+                        answerText: originalOptionsMap[bestFakeLetter] || '',
+                        resultState: fakeResultState,
+                        confidence: fakeConf,
+                        evidenceTier: 'WEB_SOURCES',
+                        positionShiftNote: shiftNote,
+                        mismatchWarning: optionsMismatchWarning || undefined,
+                        optionsMap: originalOptionsMap,
+                        votes: fakeVotes,
+                        allAttempts: allAttempts.map(a => ({ hostHint: a.hostHint, link: a.link, success: a.success, letter: a.letter, answerText: a.rawAnswer || a.answerText })),
+                        sources: matchedFromRaw.map(m => ({ letter: m.letter, confidence: m.confidence, answerText: m.rawAnswer, positionShifted: true, sourceOriginalLetter: m.sourceOriginalLetter, hostHint: m.hostHint, link: '', title: m.hostHint }))
+                    }];
+                }
+
+                // No text match possible: vote on raw answer strings and display as-is
+                const rawAnswers = rawAnswerItems.map(a => a.rawAnswer);
+                const rawCounts = {};
+                for (const raw of rawAnswers) {
+                    // Normalize key: strip surrounding quotes before deduplication
+                    // Without this, `"Apenas I e II estão corretas."` and `Apenas I e II estão corretas.`
+                    // are counted as different answers, splitting votes and letting a minority answer win.
+                    const normalized = raw.trim().replace(/^["""''`]+|["""''`]+$/g, '').trim();
+                    const key = normalized.toLowerCase().slice(0, 80);
+                    if (!rawCounts[key]) rawCounts[key] = { text: normalized, count: 0 };
+                    rawCounts[key].count += 1;
+                }
+                const bestRaw = Object.values(rawCounts).sort((a, b) => b.count - a.count)[0];
+                const warningMsg = optionsMismatchWarning
+                    ? `⚠️ ${optionsMismatchWarning} Gabarito encontrado nas fontes: "${bestRaw.text.slice(0, 100)}"`
+                    : `As alternativas fornecidas não correspondem ao gabarito encontrado nas fontes. Gabarito das fontes: "${bestRaw.text.slice(0, 100)}"`;
+                console.log(`[SimpleSearch] 📌 ENCONTRADO_FORA (${rawAnswers.length} fontes): "${bestRaw.text.slice(0, 80)}"`);
+                return [{
+                    question: questionText,
+                    answer: bestRaw.text,
+                    answerLetter: null,
+                    answerText: bestRaw.text,
+                    resultState: 'suggested',
+                    confidence: Math.min(0.80, 0.40 + bestRaw.count * 0.15),
+                    evidenceTier: 'WEB_SOURCES',
+                    mismatchWarning: warningMsg,
+                    optionsMap: originalOptionsMap,
+                    votes: {},
+                    allAttempts: allAttempts.map(a => ({ hostHint: a.hostHint, link: a.link, success: a.success, letter: a.letter, answerText: a.rawAnswer || a.answerText })),
+                    sources: []
+                }];
+            }
             // Nenhuma URL retornou resultado útil. background.js vai cair para answerFromAi().
             console.log('[SimpleSearch] ⚠️ Nenhuma fonte gerou resposta válida');
             return [];
         }
 
-        // ── Passo 5: Votação ponderada por confiança ──────────────────────────────
-        // Cada fonte vota na sua letra com peso = sua confidence (0.0 – 1.0).
-        // Ex: A=1.70 (2 fontes), B=0.85 (1 fonte) → A vence com dominância 67%
-        const votes = {};
-        for (const src of sources) {
-            votes[src.letter] = (votes[src.letter] || 0) + src.confidence;
+        // ── Fase 3: Busca de confirmação (espelha "Turno 6" do fluxo humano) ──────
+        // Após a Fase 1/2, se há candidatos mas ainda não temos cobertura total,
+        // fazemos buscas adicionais usando o texto de TODOS os candidatos empatados.
+        // Quando D=0.85 e C=0.85, confirma ambos — não apenas o primeiro do sort.
+        if (sources.length < MAX_SOURCES) {
+            const tiedCandidates = _getTiedCandidates(sources);
+            const validCandidates = tiedCandidates.filter(c => c.answerText && c.answerText.length >= 12 && c.avgConf >= 0.60);
+            if (validCandidates.length > 0) {
+                const existingLinks = new Set([
+                    ...topResults.map(r => r.link),
+                    ...allAttempts.map(a => a.link)
+                ]);
+                if (typeof onStatus === 'function') onStatus('🔎 Confirmando resposta com mais fontes…');
+                for (const candidate of validCandidates) {
+                    if (sources.length >= MAX_SOURCES) break;
+                    const cleanText = candidate.answerText.slice(0, 60).replace(/["""''`]/g, '').trim();
+                    const confirmQ = `"${cleanText}" gabarito`;
+                    console.log(`[SimpleSearch] 🔄 Fase 3 (confirmação ${candidate.letter}): "${confirmQ.slice(0, 100)}"`);
+                    try {
+                        const confirmRaw = await ApiService.searchSingleQuery(confirmQ, 8);
+                        if (confirmRaw && confirmRaw.length > 0) {
+                            const newCandidates = confirmRaw
+                                .filter(r => r.link && !existingLinks.has(r.link))
+                                .slice(0, 5);
+                            // Track new links to avoid duplicates across tied candidates
+                            for (const nc of newCandidates) existingLinks.add(nc.link);
+                            if (newCandidates.length > 0) {
+                                const { sources: confirmSources, allAttempts: confirmAttempts } =
+                                    await _collectFirstNSources(
+                                        newCandidates, questionForInference, originalOptionsMap,
+                                        MAX_SOURCES - sources.length, onStatus, false
+                                    );
+                                if (confirmSources.length > 0) {
+                                    console.log(`[SimpleSearch] ✅ Fase 3 (${candidate.letter}): +${confirmSources.length} fontes de confirmação`);
+                                    sources.push(...confirmSources);
+                                    allAttempts.push(...confirmAttempts);
+                                }
+                            }
+                        }
+                    } catch (confirmErr) {
+                        console.warn(`[SimpleSearch] Fase 3 (${candidate.letter}) erro:`, confirmErr?.message);
+                    }
+                }
+            }
         }
 
-        const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+
+        // ── Passo 5: Votação ponderada por confiança ──────────────────────────────
+        // Cada fonte vota na sua letra com peso = sua confidence (0.0 – 1.0).
+        // Fontes com positionShifted (remapeamento texto→letra bem-sucedido entre versões
+        // diferentes da questão) recebem bônus de +0.10 — é evidência forte de que o texto
+        // foi encontrado em outra prova e remapeado corretamente para a posição atual.
+        // Ex: A=1.70 (2 fontes), B=0.85 (1 fonte) → A vence com dominância 67%
+        const votes = {};
+        const voteCounts = {};
+        for (const src of sources) {
+            const bonus = src.positionShifted ? 0.10 : 0;
+            votes[src.letter] = (votes[src.letter] || 0) + (src.confidence || 0) + bonus;
+            voteCounts[src.letter] = (voteCounts[src.letter] || 0) + 1;
+        }
+
+        // Desempate estável: score → nº de fontes → ordem alfabética
+        const sorted = Object.entries(votes).sort((a, b) =>
+            b[1] - a[1] || (voteCounts[b[0]] || 0) - (voteCounts[a[0]] || 0) || a[0].localeCompare(b[0])
+        );
         const [bestLetter, bestScore] = sorted[0];
         const totalScore = Object.values(votes).reduce((a, b) => a + b, 0);
         // dominância: fração do score total que a letra vencedora recebeu (0.0 – 1.0)
@@ -402,9 +827,16 @@ export const SimpleSearchService = {
 
         const answerText = originalOptionsMap[bestLetter] || '';
 
+        // Detect position shift across sources: any source voted for bestLetter but had a different original letter?
+        const shiftedSources = sources.filter(s => s.positionShifted && s.sourceOriginalLetter && s.sourceOriginalLetter !== bestLetter);
+        const shiftedLetters = [...new Set(shiftedSources.map(s => s.sourceOriginalLetter))].join('/');
+        const positionShiftNote = shiftedLetters
+            ? `⚠️ Fonte(s) de anos anteriores indicam a letra ${shiftedLetters}, mas o mesmo texto corresponde à alternativa ${bestLetter} na questão atual.`
+            : (sources.some(s => s.positionShifted) ? `⚠️ Gabarito encontrado por correspondência de texto. A posição pode ser diferente de versões anteriores da questão.` : undefined);
+
         console.log(`[SimpleSearch] 🏆 Vencedor: ${bestLetter}) ${answerText}`);
         console.log(`[SimpleSearch] 📊 Votos:`, Object.entries(votes).map(([l, v]) => `${l}=${v.toFixed(2)}`).join(', '));
-        console.log(`[SimpleSearch] 📊 Fontes=${sources.length} dominance=${dominance.toFixed(2)} resultState=${resultState}`);
+        console.log(`[SimpleSearch] 📊 Fontes=${sources.length} dominance=${dominance.toFixed(2)} resultState=${resultState}${positionShiftNote ? ' [POSIÇÃO_DIFERENTE]' : ''}`);
 
         // Retorna array de 1 elemento — formato esperado por PopupController._finishBackgroundSearch()
         return [{
@@ -415,7 +847,9 @@ export const SimpleSearchService = {
             resultState,
             confidence: finalConfidence,
             evidenceTier: 'WEB_SOURCES',
-            optionsMap: originalOptionsMap, // { A: 'texto', B: 'texto', ... } — necessário para os pills de override
+            mismatchWarning: optionsMismatchWarning || undefined,
+            positionShiftNote: positionShiftNote || undefined,
+            optionsMap: originalOptionsMap,// { A: 'texto', B: 'texto', ... } — necessário para os pills de override
             votes, // { A: 1.70, B: 0.85 } — exibido no painel de debug da extensão
             // allAttempts: todas as tentativas (para tabela de diagnóstico na UI)
             allAttempts: allAttempts.map(a => ({

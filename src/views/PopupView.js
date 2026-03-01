@@ -787,6 +787,16 @@ export const PopupView = {
             <span>${escapeHtml(this.t('result.aiWarning'))}</span>
           </div>
 
+          ${item.mismatchWarning ? `<div class="qa-card-ai-warning" style="background:rgba(231,76,60,0.08);border-color:rgba(231,76,60,0.35);color:#c0392b;margin-top:4px;">
+            <span class="material-symbols-rounded">warning</span>
+            <span>${escapeHtml(item.mismatchWarning)}</span>
+          </div>` : ''}
+
+          ${item.positionShiftNote ? `<div class="qa-card-ai-warning" style="background:rgba(230,126,34,0.08);border-color:rgba(230,126,34,0.35);color:#d35400;margin-top:4px;">
+            <span class="material-symbols-rounded">swap_horiz</span>
+            <span>${escapeHtml(item.positionShiftNote)}</span>
+          </div>` : ''}
+
           <div class="qa-card-answer">
             <div class="qa-card-answer-header ${item.userOverride ? 'override-answer' : resultState === 'conflict' ? 'conflict-answer' : resultState === 'suggested' || item.aiFallback ? (item.aiFallback ? 'ai-suggestion' : 'suggested-answer') : ''}">
               <span class="material-symbols-rounded answer-state-icon">${(() => {
@@ -1132,6 +1142,30 @@ export const PopupView = {
           }
         }
 
+        // Build sources list: prefer sources array, fallback to single source string
+        const binderSourceEntries = (() => {
+          const rawSources = Array.isArray(item.content?.sources) ? item.content.sources : [];
+          if (rawSources.length === 0) return [];
+          const bestByHost = new Map();
+          rawSources.forEach((source, idx) => {
+            const rawLink = String(source?.link || '').trim();
+            let hostKey = '';
+            try {
+              if (rawLink) hostKey = new URL(rawLink).hostname.replace(/^www\./i, '').toLowerCase();
+            } catch (_) { hostKey = ''; }
+            if (!hostKey) hostKey = String(source?.hostHint || source?.title || `source-${idx}`).trim().toLowerCase();
+            const existing = bestByHost.get(hostKey);
+            const currentWeight = Number(source?.weight || 0);
+            const existingWeight = Number(existing?.source?.weight || 0);
+            if (!existing || currentWeight > existingWeight) {
+              bestByHost.set(hostKey, { source, idx });
+            }
+          });
+          return [...bestByHost.values()]
+            .sort((a, b) => a.idx - b.idx)
+            .map(entry => entry.source);
+        })();
+
         html += `
           <div class="qa-item expandable" draggable="true" data-id="${item.id}" data-type="question">
             <div class="summary-view">
@@ -1191,7 +1225,26 @@ export const PopupView = {
                 <div class="study-feature-output hidden"></div>
 
                 <div class="qa-card-actions">
-                  ${safeSourceLink ? `<div class="sources-box"><button class="sources-toggle" type="button" aria-expanded="false"><span class="material-symbols-rounded">link</span><span>${escapeHtml(this.t('result.source'))}</span><span class="material-symbols-rounded sources-caret">expand_more</span></button><div class="sources-list" hidden><div class="source-item"><a href="${escapeHtml(safeSourceLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a></div></div></div>` : ''}
+                  ${binderSourceEntries.length > 0
+            ? `<div class="sources-box">
+                    <button class="sources-toggle" type="button" aria-expanded="false">
+                      <span class="material-symbols-rounded">link</span>
+                      <span>${escapeHtml(this.t('result.sources', { count: binderSourceEntries.length }))}</span>
+                      <span class="material-symbols-rounded sources-caret">expand_more</span>
+                    </button>
+                    <div class="sources-list" hidden>
+                      ${binderSourceEntries.map((source) => {
+              let srcHost = source.title || source.link || source.hostHint || '';
+              const srcLink = sanitizeUrl(source.link, 'source-link');
+              try { if (srcLink) srcHost = new URL(srcLink).hostname; } catch (_) { /* no-op */ }
+              return `<div class="source-item">${srcLink
+                ? `<a href="${escapeHtml(srcLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(srcHost)}</a>`
+                : `<span>${escapeHtml(srcHost)}</span>`
+                }</div>`;
+            }).join('')}
+                    </div>
+                  </div>`
+            : safeSourceLink ? `<div class="sources-box"><button class="sources-toggle" type="button" aria-expanded="false"><span class="material-symbols-rounded">link</span><span>${escapeHtml(this.t('result.source'))}</span><span class="material-symbols-rounded sources-caret">expand_more</span></button><div class="sources-list" hidden><div class="source-item"><a href="${escapeHtml(safeSourceLink)}" target="_blank" rel="noopener noreferrer">${escapeHtml(host)}</a></div></div></div>` : ''}
                   <div class="binder-actions">
                     <button class="action-btn copy-single-btn" data-id="${item.id}" title="${escapeHtml(this.t('binder.copy'))}"><span class="material-symbols-rounded">content_copy</span></button>
                     <button class="action-btn delete-btn" data-id="${item.id}" title="${escapeHtml(this.t('binder.delete'))}"><span class="material-symbols-rounded">delete</span></button>

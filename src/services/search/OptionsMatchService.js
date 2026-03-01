@@ -15,7 +15,8 @@ function mapAnswerTextToOptionLetter(answerText = '', optionsMap = {}) {
         const opt = __ahNorm(text);
         if (!opt) continue;
         const exact = (opt === ans || opt.includes(ans) || ans.includes(opt));
-        const score = exact ? 1 : 0;
+        // Prefer longest match: length ratio breaks ties between partial containment matches
+        const score = exact ? 1 + (Math.min(opt.length, ans.length) / Math.max(1, Math.max(opt.length, ans.length))) : 0;
         if (!best || score > best.score) best = { letter, score };
     }
     return best && best.score > 0 ? best.letter : null;
@@ -211,7 +212,15 @@ export const OptionsMatchService = {
 
             const dice = QuestionParser.diceSimilarity(normalizedAnswer, normalizedBody);
             const semanticScore = tokenRatio * 0.72 + dice * 0.28;
-            const score = contains ? 1.0 : reverseContains ? 0.95 : semanticScore;
+            // When contains is true, use length ratio so longer (more specific) matches rank higher
+            // e.g. "apenas i e iii" should prefer option "apenas i e iii" (ratio=1.0) over "apenas i" (ratio=0.57)
+            const containsScore = contains
+                ? 1.0 + (normalizedBody.length / Math.max(1, normalizedAnswer.length))
+                : 0;
+            const reverseScore = reverseContains
+                ? 0.95 + (normalizedAnswer.length / Math.max(1, normalizedBody.length)) * 0.04
+                : 0;
+            const score = contains ? containsScore : reverseContains ? reverseScore : semanticScore;
             scored.push({
                 letter,
                 body,
@@ -339,7 +348,10 @@ export const OptionsMatchService = {
             const containsFwd = normSource.includes(normUser);
             const containsRev = normUser.includes(normSource);
             if (containsFwd || containsRev) {
-                const score = Math.min(normSource.length, normUser.length) + 1000;
+                // Prefer exact match (both lengths equal) over partial containment
+                const matchLen = Math.min(normSource.length, normUser.length);
+                const maxLen = Math.max(normSource.length, normUser.length);
+                const score = 1000 + matchLen + (matchLen / Math.max(1, maxLen)) * 500;
                 if (score > bestScore) { bestScore = score; bestLetter = userLetter; }
                 continue;
             }

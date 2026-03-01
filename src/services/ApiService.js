@@ -1317,6 +1317,84 @@ export const ApiService = {
     },
 
     /**
+     * _smartTruncate — Trunca páginas grandes de forma inteligente.
+     *
+     * Para páginas ≤ maxLen: retorna o texto inteiro.
+     * Para páginas > maxLen: extrai palavras-chave da questão, busca a região
+     * do texto com maior concentração dessas palavras, e retorna uma janela
+     * de maxLen chars centrada nessa região. Isso resolve o problema de sites
+     * como passeidireto/brainly que têm provas inteiras (500K+ chars) onde a
+     * questão relevante pode estar em qualquer posição.
+     */
+    _smartTruncate(pageText, questionText, maxLen = 8000) {
+        if (!pageText || pageText.length <= maxLen) return pageText || '';
+
+        // Extrai palavras significativas da questão (≥4 chars, sem stopwords comuns)
+        const stopwords = new Set([
+            'para', 'como', 'mais', 'qual', 'quais', 'sobre', 'está', 'pode', 'deve',
+            'essa', 'esse', 'este', 'esta', 'pela', 'pelo', 'entre', 'sendo', 'seria',
+            'numa', 'cada', 'todo', 'toda', 'caso', 'onde', 'aqui', 'suas', 'seus',
+            'isso', 'além', 'após', 'foram', 'from', 'that', 'with', 'this', 'have',
+            'will', 'been', 'which', 'their', 'what', 'when', 'there', 'them', 'then',
+            'than', 'some', 'only', 'also', 'into', 'other', 'could', 'just',
+            'uma', 'são', 'dos', 'das', 'que', 'não', 'com', 'por',
+        ]);
+        const words = (questionText || '').toLowerCase()
+            .replace(/[^a-záàâãéèêíïóôõúüç\s]/gi, ' ')
+            .split(/\s+/)
+            .filter(w => w.length >= 4 && !stopwords.has(w));
+        const keywords = [...new Set(words)].slice(0, 15);
+
+        if (keywords.length === 0) return pageText.substring(0, maxLen);
+
+        // Sliding window: avalia janelas de maxLen chars com passo de 2000
+        const step = 2000;
+        const pageLower = pageText.toLowerCase();
+        let bestStart = 0;
+        let bestScore = -1;
+
+        for (let start = 0; start <= pageText.length - maxLen; start += step) {
+            const window = pageLower.substring(start, start + maxLen);
+            let score = 0;
+            for (const kw of keywords) {
+                let idx = 0;
+                while ((idx = window.indexOf(kw, idx)) !== -1) {
+                    score++;
+                    idx += kw.length;
+                }
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestStart = start;
+            }
+        }
+
+        // Também avaliar a última janela (pode não ser coberta pelo step)
+        if (pageText.length > maxLen) {
+            const lastStart = pageText.length - maxLen;
+            const window = pageLower.substring(lastStart, lastStart + maxLen);
+            let score = 0;
+            for (const kw of keywords) {
+                let idx = 0;
+                while ((idx = window.indexOf(kw, idx)) !== -1) {
+                    score++;
+                    idx += kw.length;
+                }
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestStart = lastStart;
+            }
+        }
+
+        const result = pageText.substring(bestStart, bestStart + maxLen);
+        if (bestStart > 0) {
+            console.log(`  [smartTruncate] Janela otimizada: start=${bestStart}/${pageText.length} score=${bestScore} keywords=${keywords.length}`);
+        }
+        return result;
+    },
+
+    /**
      * aiExtractTextFromPage — Extrai o TEXTO da alternativa correta de uma página.
      *
      * DIFERENÇA CRÍTICA em relação a aiExtractFromPage() (método mais abaixo)
@@ -1361,7 +1439,7 @@ export const ApiService = {
         }
 
         const settings = await this._getSettings();
-        const truncatedPage = pageText.substring(0, 8000);
+        const truncatedPage = this._smartTruncate(pageText, questionText, 8000);
         const truncatedQuestion = questionText.substring(0, 1800);
 
         console.log(`  [aiExtractText] START host=${hostHint} pageLen=${truncatedPage.length}`);
@@ -1393,10 +1471,17 @@ Use APENAS o gabarito que pertence a esta questão específica.
 
 # Formato de resposta
 
-## Se encontrou a resposta:
+## Se encontrou e o gabarito corresponde a UMA das alternativas do aluno:
 RESULTADO: ENCONTRADO
 EVIDÊNCIA: [trecho exato do texto que indica a resposta]
 TEXTO_CORRETO: [copie EXATAMENTE o texto de UMA das alternativas da questão do aluno abaixo]
+LETRA_FONTE: [somente se a fonte citar explicitamente uma letra (A, B, C, D ou E) como gabarito; caso contrário, omita esta linha]
+
+## Se encontrou o gabarito mas ele NÃO corresponde a nenhuma das alternativas do aluno:
+RESULTADO: ENCONTRADO_FORA
+EVIDÊNCIA: [trecho exato do texto que indica a resposta]
+TEXTO_FONTE: [texto exato do gabarito conforme indicado na fonte, mesmo sem corresponder às alternativas]
+LETRA_FONTE: [somente se a fonte citar explicitamente uma letra (A, B, C, D ou E) como gabarito; caso contrário, omita esta linha]
 
 ## Se não encontrou:
 RESULTADO: NAO_ENCONTRADO
@@ -1428,7 +1513,27 @@ Responda no formato acima:`;
             return null;
         }
 
-        // Parse: EVIDÊNCIA pode conter quebras de linha, então usamos [\s\S]*? (lazy)
+        // Handle ENCONTRADO_FORA: source has the answer but it doesn't match user's alternatives.
+        // This happens when the user pasted alternatives from a different question.
+        if (/RESULTADO:\s*ENCONTRADO_FORA/i.test(content)) {
+            const fonteMatch = content.match(/TEXTO_FONTE:\s*(.+)/i);
+            const evidenceFora = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_FONTE:|$)/i);
+            const letraFonteFora = content.match(/LETRA_FONTE:\s*([A-E])/i);
+            if (fonteMatch?.[1]) {
+                const rawSourceAnswer = fonteMatch[1].trim().replace(/^["""''`]+|["""''`]+$/g, '').replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim();
+                const sourceLetter = letraFonteFora?.[1]?.toUpperCase() || null;
+                console.log(`  [aiExtractText] RESULT: ENCONTRADO_FORA rawAnswer="${rawSourceAnswer.slice(0, 100)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
+                return {
+                    answerText: null,
+                    rawSourceAnswer,
+                    sourceLetter,
+                    evidence: ((evidenceFora?.[1] || '').trim()).slice(0, 900),
+                    confidence: 0.70
+                };
+            }
+        }
+
+
         const evidenceMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_CORRETO:|$)/i);
         // TEXTO_CORRETO: deve estar em uma única linha
         const textMatch = content.match(/TEXTO_CORRETO:\s*(.+)/i);
@@ -1449,17 +1554,163 @@ Responda no formato acima:`;
             .trim();
         const evidence = (evidenceMatch?.[1] || '').trim();
 
-        console.log(`  [aiExtractText] RESULT: answerText="${answerText.slice(0, 100)}" (provider=${usedProvider})`);
+        // LETRA_FONTE: the letter the source explicitly cited (may differ from current position)
+        const letraFonteMatch = content.match(/LETRA_FONTE:\s*([A-E])/i);
+        const sourceLetter = letraFonteMatch?.[1]?.toUpperCase() || null;
+
+        console.log(`  [aiExtractText] RESULT: answerText="${answerText.slice(0, 100)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
 
         return {
             answerText,
+            sourceLetter,
             evidence: evidence.slice(0, 900),
             confidence: 0.85  // fixo — não há como medir certeza da IA de forma confiável aqui
         };
     },
 
     /**
-     * aiExtractFromPage — [MÉTODO ANTIGO — NÃO USADO PELO NOVO PIPELINE]
+     * searchWithScholar — Pesquisa no Google Scholar via Serper /scholar endpoint.
+     *
+     * Ideal para questões de vestibular/concurso com conteúdo acadêmico (biologia, física,
+     * química, história, direito, etc.). Os snippets do Scholar costumam conter definições
+     * e conceitos exatos que aparecem nas alternativas.
+     *
+     * @param {string} query  - Query de busca (stem da questão, sem as alternativas)
+     * @param {number} [num=5] - Número de resultados (padrão 5 para economizar créditos)
+     * @returns {Promise<Array<{title:string,link:string,snippet:string,authors:string[],year:string}>>}
+     */
+    async searchWithScholar(query, num = 5) {
+        if (!query || query.length < 10) return [];
+        const { serperApiKey } = await this._getSettings();
+        if (!serperApiKey) return [];
+        const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+        const q = normalizeSpace(query).slice(0, 280);
+        try {
+            const scholarUrl = 'https://google.serper.dev/scholar';
+            const payload = await this._fetch(scholarUrl, {
+                method: 'POST',
+                headers: { 'X-API-KEY': serperApiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ q, num, hl: 'pt-br' })
+            });
+            return (payload?.organic || [])
+                .map(e => ({
+                    title: normalizeSpace(e?.title || ''),
+                    link: normalizeSpace(e?.link || ''),
+                    snippet: normalizeSpace(e?.snippet || ''),
+                    authors: Array.isArray(e?.authors) ? e.authors : [],
+                    year: String(e?.year || '')
+                }))
+                .filter(e => e.title && e.snippet);
+        } catch (e) {
+            console.warn('[searchWithScholar] Error:', e?.message);
+            return [];
+        }
+    },
+
+    /**
+     * aiExtractFromSnippets — Extrai o gabarito dos snippets do Serper em UM único call de IA.     *
+     * Por que isto é poderoso:
+     *   - Serper retorna 10 snippets em paralelo — nenhuma página precisa ser aberta
+     *   - Muitos sites de questões (passeidireto, brainly, studocu) expõem o gabarito no snippet
+     *   - Uma única chamada IA processa todas as fontes simultaneamente → resultado em < 3s
+     *
+     * @param {Array<{host:string, title:string, snippet:string}>} snippets
+     * @param {string} questionText - Questão completa com alternativas
+     * @returns {Promise<{answerText, sourceLetter, evidence, confidence}|null>}
+     */
+    async aiExtractFromSnippets(snippets, questionText) {
+        const useful = snippets.filter(s => s.snippet && s.snippet.length >= 30);
+        if (useful.length === 0 || !questionText) return null;
+
+        const settings = await this._getSettings();
+
+        const combinedText = useful.map((s, i) =>
+            `[Fonte ${i + 1} — ${s.host}]\n${s.title ? s.title + '\n' : ''}${s.snippet}`
+        ).join('\n\n');
+
+        console.log(`  [snippetExtract] START: ${useful.length} snippets, ${combinedText.length} chars total`);
+
+        const systemMsg = `Você é um especialista em encontrar respostas de questões de múltipla escolha. Analise os trechos de busca e encontre o gabarito da questão. Responda APENAS com base nos trechos.`;
+
+        const prompt = `# Tarefa
+Analise os TRECHOS DE BUSCA abaixo (snippets do Google) e encontre a resposta para a QUESTÃO do aluno.
+
+# REGRAS
+- Se vários trechos indicam a mesma resposta, isso aumenta a confiança
+- Procure por: "gabarito:", "resposta:", "alternativa correta:", "letra X", "apenas X e Y estão corretas"
+- NÃO retorne a letra da fonte — retorne o TEXTO EXATO de UMA das alternativas da questão do aluno
+- Se os trechos não contêm o gabarito explícito, responda NAO_ENCONTRADO
+
+# Formato de resposta
+
+## Se encontrou e o gabarito corresponde a UMA das alternativas do aluno:
+RESULTADO: ENCONTRADO
+EVIDÊNCIA: [trecho exato que indica a resposta]
+TEXTO_CORRETO: [copie EXATAMENTE o texto de UMA das alternativas da questão do aluno abaixo]
+LETRA_FONTE: [somente se algum trecho citar explicitamente uma letra (A-E); caso contrário, omita]
+
+## Se encontrou o gabarito mas NÃO corresponde a nenhuma alternativa do aluno:
+RESULTADO: ENCONTRADO_FORA
+EVIDÊNCIA: [trecho exato que indica a resposta]
+TEXTO_FONTE: [texto exato do gabarito conforme os trechos]
+LETRA_FONTE: [somente se algum trecho citar explicitamente uma letra (A-E); caso contrário, omita]
+
+## Se não encontrou:
+RESULTADO: NAO_ENCONTRADO
+
+───────────────────────────────
+TRECHOS DE BUSCA (${useful.length} fontes):
+${combinedText.substring(0, 6000)}
+───────────────────────────────
+QUESTÃO DO ALUNO (copie o TEXTO_CORRETO de UMA dessas alternativas):
+${questionText.substring(0, 1800)}
+───────────────────────────────
+
+Responda no formato acima:`;
+
+        const { content, usedProvider } = await this._callAnyProvider(
+            [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
+            { temperature: 0.05, max_tokens: 500, model_groq: settings.groqModelFast || 'llama-3.1-8b-instant', fastParallel: true },
+            '[snippetExtract]'
+        );
+
+        if (!content || /RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
+            console.log(`  [snippetExtract] RESULT: NAO_ENCONTRADO (provider=${usedProvider})`);
+            return null;
+        }
+
+        const letraFonteSnip = content.match(/LETRA_FONTE:\s*([A-E])/i);
+        const sourceLetter = letraFonteSnip?.[1]?.toUpperCase() || null;
+
+        if (/RESULTADO:\s*ENCONTRADO_FORA/i.test(content)) {
+            const fonteMatch = content.match(/TEXTO_FONTE:\s*(.+)/i);
+            const evidFora = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_FONTE:|$)/i);
+            if (fonteMatch?.[1]) {
+                const rawSourceAnswer = fonteMatch[1].trim()
+                    .replace(/^["""''`]+|["""''`]+$/g, '')
+                    .replace(/^[A-E]\s*[\)\.\-:]\s*/i, '')
+                    .trim();
+                console.log(`  [snippetExtract] RESULT: ENCONTRADO_FORA rawAnswer="${rawSourceAnswer.slice(0, 80)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
+                return { answerText: null, rawSourceAnswer, sourceLetter, evidence: (evidFora?.[1] || '').trim().slice(0, 400), confidence: 0.72 };
+            }
+        }
+
+        const evidMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_CORRETO:|$)/i);
+        const textMatch = content.match(/TEXTO_CORRETO:\s*(.+)/i);
+        if (!textMatch?.[1]) {
+            console.log(`  [snippetExtract] RESULT: sem TEXTO_CORRETO`);
+            return null;
+        }
+        const answerText = textMatch[1].trim()
+            .replace(/^["""''`]+|["""''`]+$/g, '')
+            .replace(/^[A-E]\s*[\)\.\-:]\s*/i, '')
+            .trim();
+
+        console.log(`  [snippetExtract] RESULT: answerText="${answerText.slice(0, 80)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
+        return { answerText, sourceLetter, evidence: (evidMatch?.[1] || '').trim().slice(0, 400), confidence: 0.78 };
+    },
+
+    /**
      *
      * Retornava "Letra X: [texto]" — a LETRA vinha da fonte, não das opções do usuário.
      * Isso causava o bug de remapeamento (ver SimpleSearchService.js para detalhes).
@@ -1476,7 +1727,7 @@ Responda no formato acima:`;
         }
 
         const settings = await this._getSettings();
-        const truncatedPage = pageText.substring(0, 8000);
+        const truncatedPage = this._smartTruncate(pageText, questionText, 8000);
         const truncatedQuestion = questionText.substring(0, 1800);
 
         console.log(`  🔬 [aiExtract] START host=${hostHint} pageLen=${truncatedPage.length} questionLen=${truncatedQuestion.length}`);
@@ -2342,6 +2593,55 @@ INCONCLUSIVO: [motivo em 1 linha]`;
     },
 
     /**
+     * validateOptionsCoherence — Pergunta à IA se as alternativas fazem sentido com o enunciado.
+     *
+     * Reproduz o raciocínio humano do "Turno 0": antes de buscar, verificar se o usuário
+     * não colou alternativas de uma questão diferente (ex: questão sobre IHC com alternativas
+     * sobre redes sociais). Usa o mesmo modelo de extração (rápido, temperature=0.1).
+     *
+     * @param {string} questionStem - Texto do enunciado (sem alternativas)
+     * @param {string} optionsText  - Alternativas formatadas (ex: "A) texto\nB) texto\n...")
+     * @returns {Promise<{ coherent: boolean, reason: string }>}
+     */
+    async validateOptionsCoherence(questionStem, optionsText) {
+        if (!questionStem || !optionsText) return { coherent: true, reason: '' };
+        const prompt = `Analise se as ALTERNATIVAS (letras A, B, C, D, E) abaixo são coerentes com o ENUNCIADO da questão.
+
+IMPORTANTE: O enunciado pode conter assertivas numeradas com I, II, III, IV — ignore isso, são parte do enunciado.
+Foque APENAS em verificar se os TEXTOS das alternativas A-E têm relação semântica com o TEMA do enunciado.
+
+ENUNCIADO:
+${questionStem.slice(0, 600)}
+
+ALTERNATIVAS (A-E):
+${optionsText.slice(0, 400)}
+
+Responda APENAS neste formato:
+COERENTE: SIM
+ou
+COERENTE: NÃO
+MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem sentido para este enunciado]`;
+
+        try {
+            const { content } = await this._callAnyProvider(
+                [{ role: 'user', content: prompt }],
+                { temperature: 0.1, max_tokens: 80, model_groq: 'llama-3.1-8b-instant', fastParallel: true },
+                '[validateOptions]'
+            );
+            if (!content) return { coherent: true, reason: '' };
+            if (/COERENTE:\s*N[ÃA]O/i.test(content)) {
+                const motivoMatch = content.match(/MOTIVO:\s*(.+)/i);
+                const reason = (motivoMatch?.[1] || 'As alternativas parecem pertencer a uma questão diferente.').trim();
+                return { coherent: false, reason };
+            }
+            return { coherent: true, reason: '' };
+        } catch (e) {
+            console.warn('[validateOptions] Error:', e?.message);
+            return { coherent: true, reason: '' }; // falha silenciosa — não bloqueia a busca
+        }
+    },
+
+    /**
      * Validates if the text is a valid question using Groq
      */
     async validateQuestion(questionText) {
@@ -2543,6 +2843,63 @@ INCONCLUSIVO: [motivo em 1 linha]`;
     },
 
     /**
+     * searchSingleQuery — Faz UMA busca no Serper/SerpApi com a query EXATA fornecida.
+     *
+     * Diferente de searchWithSerper() (que gera um plano de 10+ queries automaticamente),
+     * este método executa EXATAMENTE a query fornecida — sem expandi-la ou modificá-la.
+     * Usado pela Fase 3 (busca de confirmação) do pipeline de SimpleSearchService, que
+     * reproduz o "Turno 6" do fluxo humano: após encontrar um candidato líder, pesquisar
+     * explicitamente pelo texto desse candidato para confirmar com fontes independentes.
+     *
+     * @param {string} query - Query já construída (ex: '"Apenas I e II estão corretas" gabarito')
+     * @param {number} [num=8] - Número de resultados a retornar
+     * @returns {Promise<Array<{title:string,link:string,snippet:string}>>}
+     */
+    async searchSingleQuery(query, num = 8) {
+        if (!query || query.length < 5) return [];
+        const { serperApiUrl, serperApiKey } = await this._getSettings();
+        if (!serperApiKey) return [];
+        const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+        const providerMode = /serpapi\.com\//i.test(String(serperApiUrl || '')) ? 'serpapi' : 'serper';
+        const q = normalizeSpace(query).slice(0, 340);
+        try {
+            if (providerMode === 'serpapi') {
+                const url = new URL(String(serperApiUrl || 'https://serpapi.com/search.json'));
+                url.searchParams.set('engine', url.searchParams.get('engine') || 'google');
+                url.searchParams.set('q', q);
+                url.searchParams.set('gl', 'br');
+                url.searchParams.set('hl', 'pt-br');
+                url.searchParams.set('num', String(num));
+                url.searchParams.set('api_key', serperApiKey);
+                if (!url.searchParams.has('output')) url.searchParams.set('output', 'json');
+                const payload = await this._fetch(url.toString(), { method: 'GET' });
+                return (payload?.organic_results || [])
+                    .map(e => ({
+                        title: normalizeSpace(e?.title || ''),
+                        link: normalizeSpace(e?.link || e?.url || ''),
+                        snippet: normalizeSpace(e?.snippet || '')
+                    }))
+                    .filter(e => e.title && e.link);
+            }
+            const payload = await this._fetch(serperApiUrl, {
+                method: 'POST',
+                headers: { 'X-API-KEY': serperApiKey, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ q, gl: 'br', hl: 'pt-br', num, autocorrect: false })
+            });
+            return (payload?.organic || [])
+                .map(e => ({
+                    title: normalizeSpace(e?.title || ''),
+                    link: normalizeSpace(e?.link || ''),
+                    snippet: normalizeSpace(e?.snippet || '')
+                }))
+                .filter(e => e.title && e.link);
+        } catch (e) {
+            console.warn('[searchSingleQuery] Error:', e?.message);
+            return [];
+        }
+    },
+
+    /**
      * Search on Serper (Google) with fallback to educational sites
      * Exact logic from legacy searchWithSerper
      */
@@ -2712,6 +3069,8 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 answerBox: raw.answerBox || null,
                 aiOverview: raw.aiOverview || raw.ai_overview || null,
                 peopleAlsoAsk: raw.peopleAlsoAsk || null,
+                knowledgeGraph: raw.knowledgeGraph || null,
+                relatedSearches: raw.relatedSearches || null,
                 provider: 'serper'
             };
         };
@@ -2746,7 +3105,8 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                     q,
                     gl: 'br',
                     hl: 'pt-br',
-                    num
+                    num,
+                    autocorrect: false
                 })
             });
             return normalizeSearchPayload(payload);
@@ -2867,11 +3227,15 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             'qconcursos.com.br',
             'tecconcursos.com.br',
             'gran.com.br',
+            'estrategiaconcursos.com.br',
+            'grancursosonline.com.br',
             'passeidireto.com',
             'studocu.com',
             'brainly.com.br'
         ];
         const siteFilter = BOOST_SITES.map(s2 => `site:${s2}`).join(' OR ');
+        // Filtro acadêmico: universidades + slides + fontes curadas
+        const academicSiteFilter = 'site:edu.br OR site:slideshare.net OR site:academia.edu OR site:scielo.br OR site:gov.br';
         const domainFromLink = (link) => {
             try {
                 return new URL(link).hostname.replace(/^www\./, '');
@@ -2883,9 +3247,13 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             'qconcursos.com': 1.95,
             'qconcursos.com.br': 1.95,
             'tecconcursos.com.br': 1.85,
+            'estrategiaconcursos.com.br': 1.75,
+            'grancursosonline.com.br': 1.60,
             'gran.com.br': 1.55,
             'passeidireto.com': 1.35,
             'studocu.com': 1.05,
+            'slideshare.net': 1.15,
+            'academia.edu': 1.20,
             'brainly.com.br': 0.72,
             'brainly.com': 0.7,
             'scribd.com': 0.55,
@@ -2936,6 +3304,8 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 || hosts.has('qconcursos.com')
                 || hosts.has('qconcursos.com.br')
                 || hosts.has('tecconcursos.com.br')
+                || hosts.has('estrategiaconcursos.com.br')
+                || hosts.has('grancursosonline.com.br')
                 || Array.from(hosts).some(h => h.endsWith('.gov.br') || h.endsWith('.edu.br'));
         };
         const buildQueryPlan = () => {
@@ -2983,6 +3353,8 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 plan.push({ q: normalizeSpace(`${rareTokenQuery} ${cleanQuery.slice(0, 120)} gabarito`), num: 8, boost: 0.52, label: 'rare' });
             }
             plan.push({ q: normalizeSpace(`${cleanQuery} ${siteFilter}`).slice(0, 340), num: 8, boost: 0.5, label: 'site-filter' });
+            // ── Academic site filter — universidades, slides, fontes curadas ──────
+            plan.push({ q: normalizeSpace(`${cleanQuery} ${academicSiteFilter}`).slice(0, 340), num: 8, boost: 0.58, label: 'academic-filter' });
 
             // ── Options-only queries (busca pelo texto das alternativas) ──────────
             // Search using ONLY the most distinctive option texts, without the stem.
@@ -3009,6 +3381,54 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                     console.log(`AnswerHunter: Options-only query: "${optOnlyQ.slice(0, 120)}"`);
                 }
             }
+            // ── Assertiva-phrase queries ──────────────────────────────────────────
+            // When the question has Roman-numeral assertions (I. text / II. text / III. ...),
+            // extract the most distinctive phrases from each assertion and build quoted
+            // search queries from them.
+            //
+            // This mirrors the multi-query parallel-search approach used when searching
+            // for questions manually: instead of one generic query, we produce several
+            // independent angles — one per assertiva — so that educational sites which
+            // contain the exact assertion text are found even when the stem query misses.
+            //
+            // Example output for a question with assertivas I–IV:
+            //   assertiva-phrase:      "resultados mais uniformes abrangentes" "avaliadores conduzidos exame" gabarito
+            //   assertiva-phrase-site: "resultados mais uniformes abrangentes" "avaliadores conduzidos exame" site:brainly.com.br OR site:passeidireto.com ...
+            //   assertiva-phrase-3:    "qualidades avaliadores determinam possibilidades" gabarito <stem>
+            const extractAssertivaPhrases = (text) => {
+                const phrases = [];
+                // Matches both multiline (I.\n text) and inline (I. text II. text) formats.
+                // Captures up to 4 assertivas (I, II, III, IV and lowercase variants).
+                const re = /(?:^|[\s;,\n\r])([IVXivx]{1,4})\s*[\.\-:]\s+([^\n\r]{15,})/g;
+                let m;
+                while ((m = re.exec(text)) !== null) {
+                    const body = normalizeSpace(m[2] || '').replace(/["'`]/g, '').trim();
+                    if (body.length < 20) continue;
+                    // Keep 4–6 non-stopword tokens — enough to be distinctive, short enough for URL limits
+                    const words = body.split(/\s+/)
+                        .filter(w => w.length >= 4 && !STOPWORDS.has(normalizeForMatch(w)))
+                        .slice(0, 6);
+                    if (words.length >= 3) phrases.push(words.join(' ').slice(0, 65));
+                    if (phrases.length >= 4) break;
+                }
+                return phrases;
+            };
+            const assertivaPhrases = extractAssertivaPhrases(rawQuery);
+            if (assertivaPhrases.length >= 2) {
+                // Two assertiva phrases + gabarito (most targeted angle)
+                const phraseQ1 = `"${assertivaPhrases[0]}" "${assertivaPhrases[1]}" gabarito`;
+                plan.push({ q: normalizeSpace(phraseQ1).slice(0, 340), num: 10, boost: 0.87, label: 'assertiva-phrase' });
+                // Same two phrases but restricted to educational sites
+                const phraseQ2 = `"${assertivaPhrases[0]}" "${assertivaPhrases[1]}" ${siteFilter}`;
+                plan.push({ q: normalizeSpace(phraseQ2).slice(0, 340), num: 8, boost: 0.83, label: 'assertiva-phrase-site' });
+                console.log(`AnswerHunter: Assertiva-phrase query: "${phraseQ1.slice(0, 120)}"`);
+            }
+            if (assertivaPhrases.length >= 3) {
+                // Third assertiva as an independent search angle (catches pages that match III/IV but not I/II)
+                const phraseQ3 = `"${assertivaPhrases[2]}" gabarito ${cleanQuery.slice(0, 60)}`;
+                plan.push({ q: normalizeSpace(phraseQ3).slice(0, 280), num: 8, boost: 0.75, label: 'assertiva-phrase-3' });
+            }
+
             return plan.filter((entry) => entry.q && entry.q.length >= 8);
         };
 
@@ -3031,7 +3451,7 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             // Serper may return these rich fields alongside organic results.
             // We capture the FIRST occurrence across all Serper calls and attach
             // it to the returned array as `_serperMeta` for downstream processing.
-            let serperMeta = { answerBox: null, aiOverview: null, peopleAlsoAsk: null };
+            let serperMeta = { answerBox: null, aiOverview: null, peopleAlsoAsk: null, knowledgeGraph: null, relatedSearches: null };
             const captureSerperMeta = (data) => {
                 if (!data) return;
                 if (!serperMeta.answerBox && data.answerBox) {
@@ -3045,6 +3465,14 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 if (!serperMeta.peopleAlsoAsk && data.peopleAlsoAsk && data.peopleAlsoAsk.length > 0) {
                     serperMeta.peopleAlsoAsk = data.peopleAlsoAsk;
                     console.log(`AnswerHunter: Captured ${data.peopleAlsoAsk.length} peopleAlsoAsk entries`);
+                }
+                if (!serperMeta.knowledgeGraph && data.knowledgeGraph) {
+                    serperMeta.knowledgeGraph = data.knowledgeGraph;
+                    console.log(`AnswerHunter: Captured knowledgeGraph: ${data.knowledgeGraph.title || '(no title)'}`);
+                }
+                if (!serperMeta.relatedSearches && data.relatedSearches && data.relatedSearches.length > 0) {
+                    serperMeta.relatedSearches = data.relatedSearches;
+                    console.log(`AnswerHunter: Captured ${data.relatedSearches.length} relatedSearches`);
                 }
             };
 

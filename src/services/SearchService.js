@@ -241,10 +241,33 @@ export const SearchService = {
     }
     if (results.length === 0) return null;
 
+    // ── 4) knowledgeGraph ──
+    const kg = serperMeta.knowledgeGraph;
+    if (kg) {
+      // Build a text blob from the KG description and attributes
+      const kgParts = [kg.title, kg.description, kg.type];
+      if (kg.attributes && typeof kg.attributes === 'object') {
+        for (const [k, v] of Object.entries(kg.attributes)) {
+          kgParts.push(`${k}: ${v}`);
+        }
+      }
+      const kgText = kgParts.filter(Boolean).join(' ').trim();
+      if (kgText.length >= 20) {
+        const parsed = this._parseGoogleMetaText(kgText, originalOptionsMap, originalOptions);
+        if (parsed) {
+          results.push({
+            letter: parsed.letter,
+            confidence: Math.min(parsed.confidence * 0.85, 0.72), // KG confidence moderately high
+            method: 'google-knowledge-graph',
+            evidence: kgText.slice(0, 300)
+          });
+        }
+      }
+    }
+
     // Pick the highest-confidence result
     results.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
-    const best = results[0];
-    console.log(`SearchService: [google-meta] Found letter=${best.letter} confidence=${best.confidence.toFixed(2)} method=${best.method} from ${results.length} candidate(s)`);
+    const best = results[0];    console.log(`SearchService: [google-meta] Found letter=${best.letter} confidence=${best.confidence.toFixed(2)} method=${best.method} from ${results.length} candidate(s)`);
     return best;
   },
   // Flatten AI Overview text_blocks (nested structure from Serper/SerpAPI)
@@ -1334,9 +1357,11 @@ export const SearchService = {
       console.log('answerBox:', serperMeta.answerBox ? 'present' : 'absent');
       console.log('aiOverview:', serperMeta.aiOverview ? 'present' : 'absent');
       console.log('peopleAlsoAsk:', serperMeta.peopleAlsoAsk ? `${serperMeta.peopleAlsoAsk.length} entries` : 'absent');
+      console.log('knowledgeGraph:', serperMeta.knowledgeGraph ? `"${serperMeta.knowledgeGraph.title || 'untitled'}"` : 'absent');
+      console.log('relatedSearches:', serperMeta.relatedSearches ? `${serperMeta.relatedSearches.length} queries` : 'absent');
       const googleMeta = this._extractLetterFromGoogleMeta(serperMeta, questionStem, originalOptionsMap, originalOptions);
       if (googleMeta?.letter) {
-        const googleWeight = googleMeta.method === 'google-ai-overview' ? 3.8 : googleMeta.method === 'google-answerbox' ? 3.2 : 1.8; // PAA
+        const googleWeight = googleMeta.method === 'google-ai-overview' ? 3.8 : googleMeta.method === 'google-answerbox' ? 3.2 : googleMeta.method === 'google-knowledge-graph' ? 2.0 : 1.8; // PAA
         const confFactor = Math.max(0.5, Math.min(1.0, googleMeta.confidence || 0.75));
         const adjustedWeight = googleWeight * confFactor;
         const sourceId = `google-meta:${sources.length + 1}`;
@@ -1474,7 +1499,7 @@ export const SearchService = {
     if (typeof onStatus === 'function') {
       const cached = batch1.filter(r => _prefetchedSnaps.has(r.link)).length;
       const fetching = batch1.length - cached;
-      onStatus(fetching > 0 ? `Fetching batch 1/${batch2.length > 0 ? '2' : '1'} (${fetching} sources${cached > 0 ? `, ${cached} cached` : ''})...` : `Analyzing ${batch1.length} cached sources...`);
+      onStatus(fetching > 0 ? `📡 Buscando conteúdo de ${fetching} fonte${fetching > 1 ? 's' : ''}${cached > 0 ? ` (${cached} em cache)` : ''}…` : `⚡ Analisando ${batch1.length} fontes em cache…`);
     }
     const _batch1FetchMap = _startFetchBatch(batch1); // non-blocking — all 5 start now
     let _batch2FetchMap = null;
@@ -1505,7 +1530,7 @@ export const SearchService = {
         // Need more evidence — start all batch 2 fetches in parallel immediately
         console.log(`SearchService: Batch 1 insufficient (topVote=${topVote.toFixed(1)}) — starting batch 2 in parallel (${batch2.length} sources)...`);
         if (typeof onStatus === 'function') {
-          onStatus(`Fetching batch 2 (${batch2.length} more sources)...`);
+          onStatus(`📡 Buscando mais ${batch2.length} fonte${batch2.length > 1 ? 's' : ''}…`);
         }
         _batch2FetchMap = _startFetchBatch(batch2); // non-blocking — all batch2 start now
         _batch2Fetched = true;
@@ -1525,7 +1550,7 @@ export const SearchService = {
           });
         }
         if (typeof onStatus === 'function') {
-          onStatus(`Analyzing source ${runStats.analyzed}/${topResults.length}...`);
+          onStatus(`🔍 Lendo fonte ${runStats.analyzed} de ${topResults.length}…`);
         }
         const snap = _prefetchedSnaps.get(link) || null;
         // ── PasseiDireto: inject pre-fetched __NEXT_DATA__ text (24KB real content) ──
@@ -2175,7 +2200,7 @@ export const SearchService = {
             if (htmlSnippet && htmlSnippet.length > 500) {
               console.log(`  🤖 [AI-HTML] Attempting AI HTML extraction (host=${hostHint}, snippetLen=${htmlSnippet.length})`);
               if (typeof onStatus === 'function') {
-                onStatus(`AI analyzing HTML from ${hostHint}...`);
+                onStatus(`🤖 IA analisando ${hostHint}…`);
               }
               // Check AI result cache first to avoid re-calling LLM on the same URL+question
               const _aiHtmlCacheKey = link + '|html';
@@ -2441,7 +2466,7 @@ export const SearchService = {
           const aiScopedText = EvidenceService.buildQuestionScopedText(combinedText, questionForInference, 6000);
           console.log(`  🤖 [AI-EXTRACT] Attempting AI page extraction (call ${aiExtractionCount + 1}/3, topicSim=${topicSimBase.toFixed(3)}, textLen=${aiScopedText.length}, host=${hostHint})`);
           if (typeof onStatus === 'function') {
-            onStatus(`AI analyzing ${hostHint || 'source'} (${runStats.analyzed}/${topResults.length})...`);
+            onStatus(`🤖 IA analisando ${hostHint || 'fonte'} (${runStats.analyzed}/${topResults.length})…`);
           }
           // Check AI result cache to avoid re-calling LLM for same URL+question
           const _aiPageCached = SearchCacheService.getCachedAiResult(link, questionForInference);
@@ -2636,7 +2661,7 @@ export const SearchService = {
         for (const pending of toProcess) {
           if (aiExtractionCount >= 5) break;
           const { aiScopedText, hostHint: ph, sourceType: pst, title: pt, link: pl, topicSim: ptopicSim, obfuscation: pobf } = pending;
-          if (typeof onStatus === 'function') onStatus(`AI extracting knowledge from ${ph || 'source'}...`);
+          if (typeof onStatus === 'function') onStatus(`🤖 IA extraindo informações de ${ph || 'fonte'}…`);
           try {
             const aiExtracted = await ApiService.aiExtractFromPage(aiScopedText, questionForInference, ph);
             aiExtractionCount++;
@@ -2818,7 +2843,7 @@ export const SearchService = {
     // If we have no explicit sources OR we need more evidence, do AI combined pass
     if (allForCombined.length > 0 && (!hasStrongExplicit || sources.length < 2)) {
       if (typeof onStatus === 'function') {
-        onStatus(sources.length === 0 ? 'No explicit answer found. Using AI best-effort...' : 'Cross-checking with additional sources...');
+        onStatus(sources.length === 0 ? '🧠 Nenhuma resposta explícita — IA raciocinando…' : '🔎 Cruzando informações de múltiplas fontes…');
       }
 
       // Only use combined evidence with minimum topic + option alignment quality.
@@ -3224,7 +3249,7 @@ export const SearchService = {
         console.log(`  [${i}] host=${k.host} topicSim=${(k.topicSim || 0).toFixed(3)} knowledge=${(k.knowledge || '').length} chars origin=${k.origin || 'direct'}`);
       });
       if (typeof onStatus === 'function') {
-        onStatus('Reflecting on accumulated knowledge...');
+        onStatus('🧠 IA consolidando conhecimento das fontes…');
       }
       try {
         const reflectionResult = await ApiService.aiReflectOnSources(questionForInference, aiKnowledgePool);
@@ -3319,7 +3344,7 @@ export const SearchService = {
       console.log(`  source: host=${_verifSrc.hostHint} letter=${_verifSrc.letter} scopedText=${_verifText.length} chars`);
       if (_verifText.length >= 200 && _verifSrc.letter) {
         try {
-          if (typeof onStatus === 'function') onStatus('Verificando resposta com IA...');
+          if (typeof onStatus === 'function') onStatus('✅ Verificando resposta final com IA…');
           const _verifResult = await ApiService.aiVerifyLetterInContext(
             questionForInference,
             _verifSrc.letter,
