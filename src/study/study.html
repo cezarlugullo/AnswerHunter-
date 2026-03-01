@@ -2553,8 +2553,13 @@
     body.dashboard-main-mode #statsBar,
     body.dashboard-main-mode #cardList,
     body.dashboard-main-mode #sectionedList,
-    body.dashboard-main-mode #footer {
+    body.dashboard-main-mode #footer,
+    body.dashboard-main-mode .sidebar {
       display: none !important;
+    }
+
+    body.dashboard-main-mode .app-shell {
+      grid-template-columns: 1fr;
     }
 
     body.dashboard-main-mode #dashboardHome {
@@ -5020,6 +5025,752 @@ body.toylab-v2 .empty-state {
     @keyframes spin {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
+    }
+
+    /* ══════════════════════════════════════════════════════════════
+       DASHBOARD-MATCHED REFINEMENTS — Premium Polish Layer
+       Layered shadows, glass panels, grain texture, spring easing,
+       staggered entrances, shimmer progress, warm scrollbar
+    ══════════════════════════════════════════════════════════════ */
+
+    /* ── 1. DESIGN TOKENS: Layered 4-tier shadow + spring easing ── */
+    :root {
+      --shadow-xs: 0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.06);
+      --shadow-sm: 0 2px 4px rgba(0,0,0,.04), 0 4px 8px rgba(0,0,0,.04), 0 1px 2px rgba(0,0,0,.06);
+      --shadow-md: 0 4px 8px rgba(0,0,0,.04), 0 8px 16px rgba(0,0,0,.06), 0 1px 3px rgba(0,0,0,.08);
+      --shadow-lg: 0 8px 16px rgba(0,0,0,.06), 0 16px 32px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.1);
+      --ease-spring: cubic-bezier(.175, .885, .32, 1.275);
+      --ease-smooth: cubic-bezier(.22, 1, .36, 1);
+      --grain-opacity: 0.028;
+    }
+
+    /* ── 2. BACKGROUND ATMOSPHERE: Warmth zones + grain texture ── */
+    body.toylab-v2 {
+      background:
+        radial-gradient(ellipse 1200px 500px at 15% -80px, rgba(255,107,107,.07), transparent 60%),
+        radial-gradient(ellipse 800px 400px at 85% 20%, rgba(255,154,60,.05), transparent 55%),
+        radial-gradient(ellipse 600px 350px at 50% 100%, rgba(255,212,59,.04), transparent 50%),
+        radial-gradient(circle at 18px 18px, rgba(224,123,57,.14) 2px, transparent 2.5px),
+        radial-gradient(circle at 9px 9px, rgba(78,205,196,.1) 1.5px, transparent 2px),
+        linear-gradient(180deg, #fdf6ec, #fff9f0 48%, #fdf6ec 100%) !important;
+      background-size: auto, auto, auto, 34px 34px, 22px 22px, auto !important;
+    }
+
+    /* Grain texture overlay — applied globally via body::before */
+    body.toylab-v2::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      pointer-events: none;
+      opacity: var(--grain-opacity);
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 180px 180px;
+    }
+
+    /* ── 3. HEADER: Shadow refinement + scroll effect hint ── */
+    body.toylab-v2 header {
+      box-shadow:
+        0 2px 4px rgba(62,39,35,.08),
+        0 4px 12px rgba(62,39,35,.06),
+        0 1px 2px rgba(0,0,0,.1) !important;
+      transition: box-shadow 0.3s ease;
+    }
+    body.toylab-v2 .logo-text {
+      letter-spacing: .03em !important;
+    }
+    body.toylab-v2 .logo-sub {
+      letter-spacing: .04em !important;
+    }
+    /* Header buttons: spring hover */
+    body.toylab-v2 .btn-header {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .btn-header:hover {
+      transform: translateY(-2px) scale(1.03) !important;
+      box-shadow: 0 4px 8px rgba(0,0,0,.12) !important;
+    }
+    body.toylab-v2 .btn-header:active {
+      transform: translateY(0) scale(0.98) !important;
+    }
+
+    /* ── 4. TOOLBAR: Spring easing + active tab indicator ── */
+    body.toylab-v2 .toolbar-wrap {
+      backdrop-filter: blur(12px) saturate(1.2) !important;
+      background: rgba(255,254,251,.92) !important;
+      box-shadow: var(--shadow-sm) !important;
+      transition: box-shadow 0.3s ease !important;
+    }
+
+    /* Tab buttons: spring transition */
+    body.toylab-v2 .main-mode-tab {
+      transition: all 0.28s var(--ease-spring) !important;
+      position: relative;
+    }
+    body.toylab-v2 .main-mode-tab:hover {
+      transform: translateY(-1px) !important;
+    }
+    body.toylab-v2 .main-mode-tab.active {
+      box-shadow:
+        0 2px 4px rgba(0,0,0,.04),
+        0 4px 8px rgba(0,0,0,.04),
+        inset 0 -2px 0 rgba(255,255,255,.3) !important;
+    }
+
+    /* Chip spring hovers */
+    body.toylab-v2 .chip {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .chip:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: var(--shadow-sm) !important;
+    }
+    body.toylab-v2 .chip:active {
+      transform: translateY(0) scale(0.97) !important;
+    }
+
+    /* Reveal toggle spring */
+    body.toylab-v2 .reveal-toggle {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .reveal-toggle:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: var(--shadow-sm) !important;
+    }
+
+    /* Tool buttons spring hovers */
+    body.toylab-v2 .tool-btn {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .tool-btn:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: var(--shadow-sm) !important;
+    }
+    body.toylab-v2 .tool-btn:active {
+      transform: translateY(0) scale(0.97) !important;
+    }
+    body.toylab-v2 .tool-btn-icon {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .tool-btn-icon:hover {
+      transform: translateY(-1px) scale(1.06) !important;
+      box-shadow: var(--shadow-xs) !important;
+    }
+
+    /* Sort/Subject dropdown spring */
+    body.toylab-v2 .sort-wrap select,
+    body.toylab-v2 .subject-wrap select {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .sort-wrap:hover select,
+    body.toylab-v2 .subject-wrap:hover select {
+      transform: translateY(-1px) !important;
+      box-shadow: var(--shadow-xs) !important;
+    }
+
+    /* ── 5. CARDS: Glass effect, hover lift, top gradient line, inset highlight ── */
+    body.toylab-v2 .card {
+      box-shadow: var(--shadow-sm) !important;
+      transition: all 0.35s var(--ease-smooth) !important;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Coral gradient accent line on top of cards */
+    body.toylab-v2 .card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #FF6B6B 0%, #FF9A3C 50%, #FFD43B 100%);
+      opacity: 0.7;
+      z-index: 2;
+      transition: opacity 0.3s ease;
+    }
+
+    /* Inset top highlight (glass feel) */
+    body.toylab-v2 .card-meta {
+      background: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,249,239,.85) 100%) !important;
+      backdrop-filter: blur(6px);
+      border-bottom: 2px dashed rgba(31,36,48,.1) !important;
+    }
+
+    /* Hover: lift + intensify shadow + accent line */
+    body.toylab-v2 .card:hover {
+      transform: translateY(-4px) !important;
+      box-shadow: var(--shadow-lg) !important;
+    }
+    body.toylab-v2 .card:hover::after {
+      opacity: 1;
+    }
+
+    /* Answered card accent line override */
+    body.toylab-v2 .card.answered::after {
+      background: linear-gradient(90deg, #3ecf6a 0%, #a8e6cf 100%);
+    }
+    /* For-review card accent */
+    body.toylab-v2 .card.for-review::after {
+      background: linear-gradient(90deg, #ffa94d 0%, #ffd43b 100%);
+    }
+
+    /* Card-question: better visual hierarchy */
+    body.toylab-v2 .question-enunciado {
+      position: relative;
+      padding-left: 14px !important;
+    }
+    body.toylab-v2 .question-enunciado::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 4px;
+      bottom: 4px;
+      width: 3px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, #FF6B6B, #FF9A3C);
+      opacity: 0.4;
+    }
+
+    /* Options: refined hover with spring */
+    body.toylab-v2 .option-item {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .option-item:hover {
+      transform: translateX(4px) !important;
+      box-shadow: var(--shadow-xs) !important;
+    }
+
+    /* Card-num badge refinement */
+    body.toylab-v2 .card-num {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Card action buttons: spring hover */
+    body.toylab-v2 .card-action-btn {
+      transition: all 0.22s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .card-action-btn:hover {
+      transform: scale(1.12) !important;
+      box-shadow: var(--shadow-xs) !important;
+    }
+
+    /* ── 6. STATS BAR: Visual personality + number typography ── */
+    body.toylab-v2 .stats-bar {
+      position: relative;
+    }
+
+    /* Stats bar: coral gradient accent line at top */
+    body.toylab-v2 .stats-bar::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 12px;
+      right: 12px;
+      height: 3px;
+      border-radius: 0 0 3px 3px;
+      background: linear-gradient(90deg, #FF6B6B, #FF9A3C, #FFD43B);
+      z-index: 1;
+    }
+
+    body.toylab-v2 .stat-card {
+      transition: all 0.28s var(--ease-spring) !important;
+      position: relative;
+      overflow: hidden;
+    }
+    body.toylab-v2 .stat-card:hover {
+      transform: translateY(-3px) scale(1.02) !important;
+      box-shadow: var(--shadow-md) !important;
+    }
+    body.toylab-v2 .stat-card-value {
+      font-family: 'Baloo 2', cursive !important;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+      line-height: 1 !important;
+    }
+    body.toylab-v2 .stat-card-label {
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 0.68rem !important;
+    }
+
+    /* ── 7. PROGRESS BAR: Glowing shimmer fill + better track depth ── */
+    body.toylab-v2 .progress-strip,
+    body.toylab-v2 .gamification-bar {
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Coral accent line on progress strip */
+    body.toylab-v2 .progress-strip::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 12px;
+      right: 12px;
+      height: 3px;
+      border-radius: 0 0 3px 3px;
+      background: linear-gradient(90deg, #FF6B6B, #FF9A3C, #FFD43B);
+      z-index: 1;
+    }
+
+    /* Track depth (inset shadow for more 3D feel) */
+    body.toylab-v2 .progress-track,
+    body.toylab-v2 .daily-progress-track {
+      box-shadow: inset 0 1px 3px rgba(0,0,0,.1), inset 0 0 1px rgba(0,0,0,.06) !important;
+      background: rgba(62,39,35,.06) !important;
+    }
+
+    /* Shimmer animation on progress fill */
+    @keyframes progressShimmer {
+      0%   { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    body.toylab-v2 .progress-fill,
+    body.toylab-v2 .daily-progress-fill {
+      background:
+        linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255,255,255,.4) 40%,
+          rgba(255,255,255,.6) 50%,
+          rgba(255,255,255,.4) 60%,
+          transparent 100%
+        ),
+        linear-gradient(90deg, #FF6B6B, #FF9A3C, #FFD43B) !important;
+      background-size: 200% 100%, 100% 100%;
+      animation: progressShimmer 2.8s ease-in-out infinite;
+      box-shadow: 0 0 8px rgba(255,107,107,.3), 0 0 2px rgba(255,154,60,.2);
+    }
+    /* Also for the daily fill: slight glow */
+    body.toylab-v2 .progress-pct {
+      font-family: 'Baloo 2', cursive !important;
+      font-size: 0.88rem !important;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      background: linear-gradient(135deg, #FF6B6B, #FF9A3C);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* Dashboard progress bars (dash-progress) */
+    body.toylab-v2 .dash-progress-fill {
+      background:
+        linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(255,255,255,.35) 45%,
+          rgba(255,255,255,.55) 50%,
+          rgba(255,255,255,.35) 55%,
+          transparent 100%
+        ),
+        linear-gradient(90deg, #FF6B6B, #FF9A3C) !important;
+      background-size: 200% 100%, 100% 100%;
+      animation: progressShimmer 3s ease-in-out infinite;
+    }
+
+    /* ── 8. ENTRANCE ANIMATIONS: Staggered card + section reveals ── */
+    @keyframes cardEntrance {
+      from {
+        opacity: 0;
+        transform: translateY(18px) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    @keyframes slideInFromLeft {
+      from {
+        opacity: 0;
+        transform: translateX(-14px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+    @keyframes fadeInScale {
+      from {
+        opacity: 0;
+        transform: scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    /* Staggered entrance for cards in list */
+    body.toylab-v2 #cardList > .card {
+      animation: cardEntrance 0.45s var(--ease-smooth) both;
+    }
+    body.toylab-v2 #cardList > .card:nth-child(1)  { animation-delay: 0.03s; }
+    body.toylab-v2 #cardList > .card:nth-child(2)  { animation-delay: 0.08s; }
+    body.toylab-v2 #cardList > .card:nth-child(3)  { animation-delay: 0.13s; }
+    body.toylab-v2 #cardList > .card:nth-child(4)  { animation-delay: 0.18s; }
+    body.toylab-v2 #cardList > .card:nth-child(5)  { animation-delay: 0.23s; }
+    body.toylab-v2 #cardList > .card:nth-child(6)  { animation-delay: 0.28s; }
+    body.toylab-v2 #cardList > .card:nth-child(7)  { animation-delay: 0.33s; }
+    body.toylab-v2 #cardList > .card:nth-child(8)  { animation-delay: 0.38s; }
+    body.toylab-v2 #cardList > .card:nth-child(9)  { animation-delay: 0.43s; }
+    body.toylab-v2 #cardList > .card:nth-child(10) { animation-delay: 0.48s; }
+    body.toylab-v2 #cardList > .card:nth-child(n+11) { animation-delay: 0.5s; }
+
+    /* Subject group headers entrance */
+    body.toylab-v2 #cardList > .subject-group-header {
+      animation: slideInFromLeft 0.4s var(--ease-smooth) both;
+    }
+    body.toylab-v2 #cardList > .subject-group-header:nth-child(1) { animation-delay: 0s; }
+    body.toylab-v2 #cardList > .subject-group-header:nth-child(2) { animation-delay: 0.06s; }
+    body.toylab-v2 #cardList > .subject-group-header:nth-child(3) { animation-delay: 0.12s; }
+
+    /* Stats cards entrance */
+    body.toylab-v2 .stats-bar .stat-card {
+      animation: fadeInScale 0.35s var(--ease-smooth) both;
+    }
+    body.toylab-v2 .stats-bar .stat-card:nth-child(1) { animation-delay: 0.04s; }
+    body.toylab-v2 .stats-bar .stat-card:nth-child(2) { animation-delay: 0.10s; }
+    body.toylab-v2 .stats-bar .stat-card:nth-child(3) { animation-delay: 0.16s; }
+    body.toylab-v2 .stats-bar .stat-card:nth-child(4) { animation-delay: 0.22s; }
+
+    /* Progress strip entrance */
+    body.toylab-v2 .progress-strip {
+      animation: fadeInScale 0.4s var(--ease-smooth) both;
+      animation-delay: 0.05s;
+    }
+
+    /* Sidebar entrance */
+    body.toylab-v2 .sidebar {
+      animation: slideInFromLeft 0.45s var(--ease-smooth) both;
+      animation-delay: 0.08s;
+    }
+
+    /* Gamification bar entrance */
+    body.toylab-v2 .gamification-bar {
+      animation: fadeInScale 0.35s var(--ease-smooth) both;
+      animation-delay: 0.06s;
+    }
+
+    /* Status sections (compact view) entrance */
+    body.toylab-v2 .status-section {
+      animation: cardEntrance 0.4s var(--ease-smooth) both;
+    }
+    body.toylab-v2 .status-section:nth-child(1) { animation-delay: 0.04s; }
+    body.toylab-v2 .status-section:nth-child(2) { animation-delay: 0.10s; }
+    body.toylab-v2 .status-section:nth-child(3) { animation-delay: 0.16s; }
+    body.toylab-v2 .status-section:nth-child(4) { animation-delay: 0.22s; }
+
+    /* ── 9. GLASS PANELS: Sidebar + toolbar glass effects ── */
+    body.toylab-v2 .sidebar {
+      backdrop-filter: blur(8px) saturate(1.1);
+      box-shadow: var(--shadow-md) !important;
+    }
+
+    /* Sidebar nav items spring hover */
+    body.toylab-v2 .sidebar-nav-item {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .sidebar-nav-item:hover {
+      transform: translateX(4px) !important;
+      box-shadow: var(--shadow-xs) !important;
+    }
+
+    /* Sidebar stat cards: refined */
+    body.toylab-v2 .sidebar-stat {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .sidebar-stat:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: var(--shadow-xs) !important;
+    }
+    body.toylab-v2 .sidebar-stat-value {
+      font-variant-numeric: tabular-nums !important;
+      font-family: 'Baloo 2', cursive !important;
+    }
+
+    /* ── 10. SCROLLBAR: Warm theme scrollbar ── */
+    body.toylab-v2::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    body.toylab-v2::-webkit-scrollbar-track {
+      background: rgba(253,246,236,.6);
+      border-radius: 4px;
+    }
+    body.toylab-v2::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #e0c9a8, #c9a87c);
+      border-radius: 4px;
+      border: 1px solid rgba(253,246,236,.8);
+    }
+    body.toylab-v2::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(180deg, #c9a87c, #b8946a);
+    }
+
+    /* Inner scrollables (sidebar, modals, chat) */
+    body.toylab-v2 .sidebar::-webkit-scrollbar,
+    body.toylab-v2 .modal-body::-webkit-scrollbar,
+    body.toylab-v2 .chat-messages::-webkit-scrollbar,
+    body.toylab-v2 .mindmap-body::-webkit-scrollbar,
+    body.toylab-v2 .detail-modal-body::-webkit-scrollbar {
+      width: 6px;
+    }
+    body.toylab-v2 .sidebar::-webkit-scrollbar-track,
+    body.toylab-v2 .modal-body::-webkit-scrollbar-track,
+    body.toylab-v2 .chat-messages::-webkit-scrollbar-track,
+    body.toylab-v2 .mindmap-body::-webkit-scrollbar-track,
+    body.toylab-v2 .detail-modal-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    body.toylab-v2 .sidebar::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,.18);
+      border-radius: 3px;
+    }
+    body.toylab-v2 .sidebar::-webkit-scrollbar-thumb:hover {
+      background: rgba(255,255,255,.3);
+    }
+    body.toylab-v2 .modal-body::-webkit-scrollbar-thumb,
+    body.toylab-v2 .chat-messages::-webkit-scrollbar-thumb,
+    body.toylab-v2 .mindmap-body::-webkit-scrollbar-thumb,
+    body.toylab-v2 .detail-modal-body::-webkit-scrollbar-thumb {
+      background: #d6c4a8;
+      border-radius: 3px;
+    }
+    body.toylab-v2 .modal-body::-webkit-scrollbar-thumb:hover,
+    body.toylab-v2 .chat-messages::-webkit-scrollbar-thumb:hover,
+    body.toylab-v2 .mindmap-body::-webkit-scrollbar-thumb:hover,
+    body.toylab-v2 .detail-modal-body::-webkit-scrollbar-thumb:hover {
+      background: #c2a888;
+    }
+
+    /* Firefox scrollbar */
+    body.toylab-v2 {
+      scrollbar-width: thin;
+      scrollbar-color: #c9a87c rgba(253,246,236,.6);
+    }
+    body.toylab-v2 .sidebar {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,.18) transparent;
+    }
+
+    /* ── 11. FOOTER: Gradient top border ── */
+    body.toylab-v2 #footer {
+      position: relative;
+      padding-top: 16px !important;
+    }
+    body.toylab-v2 #footer::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 24px;
+      right: 24px;
+      height: 3px;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #FF6B6B 0%, #FF9A3C 40%, #FFD43B 100%);
+      opacity: 0.5;
+    }
+
+    /* ── BONUS: Reveal button glow pulse ── */
+    @keyframes revealGlow {
+      0%, 100% { box-shadow: 0 4px 10px rgba(224,123,57,.25); }
+      50%      { box-shadow: 0 4px 18px rgba(224,123,57,.45), 0 0 6px rgba(245,200,66,.2); }
+    }
+    body.toylab-v2 .reveal-btn {
+      animation: revealGlow 2.5s ease-in-out infinite;
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .reveal-btn:hover {
+      transform: translateY(-2px) scale(1.01) !important;
+      animation: none;
+      box-shadow: var(--shadow-lg) !important;
+    }
+    body.toylab-v2 .reveal-btn:active {
+      transform: translateY(0) scale(0.98) !important;
+    }
+
+    /* ── BONUS: Answer tool buttons spring ── */
+    body.toylab-v2 .answer-tool-btn,
+    body.toylab-v2 .btn-tags,
+    body.toylab-v2 .btn-voice {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .answer-tool-btn:hover,
+    body.toylab-v2 .btn-tags:hover,
+    body.toylab-v2 .btn-voice:hover {
+      transform: translateY(-2px) !important;
+      box-shadow: var(--shadow-sm) !important;
+    }
+    body.toylab-v2 .answer-tool-btn:active,
+    body.toylab-v2 .btn-tags:active,
+    body.toylab-v2 .btn-voice:active {
+      transform: translateY(0) scale(0.97) !important;
+    }
+
+    /* ── BONUS: SM2 rating buttons spring ── */
+    body.toylab-v2 .sm2-btn {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .sm2-btn:hover {
+      transform: translateY(-3px) scale(1.03) !important;
+      box-shadow: var(--shadow-sm) !important;
+    }
+    body.toylab-v2 .sm2-btn:active {
+      transform: translateY(0) scale(0.96) !important;
+    }
+
+    /* ── BONUS: Modal glass + shadow ── */
+    body.toylab-v2 .modal-overlay.open,
+    body.toylab-v2 .mindmap-overlay.open,
+    body.toylab-v2 .detail-overlay.open {
+      backdrop-filter: blur(8px) saturate(1.2);
+    }
+    body.toylab-v2 .modal-box,
+    body.toylab-v2 .mindmap-modal,
+    body.toylab-v2 .detail-modal {
+      box-shadow: var(--shadow-lg) !important;
+    }
+
+    /* ── BONUS: Gamification bar refinements ── */
+    body.toylab-v2 .streak-bar {
+      transition: all 0.25s var(--ease-spring);
+    }
+    body.toylab-v2 .streak-bar:hover {
+      transform: scale(1.04) translateY(-1px);
+      box-shadow: var(--shadow-xs);
+    }
+    body.toylab-v2 #streakCount {
+      font-family: 'Baloo 2', cursive !important;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── BONUS: Done drawer header spring ── */
+    body.toylab-v2 .done-drawer-header {
+      transition: all 0.25s var(--ease-spring);
+    }
+    body.toylab-v2 .done-drawer-header:hover {
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-xs);
+    }
+
+    /* ── BONUS: Density toggle spring ── */
+    body.toylab-v2 .density-btn {
+      transition: all 0.22s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .density-btn:hover:not(.active) {
+      transform: translateY(-1px) !important;
+    }
+    body.toylab-v2 .density-btn:active {
+      transform: scale(0.96) !important;
+    }
+
+    /* ── BONUS: Subject group header spring + accent ── */
+    body.toylab-v2 .subject-group-header {
+      transition: all 0.25s var(--ease-spring) !important;
+      position: relative;
+      overflow: hidden;
+    }
+    body.toylab-v2 .subject-group-header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #FF6B6B, #FF9A3C, #FFD43B);
+      opacity: 0.35;
+    }
+    body.toylab-v2 .subject-group-header:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: var(--shadow-xs) !important;
+    }
+    body.toylab-v2 .subject-group-header:hover::after {
+      opacity: 0.7;
+    }
+
+    /* ── BONUS: Status sections (compact view) polish ── */
+    body.toylab-v2 .status-section {
+      transition: all 0.25s var(--ease-spring) !important;
+      box-shadow: var(--shadow-xs) !important;
+    }
+    body.toylab-v2 .status-section:hover {
+      box-shadow: var(--shadow-sm) !important;
+      transform: translateY(-1px) !important;
+    }
+
+    /* Compact row hover spring */
+    body.toylab-v2 .compact-row {
+      transition: all 0.2s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .compact-row:hover {
+      transform: translateX(3px) !important;
+      background: rgba(255,240,217,.3) !important;
+    }
+
+    /* ── BONUS: Pomodoro widget shadow ── */
+    body.toylab-v2 .pomodoro-widget.visible {
+      box-shadow: var(--shadow-lg) !important;
+    }
+    body.toylab-v2 .pom-btn {
+      transition: all 0.22s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .pom-btn:hover {
+      transform: scale(1.08) !important;
+    }
+
+    /* ── BONUS: Empty state breathing icon ── */
+    @keyframes emptyBreath {
+      0%, 100% { transform: scale(1); opacity: 0.5; }
+      50%      { transform: scale(1.08); opacity: 0.7; }
+    }
+    body.toylab-v2 .empty-state .icon {
+      animation: emptyBreath 3s ease-in-out infinite !important;
+    }
+
+    /* ── BONUS: Card answer panels glass effect ── */
+    body.toylab-v2 .answer-explanation,
+    body.toylab-v2 .answer-review {
+      backdrop-filter: blur(4px);
+      box-shadow: var(--shadow-xs);
+      transition: box-shadow 0.2s ease;
+    }
+    body.toylab-v2 .answer-explanation:hover,
+    body.toylab-v2 .answer-review:hover {
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ── BONUS: Header search spring ── */
+    body.toylab-v2 .header-search input {
+      transition: all 0.25s var(--ease-spring) !important;
+    }
+    body.toylab-v2 .header-search input:focus {
+      transform: scaleX(1.02);
+      box-shadow: 0 0 0 4px rgba(58,125,225,.18), var(--shadow-sm) !important;
+    }
+
+    /* ── PREFERS-REDUCED-MOTION ── */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        animation-delay: 0s !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+      body.toylab-v2 .reveal-btn {
+        animation: none !important;
+      }
+      body.toylab-v2 .progress-fill,
+      body.toylab-v2 .daily-progress-fill,
+      body.toylab-v2 .dash-progress-fill {
+        animation: none !important;
+      }
+      body.toylab-v2 .empty-state .icon {
+        animation: none !important;
+      }
     }
 </style>
 </head>
