@@ -3334,17 +3334,49 @@ async function runEvidenceProtocol(type) {
 async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
   if (!targetEl) return;
 
-  // Use the standalone dashboard page inside an iframe
-  const existing = targetEl.querySelector('iframe.dash-iframe');
-  if (existing) return; // already loaded
+  // Load new dashboard inline (no iframe → single scroll)
+  const already = targetEl.querySelector('.ah-dash-root');
+  if (already) return;
 
-  targetEl.innerHTML = '';
-  const iframe = document.createElement('iframe');
-  iframe.className = 'dash-iframe';
-  iframe.src = chrome.runtime.getURL('src/dashboard/dashboard.html');
-  iframe.style.cssText = 'width:100%;border:none;min-height:calc(100vh - 60px);border-radius:8px;';
-  targetEl.appendChild(iframe);
-  return; // skip old inline rendering below
+  targetEl.innerHTML = '<div class="quiz-loading"><span class="icon spin-icon">autorenew</span><p>Carregando dashboard...</p></div>';
+
+  try {
+    const url = chrome.runtime.getURL('src/dashboard/dashboard.html');
+    const html = await (await fetch(url)).text();
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    // Inject scoped CSS once
+    if (!document.getElementById('ah-dash-style')) {
+      const styleEl = document.createElement('style');
+      styleEl.id = 'ah-dash-style';
+      // Scope all dashboard CSS inside .ah-dash-root
+      const rawCSS = Array.from(doc.querySelectorAll('style')).map(s => s.textContent).join('\n');
+      styleEl.textContent = rawCSS
+        .replace(/\bbody\b/g, '.ah-dash-root')
+        .replace(/:root/g, '.ah-dash-root');
+      document.head.appendChild(styleEl);
+    }
+
+    // Inject body HTML
+    const wrapper = document.createElement('div');
+    wrapper.className = 'ah-dash-root';
+    wrapper.innerHTML = doc.body.innerHTML;
+    targetEl.innerHTML = '';
+    targetEl.appendChild(wrapper);
+
+    // Run dashboard JS in this context
+    const scripts = doc.querySelectorAll('script');
+    scripts.forEach(s => {
+      if (s.textContent.trim()) {
+        const fn = new Function(s.textContent);
+        fn.call(window);
+      }
+    });
+  } catch (err) {
+    console.error('[Dashboard] Failed to load inline dashboard:', err);
+    targetEl.innerHTML = '<div class="quiz-loading"><p>Erro ao carregar dashboard.</p></div>';
+  }
+  return;
 
   /* ── legacy inline dashboard (kept for reference) ── */
   const [sm2Data, simHistory, xpData] = await Promise.all([
