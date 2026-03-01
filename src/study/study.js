@@ -3342,14 +3342,15 @@ async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
 
   try {
     const url = chrome.runtime.getURL('src/dashboard/dashboard.html');
-    const html = await (await fetch(url)).text();
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const html = await resp.text();
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
     // Inject scoped CSS once
     if (!document.getElementById('ah-dash-style')) {
       const styleEl = document.createElement('style');
       styleEl.id = 'ah-dash-style';
-      // Scope all dashboard CSS inside .ah-dash-root
       const rawCSS = Array.from(doc.querySelectorAll('style')).map(s => s.textContent).join('\n');
       styleEl.textContent = rawCSS
         .replace(/\bbody\b/g, '.ah-dash-root')
@@ -3361,17 +3362,18 @@ async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
     const wrapper = document.createElement('div');
     wrapper.className = 'ah-dash-root';
     wrapper.innerHTML = doc.body.innerHTML;
+    // Remove any <script> from injected HTML (we'll load the JS file)
+    wrapper.querySelectorAll('script').forEach(s => s.remove());
     targetEl.innerHTML = '';
     targetEl.appendChild(wrapper);
 
-    // Run dashboard JS in this context
-    const scripts = doc.querySelectorAll('script');
-    scripts.forEach(s => {
-      if (s.textContent.trim()) {
-        const fn = new Function(s.textContent);
-        fn.call(window);
-      }
-    });
+    // Load dashboard JS via <script src> (CSP-safe)
+    if (!document.getElementById('ah-dash-script')) {
+      const tag = document.createElement('script');
+      tag.id = 'ah-dash-script';
+      tag.src = chrome.runtime.getURL('src/dashboard/dashboard.js');
+      document.body.appendChild(tag);
+    }
   } catch (err) {
     console.error('[Dashboard] Failed to load inline dashboard:', err);
     targetEl.innerHTML = '<div class="quiz-loading"><p>Erro ao carregar dashboard.</p></div>';
