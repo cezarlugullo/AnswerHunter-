@@ -519,4 +519,95 @@ export const StorageModel = {
         });
     },
 
+    // ─── DISCIPLINAS ────────────────────────────────────────────
+
+    /**
+     * Returns the saved disciplines list from chrome.storage
+     * @returns {Promise<Array>}
+     */
+    async getDisciplines() {
+        return new Promise((resolve) => {
+            chrome.storage.local.get(['ah_disciplines'], (d) => resolve(d.ah_disciplines || []));
+        });
+    },
+
+    /**
+     * Persists the disciplines list to chrome.storage
+     * @param {Array} list
+     */
+    async saveDisciplines(list) {
+        return new Promise((resolve) => {
+            chrome.storage.local.set({ ah_disciplines: list }, () => resolve());
+        });
+    },
+
+    /**
+     * Creates a new discipline. Returns existing if name already exists.
+     * @param {string} name
+     * @param {string} color hex color
+     * @returns {Promise<Object>} The discipline object
+     */
+    async addDiscipline(name, color = '#FF6B6B') {
+        const list = await this.getDisciplines();
+        const nameTrim = name.trim();
+        const exists = list.find(d => d.name.toLowerCase() === nameTrim.toLowerCase());
+        if (exists) return exists;
+        const disc = { id: 'd' + Date.now(), name: nameTrim, color, createdAt: Date.now() };
+        list.push(disc);
+        await this.saveDisciplines(list);
+        return disc;
+    },
+
+    /**
+     * Deletes a discipline by id
+     * @param {string} id
+     */
+    async deleteDiscipline(id) {
+        const list = await this.getDisciplines();
+        await this.saveDisciplines(list.filter(d => d.id !== id));
+    },
+
+    /**
+     * Renames a discipline
+     * @param {string} id
+     * @param {string} newName
+     */
+    async renameDiscipline(id, newName) {
+        const list = await this.getDisciplines();
+        const disc = list.find(d => d.id === id);
+        if (disc) {
+            disc.name = newName.trim();
+            await this.saveDisciplines(list);
+        }
+    },
+
+    /**
+     * Sets the discipline (subject) on an existing question node
+     * @param {string} questionId  node id (e.g. "q1234567890")
+     * @param {string} disciplineName
+     * @returns {Promise<boolean>}
+     */
+    async setQuestionDiscipline(questionId, disciplineName) {
+        if (!questionId) return false;
+        if (!this.data.length) await this.init();
+        const node = this.findNode(questionId);
+        if (!node || node.type !== 'question' || !node.content) return false;
+        node.content.subject = disciplineName || '';
+        node.updatedAt = Date.now();
+        await this.save();
+        return true;
+    },
+
+    /**
+     * Returns all question nodes belonging to a given discipline name
+     * @param {string} disciplineName
+     * @returns {Array}
+     */
+    getQuestionsByDiscipline(disciplineName) {
+        return this.getAllQuestions().filter(q => {
+            const s = q?.content?.subject || q?.content?.topic || q?.content?.discipline || '';
+            return s.toLowerCase() === disciplineName.toLowerCase();
+        });
+    },
+
 };

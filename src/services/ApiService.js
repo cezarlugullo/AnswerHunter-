@@ -2744,11 +2744,21 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
 
         const promptText = [
             'Você é um OCR especializado em provas educacionais.',
-            'Extraia APENAS a questão (enunciado + alternativas A-E) que está mais centralizada/visível na imagem.',
-            'Se houver múltiplas questões, escolha a que está mais ao centro da tela.',
+            'Extraia TODA a questão PRINCIPAL que está sendo respondida na imagem.',
+            'A questão principal é a que ocupa a MAIOR área central da tela, geralmente com alternativas A-E selecionáveis.',
+            'IGNORE questões em painéis laterais, recomendações, "questões similares" ou rodapés.',
+            '',
+            'IMPORTANTE: O enunciado COMPLETO inclui TUDO antes das alternativas:',
+            '- Cabeçalho da banca/concurso (ex: "(AFAP - FCC 2019)")',
+            '- Todos os parágrafos de contexto e explicação',
+            '- Trechos de código (SQL, Java, etc.), tabelas e fórmulas',
+            '- Lacunas (I, II, III) e seus conteúdos',
+            '- A pergunta final antes das alternativas',
+            'NÃO omita nenhuma parte do texto que aparece antes das alternativas A-E.',
+            'Extraia APENAS UMA questão. Se houver múltiplas, escolha a principal (maior/central).',
             'Retorne o texto puro da questão com as alternativas, sem nenhum comentário adicional.',
             'Formato esperado:',
-            '<enunciado da questão>',
+            '<TODO o texto do enunciado, incluindo cabeçalho, contexto, código e pergunta>',
             'A) <texto>',
             'B) <texto>',
             'C) <texto>',
@@ -2839,6 +2849,168 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
         } catch (error) {
             console.error('AnswerHunter: Vision OCR failed:', error);
             return '';
+        }
+    },
+
+    /**
+     * Phase 2.2 — Two-pass OCR: second pass with focused prompt to refine extraction.
+     * Called when first-pass OCR result seems incomplete or multi-question.
+     * Uses a stricter prompt that emphasizes isolating exactly one question.
+     * @param {string} base64Image - base64-encoded JPEG/PNG
+     * @param {string} firstPassHint - Text from the first OCR pass (used as context)
+     * @returns {Promise<string>} refined question text
+     */
+    async extractTextFromScreenshotFocused(base64Image, firstPassHint) {
+        if (!base64Image) return '';
+        const settings = await this._getSettings();
+
+        const hintSummary = (firstPassHint || '').substring(0, 200);
+        const focusedPrompt = [
+            'Você é um OCR de precisão para provas de múltipla escolha.',
+            'Extraia EXATAMENTE UMA questão da imagem — a questão PRINCIPAL que ocupa a região central.',
+            '',
+            'REGRAS RÍGIDAS:',
+            '1. Retorne APENAS UMA questão com alternativas A) a E)',
+            '2. IGNORE completamente: painéis laterais, menus, questões anteriores/seguintes, rodapés',
+            '3. O enunciado DEVE ser completo: inclua cabeçalho da banca, contexto, código, tabelas',
+            '4. Se houver múltiplas questões visíveis, escolha a que tem alternativas SELECIONÁVEIS (botões radio/checkbox ativos)',
+            '5. NÃO inclua texto de "gabarito", "resposta correta", "você acertou"',
+            '',
+            hintSummary ? `DICA: A questão principal começa com algo parecido com: "${hintSummary}"` : '',
+            '',
+            'Formato:',
+            '<enunciado completo>',
+            'A) <texto>',
+            'B) <texto>',
+            'C) <texto>',
+            'D) <texto>',
+            'E) <texto>'
+        ].filter(Boolean).join('\n');
+
+        const messages = [{
+            role: 'user',
+            content: [
+                { type: 'text', text: focusedPrompt },
+                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+            ]
+        }];
+
+        try {
+            const geminiPrimary = await this._isGeminiPrimary();
+            let result = null;
+
+            const tryGemini = async () => {
+                if (!settings.geminiApiKey) return null;
+                try {
+                    const model = settings.geminiModel || 'gemini-2.5-flash';
+                    const content = await this._callGemini(messages, { temperature: 0.05, max_tokens: 800, model });
+                    return content && content.length >= 20 ? content : null;
+                } catch { return null; }
+            };
+
+            const tryGroq = async () => {
+                if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+                const model = settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct';
+                try {
+                    const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model, messages, temperature: 0.05, max_tokens: 800 })
+                    }));
+                    const content = (data.choices?.[0]?.message?.content || '').trim();
+                    return content.length >= 20 ? content : null;
+                } catch { return null; }
+            };
+
+            if (geminiPrimary) {
+                result = await tryGemini();
+                if (!result) result = await tryGroq();
+            } else {
+                result = await tryGroq();
+                if (!result) result = await tryGemini();
+            }
+            console.log(`AnswerHunter: Focused OCR (2nd pass) → ${(result || '').length} chars`);
+            return result || '';
+        } catch (e) {
+            console.warn('AnswerHunter: Focused OCR failed:', e?.message);
+            return '';
+        }
+    },
+
+    /**
+     * Phase 3.2 — LLM post-validation: checks if extracted text is exactly one complete question.
+     * @param {string} questionText - The extracted question text to validate
+     * @returns {Promise<{ valid: boolean, reason: string, fixedText?: string }>}
+     */
+    async llmPostValidateQuestion(questionText) {
+        if (!questionText || questionText.length < 30) {
+            return { valid: false, reason: 'text too short' };
+        }
+        const settings = await this._getSettings();
+
+        const systemPrompt = [
+            'Você é um validador de extração de questões de provas.',
+            'Analise o texto abaixo e responda em JSON:',
+            '{',
+            '  "valid": true/false,',
+            '  "reason": "string explicando",',
+            '  "questionCount": número de questões detectadas,',
+            '  "hasCompleteEnunciado": true/false,',
+            '  "hasOptions": true/false,',
+            '  "fixedText": "texto corrigido se valid=false e correção possível, senão null"',
+            '}',
+            '',
+            'Critérios:',
+            '- valid=true se houver EXATAMENTE 1 questão de múltipla escolha completa',
+            '- valid=false se: texto vazio, múltiplas questões, enunciado truncado, sem alternativas',
+            '- fixedText: se houver 2+ questões, retorne apenas a primeira completa',
+            'Responda APENAS o JSON, sem markdown ou texto extra.'
+        ].join('\n');
+
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: questionText.substring(0, 3000) }
+        ];
+
+        try {
+            const geminiPrimary = await this._isGeminiPrimary();
+            let content = null;
+
+            if (geminiPrimary && settings.geminiApiKey) {
+                try {
+                    content = await this._callGemini(messages, { temperature: 0.05, max_tokens: 600, model: settings.geminiModel || 'gemini-2.5-flash' });
+                } catch { /* fall through */ }
+            }
+            if (!content && settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) {
+                try {
+                    const model = settings.groqModel || 'llama-3.3-70b-versatile';
+                    const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model, messages, temperature: 0.05, max_tokens: 600 })
+                    }));
+                    content = (data.choices?.[0]?.message?.content || '').trim();
+                } catch { /* fall through */ }
+            }
+
+            if (!content) return { valid: true, reason: 'LLM unavailable — assuming valid' };
+
+            // Parse JSON response
+            const jsonMatch = content.match(/\{[\s\S]*?\}/);
+            if (!jsonMatch) return { valid: true, reason: 'LLM response not JSON' };
+
+            const parsed = JSON.parse(jsonMatch[0]);
+            return {
+                valid: !!parsed.valid,
+                reason: parsed.reason || 'unknown',
+                fixedText: parsed.fixedText || undefined,
+                questionCount: parsed.questionCount,
+                hasCompleteEnunciado: parsed.hasCompleteEnunciado,
+                hasOptions: parsed.hasOptions
+            };
+        } catch (e) {
+            console.warn('AnswerHunter: LLM post-validation error:', e?.message);
+            return { valid: true, reason: 'validation error — assuming valid' };
         }
     },
 

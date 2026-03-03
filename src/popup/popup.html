@@ -1084,6 +1084,10 @@
         <span class="material-symbols-rounded">folder</span>
         <span data-i18n="tab.binder">Binder</span>
       </button>
+      <button class="tab-btn" data-tab="disciplinas">
+        <span class="material-symbols-rounded">school</span>
+        <span>Disciplinas</span>
+      </button>
       <div class="tab-indicator" id="tab-indicator"></div>
     </div>
 
@@ -1105,7 +1109,7 @@
         </button>
       </div>
       <div id="status" class="status"></div>
-      <div id="results" class="results">
+      <div id="results" class="results ah-stagger">
         <div class="placeholder" id="search-placeholder">
           <span class="material-symbols-rounded">library_books</span>
           <p data-i18n="placeholder.search">Find answers and save them to your binder.</p>
@@ -1124,6 +1128,9 @@
             <p class="binder-subtitle" data-i18n="binder.subtitle">Saved questions for review</p>
           </div>
         </div>
+        <button id="btnDisciplinas" class="action-btn" title="Gerenciar Disciplinas" style="color:#FF6B6B">
+          <span class="material-symbols-rounded">school</span>
+        </button>
         <button id="addQuestionBtn" class="action-btn action-btn--add" data-i18n-title="manual.add.btnTitle" title="Add question manually">
           <span class="material-symbols-rounded">add_circle</span>
         </button>
@@ -1131,7 +1138,7 @@
           <span class="material-symbols-rounded">delete_sweep</span>
         </button>
       </div>
-      <div id="binder-list" class="results">
+      <div id="binder-list" class="results ah-stagger">
         <div class="placeholder" id="binder-placeholder">
           <span class="material-symbols-rounded">folder_open</span>
           <p data-i18n-html="binder.placeholderHtml">Your binder is empty.<br>Save questions to review later.</p>
@@ -1141,6 +1148,36 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- ===== DISCIPLINAS VIEW ===== -->
+    <div id="view-disciplinas" class="view-section">
+      <div class="binder-header disc-view-header">
+        <div class="binder-header-left">
+          <span class="material-symbols-rounded binder-header-icon">school</span>
+          <div>
+            <h2>Disciplinas</h2>
+            <p class="binder-subtitle">Estude por assunto</p>
+          </div>
+        </div>
+        <button id="btnAddDiscNew" class="action-btn action-btn--add" title="Nova disciplina">
+          <span class="material-symbols-rounded">add_circle</span>
+        </button>
+      </div>
+
+      <!-- Inline create form -->
+      <div id="disc-create-form" class="disc-create-form hidden">
+        <input type="text" id="disc-create-input" class="manual-input" placeholder="Nome da disciplina..." maxlength="60">
+        <button id="disc-create-submit" type="button" class="disc-create-btn">
+          <span class="material-symbols-rounded">check</span>
+        </button>
+        <button id="disc-create-cancel" type="button" class="disc-create-cancel">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+
+      <!-- Cards -->
+      <div id="disc-cards-list" class="disc-cards-list ah-stagger"></div>
     </div>
 
     <footer>
@@ -1195,16 +1232,21 @@
           <div class="manual-char-count"><span id="manual-answer-count">0</span>/2000</div>
         </div>
 
-        <!-- Subject -->
+        <!-- Disciplina -->
         <div class="manual-field">
-          <label for="manual-subject" data-i18n="manual.add.subjectLabel">Subject / Topic</label>
-          <input
-            type="text"
-            id="manual-subject"
-            class="manual-input"
-            placeholder="Ex: Biologia, Matemática..."
-            maxlength="100"
-          >
+          <label for="manual-discipline">Disciplina</label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="manual-discipline" class="manual-select" style="flex:1"></select>
+            <button type="button" id="btnManageDisciplines" title="Gerenciar disciplinas"
+              style="flex-shrink:0;width:34px;height:34px;border-radius:8px;border:1px solid rgba(0,0,0,0.12);background:#FFF4F2;color:#FF6B6B;cursor:pointer;display:flex;align-items:center;justify-content:center">
+              <span class="material-symbols-rounded" style="font-size:18px">tune</span>
+            </button>
+          </div>
+          <input type="text" id="manual-new-discipline-input" class="manual-input hidden"
+            placeholder="Nome da nova disciplina..." maxlength="60"
+            style="margin-top:6px">
+          <!-- hidden field keeps backward compat with BinderController -->
+          <input type="hidden" id="manual-subject">
         </div>
 
         <!-- Source -->
@@ -1395,6 +1437,32 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- ===== MODAL GERENCIAR DISCIPLINAS ===== -->
+  <div id="disciplinas-overlay" class="manual-add-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="disc-modal-title">
+    <div class="manual-add-card" style="max-width:380px">
+      <div class="manual-add-header">
+        <span class="material-symbols-rounded u-manual-icon">school</span>
+        <h3 id="disc-modal-title">Minhas Disciplinas</h3>
+        <button class="manual-add-close" id="discModalCloseBtn" aria-label="Fechar">
+          <span class="material-symbols-rounded">close</span>
+        </button>
+      </div>
+      <div class="manual-add-body">
+        <!-- Create new -->
+        <div style="display:flex;gap:8px;margin-bottom:14px">
+          <input type="text" id="disc-new-name" class="manual-input" placeholder="Nome da nova disciplina..." maxlength="60" style="flex:1">
+          <button type="button" id="discAddBtn"
+            style="flex-shrink:0;padding:0 14px;height:36px;border-radius:8px;border:none;background:#FF6B6B;color:#fff;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;font-family:inherit;font-size:.82rem">
+            <span class="material-symbols-rounded" style="font-size:17px">add</span> Criar
+          </button>
+        </div>
+        <!-- List -->
+        <div id="disc-list" style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
+        <p id="disc-empty-msg" class="hidden" style="text-align:center;color:#aaa;font-size:.82rem;padding:20px 0">Nenhuma disciplina criada ainda.</p>
+      </div>
     </div>
   </div>
 

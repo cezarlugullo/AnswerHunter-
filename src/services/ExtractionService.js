@@ -431,6 +431,9 @@ export const ExtractionService = {
             if (el.querySelectorAll('button[type="submit"]').length >= 2) score += 4;
             if (rect.top >= 0 && rect.top < 350) score += 2;
 
+            // Penalize containers that are too large (likely contain multiple questions)
+            if (text.length > 3000) score -= 3;
+
             // Penalize menus/sidebars
             if (/menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|ola\b/i.test(text)) score -= 8;
             if (rect.width < window.innerWidth * 0.35) score -= 4;
@@ -451,6 +454,137 @@ export const ExtractionService = {
 
         console.log('AnswerHunter: Nenhuma questao encontrada.');
         return '';
+    },
+
+    /**
+     * PHASE 1.1 — Viewport-centric extraction
+     * Uses elementFromPoint on a grid of viewport positions to find the question
+     * container that occupies the most central/visible area. This is independent
+     * of site-specific selectors and works on any educational platform.
+     * Returns { text, confidence, containerTag } or null.
+     */
+    extractViewportCentricScript: function () {
+        function cleanText(text) {
+            return (text || '').replace(/\s+/g, ' ').trim();
+        }
+        function sanitize(text) {
+            if (!text) return '';
+            let c = cleanText(text);
+            c = c.replace(/\bMarcar para revis(?:a|ã)o\b/gi, '');
+            c = c.replace(/^\s*\d+\s*[-.)]?\s*/i, '');
+            c = c.replace(/^(?:Quest(?:a|ã)o|Questao)\s*\d+\s*[:.\-]?\s*/i, '');
+            return c.trim();
+        }
+        function countOptions(text) {
+            if (!text) return 0;
+            const m = text.match(/(?:^|\n)\s*[A-E]\s*[\)\.\-:]\s*\S/gi) || [];
+            return new Set(m.map(x => x.trim().charAt(0).toUpperCase())).size;
+        }
+
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+
+        // Grid of probe points — weighted towards center and upper half
+        const probes = [];
+        const xPcts = [0.25, 0.4, 0.5, 0.6, 0.75];
+        const yPcts = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7];
+        for (const xp of xPcts) {
+            for (const yp of yPcts) {
+                probes.push({ x: Math.floor(W * xp), y: Math.floor(H * yp) });
+            }
+        }
+
+        // Collect all unique elements hit by probes and their ancestors
+        const hitMap = new Map(); // el -> { hits, minDist }
+        const centerX = W / 2;
+        const centerY = H * 0.35; // slightly above center (questions tend to be upper)
+
+        for (const p of probes) {
+            const el = document.elementFromPoint(p.x, p.y);
+            if (!el || el === document.body || el === document.documentElement) continue;
+
+            // Walk up to find suitable container (not too small, not too large)
+            let current = el;
+            for (let i = 0; i < 12; i++) {
+                if (!current || current === document.body) break;
+                const text = cleanText(current.innerText || '');
+                const rect = current.getBoundingClientRect();
+
+                // Skip tiny elements, skip menus/sidebars
+                if (text.length < 40 || rect.width < W * 0.3) {
+                    current = current.parentElement;
+                    continue;
+                }
+
+                // Skip elements that are too large (whole page body)
+                if (text.length > 8000) break;
+
+                const dist = Math.sqrt(
+                    Math.pow(rect.left + rect.width / 2 - centerX, 2) +
+                    Math.pow(rect.top + rect.height / 2 - centerY, 2)
+                );
+
+                const key = current;
+                const existing = hitMap.get(key);
+                if (existing) {
+                    existing.hits++;
+                    existing.minDist = Math.min(existing.minDist, dist);
+                } else {
+                    hitMap.set(key, { el: current, hits: 1, minDist: dist, textLen: text.length });
+                }
+                break; // found a suitable container for this probe
+            }
+        }
+
+        if (hitMap.size === 0) return null;
+
+        // Score each candidate container
+        let bestCandidate = null;
+        let bestScore = -Infinity;
+
+        for (const [, entry] of hitMap) {
+            const text = cleanText(entry.el.innerText || '');
+            if (text.length < 40) continue;
+            const opts = countOptions(text);
+            const hasQ = text.includes('?');
+            const isMenu = /menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|ola\b|voltar|avançar/i.test(text);
+            if (isMenu) continue;
+
+            const rect = entry.el.getBoundingClientRect();
+            const isMainContent = rect.width >= W * 0.35 && rect.left < W * 0.5;
+
+            let score = 0;
+            score += entry.hits * 25;                                    // more probe hits = more central
+            score -= entry.minDist * 0.15;                               // closer to center = better
+            score += opts * 80;                                          // options are strong signal
+            score += hasQ ? 20 : 0;                                      // question mark
+            score += isMainContent ? 40 : 0;                             // in main content area
+            score += /[A-E]\)\s+|button\[type="submit"\]/i.test(text) ? 15 : 0;
+            score -= text.length > 4000 ? 30 : 0;                       // too large = multi-question risk
+            score += text.length >= 100 && text.length <= 2500 ? 20 : 0; // ideal question length
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestCandidate = { el: entry.el, text, opts, score };
+            }
+        }
+
+        if (!bestCandidate || bestCandidate.text.length < 40) return null;
+
+        // Isolate to first question if text contains multiple
+        let finalText = bestCandidate.text;
+        const secondQStart = finalText.search(/\n\s*\d+\s*[\.\)]\s*(?=[A-ZÀ-ÖÙ-ÝÉ])/);
+        if (secondQStart > 100 && countOptions(finalText.substring(0, secondQStart)) >= 2) {
+            finalText = finalText.substring(0, secondQStart).trim();
+        }
+
+        return {
+            text: sanitize(finalText).substring(0, 3500),
+            confidence: Math.min(0.95, bestCandidate.opts >= 3 ? 0.9 : bestCandidate.opts >= 2 ? 0.75 : 0.5),
+            containerTag: bestCandidate.el.tagName?.toLowerCase() || 'unknown',
+            probeHits: hitMap.get(bestCandidate.el)?.hits || 0,
+            optionCount: bestCandidate.opts
+        };
     },
 
     /**

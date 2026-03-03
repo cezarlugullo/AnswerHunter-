@@ -35,59 +35,59 @@ const REV_MARKERS = {
 const formatExplanation = text => {
   if (!text) return '';
   let html = escH(text);
-  
+
   // Bold
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   // Italic
   html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  
+
   // Split into lines for structured rendering
   const lines = html.split('\n');
   let result = '';
   let inList = false;
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) {
       if (inList) { result += '</div>'; inList = false; }
       continue;
     }
-    
+
     // Correct answer header line
     if (line.startsWith(MARK_OK)) {
       result += `<div class="exp-correct-answer"><span class="icon">check_circle</span> ${line.slice(MARK_OK.length).trim()}</div>`;
       continue;
     }
-    
+
     // Summary line
     if (line.startsWith(MARK_SUMMARY)) {
       result += `<div class="exp-summary"><span class="icon">lightbulb</span> ${line.slice(MARK_SUMMARY.length).trim()}</div>`;
       continue;
     }
-    
+
     // Wrong alternative line
     if (line.startsWith(MARK_WRONG)) {
       result += `<div class="exp-wrong"><span class="icon">cancel</span> ${line.slice(MARK_WRONG.length).trim()}</div>`;
       continue;
     }
-    
+
     // Numbered steps (1., 2., 3., etc.)
     const numMatch = line.match(/^(\d+)\.\s+(.*)/);
     if (numMatch) {
       result += `<div class="exp-step"><span class="exp-step-num">${numMatch[1]}</span><span class="exp-step-text">${numMatch[2]}</span></div>`;
       continue;
     }
-    
+
     // Sub-items with dash (- text)
     if (line.startsWith('- ')) {
       result += `<div class="exp-sub-item">${line.slice(2)}</div>`;
       continue;
     }
-    
+
     // Regular paragraph
     result += `<p class="exp-paragraph">${line}</p>`;
   }
-  
+
   if (inList) result += '</div>';
   return result;
 };
@@ -308,31 +308,31 @@ function parseAnswer(text) {
   const lines = safeText.split('\n');
   const steps = [];
   const final = [];
-  
+
   let inFinal = false;
   for (const line of lines) {
     const lower = line.trim().toLowerCase();
-    if (lower.startsWith('letra ') || 
-        lower.startsWith('resposta correta:') || 
-        lower.startsWith('gabarito') ||
-        lower.match(/^[a-e]\s*-/)) {
+    if (lower.startsWith('letra ') ||
+      lower.startsWith('resposta correta:') ||
+      lower.startsWith('gabarito') ||
+      lower.match(/^[a-e]\s*-/)) {
       inFinal = true;
     }
-    
+
     if (inFinal) {
       final.push(line);
     } else {
       steps.push(line);
     }
   }
-  
+
   let finalStr = final.length > 0 ? final.join('\n').trim() : safeText.trim();
   let stepsStr = final.length > 0 ? steps.join('\n').trim() : '';
-  
+
   // Try to extract letter and text
   let letter = '';
   let answerText = finalStr;
-  
+
   // Match "Letra X: text" or "X - text"
   const match = finalStr.match(/^(?:Letra\s+)?([A-E])(?:[:\-\)\.]\s*)(.*)/is);
   if (match) {
@@ -346,7 +346,7 @@ function parseAnswer(text) {
       answerText = match2[2].trim();
     }
   }
-  
+
   return {
     steps: stepsStr,
     final: finalStr,
@@ -535,9 +535,9 @@ function buildCard(q, index) {
       ${parsedQ.alternativas.length > 0 ? `
         <div class="question-options">
           ${parsedQ.alternativas.map((opt, idx) => {
-            const letter = String.fromCharCode(65 + idx);
-            return `<button class="option-item" type="button" data-letter="${letter}" aria-pressed="false">${escH(opt)}</button>`;
-          }).join('')}
+    const letter = String.fromCharCode(65 + idx);
+    return `<button class="option-item" type="button" data-letter="${letter}" aria-pressed="false">${escH(opt)}</button>`;
+  }).join('')}
         </div>
       ` : ''}
     </div>
@@ -659,17 +659,17 @@ function buildCard(q, index) {
       </div>
       
       ${(() => {
-        const srcs = Array.isArray(q.sources) && q.sources.length ? q.sources : (q.source ? [{ title: q.source, link: q.source }] : []);
-        if (!srcs.length) return '';
-        const links = srcs.map(s => {
-          const url = String(s?.link || s || '').trim();
-          const label = String(s?.title || url).trim();
-          let host = '';
-          try { host = new URL(url).hostname.replace(/^www\./i, ''); } catch (_) { host = label; }
-          return url ? `<a href="${escH(url)}" target="_blank" rel="noopener noreferrer">${escH(host || label)}</a>` : escH(label);
-        }).filter(Boolean).join(' · ');
-        return links ? `<div class="answer-source"><span class="icon">link</span> ${links}</div>` : '';
-      })()}
+      const srcs = Array.isArray(q.sources) && q.sources.length ? q.sources : (q.source ? [{ title: q.source, link: q.source }] : []);
+      if (!srcs.length) return '';
+      const links = srcs.map(s => {
+        const url = String(s?.link || s || '').trim();
+        const label = String(s?.title || url).trim();
+        let host = '';
+        try { host = new URL(url).hostname.replace(/^www\./i, ''); } catch (_) { host = label; }
+        return url ? `<a href="${escH(url)}" target="_blank" rel="noopener noreferrer">${escH(host || label)}</a>` : escH(label);
+      }).filter(Boolean).join(' · ');
+      return links ? `<div class="answer-source"><span class="icon">link</span> ${links}</div>` : '';
+    })()}
 
       <div class="sm2-rating-bar" id="sm2Bar_${escH(q.id || '')}">
         <div class="sm2-rating-label"><span class="icon">event_repeat</span> Revisão espaçada — como foi?</div>
@@ -752,19 +752,19 @@ function buildCard(q, index) {
       const contentDiv = exp.querySelector('.explanation-content');
       const loadingDiv = exp.querySelector('.explanation-loading');
       const isVisible = exp.classList.contains('visible');
-      
+
       if (isVisible) {
         exp.classList.remove('visible');
         btnExplanation.classList.remove('active');
       } else {
         exp.classList.add('visible');
         btnExplanation.classList.add('active');
-        
+
         // If there's no content yet, generate it
         if (!contentDiv.innerHTML.trim()) {
           contentDiv.style.display = 'none';
           loadingDiv.style.display = 'flex';
-          
+
           try {
             const explanation = await ApiService.generateTutorExplanation(cleanQuestion, cleanAnswer, q.source);
             if (explanation) {
@@ -944,10 +944,10 @@ function buildCard(q, index) {
     const qText = article.querySelector('.card-question').innerText;
     const aText = article.querySelector('.answer-final-box').innerText;
     const expText = article.querySelector('.answer-explanation') ? article.querySelector('.answer-explanation').innerText : '';
-    
+
     let text = `Questão:\n${qText}\n\nResposta:\n${aText}\n`;
     if (expText) text += `\nExplicação:\n${expText}\n`;
-    
+
     try {
       await navigator.clipboard.writeText(text);
       const icon = btn.querySelector('.icon');
@@ -1029,11 +1029,11 @@ function buildCard(q, index) {
 
   article.querySelector('.btn-delete-card').addEventListener('click', async () => {
     if (!confirm('Tem certeza que deseja excluir esta questão?')) return;
-    
+
     chrome.storage.local.get(['binderStructure'], (result) => {
       const data = result.binderStructure;
       if (!Array.isArray(data)) return;
-      
+
       const removeFromTree = (nodes, targetId) => {
         for (let i = 0; i < nodes.length; i++) {
           if (nodes[i].id === targetId) {
@@ -1046,7 +1046,7 @@ function buildCard(q, index) {
         }
         return false;
       };
-      
+
       if (removeFromTree(data, q.id)) {
         chrome.storage.local.set({ binderStructure: data });
       }
@@ -1276,22 +1276,22 @@ function revealCard(card, context = {}) {
       if (correctEl) correctEl.classList.add('correct');
       if (selectedEl && selectedLetter !== correctLetter) selectedEl.classList.add('wrong');
 
-    // JOL Calibration feedback
-    const jolBadgeEl = card.querySelector('[id^="jolBadge_"]');
-    const jolBarEl = card.querySelector('[id^="jolBar_"]');
-    const cardUserConfidence = card._jolConfidence || null;
-    if (jolBadgeEl && cardUserConfidence) {
-      const wasCorrect = selectedLetter === correctLetter;
-      const fb = PedagogicalPromptsService.getCalibrationFeedback(cardUserConfidence, wasCorrect);
-      jolBadgeEl.innerHTML = `<span style="color:${fb.color};font-weight:600">${escH(fb.badge)}</span> ${escH(fb.message)}`;
-      jolBadgeEl.style.display = 'block';
-      if (jolBarEl) jolBarEl.style.display = 'none';
-    }
-    // Show 'Por que errei?' button if wrong
-    const btnWW = card.querySelector('.btn-why-wrong');
-    if (btnWW) {
-      btnWW.style.display = selectedLetter !== correctLetter ? 'inline-flex' : 'none';
-    }
+      // JOL Calibration feedback
+      const jolBadgeEl = card.querySelector('[id^="jolBadge_"]');
+      const jolBarEl = card.querySelector('[id^="jolBar_"]');
+      const cardUserConfidence = card._jolConfidence || null;
+      if (jolBadgeEl && cardUserConfidence) {
+        const wasCorrect = selectedLetter === correctLetter;
+        const fb = PedagogicalPromptsService.getCalibrationFeedback(cardUserConfidence, wasCorrect);
+        jolBadgeEl.innerHTML = `<span style="color:${fb.color};font-weight:600">${escH(fb.badge)}</span> ${escH(fb.message)}`;
+        jolBadgeEl.style.display = 'block';
+        if (jolBarEl) jolBarEl.style.display = 'none';
+      }
+      // Show 'Por que errei?' button if wrong
+      const btnWW = card.querySelector('.btn-why-wrong');
+      if (btnWW) {
+        btnWW.style.display = selectedLetter !== correctLetter ? 'inline-flex' : 'none';
+      }
     }
 
     const comparePanel = card.querySelector('.compare-panel');
@@ -1376,33 +1376,33 @@ function normText(value = '') {
 // Canonical forms for subjects that appear with different casing/plural
 const SUBJECT_ALIASES = {
   // Banco de Dados variants
-  'bancos de dados'          : 'Banco de Dados',
-  'banco de dados'           : 'Banco de Dados',
-  'banco de dado'            : 'Banco de Dados',
-  'base de dados'            : 'Banco de Dados',
-  'bases de dados'           : 'Banco de Dados',
-  'banco de dados nosql'     : 'Banco de Dados NoSQL',
-  'bancos de dados nosql'    : 'Banco de Dados NoSQL',
-  'sistemas de bancos'       : 'Banco de Dados',
-  'sistemas de banco'        : 'Banco de Dados',
-  'modelos de dados'         : 'Banco de Dados',
-  'modelo de dados'          : 'Banco de Dados',
+  'bancos de dados': 'Banco de Dados',
+  'banco de dados': 'Banco de Dados',
+  'banco de dado': 'Banco de Dados',
+  'base de dados': 'Banco de Dados',
+  'bases de dados': 'Banco de Dados',
+  'banco de dados nosql': 'Banco de Dados NoSQL',
+  'bancos de dados nosql': 'Banco de Dados NoSQL',
+  'sistemas de bancos': 'Banco de Dados',
+  'sistemas de banco': 'Banco de Dados',
+  'modelos de dados': 'Banco de Dados',
+  'modelo de dados': 'Banco de Dados',
   // Ciência da Computação
-  'ciencia da computacao'    : 'Ciência da Computação',
-  'ciencias da computacao'   : 'Ciência da Computação',
+  'ciencia da computacao': 'Ciência da Computação',
+  'ciencias da computacao': 'Ciência da Computação',
   // Sistemas distribuídos
-  'sistemas distribuidos'    : 'Sistemas Distribuídos',
-  'sistema distribuido'      : 'Sistemas Distribuídos',
-  'computacao distribuida'   : 'Computação Distribuída',
+  'sistemas distribuidos': 'Sistemas Distribuídos',
+  'sistema distribuido': 'Sistemas Distribuídos',
+  'computacao distribuida': 'Computação Distribuída',
   // Tecnologia da Informação
-  'tecnologia da informacao' : 'Tecnologia da Informação',
+  'tecnologia da informacao': 'Tecnologia da Informação',
   'tecnologias da informacao': 'Tecnologia da Informação',
   // Sistemas de Informação
-  'sistemas de informacao'   : 'Sistemas de Informação',
-  'sistema de informacao'    : 'Sistemas de Informação',
+  'sistemas de informacao': 'Sistemas de Informação',
+  'sistema de informacao': 'Sistemas de Informação',
   // Computação / Informática
-  'computacao'               : 'Computação',
-  'informatica'              : 'Informática',
+  'computacao': 'Computação',
+  'informatica': 'Informática',
 };
 
 function normalizeSubject(value = '') {
@@ -1443,10 +1443,16 @@ function getQuestionSubject(q) {
     if (tag && !GENERIC_SUBJECT_TAGS.has(normText(tag))) return tag;
   }
 
-  const folder = normalizeSubject(q.folderPath || '');
-  if (folder && folder !== 'Raiz') {
-    const firstFolder = folder.split('/')[0]?.trim();
-    if (firstFolder && !GENERIC_SUBJECT_TAGS.has(normText(firstFolder))) return firstFolder;
+  const rawPath = q.folderPath || '';
+  if (rawPath) {
+    const ROOT_NAMES = new Set(['raiz', 'root', 'my study', 'binder', 'meu estudo', '']);
+    const parts = rawPath.split('/').map(s => s.trim())
+      .filter(s => s && !ROOT_NAMES.has(s.toLowerCase()));
+    const firstMeaningful = parts.find(p => !GENERIC_SUBJECT_TAGS.has(normText(p)));
+    if (firstMeaningful) {
+      const norm = normalizeSubject(firstMeaningful);
+      if (norm) return norm;
+    }
   }
 
   return inferSubjectFromText(q.question || '', q.answer || '');
@@ -1759,7 +1765,7 @@ function applySortFromSelect() {
   allQuestions = sorted;
   rebuildCardList(sorted, mode);
   // Persist preference
-  try { chrome.storage.local.set({ ah_sortMode: mode }); } catch (e) {}
+  try { chrome.storage.local.set({ ah_sortMode: mode }); } catch (e) { }
 }
 
 function init(questions) {
@@ -1803,7 +1809,7 @@ function init(questions) {
   if (subjectSelect) {
     subjectSelect.addEventListener('change', () => {
       filterCards();
-      try { chrome.storage.local.set({ ah_subjectFilter: subjectSelect.value }); } catch (_) {}
+      try { chrome.storage.local.set({ ah_subjectFilter: subjectSelect.value }); } catch (_) { }
     });
   }
 
@@ -1848,10 +1854,25 @@ function init(questions) {
     rebuildCardList(sorted, mode);
     initDoneDrawerFromSm2(); // move today's rated cards to the done drawer on reload
 
+    // Handle URL params from Disciplinas tab (discipline pre-filter + simulado auto-open)
+    const _urlParams = new URLSearchParams(window.location.search);
+    const _urlDiscipline = _urlParams.get('discipline');
+    const _urlMode = _urlParams.get('mode');
+    if (_urlDiscipline && subjectSelect) {
+      const _opt = [...subjectSelect.options].find(o => o.value === _urlDiscipline);
+      if (_opt) {
+        subjectSelect.value = _urlDiscipline;
+        filterCards();
+      }
+    }
+    if (_urlMode === 'simulado') {
+      setTimeout(() => openSimulado(), 500);
+    }
+
     // Initialize gamification on load
     loadStreakData().then(data => renderStreakUI(data));
     updateDailyProgress();
-  }).catch(() => {});
+  }).catch(() => { });
 
   // Hide answered chip
   document.getElementById('chipHideAnswered').addEventListener('click', function () {
@@ -1880,7 +1901,7 @@ function init(questions) {
     chipHideToday.addEventListener('click', async function () {
       this.classList.toggle('active');
       const active = this.classList.contains('active');
-      try { chrome.storage.local.set({ ah_chipHideToday: active }); } catch (_) {}
+      try { chrome.storage.local.set({ ah_chipHideToday: active }); } catch (_) { }
       await loadSm2Data(); // ensure cache is fresh
       filterCards();
       updateTodayDoneBadge();
@@ -1929,7 +1950,7 @@ function init(questions) {
     chipModo.addEventListener('click', () => {
       _modoProva = !_modoProva;
       applyModo();
-      try { chrome.storage.local.set({ ah_modoProva: _modoProva }); } catch(_){}
+      try { chrome.storage.local.set({ ah_modoProva: _modoProva }); } catch (_) { }
     });
     chrome.storage.local.get(['ah_modoProva'], r => {
       if (r.ah_modoProva !== undefined) _modoProva = r.ah_modoProva;
@@ -1942,16 +1963,16 @@ function init(questions) {
     if (!confirm('Reiniciar todo o progresso desta sessão?')) return;
     document.querySelectorAll('.card').forEach(card => hideCard(card));
     chipReveal.dataset.state = 'hide';
-    updateModeToggle(false);    document.getElementById('chipHideAnswered').classList.remove('active');
+    updateModeToggle(false); document.getElementById('chipHideAnswered').classList.remove('active');
     document.getElementById('chipReviewOnly').classList.remove('active');
     const chipHT = document.getElementById('chipHideToday');
     if (chipHT) {
       chipHT.classList.remove('active');
-      try { chrome.storage.local.set({ ah_chipHideToday: false }); } catch (_) {}
+      try { chrome.storage.local.set({ ah_chipHideToday: false }); } catch (_) { }
     }
     const subjectSelect = document.getElementById('subjectSelect');
     if (subjectSelect) subjectSelect.value = 'all';
-    try { chrome.storage.local.set({ ah_subjectFilter: 'all' }); } catch (_) {}
+    try { chrome.storage.local.set({ ah_subjectFilter: 'all' }); } catch (_) { }
     filterCards();
   });
 
@@ -2012,7 +2033,7 @@ chrome.storage.local.get(['binderStructure'], (result) => {
     document.getElementById('emptyState').querySelector('p').textContent =
       'Nenhuma questão salva. Use a extensão para salvar questões no fichário.';
     setMainView('dashboard');
-    renderDashboard(dashHome, { inline: true }).catch(() => {});
+    renderDashboard(dashHome, { inline: true }).catch(() => { });
   } else {
     init(collectQuestions(data));
   }
@@ -2061,7 +2082,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   syncSidebarSessionInfo();
 
   if (_mainView === 'dashboard') {
-    renderDashboard(dashHome, { inline: true }).catch(() => {});
+    renderDashboard(dashHome, { inline: true }).catch(() => { });
   }
 
   // Show inline sync toast
@@ -2218,7 +2239,7 @@ function flyCardOff(card) {
 
 function moveToDoneDrawer(card) {
   const drawer = document.getElementById('doneDrwr');
-  const list   = document.getElementById('doneDrwrList');
+  const list = document.getElementById('doneDrwrList');
   const countEl = document.getElementById('doneDrwrCount');
   if (!drawer || !list) return;
 
@@ -2248,14 +2269,14 @@ function moveToDoneDrawer(card) {
 
 function initDoneDrawerFromSm2() {
   const todayStr = todayISO();
-  const drawer  = document.getElementById('doneDrwr');
-  const list    = document.getElementById('doneDrwrList');
+  const drawer = document.getElementById('doneDrwr');
+  const list = document.getElementById('doneDrwrList');
   const countEl = document.getElementById('doneDrwrCount');
   if (!drawer || !list) return;
 
   let count = 0;
   document.querySelectorAll('#cardList .card').forEach(card => {
-    const qid   = card.dataset.qid;
+    const qid = card.dataset.qid;
     const entry = _sm2Cache[qid];
     if (entry?.lastRated === todayStr) {
       card.classList.remove('hidden-card');
@@ -2314,7 +2335,7 @@ async function migrateSmToStorage() {
       await Promise.all(chunk.map(async (qid) => {
         try {
           await persistSm2ToNode(qid, _sm2Cache[qid] || {});
-        } catch (_) {}
+        } catch (_) { }
       }));
       await new Promise(r => setTimeout(r, 0));
     }
@@ -2333,8 +2354,8 @@ async function checkMastery(qid, entry) {
       if (data[qid]) { data[qid].mastered = true; await saveSm2Data(data); }
       await persistSm2ToNode(qid, { mastered: true });
       setTimeout(() => {
-        try { microCelebrate('complete'); } catch (_) {}
-        try { showSyncToast('Questão dominada! Intervalo ≥21 dias.'); } catch (_) {}
+        try { microCelebrate('complete'); } catch (_) { }
+        try { showSyncToast('Questão dominada! Intervalo ≥21 dias.'); } catch (_) { }
       }, 500);
       const card = document.querySelector(`.card[data-qid="${qid}"]`);
       if (card && !card.querySelector('.mastered-badge')) {
@@ -2356,7 +2377,7 @@ async function rateSm2Silent(qid, quality) {
     const data = await loadSm2Data();
     const entry = data[qid] || {};
     const migratedEntry = FSRSService.migrateSm2Entry(entry);
-  const newEntry = FSRSService.calculate(migratedEntry, quality);
+    const newEntry = FSRSService.calculate(migratedEntry, quality);
     newEntry.errors = (entry.errors || 0) + (quality === 0 ? 1 : 0);
     newEntry.totalRatings = (entry.totalRatings || 0) + 1;
     newEntry.attempt_count = (entry.attempt_count || entry.totalRatings || 0) + 1;
@@ -2397,7 +2418,7 @@ async function updateNewCardsLimitBadge() {
       badge.textContent = `${queue.newCards.length} novas hoje`;
       badge.title = `Limite diário: ${queue.newLimit} novas | Estudadas hoje: ${queue.newStudiedToday}`;
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 
 async function rateSm2(qid, quality, sm2Bar, doneEl) {
@@ -2483,7 +2504,7 @@ const doneDrwrToggle = document.getElementById('doneDrwrToggle');
 if (doneDrwrToggle) {
   doneDrwrToggle.addEventListener('click', () => {
     const drawer = document.getElementById('doneDrwr');
-    const list   = document.getElementById('doneDrwrList');
+    const list = document.getElementById('doneDrwrList');
     const isOpen = drawer.classList.toggle('open');
     list.classList.toggle('hidden', !isOpen);
     doneDrwrToggle.setAttribute('aria-expanded', String(isOpen));
@@ -2761,12 +2782,33 @@ function closeSimulado() {
   setTimeout(() => simOverlay.setAttribute('hidden', ''), 220);
 }
 
-function renderSimSetup() {
+async function renderSimSetup() {
+  // Build subject counts from allQuestions
+  const subjectCounts = new Map();
+  allQuestions.forEach(q => {
+    const s = getQuestionSubject(q);
+    subjectCounts.set(s, (subjectCounts.get(s) || 0) + 1);
+  });
+  const subjectEntries = [...subjectCounts.entries()].sort((a, b) => b[1] - a[1]);
+
   const available = allQuestions.length;
   const countOptions = [5, 10, 20, Math.min(available, 30)].filter((v, i, a) => a.indexOf(v) === i && v <= available);
   if (!countOptions.includes(available) && available > 0) countOptions.push(available);
 
+  const disciplineSection = subjectEntries.length > 1 ? `
+    <div class="sim-setup-section">
+      <div class="sim-setup-label"><span class="icon">school</span> Disciplina</div>
+      <div class="sim-options-grid" id="simDiscGrid">
+        <button class="sim-option-pill selected" data-disc="all" type="button"><span class="icon">apps</span>Todas</button>
+        ${subjectEntries.map(([subj, count]) => `
+          <button class="sim-option-pill" data-disc="${escH(subj)}" type="button">
+            <span class="icon">school</span>${escH(subj)} (${count})
+          </button>`).join('')}
+      </div>
+    </div>` : '';
+
   simModalBody.innerHTML = `
+    ${disciplineSection}
     <div class="sim-setup-section">
       <div class="sim-setup-label"><span class="icon">format_list_numbered</span> Número de questões</div>
       <div class="sim-options-grid" id="simCountGrid">
@@ -2791,6 +2833,41 @@ function renderSimSetup() {
 
   let selectedCount = Math.min(10, available);
   let selectedTime = 600;
+  let selectedDiscipline = 'all';
+
+  // Helper to rebuild count grid when discipline changes pool size
+  function rebuildCountGrid(pool) {
+    const avail = pool.length;
+    const opts = [5, 10, 20, Math.min(avail, 30)].filter((v, i, a) => a.indexOf(v) === i && v <= avail);
+    if (!opts.includes(avail) && avail > 0) opts.push(avail);
+    selectedCount = Math.min(selectedCount, avail) || avail;
+    const grid = simModalBody.querySelector('#simCountGrid');
+    if (!grid) return;
+    grid.innerHTML = opts.map(n => `
+      <button class="sim-option-pill${n === selectedCount ? ' selected' : ''}" data-count="${n}" type="button">
+        <span class="icon">apps</span>${n === avail ? `Todas (${n})` : n}
+      </button>`).join('');
+    grid.querySelectorAll('.sim-option-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        grid.querySelectorAll('.sim-option-pill').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedCount = parseInt(btn.dataset.count);
+      });
+    });
+  }
+
+  // Discipline pills
+  simModalBody.querySelectorAll('#simDiscGrid .sim-option-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      simModalBody.querySelectorAll('#simDiscGrid .sim-option-pill').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedDiscipline = btn.dataset.disc;
+      const pool = selectedDiscipline === 'all'
+        ? allQuestions
+        : allQuestions.filter(q => getQuestionSubject(q) === selectedDiscipline);
+      rebuildCountGrid(pool);
+    });
+  });
 
   // Count pills
   simModalBody.querySelectorAll('#simCountGrid .sim-option-pill').forEach(btn => {
@@ -2811,13 +2888,16 @@ function renderSimSetup() {
   });
 
   simModalBody.querySelector('#simStartBtn').addEventListener('click', () => {
-    startSimulado(selectedCount, selectedTime);
+    startSimulado(selectedCount, selectedTime, selectedDiscipline);
   });
 }
 
-function startSimulado(n, timeLimitSec) {
-  // Shuffle and pick N questions
-  const shuffled = [...allQuestions].sort(() => Math.random() - 0.5).slice(0, n);
+function startSimulado(n, timeLimitSec, disciplineFilter) {
+  // Filter by discipline if specified, then shuffle and pick N questions
+  const pool = (disciplineFilter && disciplineFilter !== 'all')
+    ? allQuestions.filter(q => getQuestionSubject(q) === disciplineFilter)
+    : allQuestions;
+  const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, n);
   _sim = { questions: shuffled, idx: 0, results: [], timerInterval: null, elapsed: 0, timeLimitSec, nQuestions: n };
   renderSimQuestion();
 
@@ -3263,7 +3343,7 @@ function setMainView(view, { rerender = true } = {}) {
   }
 
   if (_mainView === 'dashboard' && rerender) {
-    renderDashboard(dashHome, { inline: true }).catch(() => {});
+    renderDashboard(dashHome, { inline: true }).catch(() => { });
   }
 }
 
@@ -3334,48 +3414,54 @@ async function runEvidenceProtocol(type) {
 async function renderDashboard(targetEl = dashBody, { inline = false } = {}) {
   if (!targetEl) return;
 
-  // Load new dashboard inline (no iframe → single scroll)
-  const already = targetEl.querySelector('.ah-dash-root');
-  if (already) return;
+  // Already loaded — skip
+  if (targetEl.querySelector('.ah-dash-v2-frame')) return;
 
   targetEl.innerHTML = '<div class="quiz-loading"><span class="icon spin-icon">autorenew</span><p>Carregando dashboard...</p></div>';
 
   try {
-    const url = chrome.runtime.getURL('src/dashboard/dashboard.html');
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const html = await resp.text();
-    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const dashV2Url = chrome.runtime.getURL('src/dashboard/dashboard-v2.html');
 
-    // Inject scoped CSS once
-    if (!document.getElementById('ah-dash-style')) {
-      const styleEl = document.createElement('style');
-      styleEl.id = 'ah-dash-style';
-      const rawCSS = Array.from(doc.querySelectorAll('style')).map(s => s.textContent).join('\n');
-      styleEl.textContent = rawCSS
-        .replace(/\bbody\b/g, '.ah-dash-root')
-        .replace(/:root/g, '.ah-dash-root');
-      document.head.appendChild(styleEl);
-    }
+    // Embed dashboard v2 as full iframe (ES modules need their own document)
+    const iframe = document.createElement('iframe');
+    iframe.className = 'ah-dash-v2-frame';
+    iframe.src = dashV2Url;
+    iframe.style.cssText = `
+      width: 100%;
+      min-height: calc(100vh - var(--header-h, 58px) - var(--toolbar-h, 52px) - 20px);
+      border: none;
+      border-radius: var(--radius-lg, 16px);
+      background: var(--surface, #fff);
+    `;
+    iframe.setAttribute('loading', 'eager');
+    iframe.setAttribute('allow', 'clipboard-write');
 
-    // Inject body HTML
-    const wrapper = document.createElement('div');
-    wrapper.className = 'ah-dash-root';
-    wrapper.innerHTML = doc.body.innerHTML;
-    // Remove any <script> from injected HTML (we'll load the JS file)
-    wrapper.querySelectorAll('script').forEach(s => s.remove());
+    // Auto-resize iframe height based on content
+    iframe.addEventListener('load', () => {
+      try {
+        const resizeObserver = new ResizeObserver(() => {
+          try {
+            const h = iframe.contentDocument?.documentElement?.scrollHeight;
+            if (h && h > 200) iframe.style.height = h + 'px';
+          } catch (_) { }
+        });
+        if (iframe.contentDocument?.body) {
+          resizeObserver.observe(iframe.contentDocument.body);
+        }
+        // Initial size
+        const h = iframe.contentDocument?.documentElement?.scrollHeight;
+        if (h && h > 200) iframe.style.height = h + 'px';
+      } catch (_) {
+        // Cross-origin fallback — just set a large height
+        iframe.style.height = '2000px';
+      }
+    });
+
     targetEl.innerHTML = '';
-    targetEl.appendChild(wrapper);
+    targetEl.appendChild(iframe);
 
-    // Load dashboard JS via <script src> (CSP-safe)
-    if (!document.getElementById('ah-dash-script')) {
-      const tag = document.createElement('script');
-      tag.id = 'ah-dash-script';
-      tag.src = chrome.runtime.getURL('src/dashboard/dashboard.js');
-      document.body.appendChild(tag);
-    }
   } catch (err) {
-    console.error('[Dashboard] Failed to load inline dashboard:', err);
+    console.error('[Dashboard] Failed to load dashboard v2:', err);
     targetEl.innerHTML = '<div class="quiz-loading"><p>Erro ao carregar dashboard.</p></div>';
   }
   return;
@@ -4223,7 +4309,7 @@ async function restorePomodoroPosition(widget) {
 // ════════════════════════════════════════════════════════════════
 function setupManualAddQuestion() {
   const triggerBtn = document.getElementById('btnAddQuestion');
-  const overlay    = document.getElementById('maqOverlay');
+  const overlay = document.getElementById('maqOverlay');
   if (!triggerBtn || !overlay) return;
 
   const closeModal = () => overlay.classList.add('hidden');
@@ -4245,10 +4331,10 @@ function setupManualAddQuestion() {
     const sub = document.getElementById('maqSubject');
     const src = document.getElementById('maqSource');
     const saveBtn = document.getElementById('maqSaveBtn');
-    if (qTA)  { qTA.value = ''; document.getElementById('maqQCount').textContent = '0'; }
-    if (aTA)  { aTA.value = ''; document.getElementById('maqACount').textContent = '0'; }
-    if (sub)  sub.value = '';
-    if (src)  src.value = '';
+    if (qTA) { qTA.value = ''; document.getElementById('maqQCount').textContent = '0'; }
+    if (aTA) { aTA.value = ''; document.getElementById('maqACount').textContent = '0'; }
+    if (sub) sub.value = '';
+    if (src) src.value = '';
     if (saveBtn) {
       saveBtn.disabled = false;
       saveBtn.innerHTML = '<span class="icon">save</span> Salvar questão';
@@ -4311,9 +4397,9 @@ function setupManualAddQuestion() {
   function doSave() {
     hideError();
     const question = document.getElementById('maqQuestion')?.value.trim();
-    const answer   = document.getElementById('maqAnswer')?.value.trim();
-    const subject  = document.getElementById('maqSubject')?.value.trim() || '';
-    const source   = document.getElementById('maqSource')?.value.trim()  || '';
+    const answer = document.getElementById('maqAnswer')?.value.trim();
+    const subject = document.getElementById('maqSubject')?.value.trim() || '';
+    const source = document.getElementById('maqSource')?.value.trim() || '';
     const folderId = document.getElementById('maqFolder')?.value;
 
     if (!question || !answer) {
@@ -4459,9 +4545,9 @@ function setupPomodoroDrag() {
 
 // ══ #14 Mapa Mental ══════════════════════════════════════════════════════════
 
-const mindMapOverlay  = document.getElementById('mindMapOverlay');
+const mindMapOverlay = document.getElementById('mindMapOverlay');
 const mindMapCloseBtn = document.getElementById('mindMapCloseBtn');
-const mindMapBody     = document.getElementById('mindMapBody');
+const mindMapBody = document.getElementById('mindMapBody');
 
 function openMindMap() {
   mindMapOverlay.classList.add('open');
@@ -4509,11 +4595,11 @@ async function renderMindMap() {
   });
 
   const topicPillColors = [
-    '#4f46e5','#0284c7','#16a34a','#d97706','#dc2626',
-    '#7c3aed','#0891b2','#65a30d','#ca8a04','#db2777'
+    '#4f46e5', '#0284c7', '#16a34a', '#d97706', '#dc2626',
+    '#7c3aed', '#0891b2', '#65a30d', '#ca8a04', '#db2777'
   ];
 
-  const legendHtml = topics.slice(0, 6).map(([ tag ], i) =>
+  const legendHtml = topics.slice(0, 6).map(([tag], i) =>
     `<span class="mindmap-legend-pill" style="background:${topicPillColors[i % topicPillColors.length]}22;color:${topicPillColors[i % topicPillColors.length]}">${escH(tag)}</span>`
   ).join('');
 
@@ -4582,11 +4668,11 @@ document.getElementById('btnExportFull')?.addEventListener('click', async () => 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `AnswerHunter_backup_v2_${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `AnswerHunter_backup_v2_${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
     showSyncToast(`Backup v2 exportado: ${allQuestions.length} questões + SM2 + XP`);
-  } catch(err) { showSyncToast('Erro ao exportar: ' + err.message); }
+  } catch (err) { showSyncToast('Erro ao exportar: ' + err.message); }
 });
 
 document.getElementById('btnImportFull')?.addEventListener('click', () => {
@@ -4606,7 +4692,7 @@ document.getElementById('importFileInput')?.addEventListener('change', async (e)
     const questionCount = isV2 ? countQuestionsInTree(data.binderStructure) : countQuestionsInTree(Array.isArray(data) ? data : data.binderStructure);
     if (!confirm(`Importar backup ${isV2 ? 'v2' : 'legado'} com ${questionCount} questões?
 
-ISTO SUBSTITUIRÁ todos os dados atuais!`)) { e.target.value=''; return; }
+ISTO SUBSTITUIRÁ todos os dados atuais!`)) { e.target.value = ''; return; }
     showSyncToast('Importando...');
     const structure = Array.isArray(data) ? data : data.binderStructure;
     await new Promise(r => chrome.storage.local.set({ binderStructure: structure }, r));
@@ -4614,8 +4700,8 @@ ISTO SUBSTITUIRÁ todos os dados atuais!`)) { e.target.value=''; return; }
     if (isV2 && data.xpData) await new Promise(r => chrome.storage.local.set({ ah_xpData: data.xpData }, r));
     showSyncToast(`Importado: ${questionCount} questões` + (isV2 ? ' + SM2 + XP' : ' (legado)'));
     setTimeout(() => window.location.reload(), 1500);
-  } catch(err) { showSyncToast('Erro ao importar: ' + (err.message || 'arquivo inválido')); }
-  e.target.value='';
+  } catch (err) { showSyncToast('Erro ao importar: ' + (err.message || 'arquivo inválido')); }
+  e.target.value = '';
 });
 
 function countQuestionsInTree(nodes) {
@@ -4627,3 +4713,1005 @@ function countQuestionsInTree(nodes) {
   }
   return count;
 }
+
+// ═══════════════════════════════════════
+// DARK MODE
+// ═══════════════════════════════════════
+function initDarkMode() {
+  // Load saved preference
+  const saved = localStorage.getItem('ah_darkMode');
+  if (saved === 'true' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.body.classList.add('dark-mode');
+  }
+
+  // Create toggle button in header-right
+  const headerRight = document.querySelector('.header-right');
+  if (headerRight) {
+    const toggle = document.createElement('button');
+    toggle.className = 'btn-header dark-mode-toggle';
+    toggle.id = 'darkModeToggle';
+    toggle.title = 'Alternar tema claro/escuro';
+    toggle.innerHTML = `<span class="icon">${document.body.classList.contains('dark-mode') ? 'light_mode' : 'dark_mode'}</span>`;
+    headerRight.insertBefore(toggle, headerRight.firstChild);
+
+    toggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
+      const isDark = document.body.classList.contains('dark-mode');
+      localStorage.setItem('ah_darkMode', isDark);
+      toggle.innerHTML = `<span class="icon">${isDark ? 'light_mode' : 'dark_mode'}</span>`;
+    });
+  }
+}
+
+// ═══════════════════════════════════════
+// KEYBOARD SHORTCUTS
+// ═══════════════════════════════════════
+const SHORTCUTS = [
+  { key: '?', desc: 'Mostrar atalhos', action: () => toggleShortcutsModal() },
+  { key: 'd', desc: 'Abrir Dashboard', action: () => document.getElementById('tabDashboard')?.click() },
+  { key: 'q', desc: 'Ver Questões', action: () => document.getElementById('tabQuestions')?.click() },
+  { key: 's', desc: 'Iniciar Simulado', action: () => document.getElementById('btnSimulado')?.click() },
+  { key: 'p', desc: 'Pomodoro', action: () => document.getElementById('btnPomodoro')?.click() },
+  { key: 'm', desc: 'Mapa Mental', action: () => document.getElementById('btnMindMap')?.click() },
+  { key: 'n', desc: 'Adicionar questão', action: () => document.getElementById('btnAddQuestion')?.click() },
+  { key: '/', desc: 'Buscar', action: () => { document.getElementById('searchInput')?.focus(); } },
+  { key: 't', desc: 'Alternar tema', action: () => document.getElementById('darkModeToggle')?.click() },
+  {
+    key: 'Escape', desc: 'Fechar modais', action: () => {
+      document.querySelectorAll('.modal-overlay:not([hidden]), .maq-overlay:not(.hidden), .mindmap-overlay:not([hidden])').forEach(el => {
+        const closeBtn = el.querySelector('.modal-close, .maq-close, .mindmap-close-btn');
+        if (closeBtn) closeBtn.click();
+      });
+    }
+  },
+];
+
+function toggleShortcutsModal() {
+  let modal = document.getElementById('shortcutsModal');
+  if (modal && !modal.hidden) {
+    modal.hidden = true;
+    return;
+  }
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'shortcutsModal';
+    modal.className = 'modal-overlay shortcuts-overlay';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.innerHTML = `
+      <div class="modal-box shortcuts-box">
+        <div class="modal-header">
+          <div class="modal-icon"><span class="icon">keyboard</span></div>
+          <div><div class="modal-title">Atalhos de Teclado</div></div>
+          <button class="modal-close" id="shortcutsClose" aria-label="Fechar"><span class="icon">close</span></button>
+        </div>
+        <div class="modal-body shortcuts-body">
+          <div class="shortcuts-grid">
+            ${SHORTCUTS.map(s => `
+              <div class="shortcut-item">
+                <kbd class="shortcut-key">${s.key === '/' ? '/' : s.key === '?' ? '?' : s.key === 'Escape' ? 'Esc' : s.key.toUpperCase()}</kbd>
+                <span class="shortcut-desc">${s.desc}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('#shortcutsClose').addEventListener('click', () => modal.hidden = true);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.hidden = true; });
+  }
+  modal.hidden = false;
+}
+
+function initKeyboardShortcuts() {
+  document.addEventListener('keydown', e => {
+    // Ignore when typing in inputs
+    if (e.target.matches('input, textarea, select, [contenteditable]')) {
+      if (e.key === 'Escape') {
+        e.target.blur();
+      }
+      return;
+    }
+    // Ignore with modifier keys (except Shift for ?)
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+    const shortcut = SHORTCUTS.find(s => s.key === e.key);
+    if (shortcut) {
+      e.preventDefault();
+      shortcut.action();
+    }
+  });
+}
+
+// ═══════════════════════════════════════
+// SESSION SUMMARY
+// ═══════════════════════════════════════
+let _sessionStart = Date.now();
+let _sessionActions = { revealed: 0, correct: 0, wrong: 0, quizzes: 0, xpEarned: 0 };
+
+function trackSessionAction(type) {
+  if (_sessionActions[type] !== undefined) _sessionActions[type]++;
+}
+
+function showSessionSummary() {
+  const elapsed = Math.round((Date.now() - _sessionStart) / 60000);
+  const { revealed, correct, wrong, quizzes, xpEarned } = _sessionActions;
+  const total = correct + wrong;
+  const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+  if (revealed === 0 && total === 0) return; // No activity
+
+  let modal = document.getElementById('sessionSummaryModal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'sessionSummaryModal';
+    modal.className = 'modal-overlay session-summary-overlay';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if (e.target === modal) modal.hidden = true; });
+  }
+
+  modal.innerHTML = `
+    <div class="modal-box session-summary-box">
+      <div class="modal-header">
+        <div class="modal-icon"><span class="icon">emoji_events</span></div>
+        <div><div class="modal-title">Resumo da Sessão</div><div class="modal-subtitle">${elapsed} min de estudo</div></div>
+        <button class="modal-close" onclick="this.closest('.modal-overlay').hidden=true" aria-label="Fechar"><span class="icon">close</span></button>
+      </div>
+      <div class="modal-body session-summary-body">
+        <div class="session-stats-grid">
+          <div class="session-stat-card">
+            <span class="icon session-stat-icon" style="color:var(--sky)">visibility</span>
+            <div class="session-stat-value">${revealed}</div>
+            <div class="session-stat-label">Questões vistas</div>
+          </div>
+          <div class="session-stat-card">
+            <span class="icon session-stat-icon" style="color:var(--green)">check_circle</span>
+            <div class="session-stat-value">${correct}</div>
+            <div class="session-stat-label">Acertos</div>
+          </div>
+          <div class="session-stat-card">
+            <span class="icon session-stat-icon" style="color:var(--red)">cancel</span>
+            <div class="session-stat-value">${wrong}</div>
+            <div class="session-stat-label">Erros</div>
+          </div>
+          <div class="session-stat-card">
+            <span class="icon session-stat-icon" style="color:var(--amber)">target</span>
+            <div class="session-stat-value">${accuracy}%</div>
+            <div class="session-stat-label">Precisão</div>
+          </div>
+        </div>
+        ${quizzes > 0 ? `<div class="session-extra"><span class="icon">quiz</span> ${quizzes} quizzes realizados</div>` : ''}
+        <div class="session-motivational">${accuracy >= 80 ? '🔥 Excelente sessão!' : accuracy >= 60 ? '💪 Bom trabalho!' : total > 0 ? '📚 Continue praticando!' : '👀 Que tal responder algumas questões?'}</div>
+      </div>
+      <div class="modal-footer" style="display:flex">
+        <button class="modal-btn secondary" onclick="this.closest('.modal-overlay').hidden=true"><span class="icon">close</span> Fechar</button>
+        <button class="modal-btn primary" onclick="this.closest('.modal-overlay').hidden=true;_sessionActions={revealed:0,correct:0,wrong:0,quizzes:0,xpEarned:0};_sessionStart=Date.now()"><span class="icon">restart_alt</span> Nova sessão</button>
+      </div>
+    </div>
+  `;
+  modal.hidden = false;
+}
+
+// Make session functions globally available for inline onclick handlers
+window._sessionActions = _sessionActions;
+window._sessionStart = _sessionStart;
+
+// ═══════════════════════════════════════
+// NOTES PER QUESTION
+// ═══════════════════════════════════════
+const NOTES_STORAGE_KEY = 'ah_questionNotes';
+
+async function loadNotes() {
+  return new Promise(resolve => {
+    chrome.storage.local.get(NOTES_STORAGE_KEY, result => {
+      resolve(result[NOTES_STORAGE_KEY] || {});
+    });
+  });
+}
+
+async function saveNote(questionId, noteText) {
+  const notes = await loadNotes();
+  if (noteText.trim()) {
+    notes[questionId] = { text: noteText.trim(), updatedAt: Date.now() };
+  } else {
+    delete notes[questionId];
+  }
+  return new Promise(resolve => {
+    chrome.storage.local.set({ [NOTES_STORAGE_KEY]: notes }, resolve);
+  });
+}
+
+function injectNoteField(cardElement, questionId) {
+  if (cardElement.querySelector('.card-note-section')) return;
+
+  const section = document.createElement('div');
+  section.className = 'card-note-section';
+  section.innerHTML = `
+    <button class="card-note-toggle" type="button" title="Anotações pessoais">
+      <span class="icon">edit_note</span>
+      <span>Minhas anotações</span>
+      <span class="icon card-note-chevron">expand_more</span>
+    </button>
+    <div class="card-note-content hidden">
+      <textarea class="card-note-textarea" placeholder="Escreva suas anotações sobre esta questão..." rows="3" data-qid="${questionId}"></textarea>
+      <div class="card-note-actions">
+        <span class="card-note-saved hidden"><span class="icon" style="font-size:14px">check</span> Salvo</span>
+      </div>
+    </div>
+  `;
+
+  const answerSection = cardElement.querySelector('.card-answer') || cardElement.querySelector('.card-body');
+  if (answerSection) {
+    answerSection.after(section);
+  } else {
+    cardElement.appendChild(section);
+  }
+
+  const toggle = section.querySelector('.card-note-toggle');
+  const content = section.querySelector('.card-note-content');
+  const textarea = section.querySelector('.card-note-textarea');
+  const savedIndicator = section.querySelector('.card-note-saved');
+
+  toggle.addEventListener('click', async () => {
+    content.classList.toggle('hidden');
+    const chevron = section.querySelector('.card-note-chevron');
+    chevron.textContent = content.classList.contains('hidden') ? 'expand_more' : 'expand_less';
+
+    if (!content.classList.contains('hidden') && !textarea.dataset.loaded) {
+      const notes = await loadNotes();
+      if (notes[questionId]) textarea.value = notes[questionId].text;
+      textarea.dataset.loaded = 'true';
+    }
+  });
+
+  let saveTimeout;
+  textarea.addEventListener('input', () => {
+    clearTimeout(saveTimeout);
+    savedIndicator.classList.add('hidden');
+    saveTimeout = setTimeout(async () => {
+      await saveNote(questionId, textarea.value);
+      savedIndicator.classList.remove('hidden');
+      // Update toggle icon to show note exists
+      const icon = toggle.querySelector('.icon:first-child');
+      icon.textContent = textarea.value.trim() ? 'sticky_note_2' : 'edit_note';
+      icon.style.color = textarea.value.trim() ? 'var(--amber)' : '';
+      setTimeout(() => savedIndicator.classList.add('hidden'), 2000);
+    }, 800);
+  });
+
+  // Check if note exists to show indicator
+  loadNotes().then(notes => {
+    if (notes[questionId]) {
+      const icon = toggle.querySelector('.icon:first-child');
+      icon.textContent = 'sticky_note_2';
+      icon.style.color = 'var(--amber)';
+    }
+  });
+}
+
+// ═══════════════════════════════════════
+// INITIALIZATION OF NEW FEATURES
+// ═══════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  initDarkMode();
+  initKeyboardShortcuts();
+
+  // Inject session summary button in header
+  const headerRight = document.querySelector('.header-right');
+  if (headerRight) {
+    const summaryBtn = document.createElement('button');
+    summaryBtn.className = 'btn-header';
+    summaryBtn.id = 'btnSessionSummary';
+    summaryBtn.title = 'Resumo da sessão';
+    summaryBtn.innerHTML = '<span class="icon">bar_chart</span>';
+    const darkToggle = document.getElementById('darkModeToggle');
+    if (darkToggle) darkToggle.after(summaryBtn);
+    else headerRight.insertBefore(summaryBtn, headerRight.firstChild);
+    summaryBtn.addEventListener('click', showSessionSummary);
+  }
+});
+
+// Hook into existing card building - use MutationObserver to inject notes into new cards
+const cardListObserver = new MutationObserver(mutations => {
+  for (const mutation of mutations) {
+    for (const node of mutation.addedNodes) {
+      if (node.nodeType === 1 && node.classList?.contains('card')) {
+        const qid = node.dataset?.qid || node.querySelector('[data-qid]')?.dataset?.qid;
+        if (qid) injectNoteField(node, qid);
+      }
+    }
+  }
+});
+
+// Start observing when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  const cardList = document.getElementById('cardList');
+  if (cardList) {
+    cardListObserver.observe(cardList, { childList: true, subtree: true });
+    // Inject notes into existing cards
+    cardList.querySelectorAll('.card[data-qid]').forEach(card => {
+      injectNoteField(card, card.dataset.qid);
+    });
+  }
+
+  const sectionedList = document.getElementById('sectionedList');
+  if (sectionedList) {
+    cardListObserver.observe(sectionedList, { childList: true, subtree: true });
+  }
+});
+
+// Track window close for session summary
+window.addEventListener('beforeunload', () => {
+  const elapsed = Math.round((Date.now() - _sessionStart) / 60000);
+  if (elapsed >= 5 && (_sessionActions.revealed > 0 || _sessionActions.correct > 0)) {
+    // Save session for next visit summary
+    localStorage.setItem('ah_lastSession', JSON.stringify({
+      ..._sessionActions,
+      elapsed,
+      endTime: Date.now()
+    }));
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUBJECT COLORS MAP & STYLING
+// ═══════════════════════════════════════════════════════════════════════════════
+const SUBJECT_COLORS = {
+  'Matemática': { color: '#4dabf7', bg: 'rgba(77,171,247,0.12)', icon: 'calculate' },
+  'Português': { color: '#ffa94d', bg: 'rgba(255,169,77,0.12)', icon: 'menu_book' },
+  'História': { color: '#b197fc', bg: 'rgba(177,151,252,0.12)', icon: 'castle' },
+  'Geografia': { color: '#3ecf6a', bg: 'rgba(62,207,106,0.12)', icon: 'public' },
+  'Biologia': { color: '#51cf66', bg: 'rgba(81,207,102,0.12)', icon: 'biotech' },
+  'Física': { color: '#ff6b6b', bg: 'rgba(255,107,107,0.12)', icon: 'bolt' },
+  'Química': { color: '#ffd43b', bg: 'rgba(255,212,59,0.12)', icon: 'science' },
+  'Filosofia': { color: '#cc5de8', bg: 'rgba(204,93,232,0.12)', icon: 'psychology' },
+  'Sociologia': { color: '#20c997', bg: 'rgba(32,201,151,0.12)', icon: 'groups' },
+  'Inglês': { color: '#339af0', bg: 'rgba(51,154,240,0.12)', icon: 'language' },
+  'Direito': { color: '#868e96', bg: 'rgba(134,142,150,0.12)', icon: 'gavel' },
+  'Informática': { color: '#74c0fc', bg: 'rgba(116,192,252,0.12)', icon: 'computer' },
+  'Medicina': { color: '#e64980', bg: 'rgba(230,73,128,0.12)', icon: 'medical_services' },
+  'Enfermagem': { color: '#f06595', bg: 'rgba(240,101,149,0.12)', icon: 'healing' },
+  '_default': { color: '#ff6b6b', bg: 'rgba(255,107,107,0.12)', icon: 'school' }
+};
+
+function getSubjectStyle(subject) {
+  const normalized = subject.trim();
+  for (const [key, val] of Object.entries(SUBJECT_COLORS)) {
+    if (key === '_default') continue;
+    if (normalized.toLowerCase().includes(key.toLowerCase())) return val;
+  }
+  // Generate consistent color from string hash
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
+  const hue = Math.abs(hash) % 360;
+  return { color: `hsl(${hue}, 65%, 55%)`, bg: `hsla(${hue}, 65%, 55%, 0.12)`, icon: 'school' };
+}
+
+// ═══════════════════════════════════════
+// PROFESSIONAL SIDEBAR — Subject Navigation
+// ═══════════════════════════════════════
+function buildProfessionalSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+
+  // Get subject data
+  const subjectCounts = new Map();
+  const subjectDue = new Map();
+  const subjectMastered = new Map();
+
+  allQuestions.forEach(q => {
+    const subject = getQuestionSubject(q);
+    subjectCounts.set(subject, (subjectCounts.get(subject) || 0) + 1);
+
+    const sm2 = _sm2Cache[q.id];
+    if (sm2 && sm2IsDue(sm2)) {
+      subjectDue.set(subject, (subjectDue.get(subject) || 0) + 1);
+    }
+    if (sm2 && (sm2.interval || 0) >= 21) {
+      subjectMastered.set(subject, (subjectMastered.get(subject) || 0) + 1);
+    }
+  });
+
+  const subjects = [...subjectCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15); // Top 15 subjects
+
+  if (subjects.length === 0) return;
+
+  // Find or create the subjects section
+  let subjectsSection = sidebar.querySelector('.sidebar-subjects-wrapper');
+  if (subjectsSection) subjectsSection.remove();
+
+  // Find the "Filtros rápidos" divider to insert after it
+  const dividers = sidebar.querySelectorAll('.sidebar-divider');
+  const insertAfter = dividers.length > 0 ? dividers[0] : null;
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'sidebar-subjects-wrapper';
+  wrapper.innerHTML = `
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section-label">Disciplinas</div>
+    <div class="sidebar-subjects-section">
+      <button class="sidebar-subject-item active" data-subject="all">
+        <span class="sidebar-subject-dot" style="background:var(--primary)"></span>
+        <span class="sidebar-subject-name">Todas</span>
+        <span class="sidebar-subject-count">${allQuestions.length}</span>
+      </button>
+      ${subjects.map(([subject, count]) => {
+    const style = getSubjectStyle(subject);
+    const due = subjectDue.get(subject) || 0;
+    const mastered = subjectMastered.get(subject) || 0;
+    const pct = Math.round((mastered / count) * 100);
+    return `
+          <button class="sidebar-subject-item" data-subject="${subject.replace(/"/g, '&quot;')}" style="--subject-color:${style.color}">
+            <span class="sidebar-subject-dot" style="background:${style.color}"></span>
+            <span class="sidebar-subject-name" title="${subject}">${subject}</span>
+            ${due > 0 ? `<span class="sidebar-subject-count" style="background:rgba(255,107,107,0.15);color:var(--primary)" title="${due} para revisar">${due}</span>` : ''}
+            <span class="sidebar-subject-count">${count}</span>
+          </button>
+        `;
+  }).join('')}
+    </div>
+  `;
+
+  // Insert after first section
+  if (insertAfter && insertAfter.nextSibling) {
+    sidebar.insertBefore(wrapper, insertAfter.nextSibling);
+  } else {
+    sidebar.appendChild(wrapper);
+  }
+
+  // Add click handlers for subject filtering
+  wrapper.querySelectorAll('.sidebar-subject-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Update active state
+      wrapper.querySelectorAll('.sidebar-subject-item').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const subject = btn.dataset.subject;
+      const subjectSelect = document.getElementById('subjectSelect');
+      if (subjectSelect) {
+        subjectSelect.value = subject === 'all' ? 'all' : subject;
+        // Trigger filter
+        subjectSelect.dispatchEvent(new Event('change'));
+      }
+    });
+  });
+}
+
+// ═══════════════════════════════════════
+// LEVEL BAR IN SIDEBAR (Duolingo-style)
+// ═══════════════════════════════════════
+async function buildLevelBar() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+
+  let levelWrapper = sidebar.querySelector('.level-bar-wrapper');
+  if (levelWrapper) levelWrapper.remove();
+
+  const xpData = await loadXPData();
+  const xp = xpData?.xp || 0;
+  const level = xpData?.level || 1;
+  const xpForLevel = level * 100;
+  const xpInLevel = xp % xpForLevel;
+  const pct = Math.min(100, Math.round((xpInLevel / xpForLevel) * 100));
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'level-bar-wrapper';
+  wrapper.innerHTML = `
+    <div class="level-bar">
+      <div class="level-badge">${level}</div>
+      <div class="level-info">
+        <div class="level-info-top">
+          <span class="level-label">Nível ${level}</span>
+          <span class="level-xp-text">${xpInLevel} / ${xpForLevel} XP</span>
+        </div>
+        <div class="level-track">
+          <div class="level-fill" style="width:${pct}%"></div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Insert at the top of sidebar
+  sidebar.insertBefore(wrapper, sidebar.firstChild);
+}
+
+// ═══════════════════════════════════════
+// ACHIEVEMENTS SYSTEM
+// ═══════════════════════════════════════
+const ACHIEVEMENTS = [
+  { id: 'first_answer', icon: 'target', name: 'Primeira Resposta', desc: 'Respondeu a 1ª questão', check: s => s.totalAnswered >= 1 },
+  { id: 'ten_streak', icon: 'local_fire_department', name: 'Em Chamas', desc: '10 dias de streak', check: s => s.streak >= 10 },
+  { id: 'fifty_questions', icon: 'library_books', name: 'Estudioso', desc: '50 questões respondidas', check: s => s.totalAnswered >= 50 },
+  { id: 'hundred_questions', icon: 'emoji_events', name: 'Centurião', desc: '100 questões respondidas', check: s => s.totalAnswered >= 100 },
+  { id: 'perfect_quiz', icon: 'diamond', name: 'Perfeição', desc: '100% num simulado', check: s => s.perfectSim },
+  { id: 'five_subjects', icon: 'interests', name: 'Multidisciplinar', desc: '5 disciplinas estudadas', check: s => s.subjectCount >= 5 },
+  { id: 'night_owl', icon: 'dark_mode', name: 'Coruja', desc: 'Estudou após meia-noite', check: s => s.nightStudy },
+  { id: 'early_bird', icon: 'wb_twilight', name: 'Madrugador', desc: 'Estudou antes das 7h', check: s => s.earlyStudy },
+  { id: 'mastery', icon: 'shield', name: 'Mestre', desc: '10 questões dominadas', check: s => s.mastered >= 10 },
+  { id: 'pomodoro_five', icon: 'timer', name: 'Focado', desc: '5 pomodoros completos', check: s => s.pomodorosCompleted >= 5 },
+  { id: 'speed_demon', icon: 'bolt', name: 'Relâmpago', desc: 'Simulado < 1min/questão', check: s => s.speedDemon },
+  { id: 'three_day_streak', icon: 'auto_awesome', name: 'Consistente', desc: '3 dias seguidos', check: s => s.streak >= 3 },
+];
+
+async function getAchievementState() {
+  const [sm2Data, streakData, simHistory, xpData] = await Promise.all([
+    loadSm2Data(), loadStreakData(), loadSimHistory(), loadXPData()
+  ]);
+
+  const entries = Object.values(sm2Data);
+  const totalAnswered = entries.length;
+  const mastered = entries.filter(e => (e.interval || 0) >= 21).length;
+  const streak = streakData?.count || 0;
+  const subjectCount = new Set(allQuestions.filter(q => sm2Data[q.id]).map(getQuestionSubject)).size;
+  const perfectSim = Array.isArray(simHistory) && simHistory.some(h => h.correct === h.total && h.total >= 3);
+  const speedDemon = Array.isArray(simHistory) && simHistory.some(h => h.total >= 5 && (h.elapsed / h.total) < 60);
+  const hour = new Date().getHours();
+  const nightStudy = hour >= 0 && hour < 5;
+  const earlyStudy = hour >= 5 && hour < 7;
+  const pomodorosCompleted = parseInt(localStorage.getItem('ah_pomodorosCompleted') || '0', 10);
+
+  return { totalAnswered, mastered, streak, subjectCount, perfectSim, speedDemon, nightStudy, earlyStudy, pomodorosCompleted };
+}
+
+async function renderAchievementsInSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+
+  let section = sidebar.querySelector('.achievements-section');
+  if (section) section.remove();
+
+  const state = await getAchievementState();
+  const unlocked = ACHIEVEMENTS.filter(a => a.check(state));
+  const locked = ACHIEVEMENTS.filter(a => !a.check(state));
+
+  section = document.createElement('div');
+  section.className = 'achievements-section';
+  section.innerHTML = `
+    <div class="sidebar-section-label">Conquistas (${unlocked.length}/${ACHIEVEMENTS.length})</div>
+    <div class="achievements-grid">
+      ${unlocked.map(a => `
+        <div class="achievement-item unlocked" title="${a.name}: ${a.desc}">
+          <span class="achievement-icon"><span class="material-symbols-rounded">${a.icon}</span></span>
+          <span class="achievement-name">${a.name}</span>
+        </div>
+      `).join('')}
+      ${locked.slice(0, 4).map(a => `
+        <div class="achievement-item locked" title="${a.desc}">
+          <span class="achievement-icon"><span class="material-symbols-rounded">lock</span></span>
+          <span class="achievement-name">???</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  sidebar.appendChild(section);
+}
+
+// ═══════════════════════════════════════
+// ACTIVITY HEATMAP (GitHub-style)
+// ═══════════════════════════════════════
+async function renderHeatmapInSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+
+  let section = sidebar.querySelector('.heatmap-section');
+  if (section) section.remove();
+
+  const sm2Data = await loadSm2Data();
+
+  // Count activity per day for last 12 weeks
+  const dayCounts = {};
+  Object.values(sm2Data).forEach(entry => {
+    if (entry.lastRated) {
+      dayCounts[entry.lastRated] = (dayCounts[entry.lastRated] || 0) + 1;
+    }
+  });
+
+  const today = new Date();
+  const cells = [];
+  for (let i = 83; i >= 0; i--) { // 12 weeks = 84 days
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const count = dayCounts[iso] || 0;
+    const level = count === 0 ? 0 : count <= 2 ? 1 : count <= 5 ? 2 : count <= 10 ? 3 : 4;
+    const dayName = d.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' });
+    cells.push(`<div class="heatmap-cell" data-level="${level}" title="${dayName}: ${count} atividade${count !== 1 ? 's' : ''}"></div>`);
+  }
+
+  section = document.createElement('div');
+  section.className = 'heatmap-section';
+  section.innerHTML = `
+    <div class="heatmap-container">
+      <div class="heatmap-title"><span class="icon">calendar_month</span> Atividade (12 semanas)</div>
+      <div class="heatmap-grid">${cells.join('')}</div>
+      <div class="heatmap-legend">
+        Menos
+        <div class="heatmap-legend-cell heatmap-cell" data-level="0"></div>
+        <div class="heatmap-legend-cell heatmap-cell" data-level="1"></div>
+        <div class="heatmap-legend-cell heatmap-cell" data-level="2"></div>
+        <div class="heatmap-legend-cell heatmap-cell" data-level="3"></div>
+        <div class="heatmap-legend-cell heatmap-cell" data-level="4"></div>
+        Mais
+      </div>
+    </div>
+  `;
+
+  sidebar.appendChild(section);
+}
+
+// ═══════════════════════════════════════
+// SUBJECT CARDS — Dashboard View
+// ═══════════════════════════════════════
+async function renderSubjectCards() {
+  const dashHome = document.getElementById('dashboardHome');
+  if (!dashHome) return;
+
+  // Only render when dashboard is visible
+  if (!document.body.classList.contains('dashboard-main-mode')) return;
+
+  // Check if already has dash-root (loaded dashboard)
+  if (dashHome.querySelector('.ah-dash-root')) return;
+
+  const sm2Data = await loadSm2Data();
+  const subjectMap = new Map();
+
+  allQuestions.forEach(q => {
+    const subject = getQuestionSubject(q);
+    if (!subjectMap.has(subject)) {
+      subjectMap.set(subject, { total: 0, reviewed: 0, mastered: 0, due: 0, errors: 0 });
+    }
+    const s = subjectMap.get(subject);
+    s.total++;
+    const sm2 = sm2Data[q.id];
+    if (sm2) {
+      s.reviewed++;
+      if ((sm2.interval || 0) >= 21) s.mastered++;
+      if (sm2IsDue(sm2)) s.due++;
+      s.errors += sm2.errors || 0;
+    }
+  });
+
+  if (subjectMap.size === 0) return;
+
+  const subjects = [...subjectMap.entries()].sort((a, b) => b[1].total - a[1].total);
+
+  // Check if subjects grid already exists
+  let grid = dashHome.querySelector('.subjects-grid');
+  if (grid) grid.remove();
+
+  grid = document.createElement('div');
+  grid.className = 'subjects-grid';
+
+  subjects.forEach(([subject, data]) => {
+    const style = getSubjectStyle(subject);
+    const pct = data.total > 0 ? Math.round((data.reviewed / data.total) * 100) : 0;
+    const circumference = 2 * Math.PI * 19; // r=19
+    const offset = circumference - (pct / 100) * circumference;
+    const mastery = data.total > 0 ? (data.mastered >= data.total * 0.8 ? 'gold' : data.mastered >= data.total * 0.5 ? 'silver' : data.mastered >= data.total * 0.2 ? 'bronze' : '') : '';
+
+    const card = document.createElement('div');
+    card.className = 'subject-card';
+    card.style.cssText = `--subject-color:${style.color};--subject-bg:${style.bg}`;
+    card.innerHTML = `
+      ${mastery ? `<div class="subject-mastery-badge ${mastery}"><span class="icon" style="font-size:14px;color:#fff">${mastery === 'gold' ? 'emoji_events' : mastery === 'silver' ? 'workspace_premium' : 'military_tech'}</span></div>` : ''}
+      <div class="subject-card-header">
+        <div class="subject-card-icon"><span class="icon">${style.icon}</span></div>
+        <div>
+          <div class="subject-card-title">${subject}</div>
+          <div class="subject-card-count">${data.total} questão${data.total !== 1 ? 'ões' : ''}</div>
+        </div>
+        <div class="subject-progress-ring">
+          <svg viewBox="0 0 44 44">
+            <circle class="ring-bg" cx="22" cy="22" r="19"/>
+            <circle class="ring-fill" cx="22" cy="22" r="19" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"/>
+          </svg>
+          <div class="subject-progress-pct">${pct}%</div>
+        </div>
+      </div>
+      <div class="subject-card-stats">
+        <div class="subject-card-stat">
+          <span class="subject-card-stat-value">${data.reviewed}</span>
+          <span class="subject-card-stat-label">Revisadas</span>
+        </div>
+        <div class="subject-card-stat">
+          <span class="subject-card-stat-value" style="color:${data.due > 0 ? 'var(--primary)' : ''}">${data.due}</span>
+          <span class="subject-card-stat-label">Pendentes</span>
+        </div>
+        <div class="subject-card-stat">
+          <span class="subject-card-stat-value" style="color:var(--green)">${data.mastered}</span>
+          <span class="subject-card-stat-label">Dominadas</span>
+        </div>
+      </div>
+    `;
+
+    // Click to filter by subject
+    card.addEventListener('click', () => {
+      const subjectSelect = document.getElementById('subjectSelect');
+      if (subjectSelect) {
+        subjectSelect.value = subject;
+        subjectSelect.dispatchEvent(new Event('change'));
+      }
+      // Switch to questions view
+      const tabQuestions = document.getElementById('tabQuestions');
+      if (tabQuestions) tabQuestions.click();
+    });
+
+    grid.appendChild(card);
+  });
+
+  // Insert at the top of dashboardHome (before or after the ah-dash-root if present)
+  dashHome.insertBefore(grid, dashHome.firstChild);
+}
+
+// ═══════════════════════════════════════
+// ENHANCED SUBJECT HEADERS (override)
+// ═══════════════════════════════════════
+const _originalBuildSubjectHeader = typeof buildSubjectHeader === 'function' ? buildSubjectHeader : null;
+
+// We can't override the function directly since it's already declared.
+// Instead, we'll use a MutationObserver to enhance headers after they're created.
+function enhanceSubjectHeaders() {
+  document.querySelectorAll('.subject-group-header').forEach(header => {
+    if (header.dataset.enhanced) return;
+    header.dataset.enhanced = 'true';
+
+    const subject = header.dataset.subject;
+    if (!subject) return;
+
+    const style = getSubjectStyle(subject);
+    header.style.setProperty('--subject-color', style.color);
+    header.style.setProperty('--subject-bg', style.bg);
+
+    // Replace the icon with subject-specific one
+    const iconEl = header.querySelector('.left .icon');
+    if (iconEl) {
+      iconEl.textContent = style.icon;
+    }
+
+    // Add progress bar if not present
+    if (!header.querySelector('.subject-group-progress')) {
+      const right = header.querySelector('.right');
+      if (right) {
+        const count = parseInt(header.querySelector('.count')?.textContent) || 0;
+        const subjectQuestions = allQuestions.filter(q => getQuestionSubject(q) === subject);
+        const reviewed = subjectQuestions.filter(q => _sm2Cache[q.id]).length;
+        const pct = count > 0 ? Math.round((reviewed / count) * 100) : 0;
+
+        const progressBar = document.createElement('div');
+        progressBar.className = 'subject-group-progress';
+        progressBar.innerHTML = `<div class="subject-group-progress-fill" style="width:${pct}%;background:${style.color}"></div>`;
+        right.insertBefore(progressBar, right.querySelector('.subject-chevron'));
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════
+// INITIALIZE PROFESSIONAL FEATURES
+// ═══════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Delay to let the main init() run first
+  setTimeout(async () => {
+    await buildLevelBar();
+    buildProfessionalSidebar();
+    await renderAchievementsInSidebar();
+    await renderHeatmapInSidebar();
+
+    // Enhance subject headers whenever card list changes
+    const cardListEl = document.getElementById('cardList');
+    if (cardListEl) {
+      const headerObserver = new MutationObserver(() => {
+        requestAnimationFrame(enhanceSubjectHeaders);
+      });
+      headerObserver.observe(cardListEl, { childList: true, subtree: true });
+      enhanceSubjectHeaders();
+    }
+
+    const sectionedListEl = document.getElementById('sectionedList');
+    if (sectionedListEl) {
+      const sectionedObserver = new MutationObserver(() => {
+        requestAnimationFrame(enhanceSubjectHeaders);
+      });
+      sectionedObserver.observe(sectionedListEl, { childList: true, subtree: true });
+    }
+
+    // Render subject cards when dashboard is shown
+    const tabDashboardEl = document.getElementById('tabDashboard');
+    if (tabDashboardEl) {
+      tabDashboardEl.addEventListener('click', () => {
+        setTimeout(renderSubjectCards, 300);
+      });
+      // Also render on initial load if dashboard is default view
+      if (document.body.classList.contains('dashboard-main-mode')) {
+        setTimeout(renderSubjectCards, 500);
+      }
+    }
+
+    // Refresh sidebar when data changes
+    chrome.storage.onChanged.addListener((changes) => {
+      if (changes.ah_sm2Data || changes.ah_xpData || changes.ah_streakData) {
+        setTimeout(async () => {
+          buildProfessionalSidebar();
+          await buildLevelBar();
+          await renderAchievementsInSidebar();
+          await renderHeatmapInSidebar();
+        }, 200);
+      }
+    });
+  }, 800);
+});
+
+
+// ═══════════════════════════════════════
+// FLASHCARD MODE — 3D Flip Study
+// ═══════════════════════════════════════
+let _flashcardQueue = [];
+let _flashcardIndex = 0;
+let _flashcardFlipped = false;
+
+function initFlashcardMode() {
+  const tabFlashcards = document.getElementById('tabFlashcards');
+  const tabDashboard = document.getElementById('tabDashboard');
+  const tabQuestions = document.getElementById('tabQuestions');
+
+  if (!tabFlashcards) return;
+
+  tabFlashcards.addEventListener('click', () => {
+    // Update tab states
+    document.querySelectorAll('.main-mode-tab').forEach(t => {
+      t.classList.remove('active');
+      t.setAttribute('aria-pressed', 'false');
+    });
+    tabFlashcards.classList.add('active');
+    tabFlashcards.setAttribute('aria-pressed', 'true');
+
+    // Show flashcard mode
+    document.body.classList.remove('dashboard-main-mode');
+    document.body.classList.add('flashcard-main-mode');
+
+    // Build queue from current filtered questions
+    buildFlashcardQueue();
+    renderFlashcard();
+  });
+
+  // When switching to other tabs, exit flashcard mode
+  [tabDashboard, tabQuestions].forEach(tab => {
+    if (!tab) return;
+    tab.addEventListener('click', () => {
+      document.body.classList.remove('flashcard-main-mode');
+      tabFlashcards.classList.remove('active');
+      tabFlashcards.setAttribute('aria-pressed', 'false');
+    });
+  });
+
+  // Flip button
+  const flipBtn = document.getElementById('flashcardFlip');
+  const container = document.getElementById('flashcardContainer');
+  if (flipBtn && container) {
+    flipBtn.addEventListener('click', flipFlashcard);
+    container.addEventListener('click', flipFlashcard);
+  }
+
+  // Prev/Next
+  document.getElementById('flashcardPrev')?.addEventListener('click', () => navigateFlashcard(-1));
+  document.getElementById('flashcardNext')?.addEventListener('click', () => navigateFlashcard(1));
+
+  // Rating buttons
+  document.querySelectorAll('.flashcard-rate-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const quality = parseInt(btn.dataset.quality, 10);
+      const q = _flashcardQueue[_flashcardIndex];
+      if (q && typeof rateSm2Silent === 'function') {
+        await rateSm2Silent(q.id, quality);
+        if (typeof trackSessionAction === 'function') {
+          trackSessionAction(quality >= 3 ? 'correct' : 'wrong');
+        }
+      }
+      // Auto-advance
+      navigateFlashcard(1);
+    });
+  });
+
+  // Keyboard navigation in flashcard mode
+  document.addEventListener('keydown', e => {
+    if (!document.body.classList.contains('flashcard-main-mode')) return;
+    if (e.target.matches('input, textarea, select, [contenteditable]')) return;
+
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flipFlashcard(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); navigateFlashcard(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); navigateFlashcard(1); }
+    else if (e.key === '1') rateFlashcard(1);
+    else if (e.key === '3') rateFlashcard(3);
+    else if (e.key === '4') rateFlashcard(4);
+    else if (e.key === '5') rateFlashcard(5);
+  });
+}
+
+function buildFlashcardQueue() {
+  // Use currently visible/filtered questions
+  const subjectFilter = document.getElementById('subjectSelect')?.value || 'all';
+  _flashcardQueue = allQuestions.filter(q => {
+    if (subjectFilter !== 'all' && getQuestionSubject(q) !== subjectFilter) return false;
+    return true;
+  });
+  _flashcardIndex = 0;
+  _flashcardFlipped = false;
+}
+
+function flipFlashcard() {
+  const inner = document.getElementById('flashcardInner');
+  const rating = document.getElementById('flashcardRating');
+  if (!inner) return;
+
+  _flashcardFlipped = !_flashcardFlipped;
+  inner.classList.toggle('flipped', _flashcardFlipped);
+
+  // Show rating buttons when flipped to answer
+  if (rating) rating.style.display = _flashcardFlipped ? 'flex' : 'none';
+}
+
+function navigateFlashcard(dir) {
+  const newIndex = _flashcardIndex + dir;
+  if (newIndex < 0 || newIndex >= _flashcardQueue.length) return;
+  _flashcardIndex = newIndex;
+  _flashcardFlipped = false;
+  renderFlashcard();
+}
+
+async function rateFlashcard(quality) {
+  const q = _flashcardQueue[_flashcardIndex];
+  if (q && typeof rateSm2Silent === 'function') {
+    await rateSm2Silent(q.id, quality);
+  }
+  navigateFlashcard(1);
+}
+
+function renderFlashcard() {
+  const inner = document.getElementById('flashcardInner');
+  const questionEl = document.getElementById('flashcardQuestion');
+  const answerEl = document.getElementById('flashcardAnswer');
+  const currentEl = document.getElementById('flashcardCurrent');
+  const totalEl = document.getElementById('flashcardTotal');
+  const rating = document.getElementById('flashcardRating');
+
+  if (!inner || !questionEl || !answerEl) return;
+
+  // Reset flip
+  _flashcardFlipped = false;
+  inner.classList.remove('flipped');
+  if (rating) rating.style.display = 'none';
+
+  if (_flashcardQueue.length === 0) {
+    questionEl.innerHTML = '<p style="text-align:center;color:var(--muted)">Nenhuma questão disponível.<br>Adicione questões ou mude o filtro.</p>';
+    answerEl.textContent = '';
+    if (currentEl) currentEl.textContent = '0';
+    if (totalEl) totalEl.textContent = '0';
+    return;
+  }
+
+  const q = _flashcardQueue[_flashcardIndex];
+  const questionText = q.question || q.text || 'Sem enunciado';
+  const answerText = q.answer || q.correctAnswer || 'Sem resposta';
+
+  questionEl.innerHTML = typeof formatText === 'function' ? formatText(questionText) : questionText;
+  answerEl.innerHTML = typeof formatText === 'function' ? formatText(answerText) : answerText;
+
+  if (currentEl) currentEl.textContent = _flashcardIndex + 1;
+  if (totalEl) totalEl.textContent = _flashcardQueue.length;
+
+  // Subtle entrance animation
+  inner.style.animation = 'none';
+  inner.offsetHeight; // Force reflow
+  inner.style.animation = 'maqSlideUp 0.3s ease';
+}
+
+// Initialize flashcard mode on DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(initFlashcardMode, 900);
+});

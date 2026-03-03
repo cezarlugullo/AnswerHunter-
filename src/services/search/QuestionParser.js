@@ -57,7 +57,7 @@ export const QuestionParser = {
         const cleaned = String(body || '').replace(/\s+/g, ' ').trim();
         if (!cleaned || cleaned.length < 1) return false;
         if (/^[A-E]\s*[\)\.\-:]?\s*$/i.test(cleaned)) return false;
-        if (/^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(cleaned)) return false;
+        if (/^(?:[A-E]\s*(?:[\)\-:]|(?:\.\s))\s*){1,2}$/i.test(cleaned)) return false;
         if (/^(?:resposta|gabarito|alternativa\s+correta)\b/i.test(cleaned)) return false;
         return true;
     },
@@ -67,7 +67,7 @@ export const QuestionParser = {
     extractQuestionStem(questionWithOptions) {
         const text = (questionWithOptions || '').replace(/\r\n/g, '\n');
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-        const optionRe = /^([A-E])\s*[\)\.\:]/i;
+        const optionRe = /^([A-E])\s*(?:[\)\-:]|(?:\.\s))/i;
         const stemLines = [];
         for (const line of lines) {
             if (optionRe.test(line)) break;
@@ -75,11 +75,31 @@ export const QuestionParser = {
         }
         let stem = (stemLines.join(' ').trim() || text.trim());
         // Detect first inline option: handles both "A) text" and "A .csv" formats
-        const inlineOpt = stem.match(/[\s:;]([A-E])\s*[\)\.\:]\s*/i);
+        const inlineOpt = stem.match(/[\s:;]([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*/i);
         if (inlineOpt && Number.isFinite(inlineOpt.index) && inlineOpt.index > 30) {
             stem = stem.slice(0, inlineOpt.index).trim();
         }
-        return stem.slice(0, 600);
+
+        // Hard cut on explicit section labels that often prepend options.
+        const altLabelIdx = stem.search(/\bALTERNATIVAS?\b/i);
+        if (altLabelIdx > 30) {
+            stem = stem.slice(0, altLabelIdx).trim();
+        }
+
+        // Compact inline options without punctuation:
+        // "... C.CODIGONIVEL A Sim ... B Nao ... C Sim ..."
+        // If we detect ordered A->B markers in the tail, cut at first A marker.
+        const compactStart = stem.search(/\sA\s+(?=[A-ZÀ-ÖÙ-Ý])/);
+        if (compactStart > 40) {
+            const tail = stem.slice(compactStart);
+            const hasOrderedAB = /\sA\s+(?=[A-ZÀ-ÖÙ-Ý])[\s\S]{0,500}\sB\s+(?=[A-ZÀ-ÖÙ-Ý])/.test(tail);
+            const compactMarkers = tail.match(/\s[ABCDE]\s+(?=[A-ZÀ-ÖÙ-Ý])/g) || [];
+            if (hasOrderedAB && compactMarkers.length >= 3) {
+                stem = stem.slice(0, compactStart).trim();
+            }
+        }
+
+        return stem.slice(0, 2000);
     },
 
     extractOptionsFromQuestion(questionText) {
@@ -90,7 +110,7 @@ export const QuestionParser = {
         const seen = new Set();
         const seenBodies = new Set();
         const _codeDedupKey = (body) => this.normalizeCodeAwareOption(body).replace(/\s+/g, '');
-        const optionRe = /^["'""\u2018\u2019\(\[]?\s*([A-E])\s*[\)\.\:]\s*(.+)$/i;
+        const optionRe = /^["'""\u2018\u2019\(\[]?\s*([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i;
 
         for (const line of lines) {
             const m = line.match(optionRe);
@@ -109,7 +129,7 @@ export const QuestionParser = {
 
         // Secondary pass: recover missing letters from inline/quoted patterns
         // Lookahead updated: \s after delimiter is optional to handle "A .csv" format
-        const inlineRe = /(?:^|[\n\r\t ;"'""''])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:[\n\r\t ;"'""''][A-E]\s*[\)\.\-:])|$)/gi;
+        const inlineRe = /(?:^|[\n\r\t ;"'""''])([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*([^]*?)(?=(?:[\n\r\t ;"'""''][A-E]\s*(?:[\)\-:]|(?:\.\s)))|$)/gi;
         let m;
         while ((m = inlineRe.exec(text)) !== null) {
             const letter = (m[1] || '').toUpperCase();

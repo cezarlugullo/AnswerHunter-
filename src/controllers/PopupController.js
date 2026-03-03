@@ -2,6 +2,7 @@ import { ExtractionService } from '../services/ExtractionService.js';
 import { SearchService } from '../services/SearchService.js';
 import { ApiService } from '../services/ApiService.js';
 import { BinderController } from './BinderController.js';
+import { DisciplinasController } from './DisciplinasController.js';
 import { StorageModel } from '../models/StorageModel.js';
 import { SettingsModel } from '../models/SettingsModel.js';
 import { I18nService } from '../i18n/I18nService.js';
@@ -13,6 +14,8 @@ import { PerformanceTimer } from '../utils/PerformanceTimer.js';
 import { NativeFetchBridgeService } from '../services/NativeFetchBridgeService.js';
 import { PageGabaritoCache } from '../services/PageGabaritoCache.js';
 import { QuestionParser } from '../services/search/QuestionParser.js';
+import { PlatformExtractors } from '../services/PlatformExtractors.js';
+import { QuestionFingerprint } from '../utils/QuestionFingerprint.js';
 
 export const PopupController = {
   view: null,
@@ -204,6 +207,9 @@ export const PopupController = {
     this.view.elements.copyBtn?.addEventListener('click', () => this.handleCopyAll());
     this.view.elements.clearBinderBtn?.addEventListener('click', () => BinderController.handleClearAll());
     document.getElementById('addQuestionBtn')?.addEventListener('click', () => BinderController.handleAddManual());
+    document.getElementById('btnDisciplinas')?.addEventListener('click', () => BinderController.openDisciplinaManager());
+
+    DisciplinasController.init();
 
     this.view.elements.tabs.forEach((tab) => {
       tab.addEventListener('click', () => {
@@ -211,6 +217,8 @@ export const PopupController = {
         this.view.switchTab(target);
         if (target === 'binder') {
           BinderController.renderBinder();
+        } else if (target === 'disciplinas') {
+          DisciplinasController.renderDisciplinas();
         }
       });
     });
@@ -1941,15 +1949,60 @@ export const PopupController = {
       });
       _pcTimer.mark('DOM Extraction (executeScript)');
 
+      // ── Phase 2.1: Platform-specific extraction ──
+      // Try a dedicated platform extractor first — much more accurate than generic heuristics.
+      let platformResult = null;
+      let detectedPlatform = null;
+      try {
+        const [platformDetect] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          function: PlatformExtractors.detectPlatformScript
+        });
+        detectedPlatform = platformDetect?.result || null;
+        if (detectedPlatform) {
+          const extractorFn = PlatformExtractors.getExtractorForPlatform(detectedPlatform);
+          if (extractorFn) {
+            const [pResult] = await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              function: extractorFn
+            });
+            if (pResult?.result && pResult.result.text && pResult.result.text.length >= 30) {
+              platformResult = pResult.result;
+              console.log(`AnswerHunter: PLATFORM_EXTRACTOR ${detectedPlatform} → ${platformResult.text.length} chars, confidence=${platformResult.confidence}, opts=${platformResult.optionCount}`);
+            }
+          }
+        }
+      } catch (platErr) {
+        console.warn('AnswerHunter: Platform detection failed:', platErr?.message);
+      }
+      _pcTimer.mark('Platform Detection');
+
+      // ── Phase 1.1: Viewport-centric extraction ──
+      // Parallel extraction using elementFromPoint grid — finds the question by visual presence.
+      let viewportResult = null;
+      try {
+        const [vpResult] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          function: ExtractionService.extractViewportCentricScript
+        });
+        if (vpResult?.result && vpResult.result.text && vpResult.result.text.length >= 30) {
+          viewportResult = vpResult.result;
+          console.log(`AnswerHunter: VIEWPORT_CENTRIC → ${viewportResult.text.length} chars, confidence=${viewportResult.confidence}, probes=${viewportResult.probeHits}, opts=${viewportResult.optionCount}`);
+        }
+      } catch (vpErr) {
+        console.warn('AnswerHunter: Viewport-centric extraction failed:', vpErr?.message);
+      }
+      _pcTimer.mark('Viewport-centric Extraction');
+
       const countDistinctOptions = (text) => {
         if (!text) return 0;
-        const matches = text.match(/(?:^|\n)\s*["'“”‘’]?\s*([A-E])\s*[\)\.\-:]\s*\S/gi) || [];
+        const matches = text.match(/(?:^|\n)\s*["'“”‘’]?\s*([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*\S/gi) || [];
         const letters = new Set(matches.map(m => m.trim().charAt(0).toUpperCase()));
         return letters.size;
       };
 
       const isValidOptionLine = (line) => {
-        const m = String(line || '').trim().match(/^([A-E])\s*[\)\.\-:]\s*(.+)$/i);
+        const m = String(line || '').trim().match(/^([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i);
         if (!m) return false;
         let body = String(m[2] || '').replace(/\s+/g, ' ').trim();
         const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
@@ -1958,8 +2011,8 @@ export const PopupController = {
         body = body.replace(/[;:,\-.\s]+$/, '');
 
         if (!body || body.length < 1) return false;
-        if (/^[A-E]\s*[\)\.\-:]?\s*$/i.test(body)) return false;
-        if (/^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(body)) return false;
+        if (/^[A-E]\s*(?:[\)\-:]|(?:\.\s))?\s*$/i.test(body)) return false;
+        if (/^(?:[A-E]\s*(?:[\)\-:]|(?:\.\s))\s*){1,2}$/i.test(body)) return false;
         if (/^(?:resposta|gabarito|alternativa\s+correta)\b/i.test(body) && body.length < 60) return false;
         return true;
       };
@@ -1976,7 +2029,7 @@ export const PopupController = {
       const normalizeOptionBody = (body) => String(body || '')
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
+        .replace(/^[a-e]\s*(?:[\)\-:]|(?:\.\s))\s*/i, '')
         .replace(/[^a-z0-9]+/g, ' ')
         .trim();
       const optionTokens = (body) => normalizeOptionBody(body)
@@ -1987,7 +2040,7 @@ export const PopupController = {
         const entries = [];
         const letters = new Set();
         const tokenSet = new Set();
-        const re = /^["']?\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+        const re = /^["']?\s*([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i;
         for (const line of lines) {
           const m = line.match(re);
           if (!m) continue;
@@ -2006,7 +2059,7 @@ export const PopupController = {
       const buildOptionBodyMap = (text) => {
         const map = new Map();
         const lines = String(text || '').split('\n').map((l) => l.trim()).filter(Boolean);
-        const re = /^["']?\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
+        const re = /^["']?\s*([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i;
         for (const line of lines) {
           const m = line.match(re);
           if (!m) continue;
@@ -2178,6 +2231,36 @@ export const PopupController = {
         console.groupEnd();
       }
 
+      // ── Phase 2.1 + 1.1: Winner selection across extraction strategies ──
+      // Platform extractor → Viewport-centric → Generic DOM (in priority order)
+      let usedPlatformExtractor = false;
+      let usedViewportCentric = false;
+      if (platformResult && platformResult.confidence >= 0.85 && platformResult.text.length >= 50) {
+        const platformOpts = countDistinctOptions(platformResult.text);
+        const genericOpts = countDistinctOptions(bestQuestion);
+        // Platform extractor wins if it has comparable or better structure
+        if (platformOpts >= genericOpts || platformResult.confidence >= 0.9) {
+          console.log(`AnswerHunter: EXTRACTION_WINNER=platform (${detectedPlatform}) opts=${platformOpts} confidence=${platformResult.confidence}`);
+          bestQuestion = platformResult.text;
+          usedPlatformExtractor = true;
+        }
+      }
+      if (!usedPlatformExtractor && viewportResult && viewportResult.confidence >= 0.7) {
+        const vpOpts = countDistinctOptions(viewportResult.text);
+        const genericOpts = countDistinctOptions(bestQuestion);
+        // Viewport wins if it has more options or the generic result looks weak
+        if (vpOpts > genericOpts || (vpOpts === genericOpts && viewportResult.text.length > (bestQuestion || '').length * 0.8) || genericOpts < 2) {
+          console.log(`AnswerHunter: EXTRACTION_WINNER=viewport probes=${viewportResult.probeHits} opts=${vpOpts} confidence=${viewportResult.confidence}`);
+          bestQuestion = viewportResult.text;
+          usedViewportCentric = true;
+        }
+      }
+
+      // ── Phase 1.2: Create question fingerprint from first extraction ──
+      // All subsequent steps validate against this fingerprint.
+      const questionFingerprint = QuestionFingerprint.create(bestQuestion);
+      console.log(`AnswerHunter: FINGERPRINT created tokens=[${questionFingerprint.tokens.join(', ')}]`);
+
       // -- Vision OCR priority --
       // OCR runs only when DOM extraction is insufficient (< 4 options or short text).
       // When DOM already captured a complete question, skip OCR entirely to save time.
@@ -2224,6 +2307,52 @@ export const PopupController = {
                 usedVisionOcr = true;
                 ocrVisionText = visionText; // Preserve OCR text even if DOM wins
 
+                // ── Phase 1.3: OCR Multi-question isolation ──
+                // Detect if OCR returned multiple questions (multiple option blocks A-E)
+                // and isolate only the first/main one.
+                {
+                  const ocrLines = visionText.split('\n');
+                  let optionBlockStarts = [];
+                  let currentBlockStart = -1;
+                  for (let li = 0; li < ocrLines.length; li++) {
+                    const line = ocrLines[li].trim();
+                    if (/^\s*["']?\s*A\s*[\)\.\-:]\s*\S/i.test(line)) {
+                      // Found an 'A)' option — potential start of a new option block
+                      if (currentBlockStart >= 0 && li - currentBlockStart > 1) {
+                        // Previous block was real (had multiple lines)
+                        optionBlockStarts.push(currentBlockStart);
+                      }
+                      currentBlockStart = li;
+                    }
+                  }
+                  if (currentBlockStart >= 0) optionBlockStarts.push(currentBlockStart);
+
+                  if (optionBlockStarts.length >= 2) {
+                    // Multiple option blocks found — keep only the first question
+                    const secondBlockStart = optionBlockStarts[1];
+                    // Walk backwards from the second block to find stem separator
+                    let cutLine = secondBlockStart;
+                    for (let si = secondBlockStart - 1; si > 0; si--) {
+                      const prevLine = ocrLines[si].trim();
+                      if (/^\s*["']?\s*[D-E]\s*[\)\.\-:]\s*\S/i.test(prevLine) || /^\s*["']?\s*[C]\s*[\)\.\-:]\s*\S/i.test(prevLine)) {
+                        cutLine = si + 1;
+                        break;
+                      }
+                      // If we hit another numbered question header, cut there
+                      if (/^\d{1,2}\s*[\.\)]\s+[A-ZÀ-Ö]/.test(prevLine)) {
+                        cutLine = si;
+                        break;
+                      }
+                    }
+                    const isolatedOcr = ocrLines.slice(0, cutLine).join('\n').trim();
+                    if (isolatedOcr.length >= 30 && countDistinctOptions(isolatedOcr) >= 2) {
+                      console.log(`AnswerHunter: OCR_MULTI_Q_ISOLATION cut at line ${cutLine}/${ocrLines.length} (${optionBlockStarts.length} option blocks detected). Kept ${isolatedOcr.length}/${visionText.length} chars`);
+                      bestQuestion = isolatedOcr;
+                      ocrVisionText = isolatedOcr;
+                    }
+                  }
+                }
+
                 // If DOM is clearly better in structural completeness, keep DOM.
                 // HOWEVER: if OCR found significantly more options (2+ advantage), OCR always wins
                 // because longer DOM text without options leads to cross-frame option contamination.
@@ -2241,6 +2370,46 @@ export const PopupController = {
                 } else {
                   console.log('AnswerHunter: Using Vision OCR result as primary statement');
                   console.log('AnswerHunter: OCR_PRIORITY decision=ocr');
+
+                  // ── Stem enrichment: if DOM has a longer stem, merge DOM stem with OCR options ──
+                  // OCR often captures options accurately but truncates the enunciado (context, code, headers).
+                  // The DOM extraction may have the full stem even when it has fewer options.
+                  // CRITICAL: only merge if DOM stem is about the SAME question (token overlap check).
+                  if (domQuestion && domQuestion.length > 0) {
+                    const ocrStemLines = visionText.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
+                    const ocrStemText = ocrStemLines.join(' ').replace(/\s+/g, ' ').trim();
+                    const ocrStemLen = ocrStemText.length;
+                    const domStemLines = domQuestion.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
+                    const domStemText = domStemLines.join(' ').replace(/\s+/g, ' ').trim();
+                    const domStemLen = domStemText.length;
+
+                    // Validate DOM stem is about the same question as OCR stem
+                    const _normStem = (s) => String(s || '')
+                      .toLowerCase()
+                      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                      .replace(/[^a-z0-9]+/g, ' ').trim();
+                    const ocrTokens = _normStem(ocrStemText).split(' ').filter(t => t.length >= 4);
+                    const domTokenSet = new Set(_normStem(domStemText).split(' ').filter(t => t.length >= 4));
+                    let stemOverlap = 0;
+                    for (const t of ocrTokens) { if (domTokenSet.has(t)) stemOverlap++; }
+                    const stemOverlapRatio = ocrTokens.length > 0 ? (stemOverlap / ocrTokens.length) : 0;
+                    // DOM stem must contain at least 50% of OCR stem tokens to be the same question
+                    const isSameQuestion = stemOverlapRatio >= 0.5 || (ocrStemLen < 40 && stemOverlap >= 2);
+
+                    if (domStemLen > ocrStemLen * 1.5 && domStemLen >= 80 && isSameQuestion) {
+                      // Phase 1.2: Also validate against initial fingerprint
+                      const fpCheck = QuestionFingerprint.validateStemEnrichment(questionFingerprint, domStemText);
+                      if (!fpCheck.valid) {
+                        console.log(`AnswerHunter: STEM_ENRICHMENT rejected by FINGERPRINT — ${fpCheck.details}`);
+                      } else {
+                        // DOM stem is significantly longer AND about the same question — use it as the stem
+                        const ocrOptLines = visionText.split('\n').filter(l => l.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
+                        bestQuestion = `${domStemText}\n${ocrOptLines.join('\n')}`.trim();
+                        console.log(`AnswerHunter: STEM_ENRICHMENT merged DOM stem (${domStemLen} chars) with OCR options (${ocrOptLines.length}). OCR stem was ${ocrStemLen} chars. Overlap=${stemOverlapRatio.toFixed(2)} FP=${fpCheck.details}`);
+                      }                    } else if (domStemLen > ocrStemLen * 1.5 && domStemLen >= 80) {
+                      console.log(`AnswerHunter: STEM_ENRICHMENT rejected — DOM stem appears to be a DIFFERENT question (overlap=${stemOverlapRatio.toFixed(2)}, shared=${stemOverlap}/${ocrTokens.length})`);
+                    }
+                  }
                 }
               } else {
                 console.log('AnswerHunter: Vision OCR returned insufficient text, keeping DOM result');
@@ -2258,12 +2427,20 @@ export const PopupController = {
       // Find the element containing the OCR fragment, walk up the DOM tree to get the full context.
       // Uses textContent (no layout reflow = no scroll) instead of innerText.
       const preCtxOptionCount = countDistinctOptions(bestQuestion || '');
+
+      // Compute stem length (non-option text) to detect truncated enunciados
+      const _stemOnlyLines = String(bestQuestion || '').split('\n')
+        .filter(line => !line.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
+      const _stemLength = _stemOnlyLines.join(' ').replace(/\s+/g, ' ').trim().length;
+      // If the stem is suspiciously short (< 150 chars) but we have options,
+      // the OCR/extraction likely missed the full question context (headers, code, etc.)
+      const stemLooksIncomplete = _stemLength > 0 && _stemLength < 150 && preCtxOptionCount >= 2;
+
       const shouldTryContextRecovery =
         !!bestQuestion &&
-        bestQuestion.length < 400 &&
-        bestFrameIndex === -1 &&
-        preCtxOptionCount < 4 &&
-        !(usedVisionOcr && ocrVisionOptionCount >= 4); // trusted OCR with full options: don't expand context
+        (bestQuestion.length < 400 || stemLooksIncomplete) &&
+        (bestFrameIndex === -1 || stemLooksIncomplete) &&
+        (preCtxOptionCount < 4 || stemLooksIncomplete);
 
       if (shouldTryContextRecovery) {
         try {
@@ -2311,7 +2488,8 @@ export const PopupController = {
               }
               return clean(bestCtx.textContent).substring(0, 3000);
             },
-            args: [bestQuestion.substring(0, 120)]
+            // When stem looks incomplete, use the stem text as search anchor (not options)
+            args: [stemLooksIncomplete ? _stemOnlyLines.join(' ').trim().substring(0, 120) : bestQuestion.substring(0, 120)]
           });
           const normalizeCtx = (s) => String(s || '')
             .toLowerCase()
@@ -2331,15 +2509,18 @@ export const PopupController = {
           const currentOptCount = countDistinctOptions(bestQuestion || '');
           const candidates = (ctxResults || [])
             .map((r) => String(r?.result || ''))
-            .filter((t) => t && t !== '__NOTFOUND__' && t.length > bestQuestion.length + 40);
+            .filter((t) => t && t !== '__NOTFOUND__' && t.length > (stemLooksIncomplete ? _stemLength + 20 : bestQuestion.length + 40));
 
           let ctxText = '';
           let bestCtxScore = 0;
+          // Similarity threshold: use 0.45 when stem is incomplete (expanded text
+          // has more content), but not too low to avoid cross-question contamination
+          const similarityThreshold = stemLooksIncomplete ? 0.45 : 0.55;
           for (const candidate of candidates) {
             const similarity = overlapScore(bestQuestion, candidate);
             const candidateOptCount = countDistinctOptions(candidate);
             const keepsOptions = candidateOptCount >= Math.max(2, currentOptCount - 1);
-            const likelySameQuestion = similarity >= 0.55;
+            const likelySameQuestion = similarity >= similarityThreshold;
             const score = similarity + (keepsOptions ? 0.08 : -0.2);
             if (likelySameQuestion && score > bestCtxScore) {
               bestCtxScore = score;
@@ -2348,14 +2529,37 @@ export const PopupController = {
           }
 
           if (ctxText) {
-            console.log(`AnswerHunter: CONTEXT_RECOVERY expanded ${bestQuestion.length} → ${ctxText.length} chars (score=${bestCtxScore.toFixed(2)})`);
-            bestQuestion = ctxText;
+            // Final guard: verify the recovered context contains the original stem tokens
+            // to avoid replacing with an entirely different question from the DOM
+            const _ctxNorm = normalizeCtx(ctxText);
+            const _origStemNorm = normalizeCtx(
+              stemLooksIncomplete ? _stemOnlyLines.join(' ').trim() : bestQuestion
+            );
+            const _origTokens = _origStemNorm.split(' ').filter(t => t.length >= 4).slice(0, 12);
+            let _ctxHits = 0;
+            for (const t of _origTokens) { if (_ctxNorm.includes(t)) _ctxHits++; }
+            const _ctxContainsStem = _origTokens.length === 0 || (_ctxHits / _origTokens.length) >= 0.5;
+
+            if (_ctxContainsStem) {
+              // Phase 1.2: Validate against fingerprint
+              const fpCtxCheck = QuestionFingerprint.validateContextRecovery(questionFingerprint, ctxText);
+              if (!fpCtxCheck.valid) {
+                console.log(`AnswerHunter: CONTEXT_RECOVERY rejected by FINGERPRINT — ${fpCtxCheck.details}`);
+              } else {
+                console.log(`AnswerHunter: CONTEXT_RECOVERY expanded ${bestQuestion.length} → ${ctxText.length} chars (score=${bestCtxScore.toFixed(2)}, stemHits=${_ctxHits}/${_origTokens.length}, FP=${fpCtxCheck.details})`);
+                bestQuestion = ctxText;
+              }
+            } else {
+              console.log(`AnswerHunter: CONTEXT_RECOVERY rejected — expanded text is a DIFFERENT question (stemHits=${_ctxHits}/${_origTokens.length}, score=${bestCtxScore.toFixed(2)})`);
+            }
           } else {
             console.log(`AnswerHunter: CONTEXT_RECOVERY rejected expansion (bestScore=${bestCtxScore.toFixed(2)}; results=${(ctxResults || []).map(r => String(r?.result || '').length).join(',')})`);
           }
         } catch (e) {
           console.warn('AnswerHunter: CONTEXT_RECOVERY failed:', e?.message);
         }
+      } else if (bestQuestion && stemLooksIncomplete) {
+        console.log(`AnswerHunter: CONTEXT_RECOVERY skipped (conditions not met) stemLen=${_stemLength} opts=${preCtxOptionCount}`);
       } else if (bestQuestion && bestQuestion.length < 400 && usedVisionOcr && ocrVisionOptionCount >= 4) {
         console.log(`AnswerHunter: CONTEXT_RECOVERY skipped (trusted OCR options=${ocrVisionOptionCount})`);
       }
@@ -2467,7 +2671,7 @@ export const PopupController = {
         if (inlineDetected >= 3 && lineDetected < inlineDetected) {
           // Split inline options onto separate lines.
           // Handle both "A) text" (delimiter + space) and "A .csv" (space + delimiter + text) formats.
-          bestQuestion = bestQuestion.replace(/(\S)\s+([a-eA-E]\s*[\)\.\-:]\S?)/g, '$1\n$2');
+          bestQuestion = bestQuestion.replace(/(\S)\s+([a-eA-E]\s*(?:[\)\-:]|(?:\.\s))\S?)/g, '$1\n$2');
           console.log(`AnswerHunter: INLINE_OPTIONS_SPLIT inline=${inlineDetected} wasOnLines=${lineDetected} nowOnLines=${countDistinctOptions(bestQuestion)}`);
         }
       }
@@ -3059,6 +3263,119 @@ export const PopupController = {
         console.log(`AnswerHunter: OCR_PRIORITY post-step=dom_options_scan skipped opts_current=${existingOptionCount} (OCR already has full option set)`);
       }
 
+      // ── Phase 2.3: DOM ↔ OCR cross-validation ──
+      // Compare the final displayQuestion stem with the DOM question stem.
+      // If they diverge significantly, trust OCR (it sees what the user sees).
+      if (usedVisionOcr && domQuestion && ocrVisionText) {
+        const _normCross = (s) => String(s || '')
+          .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9]+/g, ' ').trim();
+        const displayStemLines = displayQuestion.split('\n')
+          .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
+        const displayStemNorm = _normCross(displayStemLines.join(' '));
+        const ocrStemLines = ocrVisionText.split('\n')
+          .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
+        const ocrStemNorm = _normCross(ocrStemLines.join(' '));
+        const domStemLines = domQuestion.split('\n')
+          .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
+        const domStemNorm = _normCross(domStemLines.join(' '));
+
+        // Check if display has drifted from OCR (contaminated by DOM)
+        const displayTokens = displayStemNorm.split(' ').filter(t => t.length >= 4);
+        const ocrTokenSet = new Set(ocrStemNorm.split(' ').filter(t => t.length >= 4));
+        let ocrOverlap = 0;
+        for (const t of displayTokens) { if (ocrTokenSet.has(t)) ocrOverlap++; }
+        const ocrOverlapRatio = displayTokens.length > 0 ? ocrOverlap / displayTokens.length : 1;
+
+        // If display diverged significantly from OCR, revert to OCR-based text
+        if (ocrOverlapRatio < 0.35 && ocrStemNorm.length >= 30) {
+          const fpCrossCheck = QuestionFingerprint.validate(questionFingerprint, ocrVisionText, 0.3);
+          if (fpCrossCheck.valid) {
+            console.log(`AnswerHunter: CROSS_VALIDATION display diverged from OCR (overlap=${ocrOverlapRatio.toFixed(2)}). Reverting to OCR text. FP=${fpCrossCheck.details}`);
+            displayQuestion = ocrVisionText;
+          } else {
+            console.log(`AnswerHunter: CROSS_VALIDATION display diverged but OCR also diverged from fingerprint. Keeping display.`);
+          }
+        } else {
+          console.log(`AnswerHunter: CROSS_VALIDATION ok (ocr_overlap=${ocrOverlapRatio.toFixed(2)})`);
+        }
+      }
+
+      // ── Phase 2.2: Two-pass OCR trigger ──
+      // If the current result has issues (few options, short stem), run a focused second OCR pass.
+      const _preTwoPassOpts = countDistinctOptions(displayQuestion);
+      const _preTwoPassStemLen = displayQuestion.split('\n')
+        .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i))
+        .join(' ').trim().length;
+      const needsSecondPass = usedVisionOcr && (_preTwoPassOpts < 3 || _preTwoPassStemLen < 60);
+      let capturedBase64 = null;
+
+      if (needsSecondPass) {
+        try {
+          const dataUrl2 = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 70 });
+          capturedBase64 = dataUrl2 ? dataUrl2.split(',')[1] : null;
+          if (capturedBase64) {
+            const hint = displayQuestion.split('\n')[0] || '';
+            const focusedText = await ApiService.extractTextFromScreenshotFocused(capturedBase64, hint);
+            if (focusedText && focusedText.length >= 50) {
+              const focusedOpts = countDistinctOptions(focusedText);
+              const focusedStemLen = focusedText.split('\n')
+                .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i))
+                .join(' ').trim().length;
+              const fpFocused = QuestionFingerprint.validate(questionFingerprint, focusedText, 0.35);
+              if (fpFocused.valid && (focusedOpts > _preTwoPassOpts || focusedStemLen > _preTwoPassStemLen * 1.3)) {
+                console.log(`AnswerHunter: TWO_PASS_OCR replaced result. opts: ${_preTwoPassOpts}→${focusedOpts}, stemLen: ${_preTwoPassStemLen}→${focusedStemLen}. FP=${fpFocused.details}`);
+                displayQuestion = focusedText;
+              } else {
+                console.log(`AnswerHunter: TWO_PASS_OCR not better (opts=${focusedOpts} stemLen=${focusedStemLen} fp=${fpFocused.details})`);
+              }
+            }
+          }
+        } catch (e2) {
+          console.warn('AnswerHunter: Two-pass OCR failed:', e2?.message);
+        }
+      }
+      _pcTimer.mark('Cross-validation + Two-pass OCR');
+
+      // ── Phase 3.2: LLM post-validation ──
+      // Quick LLM check: "Is this exactly 1 complete question?"
+      // Only runs when we have structural concerns (few options, very short text).
+      const _finalOptCount = countDistinctOptions(displayQuestion);
+      const _finalStemLen = displayQuestion.split('\n')
+        .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i))
+        .join(' ').trim().length;
+      const shouldLlmValidate = _finalOptCount < 3 || _finalStemLen < 50 || displayQuestion.length > 3000;
+
+      if (shouldLlmValidate) {
+        try {
+          const llmResult = await ApiService.llmPostValidateQuestion(displayQuestion);
+          console.log(`AnswerHunter: LLM_POST_VALIDATION valid=${llmResult.valid} reason="${llmResult.reason}" qCount=${llmResult.questionCount}`);
+          if (!llmResult.valid && llmResult.fixedText && llmResult.fixedText.length >= 30) {
+            const fpLlm = QuestionFingerprint.validate(questionFingerprint, llmResult.fixedText, 0.35);
+            if (fpLlm.valid) {
+              console.log(`AnswerHunter: LLM_POST_VALIDATION applied fixedText (${llmResult.fixedText.length} chars). FP=${fpLlm.details}`);
+              displayQuestion = llmResult.fixedText;
+            } else {
+              console.log(`AnswerHunter: LLM_POST_VALIDATION fixedText rejected by fingerprint — ${fpLlm.details}`);
+            }
+          }
+        } catch (llmErr) {
+          console.warn('AnswerHunter: LLM post-validation error:', llmErr?.message);
+        }
+        _pcTimer.mark('LLM Post-validation');
+      }
+
+      // ── Phase 3.3: Confidence scoring ──
+      const extractionConfidence = QuestionFingerprint.computeConfidence(displayQuestion, {
+        usedVision: usedVisionOcr,
+        platformMatch: usedPlatformExtractor,
+        viewportMatch: usedViewportCentric,
+        fingerprint: questionFingerprint
+      });
+      console.log(`AnswerHunter: CONFIDENCE score=${extractionConfidence.score} level=${extractionConfidence.level} signals=[${extractionConfidence.signals.join(', ')}]`);
+      // Store on instance for _decorateWithSavedMeta to inject into results
+      this._lastExtractionConfidence = extractionConfidence;
+
       // Final canonicalization: rebuild stable "stem + options" before cache/search.
       displayQuestion = this._canonicalizeDisplayQuestion(displayQuestion, bestQuestion);
 
@@ -3182,7 +3499,7 @@ export const PopupController = {
 
       // Persist context so the popup can resume polling when it reopens.
       await chrome.storage.local.set({
-        ah_pending_search: { requestId, displayQuestion, bestQuestion }
+        ah_pending_search: { requestId, displayQuestion, bestQuestion, extractionConfidence }
       });
 
       let bgDispatched = false;
@@ -3414,7 +3731,7 @@ export const PopupController = {
 
     const optionMap = {};
     for (const line of options) {
-      const m = String(line || '').match(/^\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i);
+      const m = String(line || '').match(/^\s*([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i);
       if (!m) continue;
       const letter = m[1].toUpperCase();
       const body = QuestionParser.stripOptionTailNoise(m[2]);
@@ -3423,6 +3740,35 @@ export const PopupController = {
     }
 
     const orderedLetters = ['A', 'B', 'C', 'D', 'E'].filter((letter) => !!optionMap[letter]);
+
+    // Deterministic stem cleanup to prevent "enunciado + alternatives inline" duplication.
+    const sanitizeStem = (stemText) => {
+      let s = String(stemText || '').replace(/\s+/g, ' ').trim();
+      if (!s) return s;
+
+      // 1) Cut on explicit section labels.
+      const labelIdx = s.search(/\bALTERNATIVAS?\b/i);
+      if (labelIdx > 30) s = s.slice(0, labelIdx).trim();
+
+      // 2) Cut compact inline alternatives (A texto B texto C texto...).
+      const compactStart = s.search(/\sA\s+(?=[A-ZÀ-ÖÙ-Ý])/);
+      if (compactStart > 40) {
+        const tail = s.slice(compactStart);
+        const hasOrderedAB = /\sA\s+(?=[A-ZÀ-ÖÙ-Ý])[\s\S]{0,500}\sB\s+(?=[A-ZÀ-ÖÙ-Ý])/.test(tail);
+        const markers = tail.match(/\s[ABCDE]\s+(?=[A-ZÀ-ÖÙ-Ý])/g) || [];
+        if (hasOrderedAB && markers.length >= 3) {
+          s = s.slice(0, compactStart).trim();
+        }
+      }
+
+      // 3) Extra guard: if option delimiters appear in stem, cut at first one.
+      const optDelim = s.search(/\sA\s*(?:[\)\-:]|(?:\.\s))/i);
+      if (optDelim > 30) s = s.slice(0, optDelim).trim();
+
+      return s;
+    };
+
+    stem = sanitizeStem(stem);
     const rebuiltOptions = orderedLetters.map((letter) => `${letter}) ${optionMap[letter]}`);
 
     if (stem && rebuiltOptions.length >= 2) return `${stem}\n${rebuiltOptions.join('\n')}`.trim().slice(0, 3500);
@@ -3564,6 +3910,7 @@ export const PopupController = {
   },
 
   _decorateWithSavedMeta(items, questionFallback = '') {
+    const ec = this._lastExtractionConfidence || null;
     return (items || []).map((item) => {
       const question = item.question || questionFallback;
       const meta = StorageModel.getQuestionMeta(question);
@@ -3571,7 +3918,8 @@ export const PopupController = {
         ...item,
         question,
         saved: meta.saved,
-        reviewLater: meta.reviewLater
+        reviewLater: meta.reviewLater,
+        extractionConfidence: item.extractionConfidence || ec
       };
     });
   },
@@ -3886,6 +4234,29 @@ export const PopupController = {
       }
       if (reviewLaterButtonInCard) this.view.setReviewLaterButtonState(reviewLaterButtonInCard, reviewLater);
       await this._persistResultFlags(card, { saved, reviewLater });
+      return;
+    }
+
+    // --- Phase 3.1: Feedback button (report extraction error) ---
+    const feedbackBtn = event.target.closest('.feedback-btn');
+    if (feedbackBtn) {
+      try {
+        const { CorrectionFeedback } = await import('../services/CorrectionFeedback.js');
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const dataContent = feedbackBtn.dataset.content;
+        const data = dataContent ? JSON.parse(decodeURIComponent(dataContent)) : {};
+        await CorrectionFeedback.recordCorrection({
+          url: tab?.url || '',
+          type: 'wrong_question',
+          extractedText: data.question || '',
+          extractionMethod: data.extractionConfidence ? 'scored' : 'unknown'
+        });
+        feedbackBtn.innerHTML = `<span class="material-symbols-rounded" style="font-size:14px;color:#27ae60;">check</span><span style="font-size:10.5px;">Registrado!</span>`;
+        feedbackBtn.disabled = true;
+        console.log('AnswerHunter: User reported extraction error via feedback button');
+      } catch (fbErr) {
+        console.warn('AnswerHunter: Feedback recording failed:', fbErr?.message);
+      }
       return;
     }
 

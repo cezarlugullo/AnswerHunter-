@@ -1,3 +1,6 @@
+# Non-project files
+_non_project/
+
 # Operating system files
 .DS_Store
 Thumbs.db

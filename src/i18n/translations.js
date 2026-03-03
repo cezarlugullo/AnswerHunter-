@@ -362,6 +362,92 @@ export const TRANSLATIONS = {
     'manual.add.errorRequired': 'Question and answer are required.',
     'manual.add.errorDuplicate': 'This question is already saved.',
 
+    // ─── Dashboard v2 ────────────────────────────────────────────────────
+    'dash.greeting.morning': 'Good morning',
+    'dash.greeting.afternoon': 'Good afternoon',
+    'dash.greeting.evening': 'Good evening',
+    'dash.sidebar.overview': 'Overview',
+    'dash.sidebar.disciplines': 'Disciplines',
+    'dash.sidebar.analytics': 'Analytics',
+    'dash.sidebar.badges': 'Badges',
+    'dash.sidebar.notes': 'Notes',
+    'dash.sidebar.settings': 'Settings',
+    'dash.stats.totalCards': 'Total Cards',
+    'dash.stats.mastered': 'Mastered',
+    'dash.stats.dueToday': 'Due Today',
+    'dash.stats.streak': 'Streak',
+    'dash.level': 'Level {level}',
+    'dash.xp': '{current} / {next} XP',
+    'dash.studyAll': 'Study All Due',
+    'dash.noDue': 'No cards due today — great job!',
+    'dash.sections.disciplines': 'My Disciplines',
+    'dash.sections.dueReview': 'Due for Review',
+    'dash.sections.heatmap': 'Study Activity',
+    'dash.sections.insights': 'AI Insights',
+    'dash.sections.studyPlan': 'Today\'s Plan',
+    'dash.newDisc': 'New Discipline',
+    'dash.viewAll': 'View All',
+
+    // ─── Discipline Detail ───────────────────────────────────────────────
+    'disc.modules': '{count} module(s)',
+    'disc.topics': '{count} topic(s)',
+    'disc.cards': '{count} card(s)',
+    'disc.mastery': '{pct}% mastery',
+    'disc.newModule': 'New Module',
+    'disc.study': 'Study',
+    'disc.edit': 'Edit',
+    'disc.delete': 'Delete',
+    'disc.empty': 'No modules yet. Create one to get started.',
+
+    // ─── Badges ──────────────────────────────────────────────────────────
+    'badge.title': 'Achievements',
+    'badge.unlocked': '{count} unlocked',
+    'badge.locked': 'Locked',
+    'badge.new': 'New Badge!',
+
+    // ─── Notes ───────────────────────────────────────────────────────────
+    'notes.title': 'My Notes',
+    'notes.new': 'New Note',
+    'notes.search': 'Search notes...',
+    'notes.empty': 'No notes yet. Start taking notes while studying!',
+    'notes.pinned': 'Pinned',
+
+    // ─── Analytics ───────────────────────────────────────────────────────
+    'analytics.title': 'Analytics',
+    'analytics.overview': 'Performance Overview',
+    'analytics.reviews30': 'Reviews (30 days)',
+    'analytics.accuracy': 'Accuracy',
+    'analytics.studyTime': 'Study Time',
+    'analytics.activeDays': 'Active Days',
+    'analytics.retention': 'Retention Curve',
+    'analytics.pattern': 'Study Patterns',
+    'analytics.weekly': 'Weekly Trend',
+
+    // ─── Export ──────────────────────────────────────────────────────────
+    'export.title': 'Export & Import',
+    'export.fullBackup': 'Full Backup (JSON)',
+    'export.csv': 'Cards (CSV)',
+    'export.anki': 'Anki Export',
+    'export.import': 'Import Backup',
+    'export.success': 'Export completed!',
+    'export.importSuccess': 'Import completed successfully!',
+
+    // ─── Study Plan ──────────────────────────────────────────────────────
+    'plan.title': 'Study Plan',
+    'plan.today': 'Today\'s Plan',
+    'plan.overdue': 'Overdue Reviews',
+    'plan.dueToday': 'Due Today',
+    'plan.weakFocus': 'Weak Discipline Focus',
+    'plan.newCards': 'Learn New Cards',
+
+    // ─── Recommendations ─────────────────────────────────────────────────
+    'rec.title': 'Recommendations',
+    'rec.criticalOverdue': 'Critical: {count} cards overdue >3 days',
+    'rec.dueToday': '{count} cards due today',
+    'rec.weakDisc': 'Focus on {name} — only {pct}% mastery',
+    'rec.atRisk': '{count} cards at risk of being forgotten',
+    'rec.celebrate': 'Amazing progress! Keep it up!',
+
   },
 
   'pt-BR': {
@@ -722,6 +808,92 @@ export const TRANSLATIONS = {
     'manual.add.success': 'Questão salva com sucesso!',
     'manual.add.errorRequired': 'Enunciado e resposta são obrigatórios.',
     'manual.add.errorDuplicate': 'Essa questão já está salva.',
+
+    // ─── Dashboard v2 ────────────────────────────────────────────────────
+    'dash.greeting.morning': 'Bom dia',
+    'dash.greeting.afternoon': 'Boa tarde',
+    'dash.greeting.evening': 'Boa noite',
+    'dash.sidebar.overview': 'Visão Geral',
+    'dash.sidebar.disciplines': 'Disciplinas',
+    'dash.sidebar.analytics': 'Analytics',
+    'dash.sidebar.badges': 'Conquistas',
+    'dash.sidebar.notes': 'Anotações',
+    'dash.sidebar.settings': 'Configurações',
+    'dash.stats.totalCards': 'Total de Cards',
+    'dash.stats.mastered': 'Dominados',
+    'dash.stats.dueToday': 'Para Hoje',
+    'dash.stats.streak': 'Sequência',
+    'dash.level': 'Nível {level}',
+    'dash.xp': '{current} / {next} XP',
+    'dash.studyAll': 'Estudar Tudo Pendente',
+    'dash.noDue': 'Nenhum card pendente — ótimo trabalho!',
+    'dash.sections.disciplines': 'Minhas Disciplinas',
+    'dash.sections.dueReview': 'Para Revisar',
+    'dash.sections.heatmap': 'Atividade de Estudo',
+    'dash.sections.insights': 'Insights da IA',
+    'dash.sections.studyPlan': 'Plano de Hoje',
+    'dash.newDisc': 'Nova Disciplina',
+    'dash.viewAll': 'Ver Tudo',
+
+    // ─── Discipline Detail ───────────────────────────────────────────────
+    'disc.modules': '{count} módulo(s)',
+    'disc.topics': '{count} tópico(s)',
+    'disc.cards': '{count} card(s)',
+    'disc.mastery': '{pct}% domínio',
+    'disc.newModule': 'Novo Módulo',
+    'disc.study': 'Estudar',
+    'disc.edit': 'Editar',
+    'disc.delete': 'Excluir',
+    'disc.empty': 'Nenhum módulo ainda. Crie um para começar.',
+
+    // ─── Badges ──────────────────────────────────────────────────────────
+    'badge.title': 'Conquistas',
+    'badge.unlocked': '{count} desbloqueada(s)',
+    'badge.locked': 'Bloqueado',
+    'badge.new': 'Nova Conquista!',
+
+    // ─── Notes ───────────────────────────────────────────────────────────
+    'notes.title': 'Minhas Anotações',
+    'notes.new': 'Nova Anotação',
+    'notes.search': 'Buscar anotações...',
+    'notes.empty': 'Nenhuma anotação. Comece a anotar enquanto estuda!',
+    'notes.pinned': 'Fixada',
+
+    // ─── Analytics ───────────────────────────────────────────────────────
+    'analytics.title': 'Analytics',
+    'analytics.overview': 'Visão de Desempenho',
+    'analytics.reviews30': 'Revisões (30 dias)',
+    'analytics.accuracy': 'Precisão',
+    'analytics.studyTime': 'Tempo de Estudo',
+    'analytics.activeDays': 'Dias Ativos',
+    'analytics.retention': 'Curva de Retenção',
+    'analytics.pattern': 'Padrões de Estudo',
+    'analytics.weekly': 'Tendência Semanal',
+
+    // ─── Export ──────────────────────────────────────────────────────────
+    'export.title': 'Exportar & Importar',
+    'export.fullBackup': 'Backup Completo (JSON)',
+    'export.csv': 'Cards (CSV)',
+    'export.anki': 'Exportar para Anki',
+    'export.import': 'Importar Backup',
+    'export.success': 'Exportação concluída!',
+    'export.importSuccess': 'Importação concluída com sucesso!',
+
+    // ─── Study Plan ──────────────────────────────────────────────────────
+    'plan.title': 'Plano de Estudo',
+    'plan.today': 'Plano de Hoje',
+    'plan.overdue': 'Revisões Atrasadas',
+    'plan.dueToday': 'Para Hoje',
+    'plan.weakFocus': 'Foco em Disciplina Fraca',
+    'plan.newCards': 'Aprender Cards Novos',
+
+    // ─── Recommendations ─────────────────────────────────────────────────
+    'rec.title': 'Recomendações',
+    'rec.criticalOverdue': 'Crítico: {count} cards atrasados >3 dias',
+    'rec.dueToday': '{count} cards para hoje',
+    'rec.weakDisc': 'Foque em {name} — apenas {pct}% de domínio',
+    'rec.atRisk': '{count} cards em risco de serem esquecidos',
+    'rec.celebrate': 'Progresso incrível! Continue assim!',
 
   }
 };

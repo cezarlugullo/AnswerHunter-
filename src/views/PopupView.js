@@ -1,4 +1,5 @@
 import { formatQuestionText, escapeHtml } from '../utils/helpers.js';
+import { QuestionParser } from '../services/search/QuestionParser.js';
 
 /**
  * Converts the structured AI reasoning text (PASSO 1 / 2 / 3 markdown)
@@ -782,6 +783,11 @@ export const PopupView = {
 
           <div class="qa-card-question">${formatQuestionText(item.question)}</div>
 
+          ${item.extractionConfidence ? `<div class="qa-card-extraction-confidence qa-confidence-${escapeHtml(item.extractionConfidence.level)}">
+            <span class="material-symbols-rounded">${item.extractionConfidence.level === 'high' ? 'verified' : item.extractionConfidence.level === 'medium' ? 'gpp_maybe' : 'warning'}</span>
+            <span>${escapeHtml(this.t('result.extractionConfidence') || 'Confiança da extração')}: ${item.extractionConfidence.score}%</span>
+          </div>` : ''}
+
           <div class="qa-card-ai-warning">
             <span class="material-symbols-rounded">info</span>
             <span>${escapeHtml(this.t('result.aiWarning'))}</span>
@@ -926,6 +932,10 @@ export const PopupView = {
           </div>
 
           <div class="qa-card-actions">
+            <button class="action-btn feedback-btn" data-content="${dataContent}" title="${escapeHtml(this.t('result.reportExtraction') || 'Reportar erro na extração')}">
+              <span class="material-symbols-rounded" style="font-size:14px;">flag</span>
+              <span style="font-size:10.5px;">${escapeHtml(this.t('result.reportExtraction') || 'Erro na extração?')}</span>
+            </button>
             ${sourceEntries.length > 0
           ? `<div class="sources-box">
                   <button class="sources-toggle" type="button" aria-expanded="false">
@@ -974,7 +984,34 @@ export const PopupView = {
     const cards = this.elements.resultsDiv?.querySelectorAll('.qa-card') || [];
 
     cards.forEach((card, index) => {
-      const question = card.querySelector('.qa-card-question')?.innerText?.trim() || '';
+      // Prefer raw serialized card data over rendered innerText to avoid
+      // mixing section labels (ENUNCIADO/ALTERNATIVAS) in copy output.
+      let questionRaw = '';
+      try {
+        const dataNode = card.querySelector('.save-btn[data-content], .review-later-btn[data-content], .feedback-btn[data-content]');
+        const encoded = dataNode?.dataset?.content || '';
+        if (encoded) {
+          const parsed = JSON.parse(decodeURIComponent(encoded));
+          questionRaw = String(parsed?.question || '').trim();
+        }
+      } catch (_) {
+        questionRaw = '';
+      }
+
+      if (!questionRaw) {
+        questionRaw = card.querySelector('.qa-card-question')?.innerText?.trim() || '';
+      }
+
+      questionRaw = String(questionRaw || '')
+        .replace(/^\s*Q\d+\s*:\s*/i, '')
+        .replace(/\bENUNCIADO\b/gi, ' ')
+        .replace(/\bALTERNATIVAS?\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const stem = String(QuestionParser.extractQuestionStem(questionRaw) || '').trim();
+      const optLines = QuestionParser.extractOptionsFromQuestion(questionRaw) || [];
+      const question = [stem, ...optLines].filter(Boolean).join('\n').trim() || questionRaw;
 
       let answer = '';
       const answerText = card.querySelector('.qa-card-answer-text')?.innerText?.trim();

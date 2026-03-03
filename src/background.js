@@ -16,10 +16,15 @@ import { CopilotAuthService } from './services/CopilotAuthService.js';
 import { SearchService } from './services/SearchService.js';
 import { PerformanceTimer } from './utils/PerformanceTimer.js';
 import { SearchCacheService } from './services/search/SearchCacheService.js';
+import { BadgeService } from './services/BadgeService.js';
+import { AnalyticsService } from './services/AnalyticsService.js';
+import { ContentHierarchyService } from './services/ContentHierarchyService.js';
 
 const CHATGPT_CALLBACK_PATTERN = 'http://localhost:1455/auth/callback';
 const GEMINI_CLI_CALLBACK_PATTERN = 'http://localhost:11235/auth/callback';
 const COPILOT_OAUTH_ALARM = 'copilot_oauth_poll_alarm';
+const STUDY_REMINDER_ALARM = 'ah_study_reminder';
+const DAILY_CLEANUP_ALARM = 'ah_daily_cleanup';
 
 async function _isCopilotPendingOAuth() {
     return await new Promise(resolve => {
@@ -40,14 +45,61 @@ async function _syncCopilotPollingAlarm() {
 }
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm?.name !== COPILOT_OAUTH_ALARM) return;
-    try {
-        const result = await CopilotAuthService.checkPendingAuthorizationOnce();
-        if (result.status === 'success' || result.status === 'expired' || result.status === 'denied' || result.status === 'none') {
-            chrome.alarms.clear(COPILOT_OAUTH_ALARM);
+    if (!alarm?.name) return;
+
+    // ─── Copilot OAuth polling ───────────────────────────────────────
+    if (alarm.name === COPILOT_OAUTH_ALARM) {
+        try {
+            const result = await CopilotAuthService.checkPendingAuthorizationOnce();
+            if (result.status === 'success' || result.status === 'expired' || result.status === 'denied' || result.status === 'none') {
+                chrome.alarms.clear(COPILOT_OAUTH_ALARM);
+            }
+        } catch (err) {
+            console.warn('CopilotAuth BG: alarm poll failed:', err?.message || err);
         }
-    } catch (err) {
-        console.warn('CopilotAuth BG: alarm poll failed:', err?.message || err);
+        return;
+    }
+
+    // ─── Study Reminder ─────────────────────────────────────────────
+    if (alarm.name === STUDY_REMINDER_ALARM) {
+        try {
+            const hierarchy = await ContentHierarchyService.getDisciplines();
+            if (!hierarchy.length) return;
+            const stats = await ContentHierarchyService.getGlobalStats();
+            if (stats.due > 0) {
+                chrome.notifications?.create('ah_study_reminder', {
+                    type: 'basic',
+                    iconUrl: 'icons/icon128.png',
+                    title: 'AnswerHunter — Hora de estudar! 📚',
+                    message: `Você tem ${stats.due} card${stats.due > 1 ? 's' : ''} para revisar hoje.`,
+                    priority: 1
+                });
+            }
+            // Evaluate badges on reminder tick
+            const xpData = await new Promise(r => chrome.storage.local.get(['ah_xpData'], d => r(d.ah_xpData || {})));
+            const badgeStats = BadgeService.buildStats(hierarchy, xpData);
+            const newBadges = await BadgeService.evaluate(badgeStats);
+            for (const badge of newBadges) {
+                chrome.notifications?.create(`ah_badge_${badge.id}`, {
+                    type: 'basic',
+                    iconUrl: 'icons/icon128.png',
+                    title: `${badge.icon} Badge Desbloqueado!`,
+                    message: `${badge.name} — ${badge.desc}`,
+                    priority: 2
+                });
+            }
+        } catch (err) {
+            console.warn('AnswerHunter BG: study reminder error:', err?.message || err);
+        }
+        return;
+    }
+
+    // ─── Daily Cleanup ──────────────────────────────────────────────
+    if (alarm.name === DAILY_CLEANUP_ALARM) {
+        try {
+            await AnalyticsService.cleanup();
+        } catch (_) {}
+        return;
     }
 });
 
@@ -55,6 +107,10 @@ chrome.runtime.onInstalled.addListener(() => {
     _syncCopilotPollingAlarm().catch(() => {});
     _clearStaleSearches().catch(() => {});
     SearchCacheService.loadAiResultCache().catch(() => {});
+    // Study reminder every 6 hours
+    chrome.alarms.create(STUDY_REMINDER_ALARM, { delayInMinutes: 360, periodInMinutes: 360 });
+    // Daily cleanup at midnight-ish
+    chrome.alarms.create(DAILY_CLEANUP_ALARM, { delayInMinutes: 1440, periodInMinutes: 1440 });
 });
 
 chrome.runtime.onStartup.addListener(() => {
@@ -155,10 +211,55 @@ SearchCacheService.loadAiResultCache().catch(() => {});
 // Runs the slow network work (SearchService.searchOnly + refineFromResults)
 // in the service worker so the search survives popup closure.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg.type !== 'SEARCH_PHASE2') return false;
-    _runPhase2Search(msg.requestId, msg.question, msg.displayQuestion).catch(console.error);
-    sendResponse({ ack: true });
-    return false; // no async response channel needed
+    if (msg.type === 'SEARCH_PHASE2') {
+        _runPhase2Search(msg.requestId, msg.question, msg.displayQuestion).catch(console.error);
+        sendResponse({ ack: true });
+        return false;
+    }
+
+    // ─── Dashboard v2 actions ──────────────────────────────────────
+    if (msg.type === 'AH_OPEN_DASHBOARD_V2') {
+        chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard-v2.html') });
+        sendResponse({ ack: true });
+        return false;
+    }
+
+    if (msg.type === 'AH_EVALUATE_BADGES') {
+        (async () => {
+            try {
+                const hierarchy = await ContentHierarchyService.getDisciplines();
+                const xpData = await new Promise(r =>
+                    chrome.storage.local.get(['ah_xpData'], d => r(d.ah_xpData || {}))
+                );
+                const stats = BadgeService.buildStats(hierarchy, xpData);
+                const newBadges = await BadgeService.evaluate(stats);
+                sendResponse({ newBadges });
+            } catch (err) {
+                sendResponse({ error: err.message });
+            }
+        })();
+        return true; // Will respond async
+    }
+
+    if (msg.type === 'AH_RECORD_REVIEW') {
+        AnalyticsService.recordReview(msg.data || {});
+        sendResponse({ ack: true });
+        return false;
+    }
+
+    if (msg.type === 'AH_END_SESSION') {
+        (async () => {
+            try {
+                const summary = await AnalyticsService.endSession();
+                sendResponse({ summary });
+            } catch (err) {
+                sendResponse({ error: err.message });
+            }
+        })();
+        return true;
+    }
+
+    return false;
 });
 
 async function _runPhase2Search(requestId, question, displayQuestion) {

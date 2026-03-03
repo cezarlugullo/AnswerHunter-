@@ -1,0 +1,161 @@
+/* ============================================================
+   AnswerHunter Design Tokens
+   Shared CSS custom properties used across all pages.
+   ============================================================ */
+
+:root {
+  /* ===== BRAND COLORS ===== */
+  --ah-coral:          #FF6B6B;
+  --ah-coral-light:    #FF8787;
+  --ah-coral-dark:     #E85D5D;
+  --ah-coral-rgb:      255, 107, 107;
+
+  --ah-blue:           #4DABF7;
+  --ah-blue-light:     #74C0FC;
+  --ah-blue-dark:      #339AF0;
+  --ah-blue-rgb:       77, 171, 247;
+
+  --ah-mint:           #40C057;
+  --ah-mint-light:     #69DB7C;
+  --ah-mint-dark:      #2F9E44;
+  --ah-mint-rgb:       64, 192, 87;
+
+  --ah-lavender:       #DA77F2;
+  --ah-lavender-light: #E599F7;
+  --ah-lavender-dark:  #BE4BDB;
+  --ah-lavender-rgb:   218, 119, 242;
+
+  --ah-gold:           #FFD43B;
+  --ah-gold-light:     #FFE066;
+  --ah-gold-dark:      #FCC419;
+  --ah-gold-rgb:       255, 212, 59;
+
+  /* ===== SEMANTIC COLORS ===== */
+  --ah-danger:         #FF6B6B;
+  --ah-warning:        #FFA94D;
+  --ah-success:        #40C057;
+  --ah-info:           #4DABF7;
+  --ah-danger-rgb:     255, 107, 107;
+  --ah-warning-rgb:    255, 169, 77;
+  --ah-success-rgb:    64, 192, 87;
+  --ah-info-rgb:       77, 171, 247;
+
+  /* ===== NEUTRAL SCALE ===== */
+  --ah-gray-50:        #FAFAFA;
+  --ah-gray-100:       #F5F5F5;
+  --ah-gray-200:       #EEEEEE;
+  --ah-gray-300:       #E0E0E0;
+  --ah-gray-400:       #BDBDBD;
+  --ah-gray-500:       #9E9E9E;
+  --ah-gray-600:       #757575;
+  --ah-gray-700:       #616161;
+  --ah-gray-800:       #424242;
+  --ah-gray-900:       #212121;
+
+  /* ===== SURFACE COLORS (Light Theme) ===== */
+  --ah-surface:          #FFFFFF;
+  --ah-surface-raised:   #FFFFFF;
+  --ah-surface-overlay:  rgba(255, 255, 255, 0.95);
+  --ah-background:       #F8F9FA;
+  --ah-border:           #E9ECEF;
+  --ah-text-primary:     #212529;
+  --ah-text-secondary:   #6C757D;
+  --ah-text-muted:       #ADB5BD;
+
+  /* ===== TYPOGRAPHY ===== */
+  --ah-font-display:     'Baloo 2', cursive;
+  --ah-font-body:        'Lexend', sans-serif;
+  --ah-font-mono:        'JetBrains Mono', monospace;
+
+  /* Type Scale (Major Third — 1.25) */
+  --ah-text-xs:    0.75rem;
+  --ah-text-sm:    0.875rem;
+  --ah-text-base:  1rem;
+  --ah-text-lg:    1.125rem;
+  --ah-text-xl:    1.25rem;
+  --ah-text-2xl:   1.5rem;
+  --ah-text-3xl:   1.875rem;
+  --ah-text-4xl:   2.25rem;
+
+  /* Font Weights */
+  --ah-weight-regular:   400;
+  --ah-weight-medium:    500;
+  --ah-weight-semibold:  600;
+  --ah-weight-bold:      700;
+  --ah-weight-extrabold: 800;
+
+  /* Line Heights */
+  --ah-leading-tight:    1.25;
+  --ah-leading-normal:   1.5;
+  --ah-leading-relaxed:  1.75;
+
+  /* ===== SPACING (4px base) ===== */
+  --ah-space-0:    0;
+  --ah-space-1:    0.25rem;
+  --ah-space-2:    0.5rem;
+  --ah-space-3:    0.75rem;
+  --ah-space-4:    1rem;
+  --ah-space-5:    1.25rem;
+  --ah-space-6:    1.5rem;
+  --ah-space-8:    2rem;
+  --ah-space-10:   2.5rem;
+  --ah-space-12:   3rem;
+  --ah-space-16:   4rem;
+
+  /* ===== BORDER RADIUS ===== */
+  --ah-radius-sm:    4px;
+  --ah-radius-md:    8px;
+  --ah-radius-lg:    12px;
+  --ah-radius-xl:    16px;
+  --ah-radius-2xl:   24px;
+  --ah-radius-full:  9999px;
+
+  /* ===== SHADOWS / ELEVATION ===== */
+  --ah-shadow-xs:  0 1px 2px rgba(0, 0, 0, 0.05);
+  --ah-shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --ah-shadow-md:  0 4px 6px rgba(0, 0, 0, 0.07), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --ah-shadow-lg:  0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+  --ah-shadow-xl:  0 20px 25px rgba(0, 0, 0, 0.1), 0 10px 10px rgba(0, 0, 0, 0.04);
+
+  --ah-elevation-1: var(--ah-shadow-sm);
+  --ah-elevation-2: var(--ah-shadow-md);
+  --ah-elevation-3: var(--ah-shadow-lg);
+  --ah-elevation-4: var(--ah-shadow-xl);
+
+  /* ===== TIMING / ANIMATION ===== */
+  --ah-ease-out:     cubic-bezier(0.16, 1, 0.3, 1);
+  --ah-ease-in-out:  cubic-bezier(0.65, 0, 0.35, 1);
+  --ah-ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ah-ease-bounce:  cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  --ah-duration-instant: 100ms;
+  --ah-duration-fast:    150ms;
+  --ah-duration-normal:  250ms;
+  --ah-duration-slow:    400ms;
+  --ah-duration-slower:  600ms;
+
+  /* ===== Z-INDEX SCALE ===== */
+  --ah-z-base:      1;
+  --ah-z-dropdown:  10;
+  --ah-z-sticky:    20;
+  --ah-z-overlay:   30;
+  --ah-z-modal:     40;
+  --ah-z-toast:     50;
+}
+
+/* ===== DARK THEME ===== */
+[data-theme="dark"] {
+  --ah-surface:          #1A1B1E;
+  --ah-surface-raised:   #25262B;
+  --ah-surface-overlay:  rgba(26, 27, 30, 0.95);
+  --ah-background:       #141517;
+  --ah-border:           #373A40;
+  --ah-text-primary:     #C1C2C5;
+  --ah-text-secondary:   #909296;
+  --ah-text-muted:       #5C5F66;
+
+  --ah-shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --ah-shadow-md:  0 4px 6px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+  --ah-shadow-lg:  0 10px 15px rgba(0, 0, 0, 0.4), 0 4px 6px rgba(0, 0, 0, 0.3);
+  --ah-shadow-xl:  0 20px 25px rgba(0, 0, 0, 0.4), 0 10px 10px rgba(0, 0, 0, 0.3);
+}

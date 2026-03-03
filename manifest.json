@@ -19,7 +19,8 @@
     "windows",
     "identity",
     "nativeMessaging",
-    "downloads"
+    "downloads",
+    "notifications"
   ],
   "host_permissions": [
     "https://api.groq.com/*",
@@ -74,7 +75,15 @@
     {
       "resources": [
         "src/native/*",
-        "src/dashboard/dashboard.html"
+        "src/dashboard/*",
+        "src/styles/*.css",
+        "src/services/*.js",
+        "src/views/*.js",
+        "src/study/*",
+        "src/fonts/*",
+        "src/models/*.js",
+        "src/utils/*.js",
+        "src/i18n/*.js"
       ],
       "matches": [
         "<all_urls>"

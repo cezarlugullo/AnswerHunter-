@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AnswerHunter — Dashboard v2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800;900&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-25..200" rel="stylesheet">
+  <style>
+    @import url('/src/styles/tokens.css');
+    @import url('/src/styles/base.css');
+    @import url('/src/styles/animations.css');
+
+    /* ═══════════════════════════════════════════════════════════
+       Dashboard v2 — Page-specific overrides
+       ═══════════════════════════════════════════════════════════ */
+
+    body {
+      font-family: var(--ah-font-body);
+      background: var(--ah-background);
+      color: var(--ah-text-primary);
+      margin: 0;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── PAGE HEADER ── */
+    .dash-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--ah-space-6);
+      flex-wrap: wrap;
+      gap: var(--ah-space-4);
+    }
+    .dash-header__greeting h1 {
+      font-family: var(--ah-font-display);
+      font-size: var(--ah-text-2xl);
+      font-weight: 800;
+      color: var(--ah-text-primary);
+      line-height: 1.2;
+    }
+    .dash-header__greeting p {
+      color: var(--ah-text-secondary);
+      font-size: var(--ah-text-sm);
+      margin-top: 2px;
+    }
+    .dash-header__actions {
+      display: flex;
+      gap: var(--ah-space-2);
+      align-items: center;
+    }
+
+    /* ── OVERVIEW PAGE ── */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--ah-space-4);
+    }
+    @media (min-width: 1200px) {
+      .overview-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .overview-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── DISCIPLINE GRID ── */
+    .disc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: var(--ah-space-4);
+      margin-top: var(--ah-space-4);
+    }
+
+    /* ── REVIEW SECTION ── */
+    .review-section {
+      margin-top: var(--ah-space-8);
+    }
+    .review-section__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--ah-space-4);
+    }
+
+    /* ── INSIGHTS ── */
+    .insights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: var(--ah-space-3);
+      margin-top: var(--ah-space-4);
+    }
+
+    /* ── HEATMAP SECTION ── */
+    .heatmap-section {
+      margin-top: var(--ah-space-8);
+    }
+    .heatmap-wrapper {
+      background: var(--ah-surface);
+      border-radius: var(--ah-radius-xl);
+      padding: var(--ah-space-5);
+      box-shadow: var(--ah-elevation-1);
+      border: 1px solid var(--ah-border);
+    }
+
+    /* ── LEVEL / XP BAR ── */
+    .level-bar {
+      background: var(--ah-surface);
+      border-radius: var(--ah-radius-xl);
+      padding: var(--ah-space-4) var(--ah-space-5);
+      box-shadow: var(--ah-elevation-1);
+      border: 1px solid var(--ah-border);
+      display: flex;
+      align-items: center;
+      gap: var(--ah-space-4);
+      margin-bottom: var(--ah-space-6);
+    }
+    .level-bar__badge {
+      font-size: 32px;
+      line-height: 1;
+    }
+    .level-bar__info { flex: 1; min-width: 0; }
+    .level-bar__name {
+      font-family: var(--ah-font-display);
+      font-weight: 700;
+      font-size: var(--ah-text-sm);
+    }
+    .level-bar__progress {
+      margin-top: 6px;
+    }
+    .level-bar__xp {
+      font-size: var(--ah-text-xs);
+      color: var(--ah-text-muted);
+      margin-top: 4px;
+    }
+    .level-bar__streak {
+      display: flex;
+      align-items: center;
+      gap: var(--ah-space-1);
+      padding: var(--ah-space-1) var(--ah-space-3);
+      background: rgba(var(--ah-gold-rgb), 0.12);
+      border-radius: var(--ah-radius-full);
+      font-size: var(--ah-text-xs);
+      font-weight: 600;
+      color: #B8860B;
+    }
+
+    /* ── DUE TODAY CARDS ── */
+    .due-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ah-space-2);
+    }
+    .due-item {
+      display: flex;
+      align-items: center;
+      gap: var(--ah-space-3);
+      padding: var(--ah-space-3) var(--ah-space-4);
+      background: var(--ah-surface);
+      border-radius: var(--ah-radius-lg);
+      border: 1px solid var(--ah-border);
+      transition: all var(--ah-duration-fast) var(--ah-ease-out);
+      cursor: pointer;
+    }
+    .due-item:hover {
+      transform: translateX(4px);
+      border-color: var(--ah-coral);
+      box-shadow: var(--ah-elevation-1);
+    }
+    .due-item__disc {
+      width: 4px;
+      height: 32px;
+      border-radius: var(--ah-radius-full);
+      flex-shrink: 0;
+    }
+    .due-item__text {
+      flex: 1;
+      min-width: 0;
+      font-size: var(--ah-text-sm);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .due-item__meta {
+      font-size: var(--ah-text-xs);
+      color: var(--ah-text-muted);
+      white-space: nowrap;
+    }
+
+    /* ── STUDY PLAN WIDGET ── */
+    .study-plan {
+      background: var(--ah-surface);
+      border-radius: var(--ah-radius-xl);
+      padding: var(--ah-space-5);
+      box-shadow: var(--ah-elevation-1);
+      border: 1px solid var(--ah-border);
+      margin-top: var(--ah-space-6);
+    }
+    .study-plan__title {
+      font-family: var(--ah-font-display);
+      font-weight: 700;
+      font-size: var(--ah-text-lg);
+      margin-bottom: var(--ah-space-3);
+      display: flex;
+      align-items: center;
+      gap: var(--ah-space-2);
+    }
+    .study-plan__items {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ah-space-2);
+    }
+    .study-plan__item {
+      display: flex;
+      align-items: center;
+      gap: var(--ah-space-3);
+      padding: var(--ah-space-2) var(--ah-space-3);
+      border-radius: var(--ah-radius-md);
+      font-size: var(--ah-text-sm);
+    }
+    .study-plan__item--done {
+      text-decoration: line-through;
+      color: var(--ah-text-muted);
+    }
+    .study-plan__check {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--ah-border);
+      border-radius: var(--ah-radius-full);
+      cursor: pointer;
+      transition: all var(--ah-duration-fast);
+    }
+    .study-plan__check--done {
+      background: var(--ah-mint);
+      border-color: var(--ah-mint);
+    }
+
+    /* ── PAGE SECTIONS (hidden by default) ── */
+    .page-section { display: none; }
+    .page-section--active { display: block; animation: ah-fade-in 0.3s ease forwards; }
+
+    /* ── DEMO BANNER ── */
+    .demo-banner {
+      display: none;
+      background: linear-gradient(135deg, var(--ah-coral), var(--ah-gold));
+      color: #fff;
+      padding: var(--ah-space-2) var(--ah-space-4);
+      border-radius: var(--ah-radius-lg);
+      font-size: var(--ah-text-xs);
+      font-weight: 600;
+      align-items: center;
+      gap: var(--ah-space-2);
+      margin-bottom: var(--ah-space-4);
+    }
+
+    /* Dark theme */
+    @media (prefers-color-scheme: dark) {
+      body { background: var(--ah-background); color: var(--ah-text-primary); }
+    }
+  </style>
+</head>
+<body class="ah-page">
+
+  <!-- Sidebar will be injected by JS -->
+  <div id="sidebar-mount"></div>
+
+  <main class="ah-main" id="main-content">
+
+    <!-- Demo banner -->
+    <div class="demo-banner" id="demoBanner">
+      <span class="material-symbols-rounded" style="font-size:16px">science</span>
+      Modo demonstração — dados ficcionais para preview
+    </div>
+
+    <!-- ═══ OVERVIEW PAGE ═══ -->
+    <section class="page-section page-section--active" id="page-overview">
+      <div class="dash-header">
+        <div class="dash-header__greeting">
+          <h1 id="greetingTitle">Bom dia! 👋</h1>
+          <p id="greetingSubtext">Vamos estudar hoje?</p>
+        </div>
+        <div class="dash-header__actions">
+          <div id="searchBarMount"></div>
+          <button class="ah-btn ah-btn--ghost" id="btnThemeToggle" data-tooltip="Alternar tema">
+            <span class="material-symbols-rounded">dark_mode</span>
+          </button>
+          <button class="ah-btn ah-btn--ghost" id="btnSettings" data-tooltip="Configurações">
+            <span class="material-symbols-rounded">settings</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Level Bar -->
+      <div class="level-bar ah-fade-in" id="levelBar">
+        <div class="level-bar__badge" id="levelBadge">🌱</div>
+        <div class="level-bar__info">
+          <div class="level-bar__name" id="levelName">Nível 1 — Iniciante</div>
+          <div class="ah-progress level-bar__progress">
+            <div class="ah-progress__fill" id="levelFill" style="width:0%"></div>
+          </div>
+          <div class="level-bar__xp" id="levelXp">0 / 100 XP</div>
+        </div>
+        <div class="level-bar__streak" id="streakBadge">
+          <span class="material-symbols-rounded" style="font-size:16px;color:#B8860B">local_fire_department</span>
+          <span id="streakCount">0</span> dias
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="overview-grid ah-stagger-children" id="statsRow"></div>
+
+      <!-- Discipline Grid -->
+      <div class="review-section">
+        <div class="review-section__header">
+          <h2 class="ah-section-title">Suas Disciplinas</h2>
+          <button class="ah-btn ah-btn--primary ah-btn--sm" id="btnNewDisc">
+            <span class="material-symbols-rounded" style="font-size:16px">add</span>
+            Nova Disciplina
+          </button>
+        </div>
+        <div class="disc-grid ah-stagger-children" id="discGrid"></div>
+        <div id="discEmpty"></div>
+      </div>
+
+      <!-- Due Today -->
+      <div class="review-section">
+        <div class="review-section__header">
+          <h2 class="ah-section-title">Revisões de Hoje</h2>
+          <button class="ah-btn ah-btn--ghost ah-btn--sm" id="btnStudyAll">
+            <span class="material-symbols-rounded" style="font-size:16px">play_arrow</span>
+            Estudar tudo
+          </button>
+        </div>
+        <div class="due-list" id="dueList"></div>
+        <div id="dueEmpty"></div>
+      </div>
+
+      <!-- Heatmap -->
+      <div class="heatmap-section">
+        <h2 class="ah-section-title">Atividade de Estudo</h2>
+        <div class="heatmap-wrapper" id="heatmapMount"></div>
+      </div>
+
+      <!-- AI Insights -->
+      <div class="review-section">
+        <h2 class="ah-section-title">
+          <span class="material-symbols-rounded" style="font-size:22px;vertical-align:middle">auto_awesome</span>
+          Insights
+        </h2>
+        <div class="insights-grid" id="insightsMount"></div>
+      </div>
+
+      <!-- Study Plan Widget -->
+      <div class="study-plan ah-fade-in" id="studyPlanWidget">
+        <div class="study-plan__title">
+          <span class="material-symbols-rounded" style="font-size:20px">event_note</span>
+          Plano de Hoje
+        </div>
+        <div class="study-plan__items" id="studyPlanItems"></div>
+      </div>
+    </section>
+
+    <!-- ═══ DISCIPLINES PAGE ═══ -->
+    <section class="page-section" id="page-disciplines">
+      <div class="dash-header">
+        <h1 class="ah-section-title">Todas as Disciplinas</h1>
+        <button class="ah-btn ah-btn--primary ah-btn--sm" id="btnNewDiscAll">
+          <span class="material-symbols-rounded" style="font-size:16px">add</span>
+          Nova Disciplina
+        </button>
+      </div>
+      <div id="allDiscSearchMount" style="margin-bottom: var(--ah-space-4)"></div>
+      <div id="allDiscFilters" style="margin-bottom: var(--ah-space-4)"></div>
+      <div class="disc-grid ah-stagger-children" id="allDiscGrid"></div>
+    </section>
+
+    <!-- ═══ ANALYTICS PAGE ═══ -->
+    <section class="page-section" id="page-analytics">
+      <h1 class="ah-section-title">Analytics & Performance</h1>
+
+      <!-- Overview Stats -->
+      <div class="overview-grid ah-stagger-children" id="analyticsStatsRow" style="margin-top: var(--ah-space-4)"></div>
+
+      <!-- Charts Row -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--ah-space-4); margin-top:var(--ah-space-6)">
+        <!-- Daily Reviews Chart -->
+        <div class="ah-card" style="padding:var(--ah-space-5)">
+          <h3 style="font-family:var(--ah-font-display);font-size:var(--ah-text-base);margin-bottom:var(--ah-space-3)">Revisões (30 dias)</h3>
+          <div id="dailyChart" style="height:200px;display:flex;align-items:flex-end;gap:2px"></div>
+        </div>
+        <!-- Weekly Trend -->
+        <div class="ah-card" style="padding:var(--ah-space-5)">
+          <h3 style="font-family:var(--ah-font-display);font-size:var(--ah-text-base);margin-bottom:var(--ah-space-3)">Tendência Semanal</h3>
+          <div id="weeklyChart" style="height:200px;display:flex;align-items:flex-end;gap:4px"></div>
+        </div>
+      </div>
+
+      <!-- Discipline Performance -->
+      <div class="ah-card" style="padding:var(--ah-space-5);margin-top:var(--ah-space-4)">
+        <h3 style="font-family:var(--ah-font-display);font-size:var(--ah-text-base);margin-bottom:var(--ah-space-3)">Desempenho por Disciplina</h3>
+        <div id="discPerformance" style="display:flex;flex-direction:column;gap:var(--ah-space-3)"></div>
+      </div>
+
+      <!-- Export Section -->
+      <div class="ah-card" style="padding:var(--ah-space-5);margin-top:var(--ah-space-4)">
+        <h3 style="font-family:var(--ah-font-display);font-size:var(--ah-text-base);margin-bottom:var(--ah-space-3)">Exportar</h3>
+        <div class="ah-flex ah-gap-3">
+          <button class="ah-btn ah-btn--secondary ah-btn--sm" id="btnExportCSV">
+            <span class="material-symbols-rounded" style="font-size:16px">table_chart</span> CSV
+          </button>
+          <button class="ah-btn ah-btn--secondary ah-btn--sm" id="btnExportAnki">
+            <span class="material-symbols-rounded" style="font-size:16px">style</span> Anki
+          </button>
+          <button class="ah-btn ah-btn--secondary ah-btn--sm" id="btnExportJSON">
+            <span class="material-symbols-rounded" style="font-size:16px">data_object</span> JSON Backup
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ BADGES PAGE ═══ -->
+    <section class="page-section" id="page-badges">
+      <div class="dash-header">
+        <h1 class="ah-section-title">Conquistas</h1>
+        <div id="badgeCountLabel" style="font-size:var(--ah-text-sm);color:var(--ah-text-muted)"></div>
+      </div>
+      <div id="badgeCategoriesMount" style="margin-top:var(--ah-space-4);display:flex;flex-direction:column;gap:var(--ah-space-6)"></div>
+    </section>
+
+    <!-- ═══ SETTINGS PAGE ═══ -->
+    <section class="page-section" id="page-settings">
+      <h1 class="ah-section-title">Configurações</h1>
+      <div class="ah-card" style="margin-top: var(--ah-space-4); max-width: 600px;">
+        <h3 style="font-family:var(--ah-font-display);margin-bottom:var(--ah-space-4)">Dados</h3>
+        <div class="ah-flex ah-gap-3 ah-flex-wrap">
+          <button class="ah-btn ah-btn--secondary" id="btnExportData">
+            <span class="material-symbols-rounded" style="font-size:16px">download</span>
+            Exportar dados
+          </button>
+          <button class="ah-btn ah-btn--secondary" id="btnImportData">
+            <span class="material-symbols-rounded" style="font-size:16px">upload</span>
+            Importar dados
+          </button>
+          <input type="file" id="importFileInput" accept=".json" style="display:none">
+          <button class="ah-btn ah-btn--secondary" id="btnMigrate" style="border-color:var(--ah-warning)">
+            <span class="material-symbols-rounded" style="font-size:16px">sync</span>
+            Migrar v1→v2
+          </button>
+        </div>
+        <hr style="margin: var(--ah-space-5) 0; border:none; border-top: 1px solid var(--ah-border);">
+        <h3 style="font-family:var(--ah-font-display);margin-bottom:var(--ah-space-4)">Aparência</h3>
+        <div class="ah-flex ah-gap-3 ah-items-center">
+          <span style="font-size:var(--ah-text-sm)">Tema:</span>
+          <button class="ah-btn ah-btn--secondary ah-btn--sm" id="btnLightTheme">Claro</button>
+          <button class="ah-btn ah-btn--secondary ah-btn--sm" id="btnDarkTheme">Escuro</button>
+          <button class="ah-btn ah-btn--secondary ah-btn--sm" id="btnAutoTheme">Auto</button>
+        </div>
+        <hr style="margin: var(--ah-space-5) 0; border:none; border-top: 1px solid var(--ah-border);">
+        <h3 style="font-family:var(--ah-font-display);margin-bottom:var(--ah-space-4)">Informações</h3>
+        <div style="font-size:var(--ah-text-sm);color:var(--ah-text-secondary)">
+          <p>AnswerHunter v2 — Dashboard de Estudo Profissional</p>
+          <p style="margin-top:var(--ah-space-1)">FSRS-5 · Spaced Repetition · AI-Powered</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ═══ SCRIPTS ═══ -->
+  <script type="module" src="dashboard-v2.js"></script>
+
+</body>
+</html>

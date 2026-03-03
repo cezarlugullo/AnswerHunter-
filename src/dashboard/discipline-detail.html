@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AnswerHunter — Disciplina</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800;900&family=Nunito:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..700,0..1,-25..200" rel="stylesheet">
+  <style>
+    @import url('/src/styles/tokens.css');
+    @import url('/src/styles/base.css');
+    @import url('/src/styles/animations.css');
+
+    body {
+      font-family: var(--ah-font-body);
+      background: var(--ah-background);
+      color: var(--ah-text-primary);
+      margin: 0;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .detail-container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: var(--ah-space-6) var(--ah-space-8);
+    }
+
+    /* Header */
+    .disc-header {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--ah-space-5);
+      margin-bottom: var(--ah-space-6);
+    }
+    .disc-header__icon {
+      width: 64px;
+      height: 64px;
+      border-radius: var(--ah-radius-xl);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      flex-shrink: 0;
+    }
+    .disc-header__info { flex: 1; }
+    .disc-header__title {
+      font-family: var(--ah-font-display);
+      font-size: var(--ah-text-2xl);
+      font-weight: 800;
+    }
+    .disc-header__meta {
+      font-size: var(--ah-text-sm);
+      color: var(--ah-text-secondary);
+      margin-top: 4px;
+    }
+    .disc-header__actions {
+      display: flex;
+      gap: var(--ah-space-2);
+    }
+
+    /* Stats row */
+    .detail-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: var(--ah-space-3);
+      margin-bottom: var(--ah-space-6);
+    }
+
+    /* Module list */
+    .modules-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: var(--ah-space-4);
+    }
+    .modules-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ah-space-3);
+    }
+
+    /* Card list (within topic) */
+    .card-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--ah-space-2);
+      margin-top: var(--ah-space-2);
+    }
+    .card-row {
+      display: flex;
+      align-items: center;
+      gap: var(--ah-space-3);
+      padding: var(--ah-space-3) var(--ah-space-4);
+      background: var(--ah-surface);
+      border: 1px solid var(--ah-border);
+      border-radius: var(--ah-radius-md);
+      font-size: var(--ah-text-sm);
+      transition: all var(--ah-duration-fast);
+    }
+    .card-row:hover {
+      border-color: var(--ah-coral);
+      box-shadow: var(--ah-elevation-1);
+    }
+    .card-row__question {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .card-row__status {
+      display: flex;
+      align-items: center;
+      gap: var(--ah-space-2);
+    }
+  </style>
+</head>
+<body class="ah-page">
+
+  <div class="detail-container">
+    <!-- Breadcrumb -->
+    <div id="breadcrumbMount"></div>
+
+    <!-- Header -->
+    <div class="disc-header ah-fade-in" id="discHeader">
+      <div class="disc-header__icon" id="discIcon">📚</div>
+      <div class="disc-header__info">
+        <h1 class="disc-header__title" id="discTitle">Carregando...</h1>
+        <p class="disc-header__meta" id="discMeta"></p>
+      </div>
+      <div class="disc-header__actions">
+        <button class="ah-btn ah-btn--primary" id="btnStudy">
+          <span class="material-symbols-rounded" style="font-size:16px">play_arrow</span>
+          Estudar
+        </button>
+        <button class="ah-btn ah-btn--secondary" id="btnEdit">
+          <span class="material-symbols-rounded" style="font-size:16px">edit</span>
+        </button>
+        <button class="ah-btn ah-btn--ghost" id="btnDelete">
+          <span class="material-symbols-rounded" style="font-size:16px">delete</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="detail-stats ah-stagger-children" id="detailStats"></div>
+
+    <!-- Modules -->
+    <div class="modules-header">
+      <h2 class="ah-section-title">Módulos</h2>
+      <button class="ah-btn ah-btn--primary ah-btn--sm" id="btnNewModule">
+        <span class="material-symbols-rounded" style="font-size:16px">add</span>
+        Novo Módulo
+      </button>
+    </div>
+    <div class="modules-list ah-stagger-children" id="modulesList"></div>
+    <div id="modulesEmpty"></div>
+  </div>
+
+  <script type="module">
+    import { ContentHierarchyService } from '../services/ContentHierarchyService.js';
+    import { ComponentLibrary } from '../views/ComponentLibrary.js';
+
+    const { el, icon, StatWidget, ModuleAccordion, Breadcrumb, EmptyState, ProgressRing, showToast } = ComponentLibrary;
+
+    const params = new URLSearchParams(window.location.search);
+    const discId = params.get('id');
+
+    let discipline = null;
+
+    async function init() {
+      if (!discId) {
+        document.getElementById('discTitle').textContent = 'Disciplina não encontrada';
+        return;
+      }
+
+      discipline = await ContentHierarchyService.getDiscipline(discId);
+      if (!discipline) {
+        document.getElementById('discTitle').textContent = 'Disciplina não encontrada';
+        return;
+      }
+
+      renderBreadcrumb();
+      renderHeader();
+      renderStats();
+      renderModules();
+      bindEvents();
+    }
+
+    function renderBreadcrumb() {
+      const mount = document.getElementById('breadcrumbMount');
+      mount.innerHTML = '';
+      mount.appendChild(Breadcrumb([
+        { label: 'Dashboard', onClick: () => goToDashboard() },
+        { label: 'Disciplinas', onClick: () => goToDashboard() },
+        { label: discipline.name }
+      ]));
+    }
+
+    function renderHeader() {
+      const iconEl = document.getElementById('discIcon');
+      iconEl.textContent = discipline.icon || '📚';
+      iconEl.style.background = (discipline.color || '#FF6B6B') + '18';
+
+      document.getElementById('discTitle').textContent = discipline.name;
+
+      let totalCards = 0;
+      for (const mod of discipline.modules) {
+        for (const topic of mod.topics) {
+          totalCards += topic.cards.length;
+        }
+      }
+      document.getElementById('discMeta').textContent =
+        `${discipline.modules.length} módulos · ${totalCards} cards`;
+    }
+
+    function renderStats() {
+      const mount = document.getElementById('detailStats');
+      mount.innerHTML = '';
+
+      const today = new Date().toISOString().slice(0, 10);
+      let total = 0, mastered = 0, due = 0, newCards = 0;
+
+      for (const mod of discipline.modules) {
+        for (const topic of mod.topics) {
+          for (const card of topic.cards) {
+            total++;
+            const sm2 = card.sm2 || {};
+            if (sm2.mastered) mastered++;
+            if (!sm2.lastRated) newCards++;
+            else if (!sm2.nextReview || sm2.nextReview <= today) due++;
+          }
+        }
+      }
+
+      const pct = total > 0 ? Math.round((mastered / total) * 100) : 0;
+
+      const widgets = [
+        StatWidget({ icon: 'layers', label: 'Total', value: total, color: discipline.color }),
+        StatWidget({ icon: 'schedule', label: 'Devido', value: due, color: 'var(--ah-coral)' }),
+        StatWidget({ icon: 'check_circle', label: 'Dominados', value: mastered, subtext: pct + '%', color: 'var(--ah-mint)' }),
+        StatWidget({ icon: 'fiber_new', label: 'Novos', value: newCards, color: 'var(--ah-lavender)' }),
+      ];
+
+      widgets.forEach(w => mount.appendChild(w));
+    }
+
+    function renderModules() {
+      const list = document.getElementById('modulesList');
+      const emptyMount = document.getElementById('modulesEmpty');
+      list.innerHTML = '';
+      emptyMount.innerHTML = '';
+
+      if (discipline.modules.length === 0) {
+        emptyMount.appendChild(EmptyState({
+          icon: '📦',
+          title: 'Nenhum módulo',
+          description: 'Crie módulos para organizar tópicos e cards.',
+          action: { label: 'Criar Módulo', onClick: () => createModule() }
+        }));
+        return;
+      }
+
+      for (const mod of discipline.modules) {
+        list.appendChild(ModuleAccordion(mod, {
+          onTopicClick: (topicId, moduleId) => {
+            showToast(`Tópico selecionado (ID: ${topicId})`, { type: 'info' });
+          }
+        }));
+      }
+    }
+
+    function bindEvents() {
+      document.getElementById('btnStudy')?.addEventListener('click', () => {
+        const url = chrome.runtime.getURL(`src/study/study.html?discipline=${encodeURIComponent(discipline.name)}`);
+        chrome.tabs.create({ url });
+      });
+
+      document.getElementById('btnNewModule')?.addEventListener('click', createModule);
+
+      document.getElementById('btnEdit')?.addEventListener('click', async () => {
+        const newName = prompt('Novo nome:', discipline.name);
+        if (newName && newName.trim()) {
+          await ContentHierarchyService.updateDiscipline(discId, { name: newName.trim() });
+          discipline.name = newName.trim();
+          renderHeader();
+          renderBreadcrumb();
+          showToast('Disciplina renomeada!', { type: 'success' });
+        }
+      });
+
+      document.getElementById('btnDelete')?.addEventListener('click', async () => {
+        if (!confirm(`Deletar "${discipline.name}" e todos os seus cards?`)) return;
+        await ContentHierarchyService.deleteDiscipline(discId);
+        showToast('Disciplina deletada.', { type: 'success' });
+        goToDashboard();
+      });
+    }
+
+    async function createModule() {
+      const name = prompt('Nome do módulo:');
+      if (!name || !name.trim()) return;
+      const mod = await ContentHierarchyService.createModule(discId, { name: name.trim() });
+      if (mod) {
+        discipline.modules.push(mod);
+        renderModules();
+        renderStats();
+        showToast(`Módulo "${mod.name}" criado!`, { type: 'success' });
+      }
+    }
+
+    function goToDashboard() {
+      const url = chrome.runtime.getURL('src/dashboard/dashboard-v2.html');
+      window.location.href = url;
+    }
+
+    init();
+  </script>
+
+</body>
+</html>

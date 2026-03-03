@@ -1,3 +1,5 @@
+import { QuestionParser } from '../services/search/QuestionParser.js';
+
 /**
  * helpers.js
  * Pure utility functions
@@ -86,7 +88,7 @@ export function formatQuestionText(text) {
         const lines = raw.split('\n');
         const result = [];
         let altCount = 0;
-        const altRe = /^([A-E])\s*(?:[\)\.\-:]|->>|->|=>)/i;
+        const altRe = /^([A-E])\s*(?:(?:[\)\-:])|(?:\.\s)|->>|->|=>)/i;
         const newQuestionRe = /^\d+\s*[\.\):]?\s*(Marcar para|Quest[ãa]o|\(.*\/\d{4})/i;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -128,7 +130,7 @@ export function formatQuestionText(text) {
     // IMPORTANT: standalone hyphen `-` is excluded because "e-commerce", "auto-completar" etc.
     // would be misread as "E) commerce". Only ->> and -> (arrow operators) are kept.
     // A bare dash as option delimiter ("E - texto") is intentionally not supported here.
-    const inlineAltBreakRe = /(?:^|\s)([A-E])\s*(?:[\)\.\:]|->>|->|=>)(?=\s*\S)/gi;
+    const inlineAltBreakRe = /(?:^|\s)([A-E])\s*(?:(?:[\)\:])|(?:\.\s)|->>|->|=>)(?=\s*\S)/gi;
     const inlineAltMatches = normalized.match(inlineAltBreakRe) || [];
     if (inlineAltMatches.length >= 2) {
         normalized = normalized.replace(inlineAltBreakRe, (_m, letter) => `\n${letter.toUpperCase()}) `);
@@ -185,8 +187,8 @@ export function formatQuestionText(text) {
         const enunciadoParts = [];
         let currentAlt = null;
         const altStartRe = allowLoose
-            ? /^([A-E])\s*(?:(?:[\)\.\:]|->>|->|=>)\s*|\s+)(.+)$/i
-            : /^([A-E])\s*(?:[\)\.\:]|->>|->|=>)\s*(.+)$/i;
+            ? /^([A-E])\s*(?:(?:(?:[\)\:])|(?:\.\s)|->>|->|=>)\s*|\s+)(.+)$/i
+            : /^([A-E])\s*(?:(?:[\)\:])|(?:\.\s)|->>|->|=>)\s*(.+)$/i;
         const altSoloRe = /^([A-E])$/i;
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
@@ -235,6 +237,36 @@ export function formatQuestionText(text) {
 
         return { enunciado: clean(enunciadoParts.join(' ')), alternatives };
     };
+
+    // Canonical parser first (shared with search pipeline) to avoid UI-specific
+    // heuristics mixing enunciado + alternativas in SQL/code questions.
+    try {
+        const canonStem = clean(QuestionParser.extractQuestionStem(normalizedForParsing) || '');
+        const canonOptionsRaw = QuestionParser.extractOptionsFromQuestion(normalizedForParsing) || [];
+        const canonMap = new Map();
+        for (const line of canonOptionsRaw) {
+            const m = String(line || '').match(/^\s*([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i);
+            if (!m) continue;
+            const letter = (m[1] || '').toUpperCase();
+            const body = trimNoise(clean(m[2] || ''));
+            if (!body) continue;
+            if (!canonMap.has(letter) || body.length > String(canonMap.get(letter) || '').length) {
+                canonMap.set(letter, body);
+            }
+        }
+        const canonAlts = ['A', 'B', 'C', 'D', 'E']
+            .filter((letter) => canonMap.has(letter))
+            .map((letter) => ({ letter, body: canonMap.get(letter) }));
+
+        if (canonStem && canonAlts.length >= 2) {
+            return render(canonStem, canonAlts);
+        }
+        if (canonStem && canonAlts.length === 0) {
+            return render(canonStem, []);
+        }
+    } catch (_) {
+        // keep legacy fallbacks below
+    }
 
     const parsedByLines = parseByLines(normalizedForParsing, false);
     if (parsedByLines.alternatives.length >= 2) {

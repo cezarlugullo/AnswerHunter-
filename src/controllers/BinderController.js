@@ -365,6 +365,137 @@ export const BinderController = {
         }
     },
 
+    // === DISCIPLINAS ===
+
+    async openDisciplinaManager() {
+        const overlay = document.getElementById('disciplinas-overlay');
+        if (!overlay) return;
+        overlay.classList.remove('hidden');
+
+        if (!overlay.dataset.bound) {
+            overlay.dataset.bound = '1';
+            document.getElementById('discModalCloseBtn')?.addEventListener('click', () => overlay.classList.add('hidden'));
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+
+            document.getElementById('discAddBtn')?.addEventListener('click', () => this._createDisciplineFromInput());
+            document.getElementById('disc-new-name')?.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') this._createDisciplineFromInput();
+            });
+        }
+        await this._renderDisciplineList();
+    },
+
+    async _createDisciplineFromInput() {
+        const input = document.getElementById('disc-new-name');
+        const name = input?.value.trim();
+        if (!name) return;
+        const PALETTE = ['#FF6B6B','#4DABF7','#40C057','#DA77F2','#FFA94D','#F783AC','#20C997','#74C0FC'];
+        const disciplines = await StorageModel.getDisciplines();
+        const color = PALETTE[disciplines.length % PALETTE.length];
+        await StorageModel.addDiscipline(name, color);
+        if (input) input.value = '';
+        await this._renderDisciplineList();
+        await this._populateDisciplineSelect();
+    },
+
+    async _renderDisciplineList() {
+        const list = document.getElementById('disc-list');
+        const empty = document.getElementById('disc-empty-msg');
+        if (!list) return;
+        const disciplines = await StorageModel.getDisciplines();
+        if (!disciplines.length) {
+            list.innerHTML = '';
+            empty?.classList.remove('hidden');
+            return;
+        }
+        empty?.classList.add('hidden');
+        const allQ = StorageModel.getAllQuestions();
+        list.innerHTML = disciplines.map(d => {
+            const count = allQ.filter(q => {
+                const s = q?.content?.subject || q?.content?.topic || '';
+                return s.toLowerCase() === d.name.toLowerCase();
+            }).length;
+            return `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid rgba(0,0,0,0.08);background:#fff">
+              <span style="width:10px;height:10px;border-radius:50%;background:${d.color};flex-shrink:0"></span>
+              <span id="disc-name-${d.id}" style="flex:1;font-size:.84rem;font-weight:600">${d.name}</span>
+              <span style="font-size:.72rem;color:#888;background:#f5f5f5;border-radius:20px;padding:1px 8px">${count}q</span>
+              <button data-disc-rename="${d.id}" title="Renomear"
+                style="border:none;background:none;cursor:pointer;color:#aaa;padding:2px;display:flex;align-items:center">
+                <span class="material-symbols-rounded" style="font-size:16px">edit</span>
+              </button>
+              <button data-disc-delete="${d.id}" title="Excluir"
+                style="border:none;background:none;cursor:pointer;color:#ff8787;padding:2px;display:flex;align-items:center">
+                <span class="material-symbols-rounded" style="font-size:16px">delete</span>
+              </button>
+            </div>`;
+        }).join('');
+
+        list.querySelectorAll('[data-disc-delete]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (confirm(`Excluir disciplina "${btn.closest('div').querySelector('span[id]')?.textContent}"?`)) {
+                    await StorageModel.deleteDiscipline(btn.dataset.discDelete);
+                    await this._renderDisciplineList();
+                    await this._populateDisciplineSelect();
+                }
+            });
+        });
+        list.querySelectorAll('[data-disc-rename]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const nameEl = list.querySelector(`#disc-name-${btn.dataset.discRename}`);
+                const newName = prompt('Novo nome:', nameEl?.textContent);
+                if (newName?.trim()) {
+                    await StorageModel.renameDiscipline(btn.dataset.discRename, newName.trim());
+                    await this._renderDisciplineList();
+                    await this._populateDisciplineSelect();
+                }
+            });
+        });
+    },
+
+    async _populateDisciplineSelect() {
+        const select = document.getElementById('manual-discipline');
+        const hiddenSubject = document.getElementById('manual-subject');
+        if (!select) return;
+        const disciplines = await StorageModel.getDisciplines();
+        const prev = select.value;
+        select.innerHTML = `<option value="">— Sem disciplina —</option>` +
+            disciplines.map(d => `<option value="${d.name}">${d.name}</option>`).join('') +
+            `<option value="__new__">➕ Nova disciplina...</option>`;
+        if (prev) select.value = prev;
+
+        select.onchange = () => {
+            const newInput = document.getElementById('manual-new-discipline-input');
+            if (select.value === '__new__') {
+                newInput?.classList.remove('hidden');
+                newInput?.focus();
+            } else {
+                newInput?.classList.add('hidden');
+                if (hiddenSubject) hiddenSubject.value = select.value;
+            }
+        };
+
+        // sync new-input on blur: create discipline then select it
+        const newInput = document.getElementById('manual-new-discipline-input');
+        if (newInput && !newInput.dataset.bound) {
+            newInput.dataset.bound = '1';
+            newInput.addEventListener('keydown', async (e) => {
+                if (e.key !== 'Enter') return;
+                const name = newInput.value.trim();
+                if (!name) return;
+                const PALETTE = ['#FF6B6B','#4DABF7','#40C057','#DA77F2','#FFA94D'];
+                const list = await StorageModel.getDisciplines();
+                const color = PALETTE[list.length % PALETTE.length];
+                const disc = await StorageModel.addDiscipline(name, color);
+                await this._populateDisciplineSelect();
+                select.value = disc.name;
+                if (hiddenSubject) hiddenSubject.value = disc.name;
+                newInput.value = '';
+                newInput.classList.add('hidden');
+            });
+        }
+    },
+
     // === MANUAL ADD QUESTION ===
 
     handleAddManual() {
@@ -393,13 +524,15 @@ export const BinderController = {
             saveBtn.innerHTML = '<span class="material-symbols-rounded">save</span><span data-i18n="manual.add.save">' + this.t('manual.add.save') + '</span>';
         }
 
-        // Populate folder dropdown
+        // Populate folder and discipline dropdowns
         this._populateManualFolderSelect();
+        this._populateDisciplineSelect();
 
         // Bind events only once
         if (!overlay.dataset.bound) {
             overlay.dataset.bound = '1';
 
+            document.getElementById('btnManageDisciplines')?.addEventListener('click', () => this.openDisciplinaManager());
             document.getElementById('manualAddCloseBtn')?.addEventListener('click',  () => this._closeManualAddModal());
             document.getElementById('manualAddCancelBtn')?.addEventListener('click', () => this._closeManualAddModal());
             overlay.addEventListener('click', (e) => { if (e.target === overlay) this._closeManualAddModal(); });
@@ -454,7 +587,10 @@ export const BinderController = {
     async _submitManualAdd() {
         const question = document.getElementById('manual-question')?.value.trim();
         const answer   = document.getElementById('manual-answer')?.value.trim();
-        const subject  = document.getElementById('manual-subject')?.value.trim() || '';
+        const discSelect = document.getElementById('manual-discipline');
+        const subject = discSelect?.value === '__new__'
+            ? (document.getElementById('manual-new-discipline-input')?.value.trim() || '')
+            : (discSelect?.value || document.getElementById('manual-subject')?.value.trim() || '');
         const source   = document.getElementById('manual-source')?.value.trim()  || '';
         const folderId = document.getElementById('manual-folder')?.value;
         const errDiv   = document.getElementById('manual-add-error');
