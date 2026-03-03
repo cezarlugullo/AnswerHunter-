@@ -119,15 +119,15 @@ export const PopupController = {
     this.view.elements.btnNextGroq?.addEventListener('click', () => this.goToSetupStep(2));
     this.view.elements.prevGroq?.addEventListener('click', () => this.goToSetupStep(0)); // Back to welcome?
 
-    this.view.elements.btnNextSerper?.addEventListener('click', () => this.goToSetupStep(5));
+    this.view.elements.btnNextSerper?.addEventListener('click', () => this.goToSetupStep(3));
     this.view.elements.prevSerper?.addEventListener('click', () => this.goToSetupStep(1));
 
     this.view.elements.prevGemini?.addEventListener('click', () => this.goToSetupStep(2));
-
     this.view.elements.btnNextGemini?.addEventListener('click', () => this.goToSetupStep(4));
+
     this.view.elements.btnNextOpenrouter?.addEventListener('click', () => this.goToSetupStep(5));
     this.view.elements.prevOpenrouter?.addEventListener('click', () => this.goToSetupStep(3));
-    this.view.elements.prevPrefs?.addEventListener('click', () => this.goToSetupStep(2));
+    this.view.elements.prevPrefs?.addEventListener('click', () => this.goToSetupStep(4));
 
     this.view.elements.saveSetupBtn?.addEventListener('click', () => this.handleSaveSetup());
     this.view.elements.setupSkipBtn?.addEventListener('click', () => this.handleSaveSetup());
