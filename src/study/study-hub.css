@@ -1177,12 +1177,15 @@ input[type="text"]::placeholder {
 .disc-card {
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
   background-color: var(--color-surface-raised);
   border: 1px solid var(--color-border);
+  border-left: 4px solid var(--disc-color, var(--color-accent));
   border-radius: var(--radius-lg);
-  padding: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
   cursor: pointer;
   transition: all var(--dur-base) var(--ease-smooth);
+  min-height: 120px;
 }
 
 .disc-card:hover {
@@ -1202,10 +1205,13 @@ input[type="text"]::placeholder {
 
 .disc-card__name {
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-text-primary);
   line-height: 1.3;
   margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .disc-card__meta {
@@ -1222,8 +1228,8 @@ input[type="text"]::placeholder {
 
 .disc-card__progress-bar {
   flex: 1;
-  height: 5px;
-  background: var(--color-surface-raised);
+  height: 6px;
+  background: var(--color-border);
   border-radius: var(--radius-full);
   overflow: hidden;
 }
@@ -1333,8 +1339,8 @@ input[type="text"]::placeholder {
 
 .disc-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--sp-6);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--sp-4);
   margin-top: var(--sp-4);
 }
 

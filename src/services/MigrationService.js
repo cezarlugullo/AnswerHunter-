@@ -10,8 +10,8 @@
  */
 
 const MIGRATION_KEY = 'ah_migration_meta';
-const BACKUP_KEY    = 'ah_migration_backup';
-const CURRENT_VERSION = 3;
+const BACKUP_KEY = 'ah_migration_backup';
+const CURRENT_VERSION = 4;
 
 export const MigrationService = {
 
@@ -143,8 +143,13 @@ export const MigrationService = {
     for (const node of nodes) {
       if (node.type === 'question') {
         results.push({ node, path: [...path] });
-      } else if (node.type === 'folder' && node.children) {
-        results.push(...this._extractQuestions(node.children, [...path, node.title || 'Sem nome']));
+      } else if (node.type === 'folder') {
+        if (!node.children || node.children.length === 0) {
+          // Push empty folder as a placeholder to ensure the discipline is created
+          results.push({ node: { id: node.id, type: 'empty_folder', createdAt: node.createdAt, updatedAt: node.createdAt }, path: [...path, node.title || 'Sem nome'] });
+        } else {
+          results.push(...this._extractQuestions(node.children, [...path, node.title || 'Sem nome']));
+        }
       }
     }
     return results;
@@ -190,20 +195,27 @@ export const MigrationService = {
       let moduleName, topicName;
 
       if (!discName && path.length > 0) {
-        // If the first folder is a root-like name and there are subfolders,
-        // promote the subfolder to discipline level
-        if (ROOT_NAMES.has((path[0] || '').toLowerCase()) && path.length > 1) {
-          discName = path[1];
-          moduleName = path.length > 2 ? path[2] : 'Módulo 1';
-          topicName  = path.length > 3 ? path[3] : 'Tópico geral';
+        // If the first folder is a root-like name
+        if (ROOT_NAMES.has((path[0] || '').toLowerCase())) {
+          if (path.length > 1) {
+            // promote the subfolder to discipline level
+            discName = path[1];
+            moduleName = path.length > 2 ? path[2] : 'Módulo 1';
+            topicName = path.length > 3 ? path[3] : 'Tópico geral';
+          } else {
+            // It's just 'Raiz' with no subfolders -> put in 'Geral'
+            discName = 'Geral';
+            moduleName = 'Módulo 1';
+            topicName = 'Tópico geral';
+          }
         } else {
           discName = path[0];
           moduleName = path.length > 1 ? path[1] : 'Módulo 1';
-          topicName  = path.length > 2 ? path[2] : 'Tópico geral';
+          topicName = path.length > 2 ? path[2] : 'Tópico geral';
         }
       } else {
         moduleName = path.length > 1 ? path[1] : 'Módulo 1';
-        topicName  = path.length > 2 ? path[2] : 'Tópico geral';
+        topicName = path.length > 2 ? path[2] : 'Tópico geral';
       }
       if (!discName) discName = 'Geral';
 
@@ -253,18 +265,20 @@ export const MigrationService = {
       const top = mod.topics.get(topKey);
 
       // Add card (preserve original node ID for cross-referencing)
-      top.cards.push({
-        id: node.id,
-        question: content.question || '',
-        answer: content.answer || '',
-        source: content.source || '',
-        sm2: content.sm2 || {},
-        tags: content.sm2?.tags || content.tags || [],
-        notes: content.notes || '',
-        createdAt: node.createdAt || Date.now(),
-        updatedAt: node.updatedAt || Date.now(),
-        originalPath: path
-      });
+      if (node.type === 'question') {
+        top.cards.push({
+          id: node.id,
+          question: content.question || '',
+          answer: content.answer || '',
+          source: content.source || '',
+          sm2: content.sm2 || {},
+          tags: content.sm2?.tags || content.tags || [],
+          notes: content.notes || '',
+          createdAt: node.createdAt || Date.now(),
+          updatedAt: node.updatedAt || Date.now(),
+          originalPath: path
+        });
+      }
     }
 
     // Convert Maps to arrays
