@@ -10,7 +10,7 @@ export const QuestionParser = {
     stripOptionTailNoise(text) {
         if (!text) return '';
         let cleaned = String(text).replace(/\s+/g, ' ').trim();
-        const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parabéns|você\s+acertou|confira\s+o\s+gabarito|explicação)\b/i;
+        const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parabéns|você\s+acertou|confira\s+o\s+gabarito|explicação|quest[ãa]o\s+\d+\s+de\s+\d+)\b/i;
         const idx = cleaned.search(noiseMarker);
         if (idx > 20) cleaned = cleaned.slice(0, idx).trim();
         return cleaned.replace(/[;:,\-.\s]+$/g, '').trim();
@@ -81,9 +81,17 @@ export const QuestionParser = {
         }
 
         // Hard cut on explicit section labels that often prepend options.
-        const altLabelIdx = stem.search(/\bALTERNATIVAS?\b/i);
-        if (altLabelIdx > 30) {
-            stem = stem.slice(0, altLabelIdx).trim();
+        // Only match when "ALTERNATIVA(S)" is a standalone label, NOT when it's
+        // embedded in a sentence (e.g. "qual alternativa corresponde...").
+        // A label is typically preceded by start-of-string, newline, or punctuation,
+        // NOT by a determiner/connector word.
+        const altLabelMatch = stem.match(/\bALTERNATIVAS?\b/i);
+        if (altLabelMatch && altLabelMatch.index > 30) {
+            const before = stem.slice(Math.max(0, altLabelMatch.index - 12), altLabelMatch.index).trim().toLowerCase();
+            const isPartOfSentence = /(?:qual|a|da|das|na|nas|essa|este|esta|uma|cada|outra|marque|assinale|indique|identifique|encontre|selecione)\s*$/i.test(before);
+            if (!isPartOfSentence) {
+                stem = stem.slice(0, altLabelMatch.index).trim();
+            }
         }
 
         // Compact inline options without punctuation:

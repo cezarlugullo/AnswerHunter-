@@ -111,11 +111,10 @@ import { OptionsMatchService } from './search/OptionsMatchService.js';
 import { QuestionParser } from './search/QuestionParser.js';
 
 // Quantas URLs do Serper considerar no máximo (as primeiras são as mais relevantes)
-const MAX_CANDIDATES = 10;
+const MAX_CANDIDATES = 6;
 
 // Parar ao atingir este número de fontes que geraram resposta válida.
-// 5 fontes são suficientes para uma votação confiável e evitam timeout.
-const MAX_SOURCES = 5;
+const MAX_SOURCES = 3;
 
 // Tamanho mínimo de texto para enviar à IA.
 // Textos abaixo disso são páginas de erro, CAPTCHA ou redirecionamentos.
@@ -294,13 +293,13 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
 
         const checkDone = () => {
             if (resolved) return;
-            // Early exit: 3+ sources agree with dominance ≥ 0.80 → no need to wait for more
-            if (sources.length >= 3) {
+            // Early exit: 2+ sources agree with dominance ≥ 0.85 → no need to wait for more
+            if (sources.length >= 2) {
                 const votes = {};
                 for (const src of sources) votes[src.letter] = (votes[src.letter] || 0) + src.confidence;
                 const totalScore = Object.values(votes).reduce((a, b) => a + b, 0);
                 const bestScore = Math.max(...Object.values(votes));
-                if (totalScore > 0 && bestScore / totalScore >= 0.80) {
+                if (totalScore > 0 && bestScore / totalScore >= 0.85) {
                     resolved = true;
                     cancel.cancelled = true;
                     resolve({ sources: [...sources], allAttempts: [...allAttempts] });
