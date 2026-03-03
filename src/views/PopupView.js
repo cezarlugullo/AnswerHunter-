@@ -76,7 +76,7 @@ function formatReasoning(raw) {
     }
 
     // Sub-bullet: indented with - or **A e B**
-    if (trimmed.match(/^\s{2,}[-*]\s+/) ) {
+    if (trimmed.match(/^\s{2,}[-*]\s+/)) {
       if (!inBulletList) { out.push('<ul class="rz-list">'); inBulletList = true; }
       out.push(`<li class="rz-sub">${inline(trimmed.replace(/^\s*[-*]\s+/, ''))}</li>`);
       continue;
@@ -608,12 +608,9 @@ export const PopupView = {
       // Toggle close-settings button
       const closeBtn = this.elements[`closeSettings${cap}`];
       if (closeBtn) closeBtn.classList.toggle('hidden', !isReopen);
-      // Hide btn-next only for required providers (Groq) in reopen mode.
-      // Optional providers (Serper, Gemini, OpenRouter) keep btn-next visible
-      // so the user can navigate forward without being forced to configure them.
-      const isRequired = p === 'groq';
+      // Hide btn-next for ALL providers in reopen mode.
       const btnNext = this.elements[`btnNext${cap}`];
-      if (btnNext) btnNext.classList.toggle('hidden', !!isReopen && isRequired);
+      if (btnNext) btnNext.classList.toggle('hidden', !!isReopen);
     });
   },
 
@@ -932,9 +929,9 @@ export const PopupView = {
           </div>
 
           <div class="qa-card-actions">
-            <button class="action-btn feedback-btn" data-content="${dataContent}" title="${escapeHtml(this.t('result.reportExtraction') || 'Reportar erro na extração')}">
+            <button class="feedback-btn" data-content="${dataContent}" title="${escapeHtml(this.t('result.reportExtraction') || 'Reportar erro na extração')}">
               <span class="material-symbols-rounded" style="font-size:14px;">flag</span>
-              <span style="font-size:10.5px;">${escapeHtml(this.t('result.reportExtraction') || 'Erro na extração?')}</span>
+              <span style="font-size:10.5px; white-space: nowrap;">${escapeHtml(this.t('result.reportExtraction') || 'Erro na extração?')}</span>
             </button>
             ${sourceEntries.length > 0
           ? `<div class="sources-box">
