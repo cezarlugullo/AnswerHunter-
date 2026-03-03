@@ -84,3 +84,11 @@ nul
 # MCP local config
 .mcp.json
 playwright.mcp.config.json
+
+# Non-project files (both variants)
+non_project/
+
+# Large binary archives
+*.zip
+*.rar
+*.7z
