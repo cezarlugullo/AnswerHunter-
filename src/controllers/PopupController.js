@@ -575,7 +575,7 @@ export const PopupController = {
 
     if (provider === 'openrouter' && !this.hasOpenrouterKey()) {
       effectiveProvider = 'groq';
-      console.warn('[AnswerHunter] OpenRouter selection blocked: key not present in input or saved settings');
+      console.log('[AnswerHunter] OpenRouter selection blocked: key not present in input or saved settings');
       const noOpenrouterKeyMsg = this.t('setup.toast.noOpenrouterKeySaved');
       this.view.showToast(
         noOpenrouterKeyMsg === 'setup.toast.noOpenrouterKeySaved'
