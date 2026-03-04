@@ -118,7 +118,27 @@ const MAX_SOURCES = 6;
 
 // Tamanho mínimo de texto para enviar à IA.
 // Textos abaixo disso são páginas de erro, CAPTCHA ou redirecionamentos.
-const MIN_TEXT_LENGTH = 150;
+const MIN_TEXT_LENGTH = 200;
+
+// ── URL text cache — evita re-fetch de URLs já processadas ─────────────────
+const _urlTextCache = new Map();
+const URL_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 horas
+
+function _getCachedUrlText(url) {
+    const entry = _urlTextCache.get(url);
+    if (!entry) return null;
+    if (Date.now() - entry.ts > URL_CACHE_TTL) {
+        _urlTextCache.delete(url);
+        return null;
+    }
+    return entry.text;
+}
+
+function _setCachedUrlText(url, text) {
+    if (text && text.length >= MIN_TEXT_LENGTH) {
+        _urlTextCache.set(url, { text, ts: Date.now() });
+    }
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // A) DOMAIN STRATEGY MAP — roteamento inteligente por domínio
@@ -341,6 +361,14 @@ async function _processSingleSource(result, idx, total, questionForInference, or
     let pageText = null;
     let usedMethod = null;
 
+    // ── URL text cache hit: evita re-fetch de URLs já processadas ───────────
+    const cachedUrlText = _getCachedUrlText(link);
+    if (cachedUrlText) {
+        pageText = cachedUrlText;
+        usedMethod = 'url-cache';
+        console.log(`[SimpleSearch] [CACHE] URL text cache hit: ${pageText.length} chars`);
+    }
+
     // ── C) Cache hit: usar o método que já funcionou antes ──────────────────
     if (cachedMethod) {
         console.log(`[SimpleSearch] [CACHE] ${hostHint}: usando método cacheado "${cachedMethod}"`);
@@ -439,6 +467,8 @@ async function _processSingleSource(result, idx, total, questionForInference, or
 
     // ── C) Registrar método que funcionou ───────────────────────────────────
     if (usedMethod) _cacheSuccessfulMethod(hostHint, usedMethod);
+    // Save to URL text cache for future re-use
+    if (pageText && usedMethod !== 'url-cache') _setCachedUrlText(link, pageText);
 
     // Aborta antes de chamar a IA se já temos fontes suficientes — evita rate limit 429
     if (cancel.cancelled) {
@@ -556,8 +586,9 @@ async function _processSingleSource(result, idx, total, questionForInference, or
  * Substitui o for-loop sequencial — elimina o tempo de espera das fontes falhas.
  * Usa um cancel token para impedir que fontes em-flight abram BackgroundTabs desnecessárias.
  * @param {boolean} [allowBgTab=false] - se true, permite BackgroundTab como último recurso
+ * @param {Array} [priorSources=[]] - fontes já coletadas em fases anteriores (para herança de votos)
  */
-function _collectFirstNSources(topResults, questionForInference, originalOptionsMap, minSources, maxSources, onStatus, allowBgTab = false) {
+function _collectFirstNSources(topResults, questionForInference, originalOptionsMap, minSources, maxSources, onStatus, allowBgTab = false, priorSources = []) {
     return new Promise((resolve) => {
         const total = topResults.length;
         if (total === 0) { resolve({ sources: [], allAttempts: [] }); return; }
@@ -565,16 +596,28 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
         const sources = [];      // apenas tentativas com success=true
         const allAttempts = [];  // todas as tentativas (para tabela de diagnóstico)
         let settled = 0;
+        let launched = 0;
         let resolved = false;
         const cancel = { cancelled: false };
+        const CONCURRENCY = 4;  // Max concurrent source processors (prevents quota exhaustion)
 
-        const checkDone = () => {
+        // Pre-compute inherited votes from prior phases (Fase 0 snippets, Fase 1, Scholar)
+        const priorVotes = {};
+        for (const src of priorSources) {
+            if (src.letter) priorVotes[src.letter] = (priorVotes[src.letter] || 0) + (src.confidence || 0);
+        }
+        if (Object.keys(priorVotes).length > 0) {
+            console.log(`[SimpleSearch] [VOTE_INHERIT] Fase anterior contribuiu ${priorSources.length} voto(s):`, priorVotes);
+        }
+
+        const checkDoneAndLaunchMore = () => {
             if (resolved) return;
 
-            // Check consensus among successful sources
+            // Check consensus among successful sources + inherited votes
             let consensusScore = 0;
-            if (sources.length > 0) {
-                const votes = {};
+            const allSourceCount = sources.length + priorSources.length;
+            if (allSourceCount > 0) {
+                const votes = { ...priorVotes };
                 for (const src of sources) votes[src.letter] = (votes[src.letter] || 0) + (src.confidence || 0);
                 const totalScore = Object.values(votes).reduce((a, b) => a + b, 0);
                 const bestScore = Math.max(...Object.values(votes));
@@ -583,9 +626,12 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
 
             // Early exit conditions:
             // 1. We hit minSources AND consensus is strong (>= 0.6)
+            //    OR we have ≥1 new source + prior votes AND combined consensus ≥ 0.6
             // 2. We hit maxSources (hard limit)
             // 3. We exhausted all available results
-            const strongConsensus = sources.length >= minSources && consensusScore >= 0.6;
+            const hasEnoughSources = sources.length >= minSources
+                || (sources.length >= 1 && priorSources.length > 0);
+            const strongConsensus = hasEnoughSources && consensusScore >= 0.6;
 
             if (strongConsensus || sources.length >= maxSources || settled >= total) {
                 if (!resolved) {
@@ -598,10 +644,15 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
                     cancel.cancelled = true;
                     resolve({ sources: [...sources], allAttempts: [...allAttempts] });
                 }
+                return;
             }
+
+            // Launch more sources if we have available concurrency slots
+            launchMore();
         };
 
-        topResults.forEach((result, idx) => {
+        const launchOne = (idx) => {
+            const result = topResults[idx];
             _processSingleSource(result, idx + 1, total, questionForInference, originalOptionsMap, onStatus, cancel, allowBgTab)
                 .then(attempt => {
                     settled++;
@@ -609,13 +660,23 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
                         allAttempts.push(attempt);
                         if (attempt.success && !resolved) sources.push(attempt);
                     }
-                    checkDone();
+                    checkDoneAndLaunchMore();
                 })
                 .catch(() => {
                     settled++;
-                    checkDone();
+                    checkDoneAndLaunchMore();
                 });
-        });
+        };
+
+        const launchMore = () => {
+            while (launched < total && !resolved && (launched - settled) < CONCURRENCY) {
+                launchOne(launched);
+                launched++;
+            }
+        };
+
+        // Start initial batch (up to CONCURRENCY)
+        launchMore();
     });
 }
 
@@ -1061,7 +1122,19 @@ export const SimpleSearchService = {
         // ── Fase 2: BackgroundTab — complementa quando Fase 1 não atingiu o alvo ──
         // Usa o mesmo maxSources da Fase 1 (que pode ter sido reduzido pelo snippet early-exit)
         const effectiveMaxSources = snippetFoundAnswer ? fase1MaxSources + snippetSources.length : MAX_SOURCES;
-        if (sources.length < effectiveMaxSources) {
+
+        // Skip Phase 2 if we already have strong consensus from Phase 1
+        const _p2Votes = {};
+        for (const s of sources) _p2Votes[s.letter] = (_p2Votes[s.letter] || 0) + (s.confidence || 0);
+        const _p2Total = Object.values(_p2Votes).reduce((a, b) => a + b, 0);
+        const _p2Best = Math.max(...Object.values(_p2Votes), 0);
+        const _skipPhase2 = sources.length >= 2 && _p2Total > 0 && (_p2Best / _p2Total) >= 0.80;
+
+        if (_skipPhase2) {
+            console.log(`[SimpleSearch] [FAST] Pulando Fase 2 (consenso ≥ 80%: ${(_p2Best / _p2Total * 100).toFixed(0)}%)`);
+        }
+
+        if (!_skipPhase2 && sources.length < effectiveMaxSources) {
             const alreadyProcessed = new Set(allAttempts.map(a => a.link));
             const spaResults = topResults
                 .filter(r => r.link && !alreadyProcessed.has(r.link));
@@ -1069,7 +1142,7 @@ export const SimpleSearchService = {
                 if (typeof onStatus === 'function') onStatus(' Expandindo busca com mais fontes…');
                 const remaining = effectiveMaxSources - sources.length;
                 const bgResult = await _collectFirstNSources(
-                    spaResults, questionForInference, originalOptionsMap, remaining, remaining + 2, onStatus, true
+                    spaResults, questionForInference, originalOptionsMap, remaining, remaining + 2, onStatus, true, sources
                 );
                 sources.push(...bgResult.sources);
                 allAttempts.push(...bgResult.allAttempts);
@@ -1242,10 +1315,10 @@ export const SimpleSearchService = {
         for (const src of sources) preVotes[src.letter] = (preVotes[src.letter] || 0) + (src.confidence || 0);
         const preTotal = Object.values(preVotes).reduce((a, b) => a + b, 0);
         const preBest = Math.max(...Object.values(preVotes), 0);
-        const skipPhase3 = sources.length >= 2 && preTotal > 0 && (preBest / preTotal) >= 0.80;
+        const skipPhase3 = sources.length >= 2 && preTotal > 0 && (preBest / preTotal) >= 0.75;
 
         if (skipPhase3) {
-            console.log(`[SimpleSearch] [FAST] Pulando Fase 3 de confirmação (consenso atual ≥ 80%)`);
+            console.log(`[SimpleSearch] [FAST] Pulando Fase 3 de confirmação (consenso atual ≥ 75%: ${(preBest / preTotal * 100).toFixed(0)}%)`);
         }
 
         if (!skipPhase3 && sources.length < effectiveMaxSources) {

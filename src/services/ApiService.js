@@ -25,6 +25,30 @@ export const ApiService = {
     _chatgptUnsupportedCodexModels: {},
     _openRouterUnavailableModels: {},
 
+    // ── Global AI extraction semaphore ──────────────────────────────────────
+    // Limits concurrent LLM calls to prevent quota exhaustion across providers.
+    // Uses the user's configured primary provider; on error falls back in order.
+    _aiExtractSemaphore: { active: 0, queue: [], maxConcurrent: 3 },
+
+    async _acquireAiSlot() {
+        if (this._aiExtractSemaphore.active < this._aiExtractSemaphore.maxConcurrent) {
+            this._aiExtractSemaphore.active++;
+            return;
+        }
+        return new Promise(resolve => {
+            this._aiExtractSemaphore.queue.push(resolve);
+        });
+    },
+
+    _releaseAiSlot() {
+        if (this._aiExtractSemaphore.queue.length > 0) {
+            const next = this._aiExtractSemaphore.queue.shift();
+            next();  // transfer slot to next waiter (active count stays the same)
+        } else {
+            this._aiExtractSemaphore.active--;
+        }
+    },
+
     /**
      * Call Gemini via its OpenAI-compatible endpoint.
      * Used as fallback when Groq quota is exhausted, or as primary when user selects Gemini.
@@ -1284,6 +1308,15 @@ export const ApiService = {
      * @returns {Promise<{letter:string, evidence:string, confidence:number, method:string, knowledge:string}|null>}
      */
     async aiExtractFromPage(pageText, questionText, hostHint = '') {
+        await this._acquireAiSlot();
+        try {
+            return await this._aiExtractFromPageImpl(pageText, questionText, hostHint);
+        } finally {
+            this._releaseAiSlot();
+        }
+    },
+
+    async _aiExtractFromPageImpl(pageText, questionText, hostHint = '') {
         if (!pageText || pageText.length < 100 || !questionText) {
             console.log(`  🔬 [aiExtract] SKIP: text too short (${(pageText || '').length} chars)`);
             return null;
@@ -1551,10 +1584,10 @@ Analise o texto passo a passo e responda no formato acima:`;
                 break;
             }
 
-            // If the PRIMARY provider returned a short non-null response (e.g. 25 chars),
+            // If ANY provider returned a short non-null response (e.g. 25 chars),
             // the page content is likely the problem, not the model.
             // Skip fallbacks to avoid wasting rate limits on bad content.
-            if (i === 0 && content && content.length > 0 && content.length < 40) {
+            if (content && content.length > 0 && content.length < 40) {
                 console.log(`  🔬 [aiExtract] ${provider.name} returned short response (${content.length} chars) — page content likely insufficient, skipping fallbacks`);
                 break;
             }
@@ -2422,70 +2455,19 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             }
         ];
 
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                const model = settings.geminiModel || 'gemini-2.5-flash';
-                console.log(`AnswerHunter: Vision OCR — sending screenshot to Gemini (${model})...`);
-                const content = await this._callGemini(visionMessages, {
-                    temperature: 0.1,
-                    max_tokens: 700,
-                    model
-                });
-                if (!content || content.length < 20) {
-                    console.warn('AnswerHunter: Gemini Vision OCR returned too little text:', (content || '').length);
-                    return null;
-                }
-                console.log(`AnswerHunter: Gemini Vision OCR success — ${content.length} chars extracted`);
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: Gemini Vision OCR failed:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGroq = async () => {
-            if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            const model = groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct';
-            try {
-                console.log(`AnswerHunter: Vision OCR — sending screenshot to Groq (${model})...`);
-                const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${groqApiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model,
-                        messages: visionMessages,
-                        temperature: 0.1,
-                        max_tokens: 700
-                    })
-                }));
-
-                const content = (data.choices?.[0]?.message?.content || '').trim();
-                if (content.length < 20) {
-                    console.warn('AnswerHunter: Groq Vision OCR returned too little text:', content.length);
-                    return null;
-                }
-                console.log(`AnswerHunter: Groq Vision OCR success — ${content.length} chars extracted`);
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: Groq Vision OCR failed:', e?.message || e);
-                return null;
-            }
-        };
-
         try {
-            const geminiPrimary = await this._isGeminiPrimary();
-            let result = null;
-            if (geminiPrimary) {
-                result = await tryGemini();
-                if (!result) result = await tryGroq();
-            } else {
-                result = await tryGroq();
-                if (!result) result = await tryGemini();
-            }
+            const { result } = await this._callWithProviderChain({
+                messages: visionMessages,
+                opts: { temperature: 0.1, max_tokens: 700 },
+                models: {
+                    groq: settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct',
+                    gemini: settings.geminiModel || 'gemini-2.5-flash'
+                },
+                isValid: (v) => typeof v === 'string' && v.length >= 20,
+                label: 'visionOCR',
+                fallbackValue: ''
+            });
+            if (result) console.log(`AnswerHunter: Vision OCR success — ${result.length} chars extracted`);
             return result || '';
         } catch (error) {
             console.error('AnswerHunter: Vision OCR failed:', error);
@@ -2545,59 +2527,19 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             }
         ];
 
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                const model = settings.geminiModel || 'gemini-2.5-flash';
-                console.log(`AnswerHunter: visionGuidedExtraction — Gemini (${model})`);
-                const content = await this._callGemini(visionMessages, { temperature: 0.05, max_tokens: 1200, model });
-                if (!content || content.length < 20) return null;
-                console.log(`AnswerHunter: visionGuidedExtraction Gemini OK — ${content.length} chars`);
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: visionGuidedExtraction Gemini failed:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGroq = async () => {
-            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            const model = settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct';
-            try {
-                console.log(`AnswerHunter: visionGuidedExtraction — Groq (${model})`);
-                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${settings.groqApiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model,
-                        messages: visionMessages,
-                        temperature: 0.05,
-                        max_tokens: 1200
-                    })
-                }));
-                const content = (data?.choices?.[0]?.message?.content || '').trim();
-                if (content.length < 20) return null;
-                console.log(`AnswerHunter: visionGuidedExtraction Groq OK — ${content.length} chars`);
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: visionGuidedExtraction Groq failed:', e?.message || e);
-                return null;
-            }
-        };
-
         try {
-            const geminiPrimary = await this._isGeminiPrimary();
-            let result = null;
-            if (geminiPrimary) {
-                result = await tryGemini();
-                if (!result) result = await tryGroq();
-            } else {
-                result = await tryGroq();
-                if (!result) result = await tryGemini();
-            }
+            const { result } = await this._callWithProviderChain({
+                messages: visionMessages,
+                opts: { temperature: 0.05, max_tokens: 1200 },
+                models: {
+                    groq: settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct',
+                    gemini: settings.geminiModel || 'gemini-2.5-flash'
+                },
+                isValid: (v) => typeof v === 'string' && v.length >= 20,
+                label: 'visionExtract',
+                fallbackValue: ''
+            });
+            if (result) console.log(`AnswerHunter: visionGuidedExtraction OK — ${result.length} chars`);
             return result || '';
         } catch (error) {
             console.error('AnswerHunter: visionGuidedExtraction failed:', error);
