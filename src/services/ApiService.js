@@ -1481,6 +1481,48 @@ Analise o texto passo a passo e responda no formato acima:`;
     },
 
     /**
+     * Wrapper around aiExtractFromPage that returns { answerText, sourceLetter, ... }
+     * instead of { letter }. Used by SimpleSearchService to do TEXT-based matching
+     * (avoids position shift bugs when source and user have different option ordering).
+     * @param {string} pageText
+     * @param {string} questionText
+     * @param {string} hostHint
+     * @returns {Promise<{answerText:string|null, sourceLetter:string|null, rawSourceAnswer:string|null, confidence:number, evidence:string}|null>}
+     */
+    async aiExtractTextFromPage(pageText, questionText, hostHint = '') {
+        const result = await this.aiExtractFromPage(pageText, questionText, hostHint);
+        if (!result) return null;
+
+        if (result.letter && result.knowledge) {
+            // Extract the answer text from "Letra X: [answer text]" in the AI response
+            const re = new RegExp(`Letra\\s+${result.letter}\\s*[:\\-]\\s*(.+)`, 'im');
+            const textMatch = result.knowledge.match(re);
+            const answerText = textMatch ? textMatch[1].trim().replace(/\s+/g, ' ') : null;
+
+            return {
+                answerText,
+                sourceLetter: result.letter,
+                confidence: result.confidence || 0.82,
+                evidence: result.evidence || '',
+                rawSourceAnswer: answerText || null
+            };
+        }
+
+        // No letter found — check if there's partial knowledge (rawSourceAnswer for fallback)
+        if (result.knowledge) {
+            return {
+                answerText: null,
+                sourceLetter: null,
+                confidence: 0,
+                evidence: result.evidence || '',
+                rawSourceAnswer: result.knowledge.length > 50 ? result.knowledge : null
+            };
+        }
+
+        return null;
+    },
+
+    /**
      * AI extraction from raw HTML — lets the LLM detect visual highlights
      * (CSS classes, bold, colors) without hardcoded selectors.
      * @param {string} htmlSnippet - Raw HTML chunk centered on the question
@@ -3011,6 +3053,76 @@ INCONCLUSIVO: [motivo em 1 linha]`;
      * @param {number} num - max results to request (default 8)
      * @returns {Promise<Array<{title:string, link:string, snippet:string}>>}
      */
+    async aiConsolidateExtractedAnswers(extractedAnswers, questionText) {
+        if (!extractedAnswers?.length || !questionText) return null;
+
+        const settings = await this._getSettings();
+        
+        let answersBlock = '';
+        extractedAnswers.forEach((ans, i) => {
+            answersBlock += `${i + 1}. (${ans.host}): "${ans.text}"\n`;
+        });
+
+        const truncatedQuestion = String(questionText || '').substring(0, 2000);
+
+        const systemMsg = `Você é um analista especialista em identificar consensos em gabaritos de provas. Dado o enunciado e alternativas de uma QUESTÃO e uma lista de GABARITOS EXTRAÍDOS de diferentes sites na internet, sua tarefa é identificar qual é a alternativa correta ATUAL da questão.`;
+
+        const prompt = `# Tarefa
+Analise a QUESTÃO e os GABARITOS EXTRAÍDOS abaixo.
+
+# QUESTÃO
+${truncatedQuestion}
+
+# GABARITOS EXTRAÍDOS DAS FONTES
+${answersBlock}
+
+# Instruções
+1. Você deve encontrar a alternativa correta baseando-se NO TEXTO dos gabaritos extraídos.
+2. CUIDADO COM LETRAS DIFERENTES: Em sites antigos (como brainly ou passeidireto), a ordem das alternativas pode estar embaralhada em relação à questão atual. Exemplo: um site diz "Gabarito B (I e III)", mas na questão atual "I e III" está na letra "D". Você deve mapear para a letra "D". O TEXTO é rei, a letra da fonte é secundária.
+3. Se houver divergência entre as fontes, escolha aquela que tem o gabarito mais frequente (maior consenso) ou que faz mais sentido lógico em relação à questão.
+
+# Formato de resposta (SIGA ESTRITAMENTE)
+Se conseguir determinar uma letra da QUESTÃO ATUAL com confiança a partir dos gabaritos, responda:
+RESULTADO: ENCONTRADO
+LETRA_CORRETA: [A, B, C, D ou E]
+CONFIANÇA: [um número de 0.50 a 1.00 baseando-se no grau de consenso]
+MOTIVO: [explique brevemente seu raciocínio, apontando se o texto da resposta foi parar em outra letra na questão atual]
+
+Se os gabaritos não ajudarem a chegar numa conclusão clara ou não casarem com nenhuma alternativa:
+RESULTADO: NAO_ENCONTRADO`;
+
+        const parseResponse = (raw) => {
+            if (!raw || /RESULTADO:\s*NAO_ENCONTRADO/i.test(raw)) return null;
+            if (!/RESULTADO:\s*ENCONTRADO/i.test(raw)) return null;
+
+            const letterMatch = raw.match(/LETRA_CORRETA:\s*([A-E])/i);
+            const confMatch = raw.match(/CONFIANÇA:\s*([\d.]+)/i);
+            const motivoMatch = raw.match(/MOTIVO:\s*([\s\S]*)/i);
+
+            if (!letterMatch) return null;
+
+            return {
+                letter: letterMatch[1].toUpperCase(),
+                confidence: confMatch ? Math.min(parseFloat(confMatch[1]), 0.99) : 0.8,
+                reasoning: motivoMatch ? motivoMatch[1].trim().slice(0, 300) : ''
+            };
+        };
+
+        const callOpts = { temperature: 0.1, max_tokens: 350 };
+        const msgs = [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }];
+        
+        try {
+            const raw = await this._callAnyProvider(msgs, callOpts, settings);
+            if (raw?.content) {
+                console.log(`[aiConsolidate] Response from ${raw.usedProvider}:`, raw.content.substring(0, 100));
+                return parseResponse(raw.content);
+            }
+        } catch (e) {
+            console.warn('[aiConsolidate] Failed to consolidate answers:', e);
+        }
+        return null;
+    },
+
     async searchSingleQuery(query, num = 8) {
         try {
             const { serperApiUrl, serperApiKey } = await this._getSettings();
