@@ -11,6 +11,8 @@
  *   in chrome.storage.local on the user's device — never synced or sent to third parties
  * - Tokens are only sent to OpenAI's own endpoints (auth.openai.com, chatgpt.com)
  */
+import { logHttpError } from '../utils/httpHelpers.js';
+
 export const ChatGPTAuthService = {
 
     // ─── Public OAuth constants (from openai/codex open-source repo) ───
@@ -194,8 +196,7 @@ export const ChatGPTAuthService = {
             });
 
             if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                console.error(`ChatGPTAuth: Token exchange HTTP ${response.status}: ${errText.slice(0, 300)}`);
+                await logHttpError(response, 'ChatGPTAuth: Token exchange', { logLevel: 'error' });
                 return null;
             }
 

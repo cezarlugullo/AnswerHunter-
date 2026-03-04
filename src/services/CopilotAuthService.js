@@ -20,6 +20,8 @@
  * - GitHub token only sent to GitHub's own endpoints
  * - Copilot token only sent to api.githubcopilot.com
  */
+import { logHttpError } from '../utils/httpHelpers.js';
+
 export const CopilotAuthService = {
 
     // ─── Public OAuth constants (GitHub Copilot VS Code extension) ───
@@ -298,8 +300,7 @@ export const CopilotAuthService = {
             });
 
             if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                console.error(`CopilotAuth: Copilot token HTTP ${response.status}: ${errText.slice(0, 300)}`);
+                await logHttpError(response, 'CopilotAuth: Copilot token', { logLevel: 'error' });
                 return null;
             }
 

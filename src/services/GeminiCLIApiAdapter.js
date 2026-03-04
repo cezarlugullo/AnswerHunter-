@@ -7,6 +7,8 @@
  *
  * The API uses a Vertex AI-like request format wrapped in a Code Assist envelope.
  */
+import { logHttpError } from '../utils/httpHelpers.js';
+
 export const GeminiCLIApiAdapter = {
 
     BASE_URL: 'https://cloudcode-pa.googleapis.com/v1internal',
@@ -62,9 +64,7 @@ export const GeminiCLIApiAdapter = {
             });
 
             if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                console.warn(`GeminiCLIApi: generateContent HTTP ${response.status}: ${errText.slice(0, 300)}`);
-                return { error: true, status: response.status, text: errText };
+                return { error: true, ...(await logHttpError(response, 'GeminiCLIApi: generateContent')) };
             }
 
             const data = await response.json();
@@ -124,8 +124,7 @@ export const GeminiCLIApiAdapter = {
             });
 
             if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                console.warn(`GeminiCLIApi: streamGenerateContent HTTP ${response.status}: ${errText.slice(0, 300)}`);
+                await logHttpError(response, 'GeminiCLIApi: streamGenerateContent');
                 return null;
             }
 

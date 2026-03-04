@@ -14,6 +14,8 @@
  * - o3-mini (Pro+)
  * - gemini-2.0-flash (Pro+)
  */
+import { logHttpError } from '../utils/httpHelpers.js';
+
 export const CopilotApiAdapter = {
 
     DEFAULT_API_URL: 'https://api.githubcopilot.com',
@@ -62,9 +64,7 @@ export const CopilotApiAdapter = {
             clearTimeout(timer);
 
             if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                console.warn(`CopilotApi: chatCompletion HTTP ${response.status}: ${errText.slice(0, 300)}`);
-                return { error: true, status: response.status, text: errText };
+                return { error: true, ...(await logHttpError(response, 'CopilotApi: chatCompletion')) };
             }
 
             const data = await response.json();
@@ -117,9 +117,7 @@ export const CopilotApiAdapter = {
             });
 
             if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                console.warn(`CopilotApi: streamChatCompletion HTTP ${response.status}: ${errText.slice(0, 300)}`);
-                return { error: true, status: response.status, text: errText };
+                return { error: true, ...(await logHttpError(response, 'CopilotApi: streamChatCompletion')) };
             }
 
             // Parse SSE stream

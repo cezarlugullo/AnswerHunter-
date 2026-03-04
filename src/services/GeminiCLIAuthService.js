@@ -15,6 +15,8 @@
  * - All tokens stored EXCLUSIVELY in chrome.storage.local on the user's device
  * - Tokens are only sent to Google's own endpoints
  */
+import { logHttpError } from '../utils/httpHelpers.js';
+
 export const GeminiCLIAuthService = {
 
     // ─── Public OAuth constants (from google-gemini/gemini-cli open-source repo) ───
@@ -197,8 +199,7 @@ export const GeminiCLIAuthService = {
             });
 
             if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                console.error(`GeminiCLIAuth: Token exchange HTTP ${response.status}: ${errText.slice(0, 300)}`);
+                await logHttpError(response, 'GeminiCLIAuth: Token exchange', { logLevel: 'error' });
                 return null;
             }
 

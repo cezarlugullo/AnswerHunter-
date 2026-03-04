@@ -18,6 +18,8 @@
  *    (chrome.identity.getRedirectURL('gemini') — typically https://<extensionId>.chromiumapp.org/gemini)
  * 5. Copy the Client ID (NOT the secret) and paste it in the extension's settings
  */
+import { logHttpError } from '../utils/httpHelpers.js';
+
 export const GeminiAuthService = {
 
     // ─── Storage keys ───
@@ -272,8 +274,7 @@ export const GeminiAuthService = {
             });
 
             if (!response.ok) {
-                const errText = await response.text().catch(() => '');
-                console.error(`GeminiAuth: Token exchange HTTP ${response.status}: ${errText.slice(0, 300)}`);
+                await logHttpError(response, 'GeminiAuth: Token exchange', { logLevel: 'error' });
                 return null;
             }
 
