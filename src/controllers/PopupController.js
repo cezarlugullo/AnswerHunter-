@@ -6,7 +6,7 @@ import { DisciplinasController } from './DisciplinasController.js';
 import { StorageModel } from '../models/StorageModel.js';
 import { SettingsModel } from '../models/SettingsModel.js';
 import { I18nService } from '../i18n/I18nService.js';
-import { isLikelyQuestion } from '../utils/helpers.js';
+import { isLikelyQuestion, normalizeSpaces } from '../utils/helpers.js';
 import { ChatGPTAuthService } from '../services/ChatGPTAuthService.js';
 import { GeminiCLIAuthService } from '../services/GeminiCLIAuthService.js';
 import { CopilotAuthService } from '../services/CopilotAuthService.js';
@@ -2420,7 +2420,7 @@ export const PopupController = {
                     const ocrStemText = ocrStemLines.join('').replace(/\s+/g, '').trim();
                     const ocrStemLen = ocrStemText.length;
                     const domStemLines = domQuestion.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
-                    const domStemText = domStemLines.join('').replace(/\s+/g, '').trim();
+                    const domStemText = normalizeSpaces(domStemLines.join(' '));
                     const domStemLen = domStemText.length;
 
                     // Validate DOM stem is about the same question as OCR stem
@@ -2897,7 +2897,7 @@ export const PopupController = {
                   const flush = () => {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
-                    let body = String(current.body || '').replace(/\s+/g, '').trim();
+                    let body = String(current.body || '').replace(/\s+/g, ' ').trim();
                     const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
                     const idx = body.search(noise);
                     if (idx > 1) body = body.slice(0, idx).trim();
@@ -2924,7 +2924,7 @@ export const PopupController = {
                       continue;
                     }
                     if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[aã]o|aula)\b/i.test(line)) {
-                      current.body = `${current.body} ${line}`.replace(/\s+/g, '').trim();
+                      current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
                     }
                   }
                   flush();
@@ -3048,7 +3048,7 @@ export const PopupController = {
                 if (anchorTokens.length < 4) return '';
 
                 const cleanBody = (s) => {
-                  let b = String(s || '').replace(/\s+/g, '').trim();
+                  let b = String(s || '').replace(/\s+/g, ' ').trim();
                   const idx = b.search(noise);
                   if (idx > 1) b = b.slice(0, idx).trim();
                   return b.replace(/[;:,\-.\s]+$/, '');
@@ -3077,7 +3077,7 @@ export const PopupController = {
                     const m = line.match(startRe);
                     if (m) { flush(); current = { letter: m[1], body: m[2] }; continue; }
                     if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[aã]o|aula)\b/i.test(line)) {
-                      current.body = `${current.body} ${line}`.replace(/\s+/g, '').trim();
+                      current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
                     }
                   }
                   flush();
@@ -3128,7 +3128,7 @@ export const PopupController = {
                       const merged = new Map();
                       const startRe = /^["']?\s*([A-E])\s*[\)\.\-:\s]/i;
                       for (const item of items.slice(0, 10)) {
-                        const text = String(item?.textContent || '').replace(/\s+/g, '').trim();
+                        const text = String(item?.textContent || '').replace(/\s+/g, ' ').trim();
                         if (!text || text.length < 2) continue;
 
                         // --- Smart letter/body extraction (handles platform-specific elements) ---
@@ -3148,7 +3148,7 @@ export const PopupController = {
                               const textEl = item.querySelector('[data-testid="question-typography"]')
                                 || item.querySelector('p, div:not([class*="letter"]):not([class*="letra"])');
                               if (textEl) {
-                                bodyText = String(textEl.textContent || '').replace(/\s+/g, '').trim();
+                                bodyText = String(textEl.textContent || '').replace(/\s+/g, ' ').trim();
                               } else {
                                 // Fallback: remove the letter from the full textContent
                                 bodyText = text.replace(new RegExp('^' + letter + '\\s*'), '').trim();
@@ -3323,7 +3323,7 @@ export const PopupController = {
                   'li[data-letra], li[data-letter], li[data-option], li[data-alternativa]';
 
                 const cleanBody = (raw) => {
-                  let body = String(raw || '').replace(/\s+/g, '').trim();
+                  let body = String(raw || '').replace(/\s+/g, ' ').trim();
                   body = body.replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim();
                   const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
                   const idx = body.search(noise);
@@ -3341,14 +3341,14 @@ export const PopupController = {
                       btn.querySelector('[class*="letter"]') || btn.querySelector('small, strong, span');
                     let lt = ((letterEl ? (letterEl.innerText || letterEl.textContent) : '') || '').trim();
                     if (!/^[A-E]$/i.test(lt)) {
-                      const ft = (btn.innerText || btn.textContent || '').replace(/\s+/g, '').trim();
+                      const ft = (btn.innerText || btn.textContent || '').replace(/\s+/g, ' ').trim();
                       const m = ft.match(/^([A-E])\s*[\)\.\s]/i);
                       if (m) lt = m[1];
                     }
                     const letter = /^[A-E]$/i.test(lt) ? lt.toUpperCase() : '';
                     if (!letter || seen.has(letter)) continue;
                     const textEl = btn.querySelector('[data-testid="question-typography"]') || btn.querySelector('p, div');
-                    let raw = ((textEl ? (textEl.textContent || textEl.innerText) : null) || btn.textContent || btn.innerText || '').replace(/\s+/g, '').trim();
+                    let raw = ((textEl ? (textEl.textContent || textEl.innerText) : null) || btn.textContent || btn.innerText || '').replace(/\s+/g, ' ').trim();
                     if (new RegExp('^' + letter + '\\s*[\\)\\.\\-:]?\\s*', 'i').test(raw)) {
                       raw = raw.replace(new RegExp('^' + letter + '\\s*[\\)\\.\\-:]?\\s*', 'i'), '');
                     }
@@ -3475,7 +3475,7 @@ export const PopupController = {
                   const letter = match[1].toUpperCase();
                   const body = String(line || '')
                     .replace(/^([A-E])\s*[\)\.\-:]\s*/i, '')
-                    .replace(/\s+/g, '')
+                    .replace(/\s+/g, ' ')
                     .trim();
                   if (!body || !isValidOptionLine(`${letter}) ${body}`)) return;
                   if (!domLetters.has(letter) || body.length > String(domLetters.get(letter) || '').length) {
@@ -3766,7 +3766,7 @@ export const PopupController = {
                 const m = line.match(startRe);
                 if (m) {
                   const letter = m[1].toUpperCase();
-                  const body = m[2].replace(/\s+/g, '').trim();
+                  const body = m[2].replace(/\s+/g, ' ').trim();
                   if (!seen.has(letter) && body && !looksLikeCodeOptionBody(body) && isAssertionBody(body)) {
                     seen.add(letter);
                     out.push(`${letter}) ${body}`);
@@ -3777,7 +3777,7 @@ export const PopupController = {
                 const solo = line.match(soloRe);
                 if (solo && i + 1 < scoped.length) {
                   const letter = solo[1].toUpperCase();
-                  const body = scoped[i + 1].replace(/\s+/g, '').trim();
+                  const body = scoped[i + 1].replace(/\s+/g, ' ').trim();
                   if (!seen.has(letter) && body && !looksLikeCodeOptionBody(body) && isAssertionBody(body)) {
                     seen.add(letter);
                     out.push(`${letter}) ${body}`);
@@ -4133,7 +4133,7 @@ export const PopupController = {
   _extractOptionsMap(text) {
     const map = {};
     const cleanOptionBody = (raw) => {
-      let body = String(raw || '').replace(/\s+/g, '').trim();
+      let body = normalizeSpaces(raw);
       const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o\s+gabarito|explica[cç][aã]o)\b/i;
       const idx = body.search(noiseMarker);
       if (idx > 20) body = body.slice(0, idx).trim();

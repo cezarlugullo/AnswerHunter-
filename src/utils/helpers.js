@@ -5,6 +5,16 @@ import { QuestionParser } from '../services/search/QuestionParser.js';
  * Pure utility functions
  */
 
+/**
+ * Normalize whitespace in display text: collapse multiple spaces/tabs/newlines
+ * into a single space and trim. Use this for any text shown to the user.
+ * For comparison/fingerprinting where you need ALL spaces stripped, use
+ * String(s).replace(/\s+/g, '') directly.
+ */
+export function normalizeSpaces(s) {
+  return String(s || '').replace(/\s+/g, ' ').trim();
+}
+
 export function escapeHtml(text) {
     if (!text) return '';
     return text
