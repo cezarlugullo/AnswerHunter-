@@ -28,12 +28,12 @@ export const BrainlyService = {
     _stripHtml(html) {
         return String(html || '')
             .replace(/<br\s*\/?>/ .source + 'gi', '\n')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&nbsp;/g, '')
             .replace(/&amp;/g, '&')
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
-            .replace(/\s+/g, ' ')
+            .replace(/\s+/g, '')
             .trim();
     },
 
@@ -81,15 +81,15 @@ export const BrainlyService = {
 
     _stripHtmlClean(html) {
         return String(html || '')
-            .replace(/<br[^>]*>/gi, ' ')
-            .replace(/<p[^>]*>/gi, ' ')
-            .replace(/<[^>]+>/g, ' ')
-            .replace(/&nbsp;/g, ' ')
+            .replace(/<br[^>]*>/gi, '')
+            .replace(/<p[^>]*>/gi, '')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&nbsp;/g, '')
             .replace(/&amp;/g, '&')
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/&quot;/g, '"')
-            .replace(/\s+/g, ' ')
+            .replace(/\s+/g, '')
             .trim();
     },
 

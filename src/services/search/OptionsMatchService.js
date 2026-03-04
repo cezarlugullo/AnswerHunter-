@@ -4,7 +4,7 @@
 function __ahNorm(t = '') {
     return String(t || '')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        .toLowerCase().replace(/[^a-z0-9]+/g, '').trim();
 }
 
 function mapAnswerTextToOptionLetter(answerText = '', optionsMap = {}) {
@@ -292,7 +292,7 @@ export const OptionsMatchService = {
         let currentParts = [];
         const flush = () => {
             if (currentLetter && currentParts.length > 0) {
-                const body = currentParts.join(' ').replace(/\s+/g, ' ').trim();
+                const body = currentParts.join('').replace(/\s+/g, '').trim();
                 if (body.length >= 5) map[currentLetter] = body;
             }
         };
@@ -320,20 +320,20 @@ export const OptionsMatchService = {
 
     remapLetterToUserOptions(sourceLetter, sourceOptionsMap, userOptionsMap) {
         if (!sourceLetter || !sourceOptionsMap || !userOptionsMap) {
-            console.log(`    [remap] SKIP: missing data`);
+            console.log(` [remap] SKIP: missing data`);
             return sourceLetter;
         }
         const userEntries = Object.entries(userOptionsMap);
         if (userEntries.length < 2 || Object.keys(sourceOptionsMap).length < 2) {
-            console.log(`    [remap] SKIP: too few options`);
+            console.log(` [remap] SKIP: too few options`);
             return sourceLetter;
         }
         const sourceBody = sourceOptionsMap[sourceLetter];
         if (!sourceBody || sourceBody.length < 5) {
-            console.log(`    [remap] SKIP: source letter ${sourceLetter} has no body`);
+            console.log(` [remap] SKIP: source letter ${sourceLetter} has no body`);
             return sourceLetter;
         }
-        console.log(`    [remap] Source letter=${sourceLetter} body="${sourceBody.slice(0, 80)}"`);
+        console.log(` [remap] Source letter=${sourceLetter} body="${sourceBody.slice(0, 80)}"`);
 
         const normSource = QuestionParser.normalizeOption(sourceBody);
         if (!normSource) return sourceLetter;
@@ -377,10 +377,10 @@ export const OptionsMatchService = {
         }
 
         if (bestLetter && bestLetter !== sourceLetter) {
-            console.log(`    [remap] REMAPPED: ${sourceLetter} → ${bestLetter}`);
+            console.log(` [remap] REMAPPED: ${sourceLetter} → ${bestLetter}`);
             return bestLetter;
         }
-        console.log(`    [remap] NO CHANGE: best=${bestLetter || 'none'} === source=${sourceLetter}`);
+        console.log(` [remap] NO CHANGE: best=${bestLetter || 'none'} === source=${sourceLetter}`);
         return bestLetter || sourceLetter;
     },
 
@@ -388,9 +388,9 @@ export const OptionsMatchService = {
         if (!sourceLetter || !sourceText || !userOptionsMap) return sourceLetter;
         if (Object.keys(userOptionsMap).length < 2) return sourceLetter;
         const sourceOptionsMap = this.buildSourceOptionsMapFromText(sourceText);
-        console.log(`    [remapIfShuffled] letter=${sourceLetter} sourceOpts=${Object.keys(sourceOptionsMap).length}`);
+        console.log(` [remapIfShuffled] letter=${sourceLetter} sourceOpts=${Object.keys(sourceOptionsMap).length}`);
         if (Object.keys(sourceOptionsMap).length < 2) {
-            console.log(`    [remapIfShuffled] SKIP: not enough source options parsed`);
+            console.log(` [remapIfShuffled] SKIP: not enough source options parsed`);
             return sourceLetter;
         }
         return this.remapLetterToUserOptions(sourceLetter, sourceOptionsMap, userOptionsMap);
@@ -399,7 +399,7 @@ export const OptionsMatchService = {
     verifyHighlightMatch(rawLetter, remappedLetter, sourceOptionsMap, userOptionsMap, baseConfidence) {
         const highlightedText = (sourceOptionsMap || {})[rawLetter] || '';
         if (!highlightedText || highlightedText.length < 5) {
-            console.log(`    [verify] SKIP: no highlighted text for raw letter ${rawLetter}`);
+            console.log(` [verify] SKIP: no highlighted text for raw letter ${rawLetter}`);
             return { confidence: baseConfidence, letter: remappedLetter };
         }
         if (!userOptionsMap || Object.keys(userOptionsMap).length < 2) {
@@ -407,7 +407,7 @@ export const OptionsMatchService = {
         }
 
         const normH = QuestionParser.normalizeOption(highlightedText).replace(/\s+/g, '');
-        console.log(`    [verify] highlighted text for ${rawLetter}: "${highlightedText.slice(0, 100)}"`);
+        console.log(` [verify] highlighted text for ${rawLetter}: "${highlightedText.slice(0, 100)}"`);
 
         let bestMatchLetter = null;
         let bestMatchScore = 0;
@@ -422,14 +422,14 @@ export const OptionsMatchService = {
 
         if (bestMatchLetter && bestMatchScore >= 0.55) {
             if (bestMatchLetter !== remappedLetter) {
-                console.log(`    [verify] ✅ CONTENT OVERRIDE: ${remappedLetter} → ${bestMatchLetter}`);
+                console.log(` [verify] [OK] CONTENT OVERRIDE: ${remappedLetter} → ${bestMatchLetter}`);
             } else {
-                console.log(`    [verify] ✅ CONFIRMED: ${bestMatchLetter}`);
+                console.log(` [verify] [OK] CONFIRMED: ${bestMatchLetter}`);
             }
             return { confidence: baseConfidence, letter: bestMatchLetter };
         }
 
-        console.log(`    [verify] ❌ REJECTED: highlighted text matches NO user option. Anchor likely on wrong question.`);
+        console.log(` [verify] [FAIL] REJECTED: highlighted text matches NO user option. Anchor likely on wrong question.`);
         return null;
     },
 };

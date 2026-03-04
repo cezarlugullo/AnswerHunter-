@@ -124,7 +124,7 @@
 
     <!-- Header -->
     <div class="disc-header ah-fade-in" id="discHeader">
-      <div class="disc-header__icon" id="discIcon">📚</div>
+      <div class="disc-header__icon" id="discIcon"></div>
       <div class="disc-header__info">
         <h1 class="disc-header__title" id="discTitle">Carregando...</h1>
         <p class="disc-header__meta" id="discMeta"></p>
@@ -200,7 +200,7 @@
 
     function renderHeader() {
       const iconEl = document.getElementById('discIcon');
-      iconEl.textContent = discipline.icon || '📚';
+      iconEl.textContent = discipline.icon || '';
       iconEl.style.background = (discipline.color || '#FF6B6B') + '18';
 
       document.getElementById('discTitle').textContent = discipline.name;
@@ -254,7 +254,7 @@
 
       if (discipline.modules.length === 0) {
         emptyMount.appendChild(EmptyState({
-          icon: '📦',
+          icon: '',
           title: 'Nenhum módulo',
           description: 'Crie módulos para organizar tópicos e cards.',
           action: { label: 'Criar Módulo', onClick: () => createModule() }

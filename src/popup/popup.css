@@ -46,29 +46,29 @@
 
 /* === DESIGN TOKENS — Playful / Toy-like (Original Colors, Refined Layout) === */
 :root {
-  /* 🎨 PRIMARY — Candy Coral */
+  /* PRIMARY — Candy Coral */
   --ah-primary: #FF6B6B;
   --ah-primary-light: #FFD8D8;
   --ah-primary-dark: #FA5252;
   --ah-primary-glow: rgba(255, 107, 107, 0.25);
   --ah-primary-glow-strong: rgba(255, 107, 107, 0.4);
-  /* 🩵 SECONDARY — Sky Blue */
+  /* SECONDARY — Sky Blue */
   --ah-secondary: #4DABF7;
   --ah-secondary-light: #BAE6FD;
   --ah-secondary-dark: #228BE6;
-  /* 🌿 MINT — Success Green */
+  /* MINT — Success Green */
   --ah-mint: #40C057;
   --ah-mint-light: #CBFFDA;
-  /* 🍊 ORANGE — Warm Peach */
+  /* ORANGE — Warm Peach */
   --ah-orange: #FFA94D;
   --ah-orange-light: #FFE8CC;
-  /* 💛 GOLD — Star / Save accent */
+  /* GOLD — Star / Save accent */
   --ah-gold: #FFD43B;
   --ah-gold-light: #FFF3BF;
-  /* 💜 LAVENDER — AI accent */
+  /* LAVENDER — AI accent */
   --ah-lavender: #DA77F2;
   --ah-lavender-light: #F3D9FA;
-  /* 🩷 PINK — Feature highlight */
+  /* PINK — Feature highlight */
   --ah-pink: #F783AC;
   --ah-pink-light: #FFD6E7;
   /* Surfaces */
@@ -592,8 +592,110 @@ button:disabled {
   font-size: 0.9rem;
   line-height: 1.75;
   margin-bottom: 0;
-  text-align: left;
+  text-align: justify;
   text-wrap: pretty;
+  hyphens: auto;
+}
+
+/* ===== ENUNCIADO: EDITORIAL LIST (I. II. III.) ===== */
+.enunciado-list {
+  margin: 10px 0;
+  padding-left: 2px;
+  border-left: 2px solid #CBD5E1;
+}
+
+.enunciado-list-item {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 7px 0 7px 14px;
+  font-size: 0.88rem;
+  line-height: 1.7;
+}
+
+.enunciado-list-item + .enunciado-list-item {
+  border-top: 1px dashed #E2E8F0;
+}
+
+.list-marker {
+  font-weight: 800;
+  color: #64748B;
+  font-size: 0.83rem;
+  min-width: 30px;
+  flex-shrink: 0;
+  font-family: 'Nunito', sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.list-content {
+  color: #334155;
+  font-weight: 600;
+  text-wrap: pretty;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* ===== ENUNCIADO: CODE BLOCK ===== */
+.enunciado-code {
+  margin: 10px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #334155;
+}
+
+.enunciado-code-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  background: #1E293B;
+  color: #94A3B8;
+  font-size: 0.67rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  border-bottom: 1px solid #475569;
+  font-family: 'Nunito', sans-serif;
+}
+
+.code-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22C55E;
+  flex-shrink: 0;
+}
+
+.enunciado-code pre {
+  margin: 0;
+  padding: 14px 16px;
+  background: #0F172A;
+  color: #E2E8F0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.enunciado-code code {
+  font-family: inherit;
+  background: none;
+  padding: 0;
+}
+
+/* ===== ENUNCIADO: CONCLUSION PROMPT ===== */
+.enunciado-conclusion {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #FFFBEB;
+  border-radius: 8px;
+  border-left: 3px solid #F59E0B;
+  color: #92400E;
+  font-weight: 700;
+  font-size: 0.87rem;
+  line-height: 1.65;
 }
 
 .question-alternatives {
@@ -6050,7 +6152,7 @@ input:focus {
 }
 
 .ob-hint::before {
- content:"";
+ content:"\2139\00a0";
 }
 
 /* Form Card */
@@ -9617,7 +9719,7 @@ button:focus-visible,
 }
 
 .turbo-entry-btn.turbo-entry-btn--active .turbo-entry-title::after {
-  content: ' ✓';
+  content: '';
   color: #40C057;
   font-size: 13px;
 }
@@ -9715,6 +9817,7 @@ textarea,
 .answer,
 .question,
 .question-enunciado,
+.list-content,
 .alternative .alt-text,
 .summary-title,
 .summary-meta,

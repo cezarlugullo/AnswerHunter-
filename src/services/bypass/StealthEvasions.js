@@ -101,7 +101,7 @@ export class StealthEvasions {
     try {
       if (!navigator.languages?.length) {
         Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en-US', 'en'], configurable: true });
-        Object.defineProperty(navigator, 'language',  { get: () => 'pt-BR', configurable: true });
+        Object.defineProperty(navigator, 'language', { get: () => 'pt-BR', configurable: true });
       }
     } catch(_) {}
 
@@ -188,8 +188,8 @@ export class StealthEvasions {
         if (!t) return _origCPT.call(this, t);
         const tl = t.toLowerCase();
         if (tl.includes('video/mp4') && tl.includes('avc1.42e01e')) return 'probably';
-        if (tl.startsWith('audio/aac') && !tl.includes('codecs'))    return 'probably';
-        if (tl.startsWith('audio/x-m4a') && !tl.includes('codecs'))  return 'maybe';
+        if (tl.startsWith('audio/aac') && !tl.includes('codecs')) return 'probably';
+        if (tl.startsWith('audio/x-m4a') && !tl.includes('codecs')) return 'maybe';
         return _origCPT.call(this, t);
       };
     } catch(_) {}

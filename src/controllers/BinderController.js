@@ -417,7 +417,7 @@ export const BinderController = {
                 const s = q?.content?.subject || q?.content?.topic || '';
                 return s.toLowerCase() === d.name.toLowerCase();
             }).length;
-            return `
+            return`
             <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;border:1px solid rgba(0,0,0,0.08);background:#fff">
               <span style="width:10px;height:10px;border-radius:50%;background:${d.color};flex-shrink:0"></span>
               <span id="disc-name-${d.id}" style="flex:1;font-size:.84rem;font-weight:600">${d.name}</span>
@@ -463,7 +463,7 @@ export const BinderController = {
         const prev = select.value;
         select.innerHTML = `<option value="">— Sem disciplina —</option>` +
             disciplines.map(d => `<option value="${d.name}">${d.name}</option>`).join('') +
-            `<option value="__new__">➕ Nova disciplina...</option>`;
+            `<option value="__new__"> Nova disciplina...</option>`;
         if (prev) select.value = prev;
 
         select.onchange = () => {
@@ -517,7 +517,7 @@ export const BinderController = {
         const saveBtn = document.getElementById('manualAddSaveBtn');
 
         if (qTA)   { qTA.value = ''; const c = document.getElementById('manual-question-count'); if (c) c.textContent = '0'; }
-        if (aTA)   { aTA.value = ''; const c = document.getElementById('manual-answer-count');   if (c) c.textContent = '0'; }
+        if (aTA)   { aTA.value = ''; const c = document.getElementById('manual-answer-count'); if (c) c.textContent = '0'; }
         if (subjIn) subjIn.value = '';
         if (srcIn)  srcIn.value  = '';
         if (errDiv) errDiv.classList.add('hidden');
@@ -579,7 +579,7 @@ export const BinderController = {
                     opt.textContent = prefix + (node.title || node.id);
                     if (node.id === StorageModel.currentFolderId) opt.selected = true;
                     select.appendChild(opt);
-                    if (node.children?.length) addOptions(node.children, prefix + '\u00a0\u00a0\u203a ');
+                    if (node.children?.length) addOptions(node.children, prefix + '\u00a0\u00a0\u203a');
                 }
             }
         };
@@ -593,7 +593,7 @@ export const BinderController = {
         const subject = discSelect?.value === '__new__'
             ? (document.getElementById('manual-new-discipline-input')?.value.trim() || '')
             : (discSelect?.value || document.getElementById('manual-subject')?.value.trim() || '');
-        const source   = document.getElementById('manual-source')?.value.trim()  || '';
+        const source   = document.getElementById('manual-source')?.value.trim() || '';
         const folderId = document.getElementById('manual-folder')?.value;
         const errDiv   = document.getElementById('manual-add-error');
         const saveBtn  = document.getElementById('manualAddSaveBtn');

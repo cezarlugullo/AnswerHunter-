@@ -86,7 +86,7 @@ export const MigrationService = {
 
       await this._setMeta({ version: CURRENT_VERSION, ...stats });
 
-      console.log('[MigrationService] Migration complete (v' + CURRENT_VERSION + '):', stats);
+      console.log('[MigrationService] Migration complete (v' + CURRENT_VERSION +'):', stats);
       return { success: true, stats };
 
     } catch (err) {
@@ -246,7 +246,7 @@ export const MigrationService = {
         disciplineMap.set(discKey, {
           id: 'd_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12),
           name: discName,
-          icon: '📚',
+          icon: '',
           color,
           modules: new Map(),
           createdAt: Date.now()

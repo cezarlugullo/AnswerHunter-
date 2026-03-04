@@ -2,7 +2,7 @@
  * HumanMouseSimulator.js
  * 
  * Simulates human-like mouse movement using cubic Bezier curves.
- * Inspired by ghost-cursor (github.com/Xetera/ghost-cursor, ⭐1.4k)
+ * Inspired by ghost-cursor (github.com/Xetera/ghost-cursor, 1.4k)
  * Ported to pure JS for Chrome MV3 extensions — no Node.js required.
  * 
  * Algorithm:

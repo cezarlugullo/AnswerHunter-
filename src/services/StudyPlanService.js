@@ -59,7 +59,7 @@ export const StudyPlanService = {
         id: 'sp_' + Date.now() + '_' + items.length,
         type: 'review_overdue',
         cardId: card.id,
-        label: `📌 Revisar (atrasado): ${this._truncate(card.question, 60)}`,
+        label: `Revisar (atrasado): ${this._truncate(card.question, 60)}`,
         disciplineName: card.disciplineName || '',
         completed: false,
         estimatedMinutes: 2
@@ -76,7 +76,7 @@ export const StudyPlanService = {
         id: 'sp_' + Date.now() + '_' + items.length,
         type: 'review_due',
         cardId: card.id,
-        label: `🔄 Revisar: ${this._truncate(card.question, 60)}`,
+        label: `Revisar: ${this._truncate(card.question, 60)}`,
         disciplineName: card.disciplineName || '',
         completed: false,
         estimatedMinutes: 2
@@ -89,7 +89,7 @@ export const StudyPlanService = {
       items.push({
         id: 'sp_' + Date.now() + '_' + items.length,
         type: 'focus_weak',
-        label: `🎯 Focar em: ${weakestDisc.name} (15 min)`,
+        label: `Focar em: ${weakestDisc.name} (15 min)`,
         disciplineId: weakestDisc.id,
         disciplineName: weakestDisc.name,
         completed: false,
@@ -105,7 +105,7 @@ export const StudyPlanService = {
         id: 'sp_' + Date.now() + '_' + items.length,
         type: 'learn_new',
         cardId: card.id,
-        label: `✨ Aprender: ${this._truncate(card.question, 60)}`,
+        label: `Aprender: ${this._truncate(card.question, 60)}`,
         disciplineName: card.disciplineName || '',
         completed: false,
         estimatedMinutes: 3

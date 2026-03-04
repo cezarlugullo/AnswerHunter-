@@ -86,7 +86,7 @@ export const SearchCacheService = {
         // Use full URL (not just hostname) to prevent cross-document cache collisions
         // on hosts with many pages (e.g. PasseiDireto: each /arquivo/ or /pergunta/ is
         // a distinct document with potentially different option ordering).
-        const stem = String(questionStem || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        const stem = String(questionStem || '').replace(/\s+/g, '').trim().slice(0, 80);
         return `${url}|${stem}`;
     },
 

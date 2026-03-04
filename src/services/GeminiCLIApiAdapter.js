@@ -144,7 +144,7 @@ export const GeminiCLIApiAdapter = {
                 buffer = lines.pop() || '';
 
                 for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
+                    if (!line.startsWith('data:')) continue;
                     const jsonStr = line.slice(6).trim();
                     if (!jsonStr || jsonStr === '[DONE]') continue;
 

@@ -715,11 +715,11 @@ export const PopupController = {
     };
 
     const PROVIDER_LABEL = {
-      groq: '🔶 Groq',
-      gemini: '💎 Gemini',
- openrouter:' OpenRouter',
-      chatgpt: '💬 ChatGPT',
-      copilot: '🐙 Copilot',
+      groq: 'Groq',
+      gemini: 'Gemini',
+      openrouter: 'OpenRouter',
+      chatgpt: 'ChatGPT',
+      copilot: 'Copilot',
     };
     const activeModel = providerModelMap[primaryProvider] ?? '—';
     const activeLabel = PROVIDER_LABEL[primaryProvider] ?? primaryProvider;
@@ -992,7 +992,7 @@ export const PopupController = {
             else if (sku.includes('business')) planLabel = 'Business';
             else if (sku.includes('individual') || sku.includes('pro')) planLabel = 'Individual';
           }
-          planBadgeEl.textContent = `✦ ${planLabel}`;
+          planBadgeEl.textContent = ` ${planLabel}`;
         }
         if (tokenExpiryEl && storedToken?.expiresAt) {
           const expiresIn = Math.max(0, Math.round((storedToken.expiresAt - Date.now()) / 60000));
@@ -1995,7 +1995,7 @@ export const PopupController = {
       const isValidOptionLine = (line) => {
         const m = String(line || '').trim().match(/^([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i);
         if (!m) return false;
-        let body = String(m[2] || '').replace(/\s+/g, ' ').trim();
+        let body = String(m[2] || '').replace(/\s+/g, '').trim();
         const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
         const idx = body.search(noise);
         if (idx > 1) body = body.slice(0, idx).trim();
@@ -2024,7 +2024,7 @@ export const PopupController = {
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/^[a-e]\s*(?:[\)\-:]|(?:\.\s))\s*/i, '')
-        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/[^a-z0-9]+/g, '')
         .trim();
       const optionTokens = (body) => normalizeOptionBody(body)
         .split(/\s+/)
@@ -2039,7 +2039,7 @@ export const PopupController = {
           const m = line.match(re);
           if (!m) continue;
           const letter = (m[1] || '').toUpperCase();
-          const body = String(m[2] || '').replace(/\s+/g, ' ').trim();
+          const body = String(m[2] || '').replace(/\s+/g, '').trim();
           if (!isValidOptionLine(`${letter}) ${body}`)) continue;
           entries.push({ letter, body, codeLike: looksLikeCodeOptionBody(body) });
           letters.add(letter);
@@ -2058,7 +2058,7 @@ export const PopupController = {
           const m = line.match(re);
           if (!m) continue;
           const letter = (m[1] || '').toUpperCase();
-          const body = String(m[2] || '').replace(/\s+/g, ' ').trim();
+          const body = String(m[2] || '').replace(/\s+/g, '').trim();
           if (!isValidOptionLine(`${letter}) ${body}`)) continue;
           if (!map.has(letter) || body.length > String(map.get(letter) || '').length) {
             map.set(letter, body);
@@ -2116,7 +2116,7 @@ export const PopupController = {
         const normalizeTokens = (s) => String(s || '')
           .toLowerCase()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-z0-9]+/g, ' ')
+          .replace(/[^a-z0-9]+/g, '')
           .trim()
           .split(/\s+/)
           .filter(t => t.length >= 4);
@@ -2129,7 +2129,7 @@ export const PopupController = {
         ]);
 
         const stemLines = stemText.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]/i));
-        const stemNorm = normalizeTokens(stemLines.join(' ')).filter(t => !stopWords.has(t));
+        const stemNorm = normalizeTokens(stemLines.join('')).filter(t => !stopWords.has(t));
 
         // Even when stem is short, check if options are pure code (SQL) for a non-code stem.
         // This catches cross-question contamination after multi-question isolation.
@@ -2139,9 +2139,9 @@ export const PopupController = {
             const optBodiesShort = optionLinesShort.map(l => l.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim());
             const isCodeLikeShort = (body) => /\b(?:INSERT\s+INTO|SELECT|UPDATE|DELETE|CREATE|ALTER|DROP|VALUES)\b/i.test(String(body || '')) || /\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
             const codeLikeShort = optBodiesShort.filter(isCodeLikeShort).length;
-            const stemExpectsCode = /\b(?:sql|jsonb?|insert|update|delete|select|comando|sintaxe|codigo|query|consulta)\b/i.test(stemLines.join(' '));
+            const stemExpectsCode = /\b(?:sql|jsonb?|insert|update|delete|select|comando|sintaxe|codigo|query|consulta)\b/i.test(stemLines.join(''));
             if (codeLikeShort >= 3 && !stemExpectsCode) {
-              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected ${codeLikeShort} code-like options on short non-code stem. Options: "${optionLinesShort.slice(0, 2).join(' | ')}"`);
+              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected ${codeLikeShort} code-like options on short non-code stem. Options: "${optionLinesShort.slice(0, 2).join(' |')}"`);
               return false;
             }
           }
@@ -2154,8 +2154,8 @@ export const PopupController = {
         if (optionLines.length < 2) return true;
 
         const optBodies = optionLines.map(l => l.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim());
-        const allOptTokens = normalizeTokens(optBodies.join(' ')).filter(t => !stopWords.has(t));
-        const stemContextTokens = normalizeTokens(stemLines.join(' '));
+        const allOptTokens = normalizeTokens(optBodies.join('')).filter(t => !stopWords.has(t));
+        const stemContextTokens = normalizeTokens(stemLines.join(''));
         const acronymContextHints = new Set(['formato', 'arquivo', 'arquivos', 'extensao', 'documento', 'documentos', 'json', 'xml', 'bson', 'yaml', 'csv']);
         const hasAcronymContext = stemContextTokens.some((t) => acronymContextHints.has(t));
         const compactAtomicCount = optBodies.filter((body) => isCompactOptionBody(body)).length;
@@ -2175,10 +2175,10 @@ export const PopupController = {
           // All options are too short to produce tokens — might be all-acronym
           if (allAcronym || mostlyCodeLike) {
             if (optionLines.length >= 3 && hasAcronymContext && compactAtomicSet) {
-              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (compact acronym/code set with contextual match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (compact acronym/code set with contextual match). Options: "${optionLines.slice(0, 3).join(' |')}"`);
               return true;
             }
-            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym/code, no contextual stem match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym/code, no contextual stem match). Options: "${optionLines.slice(0, 3).join(' |')}"`);
             return false;
           }
           return true;
@@ -2194,30 +2194,30 @@ export const PopupController = {
         if (overlapRatio === 0) {
           if (allAcronym) {
             if (optionLines.length >= 3 && hasAcronymContext && compactAtomicSet) {
-              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (all-acronym with contextual stem match despite 0 token overlap). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed options (all-acronym with contextual stem match despite 0 token overlap). Options: "${optionLines.slice(0, 3).join(' |')}"`);
               return true;
             }
-            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym with 0 stem overlap and no contextual match). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (all-acronym with 0 stem overlap and no contextual match). Options: "${optionLines.slice(0, 3).join(' |')}"`);
             return false;
           }
 
           if (mostlyCodeLike) {
             // Allow if the stem itself is about SQL/code (e.g. "Qual conjunto de comandos SQL...").
             // The short-stem path already has this check; mirror it for the full-stem path.
-            const stemExpectsCode = /\b(?:sql|ddl|dml|insert|update|delete|select|create|alter|drop|comando(?:s)?|sintaxe|c[oó]digo|query|consulta|linguagem\s+sql)\b/i.test(stemLines.join(' '));
+            const stemExpectsCode = /\b(?:sql|ddl|dml|insert|update|delete|select|create|alter|drop|comando(?:s)?|sintaxe|c[oó]digo|query|consulta|linguagem\s+sql)\b/i.test(stemLines.join(''));
             if (stemExpectsCode) {
               // SQL question with SQL options — contextually valid; skip all remaining checks.
-              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed code-like options (stem expects SQL/code). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+              console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed code-like options (stem expects SQL/code). Options: "${optionLines.slice(0, 3).join(' |')}"`);
               return true;
             }
-            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (code-like with 0 stem overlap). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (code-like with 0 stem overlap). Options: "${optionLines.slice(0, 3).join(' |')}"`);
             return false;
           }
 
           // If options have enough tokens (not an acronym set), but ZERO match the stem,
           // they almost certainly belong to a different question.
           if (allOptTokens.length >= 3) {
-            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (0 stem token overlap out of ${allOptTokens.length} option tokens). Options: "${optionLines.slice(0, 3).join(' | ')}"`);
+            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (0 stem token overlap out of ${allOptTokens.length} option tokens). Options: "${optionLines.slice(0, 3).join(' |')}"`);
             return false;
           }
         }
@@ -2299,7 +2299,7 @@ export const PopupController = {
       // ── Phase 1.2: Create question fingerprint from first extraction ──
       // All subsequent steps validate against this fingerprint.
       const questionFingerprint = QuestionFingerprint.create(bestQuestion);
-      console.log(`AnswerHunter: FINGERPRINT created tokens=[${questionFingerprint.tokens.join(', ')}]`);
+      console.log(`AnswerHunter: FINGERPRINT created tokens=[${questionFingerprint.tokens.join(',')}]`);
 
       // -- Vision OCR priority --
       // OCR runs only when DOM extraction is insufficient (< 4 options or short text).
@@ -2417,19 +2417,19 @@ export const PopupController = {
                   // CRITICAL: only merge if DOM stem is about the SAME question (token overlap check).
                   if (domQuestion && domQuestion.length > 0) {
                     const ocrStemLines = visionText.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
-                    const ocrStemText = ocrStemLines.join(' ').replace(/\s+/g, ' ').trim();
+                    const ocrStemText = ocrStemLines.join('').replace(/\s+/g, '').trim();
                     const ocrStemLen = ocrStemText.length;
                     const domStemLines = domQuestion.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
-                    const domStemText = domStemLines.join(' ').replace(/\s+/g, ' ').trim();
+                    const domStemText = domStemLines.join('').replace(/\s+/g, '').trim();
                     const domStemLen = domStemText.length;
 
                     // Validate DOM stem is about the same question as OCR stem
                     const _normStem = (s) => String(s || '')
                       .toLowerCase()
                       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                      .replace(/[^a-z0-9]+/g, ' ').trim();
-                    const ocrTokens = _normStem(ocrStemText).split(' ').filter(t => t.length >= 4);
-                    const domTokenSet = new Set(_normStem(domStemText).split(' ').filter(t => t.length >= 4));
+                      .replace(/[^a-z0-9]+/g, '').trim();
+                    const ocrTokens = _normStem(ocrStemText).split('').filter(t => t.length >= 4);
+                    const domTokenSet = new Set(_normStem(domStemText).split('').filter(t => t.length >= 4));
                     let stemOverlap = 0;
                     for (const t of ocrTokens) { if (domTokenSet.has(t)) stemOverlap++; }
                     const stemOverlapRatio = ocrTokens.length > 0 ? (stemOverlap / ocrTokens.length) : 0;
@@ -2447,7 +2447,7 @@ export const PopupController = {
                         // NOT from the full visionText which may contain options from other visible questions.
                         const _isolatedOcr = bestQuestion; // may have been trimmed by OCR_MULTI_Q_ISOLATION
                         const _isolatedStemLines = _isolatedOcr.split('\n').filter(l => !l.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
-                        const _isolatedStemText = _isolatedStemLines.join(' ').replace(/\s+/g, ' ').trim();
+                        const _isolatedStemText = _isolatedStemLines.join('').replace(/\s+/g, '').trim();
                         const ocrOptLines = _isolatedOcr.split('\n').filter(l => l.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
 
                         // ── General cross-question contamination guard ──
@@ -2496,7 +2496,7 @@ export const PopupController = {
       // Compute stem length (non-option text) to detect truncated enunciados
       const _stemOnlyLines = String(bestQuestion || '').split('\n')
         .filter(line => !line.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
-      const _stemLength = _stemOnlyLines.join(' ').replace(/\s+/g, ' ').trim().length;
+      const _stemLength = _stemOnlyLines.join('').replace(/\s+/g, '').trim().length;
       // If the stem is suspiciously short (< 150 chars) but we have options,
       // the OCR/extraction likely missed the full question context (headers, code, etc.)
       const stemLooksIncomplete = _stemLength > 0 && _stemLength < 150 && preCtxOptionCount >= 2;
@@ -2513,8 +2513,8 @@ export const PopupController = {
             target: { tabId: tab.id, allFrames: true },
             func: (shortText) => {
               const norm = (s) => String(s || '').toLowerCase().normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
-              const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+                .replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').trim();
+              const clean = (s) => String(s || '').replace(/\s+/g, '').trim();
               const shortNorm = norm(shortText).substring(0, 80);
               if (!shortNorm || shortNorm.length < 15) return '';
 
@@ -2554,17 +2554,17 @@ export const PopupController = {
               return clean(bestCtx.textContent).substring(0, 3000);
             },
             // When stem looks incomplete, use the stem text as search anchor (not options)
-            args: [stemLooksIncomplete ? _stemOnlyLines.join(' ').trim().substring(0, 120) : bestQuestion.substring(0, 120)]
+            args: [stemLooksIncomplete ? _stemOnlyLines.join('').trim().substring(0, 120) : bestQuestion.substring(0, 120)]
           });
           const normalizeCtx = (s) => String(s || '')
             .toLowerCase()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9 ]+/g, ' ')
-            .replace(/\s+/g, ' ')
+            .replace(/[^a-z0-9 ]+/g, '')
+            .replace(/\s+/g, '')
             .trim();
           const overlapScore = (a, b) => {
-            const ta = new Set(normalizeCtx(a).split(' ').filter((t) => t.length >= 4).slice(0, 24));
-            const tb = new Set(normalizeCtx(b).split(' ').filter((t) => t.length >= 4).slice(0, 64));
+            const ta = new Set(normalizeCtx(a).split('').filter((t) => t.length >= 4).slice(0, 24));
+            const tb = new Set(normalizeCtx(b).split('').filter((t) => t.length >= 4).slice(0, 64));
             if (ta.size === 0 || tb.size === 0) return 0;
             let hit = 0;
             ta.forEach((t) => { if (tb.has(t)) hit += 1; });
@@ -2598,9 +2598,9 @@ export const PopupController = {
             // to avoid replacing with an entirely different question from the DOM
             const _ctxNorm = normalizeCtx(ctxText);
             const _origStemNorm = normalizeCtx(
-              stemLooksIncomplete ? _stemOnlyLines.join(' ').trim() : bestQuestion
+              stemLooksIncomplete ? _stemOnlyLines.join('').trim() : bestQuestion
             );
-            const _origTokens = _origStemNorm.split(' ').filter(t => t.length >= 4).slice(0, 12);
+            const _origTokens = _origStemNorm.split('').filter(t => t.length >= 4).slice(0, 12);
             let _ctxHits = 0;
             for (const t of _origTokens) { if (_ctxNorm.includes(t)) _ctxHits++; }
             const _ctxContainsStem = _origTokens.length === 0 || (_ctxHits / _origTokens.length) >= 0.5;
@@ -2662,7 +2662,7 @@ export const PopupController = {
 
       if (qNumbers.length >= 2) {
         detectedMultiQuestionText = true;
-        console.log(`AnswerHunter: Multi-question text detected (questions ${qNumbers.map(q => q.num).join(', ')}). Isolating viewport question...`);
+        console.log(`AnswerHunter: Multi-question text detected (questions ${qNumbers.map(q => q.num).join(',')}). Isolating viewport question...`);
         try {
           const [viewportResult] = await chrome.scripting.executeScript({
             target: { tabId: tab.id },
@@ -2697,7 +2697,7 @@ export const PopupController = {
                 ? qNumbers[targetIdx + 1].index
                 : bestQuestion.length;
               let isolated = bestQuestion.substring(startIdx, endIdx).trim();
-              // Strip leading question number prefix (e.g. "1 ", "2. ", "3) ")
+              // Strip leading question number prefix (e.g. "1 ", "2. ", "3)")
               isolated = isolated.replace(/^\s*\d{1,2}\s*[\.\)]?\s+/, '');
               if (isolated.length >= 30) {
                 const preIsoOptCount = countDistinctOptions(bestQuestion);
@@ -2877,8 +2877,8 @@ export const PopupController = {
                 const normalize = (s) => String(s || '')
                   .toLowerCase()
                   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                  .replace(/[^a-z0-9]+/g, ' ')
-                  .replace(/\s+/g, ' ')
+                  .replace(/[^a-z0-9]+/g, '')
+                  .replace(/\s+/g, '')
                   .trim();
 
                 const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
@@ -2897,7 +2897,7 @@ export const PopupController = {
                   const flush = () => {
                     if (!current) return;
                     const letter = (current.letter || '').toUpperCase();
-                    let body = String(current.body || '').replace(/\s+/g, ' ').trim();
+                    let body = String(current.body || '').replace(/\s+/g, '').trim();
                     const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
                     const idx = body.search(noise);
                     if (idx > 1) body = body.slice(0, idx).trim();
@@ -2924,7 +2924,7 @@ export const PopupController = {
                       continue;
                     }
                     if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[aã]o|aula)\b/i.test(line)) {
-                      current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
+                      current.body = `${current.body} ${line}`.replace(/\s+/g, '').trim();
                     }
                   }
                   flush();
@@ -2939,7 +2939,7 @@ export const PopupController = {
                 ]);
 
                 const anchorTokens = normalize(anchorText)
-                  .split(' ')
+                  .split('')
                   .filter((t) => t.length >= 4 && !stop.has(t))
                   .slice(0, 16);
                 if (anchorTokens.length < 4) return '';
@@ -3028,8 +3028,8 @@ export const PopupController = {
                 const normalize = (s) => String(s || '')
                   .toLowerCase()
                   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                  .replace(/[^a-z0-9]+/g, ' ')
-                  .replace(/\s+/g, ' ')
+                  .replace(/[^a-z0-9]+/g, '')
+                  .replace(/\s+/g, '')
                   .trim();
                 const isCodeLike = (body) => /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|jsonb?|\bdb\.\w|\.(find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(String(body || ''));
                 const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
@@ -3042,13 +3042,13 @@ export const PopupController = {
                 ]);
 
                 const anchorTokens = normalize(anchorText)
-                  .split(' ')
+                  .split('')
                   .filter((t) => t.length >= 4 && !stop.has(t))
                   .slice(0, 18);
                 if (anchorTokens.length < 4) return '';
 
                 const cleanBody = (s) => {
-                  let b = String(s || '').replace(/\s+/g, ' ').trim();
+                  let b = String(s || '').replace(/\s+/g, '').trim();
                   const idx = b.search(noise);
                   if (idx > 1) b = b.slice(0, idx).trim();
                   return b.replace(/[;:,\-.\s]+$/, '');
@@ -3077,7 +3077,7 @@ export const PopupController = {
                     const m = line.match(startRe);
                     if (m) { flush(); current = { letter: m[1], body: m[2] }; continue; }
                     if (current && !/^\d+\s*[\)\.\-:]/.test(line) && !/^(?:quest[aã]o|aula)\b/i.test(line)) {
-                      current.body = `${current.body} ${line}`.replace(/\s+/g, ' ').trim();
+                      current.body = `${current.body} ${line}`.replace(/\s+/g, '').trim();
                     }
                   }
                   flush();
@@ -3128,7 +3128,7 @@ export const PopupController = {
                       const merged = new Map();
                       const startRe = /^["']?\s*([A-E])\s*[\)\.\-:\s]/i;
                       for (const item of items.slice(0, 10)) {
-                        const text = String(item?.textContent || '').replace(/\s+/g, ' ').trim();
+                        const text = String(item?.textContent || '').replace(/\s+/g, '').trim();
                         if (!text || text.length < 2) continue;
 
                         // --- Smart letter/body extraction (handles platform-specific elements) ---
@@ -3148,7 +3148,7 @@ export const PopupController = {
                               const textEl = item.querySelector('[data-testid="question-typography"]')
                                 || item.querySelector('p, div:not([class*="letter"]):not([class*="letra"])');
                               if (textEl) {
-                                bodyText = String(textEl.textContent || '').replace(/\s+/g, ' ').trim();
+                                bodyText = String(textEl.textContent || '').replace(/\s+/g, '').trim();
                               } else {
                                 // Fallback: remove the letter from the full textContent
                                 bodyText = text.replace(new RegExp('^' + letter + '\\s*'), '').trim();
@@ -3307,10 +3307,10 @@ export const PopupController = {
               function: (isolatedStem) => {
                 const normalize = (s) => String(s || '').toLowerCase()
                   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                  .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+                  .replace(/[^a-z0-9]+/g, '').replace(/\s+/g, '').trim();
 
                 const stemNorm = normalize(isolatedStem);
-                const stemTokens = stemNorm.split(' ').filter(t => t.length >= 4).slice(0, 15);
+                const stemTokens = stemNorm.split('').filter(t => t.length >= 4).slice(0, 15);
                 if (stemTokens.length < 3) return '';
 
                 const OPTION_SEL =
@@ -3323,7 +3323,7 @@ export const PopupController = {
                   'li[data-letra], li[data-letter], li[data-option], li[data-alternativa]';
 
                 const cleanBody = (raw) => {
-                  let body = String(raw || '').replace(/\s+/g, ' ').trim();
+                  let body = String(raw || '').replace(/\s+/g, '').trim();
                   body = body.replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim();
                   const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
                   const idx = body.search(noise);
@@ -3341,19 +3341,19 @@ export const PopupController = {
                       btn.querySelector('[class*="letter"]') || btn.querySelector('small, strong, span');
                     let lt = ((letterEl ? (letterEl.innerText || letterEl.textContent) : '') || '').trim();
                     if (!/^[A-E]$/i.test(lt)) {
-                      const ft = (btn.innerText || btn.textContent || '').replace(/\s+/g, ' ').trim();
+                      const ft = (btn.innerText || btn.textContent || '').replace(/\s+/g, '').trim();
                       const m = ft.match(/^([A-E])\s*[\)\.\s]/i);
                       if (m) lt = m[1];
                     }
                     const letter = /^[A-E]$/i.test(lt) ? lt.toUpperCase() : '';
                     if (!letter || seen.has(letter)) continue;
                     const textEl = btn.querySelector('[data-testid="question-typography"]') || btn.querySelector('p, div');
-                    let raw = ((textEl ? (textEl.textContent || textEl.innerText) : null) || btn.textContent || btn.innerText || '').replace(/\s+/g, ' ').trim();
+                    let raw = ((textEl ? (textEl.textContent || textEl.innerText) : null) || btn.textContent || btn.innerText || '').replace(/\s+/g, '').trim();
                     if (new RegExp('^' + letter + '\\s*[\\)\\.\\-:]?\\s*', 'i').test(raw)) {
                       raw = raw.replace(new RegExp('^' + letter + '\\s*[\\)\\.\\-:]?\\s*', 'i'), '');
                     }
                     const body = cleanBody(raw);
-                    if (body && body.length >= 1) { seen.add(letter); options.push(letter + ') ' + body); }
+                    if (body && body.length >= 1) { seen.add(letter); options.push(letter +') ' + body); }
                   }
                   return options;
                 };
@@ -3428,7 +3428,7 @@ export const PopupController = {
                     if (m) {
                       const letter = m[1].toUpperCase();
                       const body = cleanBody(m[2]);
-                      if (!seen.has(letter) && body) { seen.add(letter); out.push(letter + ') ' + body); }
+                      if (!seen.has(letter) && body) { seen.add(letter); out.push(letter +') ' + body); }
                     }
                     if (out.length > 0 && /^\d+\s*[\)\.\-:]?\s+[A-Z]/.test(line) && !/^[A-E]\s*[\)\.\-:]/i.test(line)) break;
                   }
@@ -3475,7 +3475,7 @@ export const PopupController = {
                   const letter = match[1].toUpperCase();
                   const body = String(line || '')
                     .replace(/^([A-E])\s*[\)\.\-:]\s*/i, '')
-                    .replace(/\s+/g, ' ')
+                    .replace(/\s+/g, '')
                     .trim();
                   if (!body || !isValidOptionLine(`${letter}) ${body}`)) return;
                   if (!domLetters.has(letter) || body.length > String(domLetters.get(letter) || '').length) {
@@ -3539,7 +3539,7 @@ export const PopupController = {
                 const letter = lineMatch[1].toUpperCase();
                 if (existingLetters.has(letter)) return false;
 
-                const body = String(line.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '') || '').replace(/\s+/g, ' ').trim();
+                const body = String(line.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '') || '').replace(/\s+/g, '').trim();
                 if (!body) return false;
 
                 // Guard against cross-question contamination when OCR already has mostly code-like options.
@@ -3584,20 +3584,20 @@ export const PopupController = {
       if (usedVisionOcr && domQuestion && ocrVisionText) {
         const _normCross = (s) => String(s || '')
           .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-z0-9]+/g, ' ').trim();
+          .replace(/[^a-z0-9]+/g, '').trim();
         const displayStemLines = displayQuestion.split('\n')
           .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
-        const displayStemNorm = _normCross(displayStemLines.join(' '));
+        const displayStemNorm = _normCross(displayStemLines.join(''));
         const ocrStemLines = ocrVisionText.split('\n')
           .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
-        const ocrStemNorm = _normCross(ocrStemLines.join(' '));
+        const ocrStemNorm = _normCross(ocrStemLines.join(''));
         const domStemLines = domQuestion.split('\n')
           .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
-        const domStemNorm = _normCross(domStemLines.join(' '));
+        const domStemNorm = _normCross(domStemLines.join(''));
 
         // Check if display has drifted from OCR (contaminated by DOM)
-        const displayTokens = displayStemNorm.split(' ').filter(t => t.length >= 4);
-        const ocrTokenSet = new Set(ocrStemNorm.split(' ').filter(t => t.length >= 4));
+        const displayTokens = displayStemNorm.split('').filter(t => t.length >= 4);
+        const ocrTokenSet = new Set(ocrStemNorm.split('').filter(t => t.length >= 4));
         let ocrOverlap = 0;
         for (const t of displayTokens) { if (ocrTokenSet.has(t)) ocrOverlap++; }
         const ocrOverlapRatio = displayTokens.length > 0 ? ocrOverlap / displayTokens.length : 1;
@@ -3621,7 +3621,7 @@ export const PopupController = {
       const _preTwoPassOpts = countDistinctOptions(displayQuestion);
       const _preTwoPassStemLen = displayQuestion.split('\n')
         .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i))
-        .join(' ').trim().length;
+        .join('').trim().length;
       const needsSecondPass = usedVisionOcr && (_preTwoPassOpts < 3 || _preTwoPassStemLen < 60);
       let capturedBase64 = null;
 
@@ -3636,7 +3636,7 @@ export const PopupController = {
               const focusedOpts = countDistinctOptions(focusedText);
               const focusedStemLen = focusedText.split('\n')
                 .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i))
-                .join(' ').trim().length;
+                .join('').trim().length;
               const fpFocused = QuestionFingerprint.validate(questionFingerprint, focusedText, 0.35);
               if (fpFocused.valid && (focusedOpts > _preTwoPassOpts || focusedStemLen > _preTwoPassStemLen * 1.3)) {
                 console.log(`AnswerHunter: TWO_PASS_OCR replaced result. opts: ${_preTwoPassOpts}→${focusedOpts}, stemLen: ${_preTwoPassStemLen}→${focusedStemLen}. FP=${fpFocused.details}`);
@@ -3658,7 +3658,7 @@ export const PopupController = {
       const _finalOptCount = countDistinctOptions(displayQuestion);
       const _finalStemLen = displayQuestion.split('\n')
         .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i))
-        .join(' ').trim().length;
+        .join('').trim().length;
       const shouldLlmValidate = _finalOptCount < 3 || _finalStemLen < 50 || displayQuestion.length > 3000;
       if (_finalOptCount === 0 && isolationStrippedOcrOptions) {
         console.log('AnswerHunter: OPTS_ZERO_WARNING — 0 options after isolation. Recovery exhausted.');
@@ -3690,7 +3690,7 @@ export const PopupController = {
         viewportMatch: usedViewportCentric,
         fingerprint: questionFingerprint
       });
-      console.log(`AnswerHunter: CONFIDENCE score=${extractionConfidence.score} level=${extractionConfidence.level} signals=[${extractionConfidence.signals.join(', ')}]`);
+      console.log(`AnswerHunter: CONFIDENCE score=${extractionConfidence.score} level=${extractionConfidence.level} signals=[${extractionConfidence.signals.join(',')}]`);
       // Store on instance for _decorateWithSavedMeta to inject into results
       this._lastExtractionConfidence = extractionConfidence;
 
@@ -3726,7 +3726,7 @@ export const PopupController = {
               const normalize = (s) => String(s || '')
                 .toLowerCase()
                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^a-z0-9]+/g, ' ')
+                .replace(/[^a-z0-9]+/g, '')
                 .trim();
 
               const stemNorm = normalize(stemHint || '');
@@ -3766,7 +3766,7 @@ export const PopupController = {
                 const m = line.match(startRe);
                 if (m) {
                   const letter = m[1].toUpperCase();
-                  const body = m[2].replace(/\s+/g, ' ').trim();
+                  const body = m[2].replace(/\s+/g, '').trim();
                   if (!seen.has(letter) && body && !looksLikeCodeOptionBody(body) && isAssertionBody(body)) {
                     seen.add(letter);
                     out.push(`${letter}) ${body}`);
@@ -3777,7 +3777,7 @@ export const PopupController = {
                 const solo = line.match(soloRe);
                 if (solo && i + 1 < scoped.length) {
                   const letter = solo[1].toUpperCase();
-                  const body = scoped[i + 1].replace(/\s+/g, ' ').trim();
+                  const body = scoped[i + 1].replace(/\s+/g, '').trim();
                   if (!seen.has(letter) && body && !looksLikeCodeOptionBody(body) && isAssertionBody(body)) {
                     seen.add(letter);
                     out.push(`${letter}) ${body}`);
@@ -4133,7 +4133,7 @@ export const PopupController = {
   _extractOptionsMap(text) {
     const map = {};
     const cleanOptionBody = (raw) => {
-      let body = String(raw || '').replace(/\s+/g, ' ').trim();
+      let body = String(raw || '').replace(/\s+/g, '').trim();
       const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o\s+gabarito|explica[cç][aã]o)\b/i;
       const idx = body.search(noiseMarker);
       if (idx > 20) body = body.slice(0, idx).trim();
@@ -4225,9 +4225,9 @@ export const PopupController = {
     return String(text || '')
       .toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/[^a-z0-9]+/g, '')
       .trim()
-      .replace(/\s+/g, ' ')
+      .replace(/\s+/g, '')
       .slice(0, 2200);
   },
 
@@ -4471,14 +4471,14 @@ export const PopupController = {
       const ok = /^[A-E]$/.test(letter);
       const confidence = r.confidence != null ? `${Math.round(r.confidence * 100)}%` : '—';
       const gabarito = ok
-        ? `${letter}${r.answerText ? '  →  ' + String(r.answerText).slice(0, 55) : ''}`
+        ? `${letter}${r.answerText ? ' →  ' + String(r.answerText).slice(0, 55) : ''}`
         : '—';
       if (srcList.length > 0) {
         srcList.forEach((s, j) => {
  const icon = SOURCE_ICON[s.type] ??'';
           const label = s.link || getDomain(s.link) || String(s.title || '?').slice(0, 80);
           rows.push({
-            '#': j === 0 ? i + 1 : '  └',
+            '#': j === 0 ? i + 1 : ' └',
             'Fonte': `${icon} ${label}`,
 'Extraiu?': ok ?'' :'',
             'Gabarito': gabarito,
@@ -4846,7 +4846,7 @@ export const PopupController = {
             .map(([letter, text]) => `<div class="similar-option"><strong>${this._escapeHtml(letter)})</strong> ${this._escapeHtml(text)}</div>`)
             .join('');
 
-          container.innerHTML = `
+          container.innerHTML =`
             <div class="similar-question-block">
               <div class="similar-q-text"><strong>Q:</strong> ${this._escapeHtml(newQuestion.questionText)}</div>
               <div class="similar-options-list">${optionsHtml}</div>
@@ -4882,7 +4882,7 @@ export const PopupController = {
       if (!container.dataset.chatInitialized) {
         container.dataset.chatInitialized = 'true';
         container.classList.remove('hidden');
-        container.innerHTML = `
+        container.innerHTML =`
           <div class="study-chat-container">
             <div class="study-chat-history">
               <div class="chat-message ai-message">
@@ -4913,7 +4913,7 @@ export const PopupController = {
           input.disabled = true;
           sendBtn.disabled = true;
 
-          history.insertAdjacentHTML('beforeend', `
+          history.insertAdjacentHTML('beforeend',`
             <div class="chat-message user-message">
               <div class="msg-content">${this._escapeHtml ? this._escapeHtml(userMsg) : userMsg}</div>
               <span class="material-symbols-rounded">person</span>
@@ -4922,7 +4922,7 @@ export const PopupController = {
               <span class="material-symbols-rounded spin-loading">sync</span>
               <div class="msg-content">...</div>
             </div>
-          `);
+`);
           history.scrollTop = history.scrollHeight;
 
           try {
@@ -4938,22 +4938,22 @@ export const PopupController = {
             // Transform markdown safely
             const htmlResponse = this._parseMarkdown(response);
 
-            history.insertAdjacentHTML('beforeend', `
+            history.insertAdjacentHTML('beforeend',`
               <div class="chat-message ai-message">
                 <span class="material-symbols-rounded">robot_2</span>
                 <div class="msg-content">${htmlResponse}</div>
               </div>
-            `);
+`);
           } catch (err) {
             console.error('AnswerHunter Chat Error:', err);
             const pending = history.querySelector('.pending-msg');
             if (pending) pending.remove();
-            history.insertAdjacentHTML('beforeend', `
+            history.insertAdjacentHTML('beforeend',`
               <div class="chat-message ai-message error-msg">
                 <span class="material-symbols-rounded">error</span>
                 <div class="msg-content">Erro de conexão. Tente novamente.</div>
               </div>
-            `);
+`);
           } finally {
             input.disabled = false;
             sendBtn.disabled = false;
@@ -4998,7 +4998,7 @@ export const PopupController = {
       if (available) {
         banner.classList.remove('warn', 'err');
         dot.className = 'native-bridge-dot ok';
-        label.textContent = 'NativeFetch Bridge: ativo ✓';
+        label.textContent = 'NativeFetch Bridge: ativo ';
         if (installBtn) installBtn.classList.add('hidden');
         // Mark the entry button in settings as active
         const entryBtn = document.getElementById('nativeBridgeInstallBtn');

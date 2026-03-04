@@ -4,8 +4,8 @@ const vm = require('vm');
 function loadTranslations() {
   const code = fs.readFileSync('src/i18n/translations.js', 'utf8');
   const patched = code
-    .replace(/export\s+const\s+SUPPORTED_LANGUAGES\s*=\s*/, 'const SUPPORTED_LANGUAGES = ')
-    .replace(/export\s+const\s+TRANSLATIONS\s*=\s*/, 'const TRANSLATIONS = ')
+    .replace(/export\s+const\s+SUPPORTED_LANGUAGES\s*=\s*/, 'const SUPPORTED_LANGUAGES =')
+    .replace(/export\s+const\s+TRANSLATIONS\s*=\s*/, 'const TRANSLATIONS =')
     + '\nmodule.exports = { SUPPORTED_LANGUAGES, TRANSLATIONS };';
 
   const context = { module: { exports: {} }, exports: {} };
@@ -42,14 +42,14 @@ function main() {
       hasError = true;
       console.error(`\n[i18n] Language ${lang} is out of sync with ${baseLang}:`);
       if (missing.length) {
-        console.error(`  Missing keys (${missing.length}):`);
-        missing.slice(0, 30).forEach((key) => console.error(`    - ${key}`));
-        if (missing.length > 30) console.error(`    ... and ${missing.length - 30} more`);
+        console.error(` Missing keys (${missing.length}):`);
+        missing.slice(0, 30).forEach((key) => console.error(` - ${key}`));
+        if (missing.length > 30) console.error(` ... and ${missing.length - 30} more`);
       }
       if (extra.length) {
-        console.error(`  Extra keys (${extra.length}):`);
-        extra.slice(0, 30).forEach((key) => console.error(`    + ${key}`));
-        if (extra.length > 30) console.error(`    ... and ${extra.length - 30} more`);
+        console.error(` Extra keys (${extra.length}):`);
+        extra.slice(0, 30).forEach((key) => console.error(` + ${key}`));
+        if (extra.length > 30) console.error(` ... and ${extra.length - 30} more`);
       }
     }
   }

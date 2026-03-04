@@ -74,7 +74,7 @@ export class BackgroundTabExtractorService {
    *   4. Challenge resolution wait
    */
   static async _extractWithCFBypass(url, site, extractor, options = {}) {
-    console.log(`[AH-TAB] 🛡️ CF-bypass pipeline for [${site}] → ${url}`);
+    console.log(`[AH-TAB] [SHIELD] CF-bypass pipeline for [${site}] → ${url}`);
     try {
       const result = await CloudflareBypassService.extract(url, extractor, {
         challengeTimeoutMs: options.timeoutMs || 35000,
@@ -82,13 +82,13 @@ export class BackgroundTabExtractorService {
       });
       const text = result?.text || '';
       if (text.length > 100) {
-        console.log(`[AH-TAB] ✅ CF-bypass extracted ${text.length} chars from ${site} (method=${result.method})`);
+        console.log(`[AH-TAB] [OK] CF-bypass extracted ${text.length} chars from ${site} (method=${result.method})`);
         return text;
       }
-      console.warn(`[AH-TAB] ⚠️ CF-bypass returned empty for ${site} — falling through`);
+      console.warn(`[AH-TAB] [WARN] CF-bypass returned empty for ${site} — falling through`);
       return null;
     } catch (err) {
-      console.warn(`[AH-TAB] ❌ CF-bypass error for ${site}:`, err?.message || err);
+      console.warn(`[AH-TAB] [FAIL] CF-bypass error for ${site}:`, err?.message || err);
       return null;
     }
   }
@@ -143,10 +143,10 @@ export class BackgroundTabExtractorService {
       });
       const extracted = results?.[0]?.result || '';
       const text = typeof extracted === 'string' ? extracted.trim() : '';
-      console.log(`[AH-TAB] ✅ Extracted ${text.length} chars from ${site}`);
+      console.log(`[AH-TAB] [OK] Extracted ${text.length} chars from ${site}`);
       return text || null;
     } catch (err) {
-      console.warn(`[AH-TAB] ❌ Error extracting from ${site}:`, err?.message || err);
+      console.warn(`[AH-TAB] [FAIL] Error extracting from ${site}:`, err?.message || err);
       return null;
     } finally {
       // Close the window (removes the tab too)
@@ -162,11 +162,11 @@ export class BackgroundTabExtractorService {
     const u = url.toLowerCase();
     if (u.includes('brainly.com') || u.includes('brainly.com.br') ||
         u.includes('brainly.lat') || u.includes('brainly.co')) return 'brainly';
-    if (u.includes('studocu.com'))      return 'studocu';
+    if (u.includes('studocu.com')) return 'studocu';
     if (u.includes('passeidireto.com')) return 'passeidireto';
-    if (u.includes('gauthmath.com'))    return 'gauthmath';
-    if (u.includes('scribd.com'))       return 'scribd';
-    if (u.includes('slideshare.net'))   return 'slideshare';
+    if (u.includes('gauthmath.com')) return 'gauthmath';
+    if (u.includes('scribd.com')) return 'scribd';
+    if (u.includes('slideshare.net')) return 'slideshare';
     return null;
   }
 
@@ -215,10 +215,10 @@ export class BackgroundTabExtractorService {
   static _brainlyExtractor() {
     try {
       const modalSelectors = [
-        '[data-testid="modal-overlay"]'  , '[data-testid="login-modal"]'  ,
-        '[class*="LoginModal"]'          , '[class*="AuthModal"]' ,
-        '[class*="SignupModal"]'         , '[class*="PaywallModal"]',
-        '.sg-modal__overlay'            , '#modal-root'
+        '[data-testid="modal-overlay"]' , '[data-testid="login-modal"]'  ,
+        '[class*="LoginModal"]' , '[class*="AuthModal"]' ,
+        '[class*="SignupModal"]' , '[class*="PaywallModal"]',
+        '.sg-modal__overlay' , '#modal-root'
       ];
       modalSelectors.forEach(sel =>
         document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch(_) {} })
@@ -227,8 +227,8 @@ export class BackgroundTabExtractorService {
       document.documentElement.style.overflow = '';
       const parts = [];
       const qSelectors = [
-        '[data-testid="question-text"]'     , '[class*="QuestionContent"]',
-        '[class*="question-content"]'       , '.brn-question-title',
+        '[data-testid="question-text"]' , '[class*="QuestionContent"]',
+        '[class*="question-content"]' , '.brn-question-title',
         '[class*="questionText"]'
       ];
       let questionText = '';
@@ -239,8 +239,8 @@ export class BackgroundTabExtractorService {
       if (!questionText) { const h = document.querySelector('h1,h2'); if (h) questionText = h.innerText.trim(); }
       if (questionText) parts.push('PERGUNTA: ' + questionText);
       const ansSelectors = [
-        '[data-testid="answer-content"]'   , '[class*="BestAnswer"]',
-        '[data-testid="best-answer"]'       , '[class*="AnswerContent"]',
+        '[data-testid="answer-content"]' , '[class*="BestAnswer"]',
+        '[data-testid="best-answer"]' , '[class*="AnswerContent"]',
         '.brn-answer'
       ];
       const answers = [];
@@ -263,11 +263,11 @@ export class BackgroundTabExtractorService {
     try {
       // Remove signup walls and modals first
       const noise = [
-        '[class*="Modal"]'        , '[class*="modal"]',
-        '[class*="Overlay"]'      , '[class*="overlay"]',
-        '[class*="signup"]'       , '[class*="Signup"]',
-        '[class*="login"]'        , '[class*="Login"]',
-        '[class*="paywall"]'      , '[class*="Paywall"]',
+        '[class*="Modal"]' , '[class*="modal"]',
+        '[class*="Overlay"]' , '[class*="overlay"]',
+        '[class*="signup"]' , '[class*="Signup"]',
+        '[class*="login"]' , '[class*="Login"]',
+        '[class*="paywall"]' , '[class*="Paywall"]',
         '[class*="cookie-banner"]', '[id*="cookie"]'
       ];
       noise.forEach(sel =>
@@ -292,17 +292,17 @@ export class BackgroundTabExtractorService {
         const txt = Array.from(new Set(nodes))
           .map(el => (el.innerText || el.textContent || '').trim())
           .filter(t => t.length > 0)
-          .join(' ')
-          .replace(/\s+/g, ' ')
+          .join('')
+          .replace(/\s+/g, '')
           .trim();
         if (txt.length > 120) return txt.slice(0, 15000);
       }
 
       // Layer 2: Document containers
       const mainSels = [
-        '[class*="document-content"]'  , '[class*="documentContent"]',
-        '[class*="qa-content"]'         , '[class*="StudyResource"]',
-        'article'                       , 'main', '.content'
+        '[class*="document-content"]' , '[class*="documentContent"]',
+        '[class*="qa-content"]' , '[class*="StudyResource"]',
+        'article' , 'main', '.content'
       ];
       for (const sel of mainSels) {
         const el = document.querySelector(sel);
@@ -312,7 +312,7 @@ export class BackgroundTabExtractorService {
       }
 
       // Layer 3: Body fallback
-      const body = (document.body?.innerText || document.body?.textContent || '').replace(/\s+/g, ' ').trim();
+      const body = (document.body?.innerText || document.body?.textContent || '').replace(/\s+/g, '').trim();
       return body.length > 120 ? body.slice(0, 15000) : '';
     } catch(e) { return ''; }
   }
@@ -320,7 +320,7 @@ export class BackgroundTabExtractorService {
   static _scribdExtractor() {
     try {
       // Remove blur/paywall styles
-      const blurSels = ['[class*="blur"]'  , '[class*="Blur"]', '[class*="paywall"]', '[class*="Paywall"]'];
+      const blurSels = ['[class*="blur"]' , '[class*="Blur"]', '[class*="paywall"]', '[class*="Paywall"]'];
       blurSels.forEach(sel =>
         document.querySelectorAll(sel).forEach(el => {
           el.style.filter = 'none'; el.style.opacity = '1'; el.style.visibility = 'visible';
@@ -330,8 +330,8 @@ export class BackgroundTabExtractorService {
       if (pageTexts.length > 0) {
         return Array.from(pageTexts)
           .map(el => el.innerText || el.textContent || '')
-          .join(' ')
-          .replace(/\s+/g, ' ')
+          .join('')
+          .replace(/\s+/g, '')
           .trim()
           .slice(0, 8000);
       }
@@ -343,7 +343,7 @@ export class BackgroundTabExtractorService {
   static _gauthmathExtractor() {
     try {
       // Remove overlays/modals
-      ['[class*="modal"]'  , '[class*="Modal"]',
+      ['[class*="modal"]' , '[class*="Modal"]',
        '[class*="overlay"]', '[class*="Overlay"]',
        '[class*="paywall"]', '[class*="Paywall"]',
        '[class*="cookie"]' , '[class*="Cookie"]'
@@ -362,27 +362,27 @@ export class BackgroundTabExtractorService {
       for (const sel of sels) {
         const el = document.querySelector(sel);
         if (!el) continue;
-        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        const t = (el.innerText || el.textContent || '').replace(/\s+/g, '').trim();
         if (t.length > 120) return t.slice(0, 12000);
       }
-      const body = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+      const body = (document.body?.innerText || '').replace(/\s+/g, '').trim();
       return body.length > 120 ? body.slice(0, 12000) : '';
     } catch(e) { return ''; }
   }
 
   static _genericExtractor() {
     try {
-      ['[class*="modal"]'  , '[class*="Modal"]',
+      ['[class*="modal"]' , '[class*="Modal"]',
        '[class*="overlay"]', '[class*="Overlay"]',
        '[class*="paywall"]', '[class*="Paywall"]',
-       'nav'               , 'header', 'footer',
+       'nav' , 'header', 'footer',
        '[class*="cookie"]' , '[class*="Cookie"]',
        '[class*="banner"]' , '[class*="Banner"]'
       ].forEach(sel =>
         document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch(_) {} })
       );
       const sels = [
-        'article'              , 'main',
+        'article' , 'main',
         '[class*="content"]' , '[class*="Content"]',
         '[class*="question"]' , '[class*="Question"]',
         '[class*="exercise"]' , '[class*="Exercise"]'

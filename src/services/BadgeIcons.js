@@ -51,7 +51,7 @@ export const BADGE_ICONS = {
   /* ━━━ ONBOARDING ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
   // 1. Seedling — first save
-  first_save: _b('fs', { bg1: '#A5D6A7', bg2: '#1B5E20', r1: '#2E7D32', r2: '#81C784' }, `
+  first_save: _b('fs', { bg1: '#A5D6A7', bg2: '#1B5E20', r1: '#2E7D32', r2: '#81C784' },`
     <!-- soil -->
     <ellipse cx="64" cy="92" rx="28" ry="9" fill="#4E342E"/>
     <ellipse cx="64" cy="90" rx="26" ry="7" fill="#6D4C41"/>
@@ -67,10 +67,10 @@ export const BADGE_ICONS = {
     <ellipse cx="52" cy="56" rx="3" ry="4" fill="rgba(255,255,255,0.5)"/>
     ${_spark(84, 38, 0.8, 0.7)}
     ${_spark(44, 42, 0.6, 0.5)}
-  `),
+`),
 
   // 2. Open book — first review
-  first_review: _b('fr', { bg1: '#FFE0B2', bg2: '#E65100', r1: '#BF360C', r2: '#FFB74D' }, `
+  first_review: _b('fr', { bg1: '#FFE0B2', bg2: '#E65100', r1: '#BF360C', r2: '#FFB74D' },`
     <!-- book body -->
     <path d="M32,80 L32,52 Q48,44 64,52 Q80,44 96,52 L96,80 Q80,72 64,80 Q48,72 32,80Z" fill="#FFF3E0" stroke="#D84315" stroke-width="1.5"/>
     <!-- spine -->
@@ -89,10 +89,10 @@ export const BADGE_ICONS = {
     <line x1="78" y1="38" x2="84" y2="28" stroke="#FFD54F" stroke-width="1.5" stroke-linecap="round" opacity="0.6"/>
     ${_spark(48, 34, 0.7, 0.6)}
     ${_spark(80, 34, 0.7, 0.6)}
-  `),
+`),
 
   // 3. Folder with star — first discipline
-  first_disc: _b('fd', { bg1: '#BBDEFB', bg2: '#0D47A1', r1: '#1565C0', r2: '#64B5F6' }, `
+  first_disc: _b('fd', { bg1: '#BBDEFB', bg2: '#0D47A1', r1: '#1565C0', r2: '#64B5F6' },`
     <!-- folder back -->
     <rect x="30" y="48" width="68" height="44" rx="4" fill="#42A5F5"/>
     <!-- folder tab -->
@@ -105,12 +105,12 @@ export const BADGE_ICONS = {
     ${_star(64, 74, 12, 5, 5, '#FFD54F')}
     <circle cx="64" cy="74" r="4" fill="#FFF9C4"/>
     ${_spark(86, 38, 0.8, 0.7)}
-  `),
+`),
 
   /* ━━━ VOLUME ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
   // 4. Treasure chest — save 10
-  save_10: _b('s10', { bg1: '#B2DFDB', bg2: '#004D40', r1: '#00695C', r2: '#4DB6AC' }, `
+  save_10: _b('s10', { bg1: '#B2DFDB', bg2: '#004D40', r1: '#00695C', r2: '#4DB6AC' },`
     <!-- chest body -->
     <rect x="34" y="64" width="60" height="28" rx="4" fill="#8D6E63"/>
     <rect x="34" y="64" width="60" height="10" rx="2" fill="#A1887F"/>
@@ -127,10 +127,10 @@ export const BADGE_ICONS = {
     <circle cx="80" cy="56" r="5" fill="#AB47BC" opacity="0.9"/>
     ${_spark(44, 38, 0.7, 0.8)}
     ${_spark(84, 40, 0.6, 0.6)}
-  `),
+`),
 
   // 5. Book stack — save 50
-  save_50: _b('s50', { bg1: '#C5CAE9', bg2: '#1A237E', r1: '#283593', r2: '#7986CB' }, `
+  save_50: _b('s50', { bg1: '#C5CAE9', bg2: '#1A237E', r1: '#283593', r2: '#7986CB' },`
     <!-- book 1 (bottom, red) -->
     <rect x="36" y="76" width="56" height="12" rx="2" fill="#E53935"/>
     <rect x="36" y="76" width="6" height="12" rx="1" fill="#C62828"/>
@@ -149,11 +149,11 @@ export const BADGE_ICONS = {
     <line x1="44" y1="52" x2="90" y2="52" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
     <line x1="50" y1="38" x2="84" y2="38" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
     ${_spark(90, 30, 0.8, 0.7)}
-  `),
+`),
 
   // 6. Ancient scroll — save 100
   save_100: _b('s100', { bg1: '#D7CCC8', bg2: '#3E2723', r1: '#4E342E', r2: '#A1887F',
-    extra: `<linearGradient id="s100_scr" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#D7CCC8"/><stop offset="15%" stop-color="#EFEBE9"/><stop offset="85%" stop-color="#EFEBE9"/><stop offset="100%" stop-color="#D7CCC8"/></linearGradient>` }, `
+    extra: `<linearGradient id="s100_scr" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#D7CCC8"/><stop offset="15%" stop-color="#EFEBE9"/><stop offset="85%" stop-color="#EFEBE9"/><stop offset="100%" stop-color="#D7CCC8"/></linearGradient>` },`
     <!-- scroll body -->
     <rect x="36" y="38" width="56" height="54" rx="2" fill="url(#s100_scr)"/>
     <!-- scroll top roll -->
@@ -172,11 +172,11 @@ export const BADGE_ICONS = {
     <circle cx="76" cy="82" r="8" fill="#C62828"/>
     <circle cx="76" cy="82" r="5" fill="#E53935"/>
     ${_star(76, 82, 4, 2, 5, '#FFCDD2')}
-  `),
+`),
 
   // 7. Globe with book — save 500
   save_500: _b('s500', { bg1: '#B3E5FC', bg2: '#01579B', r1: '#0277BD', r2: '#4FC3F7',
-    extra: `<linearGradient id="s500_gl" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4FC3F7"/><stop offset="100%" stop-color="#0277BD"/></linearGradient>` }, `
+    extra: `<linearGradient id="s500_gl" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4FC3F7"/><stop offset="100%" stop-color="#0277BD"/></linearGradient>` },`
     <!-- globe -->
     <circle cx="64" cy="60" r="28" fill="url(#s500_gl)"/>
     <!-- continents (simplified) -->
@@ -196,13 +196,13 @@ export const BADGE_ICONS = {
     <line x1="64" y1="82" x2="64" y2="88" stroke="#455A64" stroke-width="3" stroke-linecap="round"/>
     ${_spark(40, 36, 0.7, 0.6)}
     ${_spark(88, 42, 0.8, 0.7)}
-  `),
+`),
 
   /* ━━━ MASTERY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
   // 8. Shining star — master 1
   master_1: _b('m1', { bg1: '#FFF9C4', bg2: '#F57F17', r1: '#E65100', r2: '#FFD54F',
-    extra: `<radialGradient id="m1_glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FFEE58" stop-opacity="0.8"/><stop offset="100%" stop-color="#FFEE58" stop-opacity="0"/></radialGradient>` }, `
+    extra: `<radialGradient id="m1_glow" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="#FFEE58" stop-opacity="0.8"/><stop offset="100%" stop-color="#FFEE58" stop-opacity="0"/></radialGradient>` },`
     <!-- star glow -->
     <circle cx="64" cy="62" r="30" fill="url(#m1_glow)"/>
     <!-- rays -->
@@ -219,10 +219,10 @@ export const BADGE_ICONS = {
     ${_star(64, 62, 16, 7, 5, '#FFF176')}
     <!-- center highlight -->
     <circle cx="62" cy="58" r="5" fill="rgba(255,255,255,0.4)"/>
-  `),
+`),
 
   // 9. Graduation cap — master 10
-  master_10: _b('m10', { bg1: '#90CAF9', bg2: '#1A237E', r1: '#0D47A1', r2: '#5C6BC0' }, `
+  master_10: _b('m10', { bg1: '#90CAF9', bg2: '#1A237E', r1: '#0D47A1', r2: '#5C6BC0' },`
     <!-- tassel string -->
     <path d="M64,52 L42,62 Q38,66 36,76" stroke="#FFD54F" stroke-width="2.5" fill="none" stroke-linecap="round"/>
     <!-- tassel end -->
@@ -236,11 +236,11 @@ export const BADGE_ICONS = {
     <!-- button -->
     <circle cx="64" cy="52" r="3" fill="#FFD54F"/>
     ${_spark(86, 36, 0.7, 0.6)}
-  `),
+`),
 
   // 10. Medal with ribbon — master 50
   master_50: _b('m50', { bg1: '#E1BEE7', bg2: '#4A148C', r1: '#6A1B9A', r2: '#CE93D8',
-    extra: `<linearGradient id="m50_medal" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFC107"/><stop offset="100%" stop-color="#FF8F00"/></linearGradient>` }, `
+    extra: `<linearGradient id="m50_medal" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFC107"/><stop offset="100%" stop-color="#FF8F00"/></linearGradient>` },`
     <!-- ribbon left -->
     <path d="M44,30 L54,60 L64,52" fill="#E53935"/>
     <!-- ribbon right -->
@@ -253,11 +253,11 @@ export const BADGE_ICONS = {
     ${_star(64, 72, 12, 5, 5, '#FFF8E1')}
     <!-- medal highlight -->
     <path d="M52,62 Q56,56 64,58" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="2" stroke-linecap="round"/>
-  `),
+`),
 
   // 11. Golden trophy — master 100
   master_100: _b('m100', { bg1: '#FFF8E1', bg2: '#E65100', r1: '#BF360C', r2: '#FFB300',
-    extra: `<linearGradient id="m100_cup" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFD54F"/><stop offset="50%" stop-color="#FFC107"/><stop offset="100%" stop-color="#FF8F00"/></linearGradient>` }, `
+    extra: `<linearGradient id="m100_cup" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFD54F"/><stop offset="50%" stop-color="#FFC107"/><stop offset="100%" stop-color="#FF8F00"/></linearGradient>` },`
     <!-- cup body -->
     <path d="M42,40 L44,70 Q44,80 64,82 Q84,80 84,70 L86,40Z" fill="url(#m100_cup)" stroke="#F57F17" stroke-width="1.5"/>
     <!-- cup handles -->
@@ -272,13 +272,13 @@ export const BADGE_ICONS = {
     ${_star(64, 58, 10, 4, 5, '#FFF8E1')}
     ${_spark(38, 32, 0.8, 0.7)}
     ${_spark(90, 34, 0.7, 0.6)}
-  `),
+`),
 
   /* ━━━ STREAK ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
   // 12. Campfire — streak 3
   streak_3: _b('sk3', { bg1: '#FFCCBC', bg2: '#BF360C', r1: '#D84315', r2: '#FF8A65',
-    extra: `<radialGradient id="sk3_glow" cx="50%" cy="70%" r="45%"><stop offset="0%" stop-color="#FFEE58" stop-opacity="0.5"/><stop offset="100%" stop-color="#FFEE58" stop-opacity="0"/></radialGradient>` }, `
+    extra: `<radialGradient id="sk3_glow" cx="50%" cy="70%" r="45%"><stop offset="0%" stop-color="#FFEE58" stop-opacity="0.5"/><stop offset="100%" stop-color="#FFEE58" stop-opacity="0"/></radialGradient>` },`
     <!-- glow -->
     <circle cx="64" cy="65" r="32" fill="url(#sk3_glow)"/>
     <!-- outer flame -->
@@ -296,11 +296,11 @@ export const BADGE_ICONS = {
     <circle cx="50" cy="42" r="1.5" fill="#FFAB00" opacity="0.8"/>
     <circle cx="78" cy="38" r="1" fill="#FFAB00" opacity="0.6"/>
     <circle cx="56" cy="34" r="1" fill="#FFD54F" opacity="0.7"/>
-  `),
+`),
 
   // 13. Lightning bolt — streak 7
   streak_7: _b('sk7', { bg1: '#FFF9C4', bg2: '#E65100', r1: '#F57F17', r2: '#FFE082',
-    extra: `<radialGradient id="sk7_glow" cx="50%" cy="50%" r="40%"><stop offset="0%" stop-color="#FFF" stop-opacity="0.4"/><stop offset="100%" stop-color="#FFF" stop-opacity="0"/></radialGradient>` }, `
+    extra: `<radialGradient id="sk7_glow" cx="50%" cy="50%" r="40%"><stop offset="0%" stop-color="#FFF" stop-opacity="0.4"/><stop offset="100%" stop-color="#FFF" stop-opacity="0"/></radialGradient>` },`
     <!-- electric glow -->
     <circle cx="64" cy="62" r="28" fill="url(#sk7_glow)"/>
     <!-- bolt shadow -->
@@ -316,11 +316,11 @@ export const BADGE_ICONS = {
     <circle cx="80" cy="44" r="1.5" fill="#FFEE58" opacity="0.6"/>
     ${_spark(40, 40, 0.6, 0.5)}
     ${_spark(86, 78, 0.6, 0.5)}
-  `),
+`),
 
   // 14. Iron dumbbell — streak 14
   streak_14: _b('sk14', { bg1: '#CFD8DC', bg2: '#263238', r1: '#37474F', r2: '#90A4AE',
-    extra: `<linearGradient id="sk14_metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#B0BEC5"/><stop offset="40%" stop-color="#78909C"/><stop offset="100%" stop-color="#546E7A"/></linearGradient>` }, `
+    extra: `<linearGradient id="sk14_metal" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#B0BEC5"/><stop offset="40%" stop-color="#78909C"/><stop offset="100%" stop-color="#546E7A"/></linearGradient>` },`
     <!-- left weight -->
     <rect x="26" y="48" width="16" height="32" rx="3" fill="url(#sk14_metal)" stroke="#455A64" stroke-width="1.5"/>
     <rect x="30" y="44" width="8" height="40" rx="2" fill="#78909C" stroke="#455A64" stroke-width="1"/>
@@ -338,11 +338,11 @@ export const BADGE_ICONS = {
     <rect x="28" y="50" width="4" height="14" rx="1" fill="rgba(255,255,255,0.2)"/>
     <rect x="88" y="50" width="4" height="14" rx="1" fill="rgba(255,255,255,0.2)"/>
     ${_spark(64, 38, 0.8, 0.6)}
-  `),
+`),
 
   // 15. Golden crown — streak 30
   streak_30: _b('sk30', { bg1: '#F3E5F5', bg2: '#4A148C', r1: '#6A1B9A', r2: '#CE93D8',
-    extra: `<linearGradient id="sk30_crown" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFD54F"/><stop offset="100%" stop-color="#FF8F00"/></linearGradient>` }, `
+    extra: `<linearGradient id="sk30_crown" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FFD54F"/><stop offset="100%" stop-color="#FF8F00"/></linearGradient>` },`
     <!-- crown body -->
     <path d="M30,76 L34,48 L48,62 L64,38 L80,62 L94,48 L98,76Z" fill="url(#sk30_crown)" stroke="#F57F17" stroke-width="2" stroke-linejoin="round"/>
     <!-- crown base -->
@@ -364,11 +364,11 @@ export const BADGE_ICONS = {
     <path d="M38,56 L44,64" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-linecap="round"/>
     ${_spark(46, 34, 0.7, 0.6)}
     ${_spark(82, 36, 0.6, 0.5)}
-  `),
+`),
 
   // 16. Spartan shield — streak 100
   streak_100: _b('sk100', { bg1: '#FFCDD2', bg2: '#B71C1C', r1: '#C62828', r2: '#EF5350',
-    extra: `<linearGradient id="sk100_sh" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E53935"/><stop offset="100%" stop-color="#B71C1C"/></linearGradient>` }, `
+    extra: `<linearGradient id="sk100_sh" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#E53935"/><stop offset="100%" stop-color="#B71C1C"/></linearGradient>` },`
     <!-- shield shape -->
     <path d="M64,24 L96,38 L96,68 Q96,92 64,102 Q32,92 32,68 L32,38Z" fill="url(#sk100_sh)" stroke="#C62828" stroke-width="2"/>
     <!-- shield inner border -->
@@ -383,12 +383,12 @@ export const BADGE_ICONS = {
     <circle cx="64" cy="42" r="3" fill="#FFD54F"/>
     ${_spark(48, 28, 0.6, 0.5)}
     ${_spark(82, 30, 0.5, 0.4)}
-  `),
+`),
 
   /* ━━━ BREADTH (Disciplines) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
   // 17. Artist palette — 3 disciplines
-  disc_3: _b('d3', { bg1: '#F3E5F5', bg2: '#4527A0', r1: '#512DA8', r2: '#B39DDB' }, `
+  disc_3: _b('d3', { bg1: '#F3E5F5', bg2: '#4527A0', r1: '#512DA8', r2: '#B39DDB' },`
     <!-- palette -->
     <path d="M38,52 Q28,68 38,82 Q50,94 74,88 Q96,82 98,66 Q100,48 84,40 Q68,32 52,38 Q42,42 38,52Z" fill="#8D6E63" stroke="#5D4037" stroke-width="2"/>
     <!-- palette hole -->
@@ -406,10 +406,10 @@ export const BADGE_ICONS = {
     <!-- brush -->
     <rect x="82" y="30" width="4" height="24" rx="2" fill="#FFE0B2" transform="rotate(25 84 42)"/>
     <path d="M80,52 Q82,62 86,52" fill="#E53935" transform="rotate(25 84 42)"/>
-  `),
+`),
 
   // 18. Puzzle pieces — 5 disciplines
-  disc_5: _b('d5', { bg1: '#E8EAF6', bg2: '#1A237E', r1: '#283593', r2: '#9FA8DA' }, `
+  disc_5: _b('d5', { bg1: '#E8EAF6', bg2: '#1A237E', r1: '#283593', r2: '#9FA8DA' },`
     <!-- puzzle piece 1 (top-left, red) -->
     <path d="M34,34 L56,34 Q56,28 60,28 Q64,28 64,34 L64,42 Q58,42 58,46 Q58,50 64,50 L64,58 L34,58Z" fill="#EF5350"/>
     <!-- puzzle piece 2 (top-right, yellow) -->
@@ -421,11 +421,11 @@ export const BADGE_ICONS = {
     <!-- highlights -->
     <path d="M38,38 L50,38" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-linecap="round"/>
     <path d="M78,38 L88,38" stroke="rgba(255,255,255,0.3)" stroke-width="2" stroke-linecap="round"/>
-  `),
+`),
 
   // 19. Drawing compass — 10 disciplines
   disc_10: _b('d10', { bg1: '#FFF8E1', bg2: '#E65100', r1: '#BF360C', r2: '#FFCC80',
-    extra: `<linearGradient id="d10_mtl" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#B0BEC5"/><stop offset="100%" stop-color="#78909C"/></linearGradient>` }, `
+    extra: `<linearGradient id="d10_mtl" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#B0BEC5"/><stop offset="100%" stop-color="#78909C"/></linearGradient>` },`
     <!-- compass arc -->
     <path d="M38,88 A34,34 0 0,1 90,88" fill="none" stroke="#FFB74D" stroke-width="2" stroke-dasharray="4,3" opacity="0.5"/>
     <!-- left leg -->
@@ -446,12 +446,12 @@ export const BADGE_ICONS = {
     <line x1="50" y1="64" x2="52" y2="65" stroke="#90A4AE" stroke-width="1" opacity="0.5"/>
     <line x1="76" y1="64" x2="78" y2="65" stroke="#90A4AE" stroke-width="1" opacity="0.5"/>
     ${_spark(84, 32, 0.7, 0.6)}
-  `),
+`),
 
   /* ━━━ ACCURACY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
   // 20. Bullseye target — 10 perfect
-  perfect_10: _b('p10', { bg1: '#E8F5E9', bg2: '#1B5E20', r1: '#2E7D32', r2: '#81C784' }, `
+  perfect_10: _b('p10', { bg1: '#E8F5E9', bg2: '#1B5E20', r1: '#2E7D32', r2: '#81C784' },`
     <!-- target rings -->
     <circle cx="64" cy="64" r="32" fill="#FFFFFF" stroke="#E53935" stroke-width="3"/>
     <circle cx="64" cy="64" r="24" fill="#E53935"/>
@@ -468,11 +468,11 @@ export const BADGE_ICONS = {
     <!-- impact effect -->
     <circle cx="64" cy="64" r="3" fill="#FFF" opacity="0.6"/>
     ${_spark(64, 64, 0.5, 0.8)}
-  `),
+`),
 
   // 21. Brilliant diamond — 25 perfect
   perfect_25: _b('p25', { bg1: '#E0F7FA', bg2: '#006064', r1: '#00838F', r2: '#4DD0E1',
-    extra: `<linearGradient id="p25_dm" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#E0F7FA"/><stop offset="30%" stop-color="#80DEEA"/><stop offset="60%" stop-color="#4DD0E1"/><stop offset="100%" stop-color="#00BCD4"/></linearGradient>` }, `
+    extra: `<linearGradient id="p25_dm" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#E0F7FA"/><stop offset="30%" stop-color="#80DEEA"/><stop offset="60%" stop-color="#4DD0E1"/><stop offset="100%" stop-color="#00BCD4"/></linearGradient>` },`
     <!-- diamond shape -->
     <polygon points="64,28 88,52 64,98 40,52" fill="url(#p25_dm)" stroke="#00ACC1" stroke-width="2"/>
     <!-- top facets -->
@@ -492,13 +492,13 @@ export const BADGE_ICONS = {
     ${_spark(50, 36, 0.8, 0.9)}
     ${_spark(82, 48, 0.6, 0.7)}
     ${_spark(46, 62, 0.5, 0.5)}
-  `),
+`),
 
   /* ━━━ XP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
   // 22. Bronze coin — 1K XP
   xp_1k: _b('x1k', { bg1: '#FFCCBC', bg2: '#4E342E', r1: '#5D4037', r2: '#BCAAA4',
-    extra: `<radialGradient id="x1k_coin" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#FFAB91"/><stop offset="50%" stop-color="#D84315"/><stop offset="100%" stop-color="#BF360C"/></radialGradient>` }, `
+    extra: `<radialGradient id="x1k_coin" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#FFAB91"/><stop offset="50%" stop-color="#D84315"/><stop offset="100%" stop-color="#BF360C"/></radialGradient>` },`
     <!-- coin -->
     <circle cx="64" cy="64" r="30" fill="url(#x1k_coin)" stroke="#8D6E63" stroke-width="3"/>
     <!-- coin inner ring -->
@@ -515,11 +515,11 @@ export const BADGE_ICONS = {
     <text x="64" y="78" text-anchor="middle" font-family="'Lexend',sans-serif" font-size="10" font-weight="600" fill="#FFF3E0" opacity="0.8">XP</text>
     <!-- highlight -->
     <path d="M50,48 Q56,40 66,46" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="2.5" stroke-linecap="round"/>
-  `),
+`),
 
   // 23. Silver coin — 5K XP
   xp_5k: _b('x5k', { bg1: '#ECEFF1', bg2: '#37474F', r1: '#455A64', r2: '#B0BEC5',
-    extra: `<radialGradient id="x5k_coin" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#ECEFF1"/><stop offset="50%" stop-color="#90A4AE"/><stop offset="100%" stop-color="#607D8B"/></radialGradient>` }, `
+    extra: `<radialGradient id="x5k_coin" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#ECEFF1"/><stop offset="50%" stop-color="#90A4AE"/><stop offset="100%" stop-color="#607D8B"/></radialGradient>` },`
     <!-- coin -->
     <circle cx="64" cy="64" r="30" fill="url(#x5k_coin)" stroke="#78909C" stroke-width="3"/>
     <!-- coin inner ring -->
@@ -539,11 +539,11 @@ export const BADGE_ICONS = {
     <!-- highlight -->
     <path d="M50,48 Q56,40 66,46" fill="none" stroke="rgba(255,255,255,0.35)" stroke-width="2.5" stroke-linecap="round"/>
     ${_spark(86, 40, 0.6, 0.5)}
-  `),
+`),
 
   // 24. Gold coin — 10K XP
   xp_10k: _b('x10k', { bg1: '#FFF8E1', bg2: '#E65100', r1: '#F57F17', r2: '#FFE082',
-    extra: `<radialGradient id="x10k_coin" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#FFF9C4"/><stop offset="50%" stop-color="#FFC107"/><stop offset="100%" stop-color="#FF8F00"/></radialGradient>` }, `
+    extra: `<radialGradient id="x10k_coin" cx="40%" cy="35%" r="65%"><stop offset="0%" stop-color="#FFF9C4"/><stop offset="50%" stop-color="#FFC107"/><stop offset="100%" stop-color="#FF8F00"/></radialGradient>` },`
     <!-- glow effect -->
     <circle cx="64" cy="64" r="38" fill="rgba(255,235,59,0.15)"/>
     <!-- coin -->
@@ -568,13 +568,13 @@ export const BADGE_ICONS = {
     ${_spark(88, 38, 0.8, 0.8)}
     ${_spark(36, 56, 0.5, 0.5)}
     ${_spark(92, 72, 0.5, 0.5)}
-  `),
+`),
 
   /* ━━━ SPECIAL ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
   // 25. Night owl — Coruja Noturna
   night_owl: _b('owl', { bg1: '#3949AB', bg2: '#0D1B2A', r1: '#1A237E', r2: '#5C6BC0',
-    extra: `<radialGradient id="owl_moon" cx="30%" cy="30%" r="60%"><stop offset="0%" stop-color="#FFF9C4"/><stop offset="100%" stop-color="#FFE082"/></radialGradient>` }, `
+    extra: `<radialGradient id="owl_moon" cx="30%" cy="30%" r="60%"><stop offset="0%" stop-color="#FFF9C4"/><stop offset="100%" stop-color="#FFE082"/></radialGradient>` },`
     <!-- stars -->
     <circle cx="32" cy="34" r="1.5" fill="#FFF" opacity="0.8"/>
     <circle cx="92" cy="38" r="1" fill="#FFF" opacity="0.6"/>
@@ -610,12 +610,12 @@ export const BADGE_ICONS = {
     <ellipse cx="64" cy="80" rx="12" ry="10" fill="#8D6E63"/>
     <path d="M56,76 Q60,72 64,76 Q68,72 72,76" stroke="#A1887F" stroke-width="1" fill="none"/>
     <path d="M54,82 Q60,78 64,82 Q68,78 74,82" stroke="#A1887F" stroke-width="1" fill="none"/>
-  `),
+`),
 
   // 26. Sunrise — Madrugador
   early_bird: _b('sun', { bg1: '#FFE0B2', bg2: '#E65100', r1: '#BF360C', r2: '#FFB74D',
     extra: `<radialGradient id="sun_glow" cx="50%" cy="65%" r="50%"><stop offset="0%" stop-color="#FFF9C4" stop-opacity="0.6"/><stop offset="100%" stop-color="#FFF9C4" stop-opacity="0"/></radialGradient>
-<linearGradient id="sun_sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF8F00"/><stop offset="60%" stop-color="#FFB74D"/><stop offset="100%" stop-color="#FFE0B2"/></linearGradient>` }, `
+<linearGradient id="sun_sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF8F00"/><stop offset="60%" stop-color="#FFB74D"/><stop offset="100%" stop-color="#FFE0B2"/></linearGradient>` },`
     <!-- sky gradient overlay -->
     <circle cx="64" cy="64" r="52" fill="url(#sun_sky)" opacity="0.3"/>
     <!-- sun rays (behind sun) -->
@@ -643,5 +643,5 @@ export const BADGE_ICONS = {
     <!-- small clouds -->
     <ellipse cx="40" cy="44" rx="8" ry="4" fill="rgba(255,255,255,0.3)"/>
     <ellipse cx="86" cy="48" rx="6" ry="3" fill="rgba(255,255,255,0.25)"/>
-  `)
+`)
 };

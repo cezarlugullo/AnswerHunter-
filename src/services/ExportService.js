@@ -154,7 +154,7 @@ export const ExportService = {
               this._sanitizeCSVCell(topic.name),
               this._sanitizeCSVCell((card.question || card.content?.question || '').replace(/"/g, '""')),
               this._sanitizeCSVCell(this._extractAnswer(card)),
-              this._sanitizeCSVCell((card.tags || []).join('; ')),
+              this._sanitizeCSVCell((card.tags || []).join(';')),
               sm2.mastered ? 'Yes' : 'No',
               sm2.stability ? sm2.stability.toFixed(2) : '',
               sm2.nextReview ? new Date(sm2.nextReview).toISOString().slice(0, 10) : ''
@@ -183,14 +183,14 @@ export const ExportService = {
       for (const mod of disc.modules) {
         for (const topic of mod.topics) {
           for (const card of topic.cards) {
-            const front = (card.question || card.content?.question || '').replace(/\t/g, ' ');
-            const back = this._extractAnswer(card).replace(/\t/g, ' ');
+            const front = (card.question || card.content?.question || '').replace(/\t/g, '');
+            const back = this._extractAnswer(card).replace(/\t/g, '');
             const tags = [
               `AnswerHunter::${disc.name}`,
               `Module::${mod.name}`,
               `Topic::${topic.name}`,
               ...(card.tags || [])
-            ].join(' ');
+            ].join('');
 
             if (front) {
               rows.push(`${front}\t${back}\t${tags}`);
@@ -229,8 +229,8 @@ export const ExportService = {
 
     for (const note of notes) {
       const date = new Date(note.createdAt).toLocaleString();
-      lines.push(`## ${note.pinned ? '📌 ' : ''}Note — ${date}`);
-      if (note.tags.length) lines.push(`**Tags:** ${note.tags.join(', ')}`);
+      lines.push(`## ${note.pinned ? ' ' : ''}Note — ${date}`);
+      if (note.tags.length) lines.push(`**Tags:** ${note.tags.join(',')}`);
       lines.push('');
       lines.push(note.content);
       lines.push('');

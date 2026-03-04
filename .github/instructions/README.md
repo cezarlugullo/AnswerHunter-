@@ -16,15 +16,15 @@ O GitHub Copilot lerá automaticamente estas instruções quando relevante. Voc�
 
 ## Skills Disponíveis
 
-### 🎨 Design & Planejamento
+### Design & Planejamento
 - **brainstorming** - Refina ideias antes de codificar
 - **writing-plans** - Cria planos detalhados de implementação
 
-### 🧪 Desenvolvimento
+### [TEST] Desenvolvimento
 - **test-driven-development** - Ciclo RED-GREEN-REFACTOR
 - **systematic-debugging** - Processo estruturado de debug
 
-### 👥 Colaboração
+### Colaboração
 - **requesting-code-review** - Checklist antes de commitar
 - **finishing-a-task** - Verifica completude antes de finalizar
 

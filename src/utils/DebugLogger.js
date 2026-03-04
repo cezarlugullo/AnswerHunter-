@@ -65,25 +65,25 @@ export const DebugLogger = {
 
     const row = (active, icon, label, model) =>
       console.log(
-        `%c  ${active ? '✅' : '○ '} ${icon}  ${label.padEnd(24)}%c${model}`,
+        `%c ${active ? '[OK]' : '○ '} ${icon} ${label.padEnd(24)}%c${model}`,
         active ? ON : LBL,
         active ? VAL_ON : VAL_OFF
       );
 
     const SEP_LINE = ' ────────────────────────────────────────────────────';
 
-    console.log('%c 🤖 AnswerHunter · Modelos ', H);
+    console.log('%c [BOT] AnswerHunter · Modelos ', H);
     console.log('%c' + SEP_LINE, SEP);
-    console.log('%c  SEMPRE ATIVOS', CAP);
-    row(true, '⚡', 'Groq · extração fast',  fast);
-    row(true, '📷', 'Groq · OCR vision',     vision);
+    console.log('%c SEMPRE ATIVOS', CAP);
+    row(true, '', 'Groq · extração fast', fast);
+    row(true, '', 'Groq · OCR vision', vision);
     console.log('%c' + SEP_LINE, SEP);
-    console.log('%c  PROVIDER PRINCIPAL', CAP);
-    row(primary === 'groq',        '🔶', 'Groq · raciocínio',  smart);
-    row(primary === 'gemini',      '💎', 'Gemini',              gemini);
-    row(primary === 'openrouter',  '🔗', 'OpenRouter',          orModel);
-    row(primary === 'chatgpt',     '💬', 'ChatGPT',             chatgpt);
-    row(primary === 'copilot',     '🐙', 'Copilot',             copilot);
+    console.log('%c PROVIDER PRINCIPAL', CAP);
+    row(primary === 'groq', '', 'Groq · raciocínio', smart);
+    row(primary === 'gemini', '', 'Gemini', gemini);
+    row(primary === 'openrouter', '', 'OpenRouter', orModel);
+    row(primary === 'chatgpt', '', 'ChatGPT', chatgpt);
+    row(primary === 'copilot', '', 'Copilot', copilot);
     console.log('%c' + SEP_LINE, SEP);
   },
 

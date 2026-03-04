@@ -64,7 +64,7 @@ export const FreeTextAnswerService = {
     _extractAnswerBlock(pageText) {
         const text = String(pageText || '');
         const lines = text.replace(/\r/g, '\n').split('\n')
-            .map(l => l.replace(/\s+/g, ' ').trim())
+            .map(l => l.replace(/\s+/g, '').trim())
             .filter(Boolean);
 
         const ANSWER_MARKER = /^(?:resposta|resposta\s+correta|alternativa\s+correta)\s*[:\-]?\s*$/i;
@@ -105,7 +105,7 @@ export const FreeTextAnswerService = {
                 // Stop after one meaningful content line if short answer
                 if (collected.length === 1 && next.length > 30) break;
             }
-            if (collected.length > 0) return collected.join(' ').trim();
+            if (collected.length > 0) return collected.join('').trim();
         }
 
         return null;

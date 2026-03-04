@@ -1,6 +1,6 @@
 # Quick Start Guide - AnswerHunter Agent Skills
 
-## 🚀 Como usar com GitHub Copilot
+## Como usar com GitHub Copilot
 
 ### Método 1: Comandos Naturais
 Apenas peça o que precisa e o Copilot associará à skill apropriada:
@@ -27,36 +27,36 @@ Abra o arquivo `.agents/skills/[skill-name]/SKILL.md` para dar contexto ao Copil
 
 ---
 
-## 📚 Skills Disponíveis - Cheat Sheet
+## [STUDY] Skills Disponíveis - Cheat Sheet
 
-### 🎨 brainstorming
+### brainstorming
 **Quando**: Antes de codificar nova feature
 **Output**: Spec document em `.agents/specs/`
 **Comando**: *"Vamos fazer brainstorming sobre [feature]"*
 
-### 📝 writing-plans
+### [NOTE] writing-plans
 **Quando**: Após spec aprovada
 **Output**: Implementation plan em `.agents/plans/`
 **Comando**: *"Crie um plano de implementação para [spec]"*
 
-### 🧪 test-driven-development
+### [TEST] test-driven-development
 **Quando**: SEMPRE ao codificar
 **Processo**: RED → GREEN → REFACTOR
 **Comando**: *"Use TDD para implementar [feature]"*
 
-### 🔍 systematic-debugging
+### [SEARCH] systematic-debugging
 **Quando**: Bug ou teste falhando
 **Fases**: REPRODUCE → LOCATE → DIAGNOSE → FIX
 **Comando**: *"Debug este problema: [descrição]"*
 
-### 👁️ requesting-code-review
+### requesting-code-review
 **Quando**: Antes de commit
 **Output**: Review report
 **Comando**: *"Faça code review das minhas mudanças"*
 
 ---
 
-## 🎯 Workflow Completo - Exemplo
+## [TARGET] Workflow Completo - Exemplo
 
 ### Cenário: Adicionar busca em histórico
 
@@ -89,20 +89,20 @@ Output: .agents/reviews/YYYYMMDD-search-history.md
 5️⃣ FIX & MERGE
 Você: Corrige issues encontrados
 Copilot: Verifica tudo OK
-Done! ✅
+Done! [OK]
 ```
 
 ---
 
-## 💡 Dicas de Uso
+## [TIP] Dicas de Uso
 
-### ✅ Faça
+### [OK] Faça
 - Mencione context: "No projeto AnswerHunter, que é uma extensão Chrome..."
 - Seja específico: "Aplique TDD para criar o cache service"
 - Use os templates: Peça para usar os templates em `.agents/templates/`
 - Commit frequente: Após cada task GREEN
 
-### ❌ Evite
+### [FAIL] Evite
 - Pular TDD: "Sem testes" não é opção
 - Tarefas grandes: Quebre em pedaços menores
 - Specs vagas: Refine até estar clara
@@ -110,7 +110,7 @@ Done! ✅
 
 ---
 
-## 🎨 Templates Disponíveis
+## Templates Disponíveis
 
 ### Feature Spec
 ```bash
@@ -127,7 +127,7 @@ Ou peça: *"Use o template de plano para planejar [spec]"*
 
 ---
 
-## 🔧 Comandos Úteis
+## [FIX] Comandos Úteis
 
 ### Testing
 ```bash
@@ -162,35 +162,35 @@ Chrome → Extensions → Load unpacked → Selecione pasta do projeto
 
 ---
 
-## 🎓 Princípios Fundamentais
+## [GRAD] Princípios Fundamentais
 
 ### TDD é Lei
 ```
-❌ NUNCA: Code → Test
-✅ SEMPRE: Test → Code
+[FAIL] NUNCA: Code → Test
+[OK] SEMPRE: Test → Code
 ```
 
 ### YAGNI (You Aren't Gonna Need It)
 ```
-❌ "Vou adicionar isso por precaução"
-✅ "Está na spec? Não? Não adicione."
+[FAIL] "Vou adicionar isso por precaução"
+[OK] "Está na spec? Não? Não adicione."
 ```
 
 ### DRY (Don't Repeat Yourself)
 ```
-❌ Copy-paste código
-✅ Abstraia em função/classe
+[FAIL] Copy-paste código
+[OK] Abstraia em função/classe
 ```
 
 ### Evidence Over Claims
 ```
-❌ "Está funcionando" (sem verificar)
-✅ "Teste passa, logs confirmam"
+[FAIL] "Está funcionando" (sem verificar)
+[OK] "Teste passa, logs confirmam"
 ```
 
 ---
 
-## 📂 Estrutura de Arquivos
+## [OPEN] Estrutura de Arquivos
 
 ```
 .agents/
@@ -212,7 +212,7 @@ Chrome → Extensions → Load unpacked → Selecione pasta do projeto
 
 ---
 
-## 🐛 Troubleshooting
+## [BUG] Troubleshooting
 
 ### "Copilot não está usando as skills"
 1. Mencione explicitamente: *"Use a skill de TDD"*
@@ -230,13 +230,13 @@ Chrome → Extensions → Load unpacked → Selecione pasta do projeto
 3. Verifique se seguiu RED-GREEN-REFACTOR
 
 ### "Copilot quer pular testes"
-❌ Não permita!
+[FAIL] Não permita!
 - Lembre: *"TDD é obrigatório, escreva o teste primeiro"*
 - Abra o arquivo `test-driven-development/SKILL.md`
 
 ---
 
-## 📖 Aprendendo Mais
+## [BOOK] Aprendendo Mais
 
 ### Leia as Skills
 Cada skill tem exemplos práticos e anti-patterns.
@@ -257,7 +257,7 @@ Pegue uma pequena feature e siga o workflow completo:
 
 ---
 
-## 🎯 Próximos Passos
+## [TARGET] Próximos Passos
 
 1. **Leia**: [`.agents/README.md`](README.md) para overview
 2. **Explore**: Abra cada skill e leia os exemplos
@@ -266,13 +266,13 @@ Pegue uma pequena feature e siga o workflow completo:
 
 ---
 
-## 🤝 Exemplos de Interação
+## Exemplos de Interação
 
 ### Exemplo 1: Nova Feature
 ```
-👤 Você: Quero adicionar filtros de busca por data no AnswerHunter
+ Você: Quero adicionar filtros de busca por data no AnswerHunter
 
-🤖 Copilot: Vou usar a skill de brainstorming para refinar isso.
+[BOT] Copilot: Vou usar a skill de brainstorming para refinar isso.
            Algumas perguntas primeiro:
            - Os filtros são para resultados de busca no Word?
            - Que range de datas? (última semana, mês, ano, custom?)
@@ -281,40 +281,40 @@ Pegue uma pequena feature e siga o workflow completo:
            
 [Após discussão]
 
-🤖 Copilot: Aqui está a spec que criei em .agents/specs/date-filters. md
+[BOT] Copilot: Aqui está a spec que criei em .agents/specs/date-filters. md
            [mostra seções da spec]
            
-👤 Você: Aprovado! Vamos implementar.
+ Você: Aprovado! Vamos implementar.
 
-🤖 Copilot: Criando plano de implementação...
+[BOT] Copilot: Criando plano de implementação...
            [cria plano com 15 tasks]
            Pronto! .agents/plans/date-filters-plan.md
            
            Vamos começar pela Task 1? (Adicionar dependências)
 
-👤 Você: Sim, vamos!
+ Você: Sim, vamos!
 
-🤖 Copilot: [RED] Primeiro o teste...
+[BOT] Copilot: [RED] Primeiro o teste...
            [escreve teste que falha]
            Teste falha como esperado. Agora implemento?
            
-👤 Você: Sim
+ Você: Sim
 
-🤖 Copilot: [GREEN] Implementação...
+[BOT] Copilot: [GREEN] Implementação...
            [escreve código mínimo]
-           ✅ Teste passa! Task 1 completa. Próxima?
+           [OK] Teste passa! Task 1 completa. Próxima?
 ```
 
 ### Exemplo 2: Bug Fix
 ```
-👤 Você: A extensão crasha quando busco com "&" na query
+ Você: A extensão crasha quando busco com "&" na query
 
-🤖 Copilot: Vou usar systematic-debugging.
+[BOT] Copilot: Vou usar systematic-debugging.
            
            Phase 1: REPRODUCE
            Criando teste que reproduz o bug...
            [cria teste]
-           ✅ Teste falha com mesmo erro. Bug reproduzido.
+           [OK] Teste falha com mesmo erro. Bug reproduzido.
            
            Phase 2: LOCATE
            Analisando stack trace...
@@ -329,22 +329,22 @@ Pegue uma pequena feature e siga o workflow completo:
            Vou implementar fix com defense-in-depth:
            [implementa validação em múltiplas camadas]
            
-           ✅ Teste original passa
-           ✅ Edge cases adicionados
+           [OK] Teste original passa
+           [OK] Edge cases adicionados
            Pronto para commit?
 
-👤 Você: Sim, faça code review primeiro
+ Você: Sim, faça code review primeiro
 
-🤖 Copilot: [aplica checklist de review]
-           ✅ Tudo OK, pode commitar!
+[BOT] Copilot: [aplica checklist de review]
+           [OK] Tudo OK, pode commitar!
 ```
 
 ---
 
-## 💪 Você está pronto!
+## Você está pronto!
 
 Comece pequeno, pratique o workflow, e logo estará usando as skills naturalmente.
 
 **Lembre-se**: Skills são ferramentas, não regras rígidas. Adapte ao que funciona para você!
 
-Happy coding! 🚀
+Happy coding! 

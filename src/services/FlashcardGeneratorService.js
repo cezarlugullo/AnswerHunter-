@@ -64,7 +64,7 @@ export const FlashcardGeneratorService = {
 QUESTÃO: ${card.question}
 RESPOSTA: ${card.answer}
 
-Tipos solicitados: ${types.join(', ')}
+Tipos solicitados: ${types.join(',')}
 
 Para cada flashcard, retorne em formato JSON:
 [
@@ -147,7 +147,7 @@ Regras:
     let match;
     while ((match = conceptPattern.exec(text)) !== null) {
       const concept = match[1].trim();
-      if (concept.length > 3 && concept.split(' ').length <= 4) {
+      if (concept.length > 3 && concept.split('').length <= 4) {
         concepts.add(concept);
       }
     }
@@ -167,7 +167,7 @@ Regras:
     if (!card.answer) return null;
 
     const sentences = card.answer.split(/[.!?]+/).filter(s => s.trim().length > 10);
-    const summary = sentences.slice(0, 2).join('. ').trim() + '.';
+    const summary = sentences.slice(0, 2).join('.').trim() + '.';
 
     return {
       type: 'summary',

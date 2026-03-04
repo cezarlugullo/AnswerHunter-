@@ -135,7 +135,7 @@ function initCopilotModelPicker() {
     });
     // Keyboard: Enter/Space to select
     opt.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === 'Enter' || e.key === '') {
         e.preventDefault();
         selectByValue(opt.dataset.value, true);
         closePicker();

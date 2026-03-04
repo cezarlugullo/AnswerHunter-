@@ -24,7 +24,7 @@ function _normalize(text) {
     return String(text || '')
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/[^a-z0-9]+/g, '')
         .trim();
 }
 
@@ -32,7 +32,7 @@ function _extractStemTokens(text, maxTokens = FINGERPRINT_TOKEN_COUNT) {
     // Get stem lines (non-option lines)
     const lines = String(text || '').split('\n')
         .filter(line => !line.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
-    const normalized = _normalize(lines.join(' '));
+    const normalized = _normalize(lines.join(''));
     const tokens = normalized.split(/\s+/)
         .filter(t => t.length >= 4 && !STOP_WORDS.has(t));
     // Deduplicate while preserving order
@@ -58,7 +58,7 @@ export const QuestionFingerprint = {
         const tokens = _extractStemTokens(text);
         return {
             tokens,
-            raw: tokens.join(' ')
+            raw: tokens.join('')
         };
     },
 
@@ -142,7 +142,7 @@ export const QuestionFingerprint = {
 
         // 2. Stem length
         const stemLines = text.split('\n').filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
-        const stemLen = stemLines.join(' ').replace(/\s+/g, ' ').trim().length;
+        const stemLen = stemLines.join('').replace(/\s+/g, '').trim().length;
         if (stemLen >= 200) { score += 20; signals.push('rich stem'); }
         else if (stemLen >= 80) { score += 12; signals.push('adequate stem'); }
         else { score += 3; signals.push('short stem'); }

@@ -83,7 +83,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                 chrome.notifications?.create(`ah_badge_${badge.id}`, {
                     type: 'basic',
                     iconUrl: 'icons/icon128.png',
-                    title: `🏆 Badge Desbloqueado!`,
+                    title: `Badge Desbloqueado!`,
                     message: `${badge.name} — ${badge.desc}`,
                     priority: 2
                 });
@@ -227,7 +227,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 async function _runPhase2Search(requestId, question, displayQuestion) {
     const key = `ah_bg_search_${requestId}`;
     // AH-PERF: Background search pipeline timer
-    const _bgTimer = PerformanceTimer.create('⚙️ BG Phase2 Search Pipeline');
+    const _bgTimer = PerformanceTimer.create(' BG Phase2 Search Pipeline');
 
     // Ping a Chrome API every 20 s to prevent the MV3 service worker from being
     // terminated mid-search (Chrome's idle timer is ~30 s).

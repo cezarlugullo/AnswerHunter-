@@ -25,7 +25,7 @@ export const PerformanceTimer = {
         lastMark = now;
         phases.push({ name: phaseName, duration });
         const color = duration < 500 ? css.fast : duration < 2000 ? css.medium : css.slow;
-        console.log(`%c⏱ [AH-TIMER] %c${phaseName}%c → %c${duration.toFixed(0)}ms`, css.phase, css.phase, '', color);
+        console.log(`%c[TIMER] [AH-TIMER] %c${phaseName}%c → %c${duration.toFixed(0)}ms`, css.phase, css.phase, '', color);
         return duration;
       },
 
@@ -37,12 +37,12 @@ export const PerformanceTimer = {
       summary() {
         const total = performance.now() - t0;
         const longestName = Math.max(...phases.map(p => p.name.length), 10);
-        console.group(`%c📊 [AH-TIMER] ${label} — Total: ${total.toFixed(0)}ms`, css.total);
-        console.log('%c Phase                          Duration   % of total', css.header);
+        console.group(`%c[CHART] [AH-TIMER] ${label} — Total: ${total.toFixed(0)}ms`, css.total);
+        console.log('%c Phase Duration   % of total', css.header);
         console.log('%c─────────────────────────────────────────────────────', 'color:#555;');
         for (const p of phases) {
           if (p.skipped) {
-            console.log(`%c  ${p.name.padEnd(30)} SKIPPED`, 'color:#888;');
+            console.log(`%c ${p.name.padEnd(30)} SKIPPED`, 'color:#888;');
             continue;
           }
           const pct = total > 0 ? ((p.duration / total) * 100).toFixed(1) : '0.0';
@@ -51,10 +51,10 @@ export const PerformanceTimer = {
           const name = p.name.padEnd(30);
           const durStr = `${p.duration.toFixed(0)}ms`.padStart(8);
           const pctStr = `${pct}%`.padStart(6);
-          console.log(`%c  ${name}${durStr}  ${pctStr}  ${bar}`, color);
+          console.log(`%c ${name}${durStr}  ${pctStr}  ${bar}`, color);
         }
         console.log('%c─────────────────────────────────────────────────────', 'color:#555;');
-        console.log(`%c  ${'TOTAL'.padEnd(30)}${total.toFixed(0).padStart(8)}ms  100.0%`, css.total);
+        console.log(`%c ${'TOTAL'.padEnd(30)}${total.toFixed(0).padStart(8)}ms 100.0%`, css.total);
         console.groupEnd();
         return { phases, total };
       }

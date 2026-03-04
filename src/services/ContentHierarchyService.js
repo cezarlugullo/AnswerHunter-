@@ -68,7 +68,7 @@ export const ContentHierarchyService = {
    * @param {{name: string, icon?: string, color?: string}} data
    * @returns {Promise<Object>}
    */
-  async createDiscipline({ name, icon = '📚', color = '#FF6B6B' }) {
+  async createDiscipline({ name, icon = '', color = '#FF6B6B' }) {
     const h = await this.load();
     const disc = {
       id: 'd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),

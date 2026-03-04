@@ -1,27 +1,27 @@
 # AnswerHunter - Agent Skills System 
 
-## 🎉 Sistema Instalado com Sucesso!
+## Sistema Instalado com Sucesso!
 
 Você agora tem um **framework de skills inspirado no Superpowers** adaptado para GitHub Copilot.
 
-## 📚 O que foi criado?
+## [STUDY] O que foi criado?
 
 ### Skills Principais
-✅ **brainstorming** - Design e refinamento de features  
-✅ **writing-plans** - Planos detalhados de implementação  
-✅ **test-driven-development** - TDD rigoroso (RED-GREEN-REFACTOR)  
-✅ **systematic-debugging** - Debug em 4 fases  
-✅ **requesting-code-review** - Checklist de code review  
+[OK] **brainstorming** - Design e refinamento de features 
+[OK] **writing-plans** - Planos detalhados de implementação 
+[OK] **test-driven-development** - TDD rigoroso (RED-GREEN-REFACTOR) 
+[OK] **systematic-debugging** - Debug em 4 fases 
+[OK] **requesting-code-review** - Checklist de code review 
 
 ### Templates
-✅ **FEATURE_SPEC.md** - Template para especificações  
-✅ **IMPLEMENTATION_PLAN.md** - Template para planos  
+[OK] **FEATURE_SPEC.md** - Template para especificações 
+[OK] **IMPLEMENTATION_PLAN.md** - Template para planos 
 
 ### Documentação
-✅ **README.md** - Overview do sistema  
-✅ **QUICK_START.md** - Guia rápido de uso  
+[OK] **README.md** - Overview do sistema 
+[OK] **QUICK_START.md** - Guia rápido de uso 
 
-## 🚀 Como Começar?
+## Como Começar?
 
 ### 1. Leia o Quick Start
 ```
@@ -46,7 +46,7 @@ Para implementação:
 - Crie em: .agents/plans/sua-feature-plan.md
 ```
 
-## 💬 Exemplos de Comandos
+## Exemplos de Comandos
 
 ### Design
 ```
@@ -78,12 +78,12 @@ Para implementação:
 "Aplique o checklist de code review antes de commitar"
 ```
 
-## 🎯 Princípios Fundamentais
+## [TARGET] Princípios Fundamentais
 
 ### 1. TDD é Obrigatório
 ```
-❌ NUNCA: Código → Teste
-✅ SEMPRE: Teste → Código
+[FAIL] NUNCA: Código → Teste
+[OK] SEMPRE: Teste → Código
 ```
 
 ### 2. YAGNI - You Aren't Gonna Need It
@@ -104,12 +104,12 @@ Não: "Está funcionando" (sem verificar)
 Sim: "Teste passa, comportamento confirmado"
 ```
 
-## 📂 Estrutura Criada
+## [OPEN] Estrutura Criada
 
 ```
 .agents/
 ├── README.md                    # Overview geral
-├── QUICK_START.md              # Guia rápido ⭐
+├── QUICK_START.md # Guia rápido [STAR]
 ├── INSTALLATION_SUCCESS.md     # Este arquivo
 │
 ├── skills/                      # Skills disponíveis
@@ -133,7 +133,7 @@ Sim: "Teste passa, comportamento confirmado"
 └── reviews/                     # Code reviews vão aqui
 ```
 
-## 🎓 Workflow Recomendado
+## [GRAD] Workflow Recomendado
 
 ```mermaid
 graph TD
@@ -152,21 +152,21 @@ graph TD
     K -->|Não| L[Done!]
 ```
 
-## 💡 Dicas de Uso com Copilot
+## [TIP] Dicas de Uso com Copilot
 
-### ✅ Faça
+### [OK] Faça
 - Mencione a skill: "Use a skill de TDD"
 - Dê contexto: "No projeto AnswerHunter..."
 - Abra o arquivo da skill para dar contexto
 - Seja específico sobre o que quer
 
-### ❌ Evite
+### [FAIL] Evite
 - Comandos vagos: "Faça algo"
 - Pular TDD: Não tem exceções!
 - Tarefas gigantes: Quebre em 2-5 min cada
 - Ignorar os princípios: YAGNI, DRY, etc.
 
-## 🔍 Exemplo Prático
+## [SEARCH] Exemplo Prático
 
 ### Você quer: Adicionar cache de buscas
 
@@ -191,10 +191,10 @@ Copilot: [quebra em tarefas pequenas com TDD]
 Você: "Vamos implementar a Task 1 usando TDD"
 
 Copilot: 
-🔴 RED: Escreve teste que falha
-🟢 GREEN: Implementa código mínimo
-🔵 REFACTOR: Limpa o código
-✅ Commit
+[RED] RED: Escreve teste que falha
+[GREEN] GREEN: Implementa código mínimo
+[REFACTOR] REFACTOR: Limpa o código
+[OK] Commit
 
 Repeat para cada task...
 ```
@@ -210,11 +210,11 @@ Copilot: [aplica checklist, identifica issues]
 **Passo 5 - Finish**:
 ```
 Você: Corrige issues encontrados
-✅ Merge para main
-🎉 Feature completa!
+[OK] Merge para main
+ Feature completa!
 ```
 
-## 🎨 Customize para Você
+## Customize para Você
 
 As skills são flexíveis! Você pode:
 - Ajustar os templates
@@ -231,10 +231,10 @@ A estrutura está no `.agents/`, apenas edite os arquivos `.md`.
 3. **Use os Templates**: Copie e adapte
 4. **Pratique**: Comece com uma feature pequena
 
-## 📖 Leituras Recomendadas
+## [BOOK] Leituras Recomendadas
 
 **Para começar**:
-1. `.agents/QUICK_START.md` ⭐ COMECE AQUI
+1. `.agents/QUICK_START.md` [STAR] COMECE AQUI
 2. `.agents/skills/test-driven-development/SKILL.md`
 3. `.agents/skills/brainstorming/SKILL.md`
 
@@ -243,7 +243,7 @@ A estrutura está no `.agents/`, apenas edite os arquivos `.md`.
 5. `.agents/skills/systematic-debugging/SKILL.md`
 6. `.agents/skills/requesting-code-review/SKILL.md`
 
-## 🎯 Próximo Passo
+## [TARGET] Próximo Passo
 
 **Abra agora**: `.agents/QUICK_START.md`
 
@@ -251,7 +251,7 @@ Depois tente com uma feature real do AnswerHunter!
 
 ---
 
-## 💪 Você está pronto!
+## Você está pronto!
 
 Este sistema vai transformar como você desenvolve com o GitHub Copilot.
 
@@ -261,7 +261,7 @@ Este sistema vai transformar como você desenvolve com o GitHub Copilot.
 - Tarefas pequenas (2-5 min)
 - Evidence over claims
 
-Happy coding! 🚀
+Happy coding! 
 
 ---
 

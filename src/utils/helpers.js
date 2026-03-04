@@ -17,7 +17,7 @@ export function escapeHtml(text) {
 
 export function isLikelyQuestion(text) {
     if (!text) return false;
-    const clean = text.replace(/\s+/g, ' ').trim();
+    const clean = text.replace(/\s+/g, '').trim();
     if (clean.length < 30) return false;
     const hasQuestionMark = clean.includes('?');
     const hasKeywords = /Quest(?:a|ã)o|Pergunta|Exerc[íi]cio|Enunciado|Atividade/i.test(clean);
@@ -101,10 +101,12 @@ export function formatQuestionText(text) {
     let normalized = rawTrimmed.replace(/\r\n/g, '\n');
 
     // Handle compact inline alternatives like "... JSON.B ..." or "...:A ..."
-    const compactInlineAltRe = /([:;?.!])\s*([A-E])\s+(?=[A-Za-z\u00C0-\u00FF])/g;
+    // Restrict to ':' and ';' to avoid false positives in assertion stems like
+    // "I. A biblioteca... II. A estrutura...".
+    const compactInlineAltRe = /([:;])\s*([A-E])\s+(?=[A-Za-z\u00C0-\u00FF])/g;
     const compactInlineAltMatches = normalized.match(compactInlineAltRe) || [];
     if (compactInlineAltMatches.length >= 2) {
-        normalized = normalized.replace(compactInlineAltRe, (_m, punct, letter) => `${punct}\n${letter.toUpperCase()}) `);
+        normalized = normalized.replace(compactInlineAltRe, (_m, punct, letter) => `${punct}\n${letter.toUpperCase()})`);
     }
 
     // Inline alternative break: "A) text B) text" on the same line.
@@ -114,7 +116,7 @@ export function formatQuestionText(text) {
     const inlineAltBreakRe = /(?:^|\s)([A-E])\s*(?:(?:[\)\:])|(?:\.\s)|->>|->|=>)(?=\s*\S)/gi;
     const inlineAltMatches = normalized.match(inlineAltBreakRe) || [];
     if (inlineAltMatches.length >= 2) {
-        normalized = normalized.replace(inlineAltBreakRe, (_m, letter) => `\n${letter.toUpperCase()}) `);
+        normalized = normalized.replace(inlineAltBreakRe, (_m, letter) => `\n${letter.toUpperCase()})`);
     }
 
     const limitedText = limitToFirstQuestion(normalized);
@@ -132,28 +134,162 @@ export function formatQuestionText(text) {
         return false;
     };
 
+    /**
+     * Rich-format the enunciado. Detects:
+     * - SQL/code blocks → dark code panel
+     * - Roman numeral assertions (I./II./III.) → clean editorial list
+     * - Conclusion prompts → highlighted call-to-action
+     * - Regular prose → standard text
+     */
+    const formatEnunciadoContent = (enunciado) => {
+        if (!enunciado) return '';
+
+        // ── Detect language from code text ──
+        const detectLang = (code) => {
+            if (/\b(SELECT|INSERT|UPDATE|DELETE|CREATE\s+TABLE|ALTER\s+TABLE|DROP\s+TABLE|TRUNCATE)\b/i.test(code)) return 'SQL';
+            if (/\b(function|const\s|let\s|var\s|=>\s*[{(]|console\.)/.test(code)) return 'JavaScript';
+            if (/\bdef\s+\w+\s*\(|class\s+\w+\s*:|^\s*import\s+\w+|^\s*from\s+\w+\s+import/m.test(code)) return 'Python';
+            if (/\b(public\s+static|System\.out|void\s+main|String\s*\[\s*\])/.test(code)) return 'Java';
+            if (/\b(#include|printf|scanf|int\s+main)\b/.test(code)) return 'C';
+            if (/^\s*<[a-z]+[\s>]/im.test(code)) return 'HTML';
+            return '';
+        };
+
+        // ── Find SQL/code blocks with balanced-paren awareness ──
+        const findCodeBlocks = (text) => {
+            const sqlStartRe = /\b(?:CREATE\s+(?:TABLE|INDEX|VIEW|DATABASE|PROCEDURE|FUNCTION|TRIGGER)|ALTER\s+TABLE|DROP\s+TABLE(?:\s+IF\s+EXISTS)?|INSERT\s+INTO|DELETE\s+FROM|UPDATE\s+\w+\s+SET|SELECT\s+\S+|TRUNCATE\s+TABLE)/gi;
+            const blocks = [];
+            let match;
+            while ((match = sqlStartRe.exec(text)) !== null) {
+                const start = match.index;
+                if (blocks.some(b => start >= b.start && start < b.end)) continue;
+                let depth = 0;
+                let end = -1;
+                for (let i = start; i < text.length && i < start + 800; i++) {
+                    if (text[i] === '(') depth++;
+                    if (text[i] === ')') {
+                        depth--;
+                        if (depth <= 0) {
+                            let j = i + 1;
+                            while (j < text.length && /\s/.test(text[j])) j++;
+                            end = (j < text.length && text[j] === ';') ? j + 1 : i + 1;
+                            break;
+                        }
+                    }
+                    if (text[i] === ';' && depth <= 0) { end = i + 1; break; }
+                }
+                if (end > start && (end - start) > 12) {
+                    blocks.push({ start, end, text: text.substring(start, end).trim() });
+                }
+            }
+            return blocks;
+        };
+
+        // ── Format prose: detect Roman numeral assertions or return plain text ──
+        const formatProse = (text) => {
+            if (!text) return '';
+            const romanNumerals = ['VIII', 'VII', 'VI', 'IV', 'V', 'III', 'II', 'I'];
+            const rp = romanNumerals.join('|');
+            const assertionRe = new RegExp(`(?:^|\\s)((?:${rp})\\.\\s)`, 'g');
+            const matches = [...text.matchAll(assertionRe)];
+            if (matches.length < 2) {
+                return `<div class="question-enunciado">${escapeHtml(text)}</div>`;
+            }
+
+            const positions = [];
+            const splitRe = new RegExp(`(?:^|\\s)((?:${rp})\\.\\s)`, 'g');
+            let sm;
+            while ((sm = splitRe.exec(text)) !== null) {
+                const full = sm[0];
+                const numeral = sm[1];
+                const nStart = (full[0] === ' ' || full[0] === '\n') ? sm.index + 1 : sm.index;
+                positions.push({
+                    start: nStart,
+                    numeral: numeral.trim().replace(/\.\s*$/, ''),
+                    textStart: nStart + numeral.length
+                });
+            }
+            if (positions.length < 2) {
+                return `<div class="question-enunciado">${escapeHtml(text)}</div>`;
+            }
+
+            const intro = text.substring(0, positions[0].start).trim();
+            const assertions = positions.map((pos, idx) => {
+                const end = idx + 1 < positions.length ? positions[idx + 1].start : text.length;
+                return { numeral: pos.numeral, text: text.substring(pos.textStart, end).trim() };
+            });
+
+            // Detect conclusion in last assertion
+            const last = assertions[assertions.length - 1];
+            const conclRe = /(?:\.\s*|\s+)((?:[ÉEe](?:stá|sta)?\s+corret[oa]|Assinale|(?:[ÉEe]|Est[aá])\s*corret[ao]s?\s|Marque|Quais?\s+(?:das?|dos?)\s|S[ãa]o\s+corretas?\s|A(?:penas|s)\s+afirmativas?|(?:É|Está)\s+(?:INCORRETO|incorreto|CORRETO|correto)|Pode[- ]se\s+afirmar|Diante\s+d(?:iss|ess)o))/;
+            const cm = last.text.match(conclRe);
+            let conclusion = '';
+            if (cm && cm.index != null) {
+                const cut = cm.index + (cm[0].startsWith('.') ? 1 : 0);
+                conclusion = last.text.substring(cut).trim();
+                last.text = last.text.substring(0, cut).trim();
+            }
+
+            let html = '';
+            if (intro) html += `<div class="question-enunciado">${escapeHtml(intro)}</div>`;
+            html += '<div class="enunciado-list">';
+            for (const a of assertions) {
+                html += `<div class="enunciado-list-item"><span class="list-marker">${escapeHtml(a.numeral)}.</span><span class="list-content">${escapeHtml(a.text)}</span></div>`;
+            }
+            html += '</div>';
+            if (conclusion) html += `<div class="question-enunciado enunciado-conclusion">${escapeHtml(conclusion)}</div>`;
+            return html;
+        };
+
+        // ── Main: split around code blocks, then format prose ──
+        const codeBlocks = findCodeBlocks(enunciado);
+        if (codeBlocks.length === 0) return formatProse(enunciado);
+
+        const parts = [];
+        let lastIdx = 0;
+        for (const block of codeBlocks) {
+            const before = enunciado.substring(lastIdx, block.start).trim();
+            if (before) parts.push({ type: 'prose', text: before });
+            parts.push({ type: 'code', text: block.text, lang: detectLang(block.text) });
+            lastIdx = block.end;
+        }
+        const remaining = enunciado.substring(lastIdx).trim();
+        if (remaining) parts.push({ type: 'prose', text: remaining });
+
+        return parts.map(part => {
+            if (part.type === 'code') {
+                const label = part.lang;
+                const labelHtml = label
+                    ? `<div class="enunciado-code-label"><span class="code-dot"></span>${escapeHtml(label)}</div>`
+                    : '';
+                return `<div class="enunciado-code">${labelHtml}<pre><code>${escapeHtml(part.text)}</code></pre></div>`;
+            }
+            return formatProse(part.text);
+        }).join('');
+    };
+
     const render = (enunciado, alternatives) => {
         // Limit to 5 alternatives max
         const limitedAlts = alternatives.slice(0, 5);
         const formattedAlternatives = limitedAlts
-            .map(a => `
+            .map(a =>`
                     <div class="alternative">
                         <span class="alt-letter">${escapeHtml(a.letter)}</span>
                         <span class="alt-text">${escapeHtml(a.body)}</span>
                     </div>
-                `)
+`)
             .join('');
-        const enunciadoHtml = `
+        const enunciadoHtml =`
                 <div class="question-section">
                     <div class="question-section-title">${escapeHtml(translate('result.statement', 'Statement'))}</div>
-                    <div class="question-enunciado">${escapeHtml(enunciado)}</div>
+                    ${formatEnunciadoContent(enunciado)}
                 </div>`;
 
         if (!formattedAlternatives) {
             return enunciadoHtml;
         }
 
-        return `
+        return`
                 ${enunciadoHtml}
                 <div class="question-section">
                     <div class="question-section-title">${escapeHtml(translate('result.options', 'Options'))}</div>
@@ -260,7 +396,7 @@ export function formatQuestionText(text) {
     }
 
     // Fallback: inline alternatives (no line break), after punctuation
-    const inlineAltPattern = /(^|[\n:;?.!]\s*)([A-E])\s+(?=[A-Za-z\u00C0-\u00FF])/g;
+    const inlineAltPattern = /(^|[\n:;]\s*)([A-E])\s+(?=[A-Za-z\u00C0-\u00FF])/g;
     const inlineAltLetters = new Set();
     normalized.replace(inlineAltPattern, (_m, _prefix, letter) => {
         inlineAltLetters.add(letter.toUpperCase());
@@ -300,7 +436,7 @@ export function formatQuestionText(text) {
     }
 
     // Extra fallback: alternatives without punctuation (e.g. "A Text. B Text.")
-    const plainAltPattern = /(?:^|[.!?:]\s*)([A-E])\s+([A-Za-z\u00C0-\u00FF][^]*?)(?=(?:[.!?:]\s*)[A-E]\s+[A-Za-z\u00C0-\u00FF]|$)/g;
+    const plainAltPattern = /(?:^|[\n:;]\s*)([A-E])\s+([A-Za-z\u00C0-\u00FF][^]*?)(?=(?:[\n:;]\s*)[A-E]\s+[A-Za-z\u00C0-\u00FF]|$)/g;
     const plainAlternatives = [];
     let plainFirstIndex = null;
     let pm;
@@ -317,7 +453,7 @@ export function formatQuestionText(text) {
         return render(enunciado, plainAlternatives);
     }
 
-    return `
+    return`
         <div class="question-section">
             <div class="question-section-title">${escapeHtml(translate('result.statement', 'Statement'))}</div>
             <div class="question-enunciado">${escapeHtml(clean(normalized))}</div>

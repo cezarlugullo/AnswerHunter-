@@ -58,7 +58,7 @@ export const ApiService = {
                             { model, temperature: opts.temperature, max_tokens: opts.max_tokens }
                         );
                         if (cliResult && typeof cliResult === 'string') {
-                            console.log(`%c[AH] ✅ Gemini CLI success (model=${model}, ${cliResult.length} chars, project=${projectId})`, 'color:#0f0;font-weight:bold');
+                            console.log(`%c[AH] [OK] Gemini CLI success (model=${model}, ${cliResult.length} chars, project=${projectId})`, 'color:#0f0;font-weight:bold');
                             return cliResult;
                         }
                         if (cliResult?.error && cliResult.status === 429) {
@@ -139,7 +139,7 @@ export const ApiService = {
                     console.warn(`AnswerHunter: Gemini empty content (model=${callModel}, finish=${finishReason}, msgKeys=[${msgKeys}])`);
                     return null;
                 }
-                console.log(`%c[AH] ✅ Gemini API success (model=${callModel}, auth=${authSource}, ${content.length} chars)`, 'color:#34a853');
+                console.log(`%c[AH] [OK] Gemini API success (model=${callModel}, auth=${authSource}, ${content.length} chars)`, 'color:#34a853');
                 return content;
             } catch (err) {
                 console.warn(`AnswerHunter: Gemini error (model=${callModel}):`, err?.message || String(err));
@@ -180,7 +180,7 @@ export const ApiService = {
 
         const candidates = [
             configured,
-            'google/gemini-2.5-flash:free',  // fixed: was 'google/gemini-2.5-flash-free' (invalid)
+            'google/gemini-2.5-flash:free', // fixed: was 'google/gemini-2.5-flash-free' (invalid)
             'qwen/qwen-2.5-coder-32b-instruct:free',
             'google/gemini-exp-1121:free',
             'zhipuai/glm-4-plus'
@@ -287,7 +287,7 @@ export const ApiService = {
             }
 
             if (!content) return null;
-            console.log(`%c[AH] ✅ OpenRouter success (model=${model}, ${content.length} chars)`, 'color:#f59e0b');
+            console.log(`%c[AH] [OK] OpenRouter success (model=${model}, ${content.length} chars)`, 'color:#f59e0b');
             return content;
         } catch (err) {
             console.warn('AnswerHunter: OpenRouter request error:', err?.message || String(err));
@@ -356,7 +356,7 @@ export const ApiService = {
 
             const content = data?.choices?.[0]?.message?.content;
             if (typeof content === 'string' && content.trim()) {
-                console.log(`%c[AH] ✅ Groq success (model=${model}, ${content.trim().length} chars)`, 'color:#22c55e');
+                console.log(`%c[AH] [OK] Groq success (model=${model}, ${content.trim().length} chars)`, 'color:#22c55e');
                 return content.trim();
             }
             return null;
@@ -482,7 +482,7 @@ export const ApiService = {
                 buffer = lines.pop() || ''; // keep incomplete last line
 
                 for (const line of lines) {
-                    if (!line.startsWith('data: ')) continue;
+                    if (!line.startsWith('data:')) continue;
                     const jsonStr = line.slice(6).trim();
                     if (!jsonStr || jsonStr === '[DONE]') continue;
 
@@ -516,7 +516,7 @@ export const ApiService = {
                         .join('\n')
                         .trim();
                     if (finalText) {
-                        console.log(`%c[AH] ✅ ChatGPT success (model=${model}, ${finalText.length} chars)`, 'color:#a78bfa');
+                        console.log(`%c[AH] [OK] ChatGPT success (model=${model}, ${finalText.length} chars)`, 'color:#a78bfa');
                         return finalText;
                     }
                 }
@@ -525,7 +525,7 @@ export const ApiService = {
             // Fallback: use collected deltas
             const trimmed = collectedText.trim();
             if (trimmed) {
-                console.log(`%c[AH] ✅ ChatGPT success via deltas (model=${model}, ${trimmed.length} chars)`, 'color:#a78bfa');
+                console.log(`%c[AH] [OK] ChatGPT success via deltas (model=${model}, ${trimmed.length} chars)`, 'color:#a78bfa');
                 return trimmed;
             }
 
@@ -580,7 +580,7 @@ export const ApiService = {
             );
 
             if (result && typeof result === 'string') {
-                console.log(`%c[AH] ✅ Copilot success (model=${model}, ${result.length} chars)`, 'color:#79c0ff;font-weight:bold');
+                console.log(`%c[AH] [OK] Copilot success (model=${model}, ${result.length} chars)`, 'color:#79c0ff;font-weight:bold');
                 return result;
             }
 
@@ -606,7 +606,7 @@ export const ApiService = {
                                 { model: FREE_FALLBACK, temperature: opts.temperature, max_tokens: opts.max_tokens }
                             );
                             if (fallback && typeof fallback === 'string') {
-                                console.log(`%c[AH] ✅ Copilot fallback success (${FREE_FALLBACK}, ${fallback.length} chars)`, 'color:#79c0ff');
+                                console.log(`%c[AH] [OK] Copilot fallback success (${FREE_FALLBACK}, ${fallback.length} chars)`, 'color:#79c0ff');
                                 return fallback;
                             }
                         } catch (_) { /* fall through to cooldown */ }
@@ -719,7 +719,7 @@ export const ApiService = {
         };
         const validate = customIsValid || defaultIsValid;
 
-        console.log(`  🔗 [${label}] primary=${primary}  order=${ordered.join(' → ')}`);
+        console.log(` [LINK] [${label}] primary=${primary} order=${ordered.join(' →')}`);
 
         for (const providerName of ordered) {
             try {
@@ -728,18 +728,18 @@ export const ApiService = {
 
                 const value = postProcess ? postProcess(raw) : raw;
                 if (!validate(value)) {
-                    console.log(`  🔗 [${label}] ${providerName} → rejected by validation, trying next…`);
+                    console.log(` [LINK] [${label}] ${providerName} → rejected by validation, trying next…`);
                     continue;
                 }
 
-                console.log(`%c[AH] 🎯 ${label} → ${providerName}`, 'color:#0ff;font-weight:bold');
+                console.log(`%c[AH] [TARGET] ${label} → ${providerName}`, 'color:#0ff;font-weight:bold');
                 return { result: value, provider: providerName };
             } catch (err) {
-                console.warn(`  🔗 [${label}] ${providerName} error:`, err?.message || err);
+                console.warn(` [LINK] [${label}] ${providerName} error:`, err?.message || err);
             }
         }
 
-        console.warn(`  🔗 [${label}] all providers failed`);
+        console.warn(` [LINK] [${label}] all providers failed`);
         return { result: fallbackValue, provider: null };
     },
 
@@ -1170,15 +1170,15 @@ export const ApiService = {
             if (!settings.geminiApiKey) return null;
             try {
                 const model = opts.model_gemini || settings.geminiModelSmart || 'gemini-2.5-flash';
-                console.log(`  ${logPrefix} Trying Gemini (${model})...`);
+                console.log(` ${logPrefix} Trying Gemini (${model})...`);
                 return await this._callGemini(messages, { ...opts, model });
-            } catch (e) { console.warn(`  ${logPrefix} Gemini error:`, e?.message || e); return null; }
+            } catch (e) { console.warn(` ${logPrefix} Gemini error:`, e?.message || e); return null; }
         };
         const tryGroq = async () => {
             if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
             try {
                 const model = opts.model_groq || settings.groqModelSmart || 'llama-3.3-70b-versatile';
-                console.log(`  ${logPrefix} Trying Groq (${model})...`);
+                console.log(` ${logPrefix} Trying Groq (${model})...`);
                 const fetchFn = () => this._fetch(settings.groqApiUrl, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
@@ -1190,31 +1190,31 @@ export const ApiService = {
                     ? await fetchFn()
                     : await this._withGroqRateLimit(fetchFn);
                 return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) { console.warn(`  ${logPrefix} Groq error:`, e?.message || e); return null; }
+            } catch (e) { console.warn(` ${logPrefix} Groq error:`, e?.message || e); return null; }
         };
         const tryCopilot = async () => {
             if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
             try {
                 const model = opts.model_copilot || settings.copilotModel || 'claude-sonnet-4.6';
-                console.log(`  ${logPrefix} Trying Copilot (${model})...`);
+                console.log(` ${logPrefix} Trying Copilot (${model})...`);
                 return await this._callCopilot(messages, { ...opts, model });
-            } catch (e) { console.warn(`  ${logPrefix} Copilot error:`, e?.message || e); return null; }
+            } catch (e) { console.warn(` ${logPrefix} Copilot error:`, e?.message || e); return null; }
         };
         const tryChatGPT = async () => {
             if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
             if (chatgptStrikes >= CHATGPT_MAX_STRIKES && !chatgptCooledDown) {
-                console.log(`  ${logPrefix} ChatGPT on strike cooldown — skipping`);
+                console.log(` ${logPrefix} ChatGPT on strike cooldown — skipping`);
                 return null;
             }
             try {
                 const model = opts.model_chatgpt || settings.chatgptModel || 'gpt-4o';
-                console.log(`  ${logPrefix} Trying ChatGPT (${model})...`);
+                console.log(` ${logPrefix} Trying ChatGPT (${model})...`);
                 const res = await this._callChatGPT(messages, { ...opts, model });
                 if (!res || res.length < 10) {
                     this[chatgptStrikeKey] = (this[chatgptStrikeKey] || 0) + 1;
                     if (this[chatgptStrikeKey] >= CHATGPT_MAX_STRIKES) {
                         this._chatgptStrikeCooldownUntil = Date.now() + 5 * 60 * 1000; // 5 min
-                        console.warn(`  ${logPrefix} ChatGPT returned empty 3 times — cooling down for 5 min`);
+                        console.warn(` ${logPrefix} ChatGPT returned empty 3 times — cooling down for 5 min`);
                     }
                 } else {
                     this[chatgptStrikeKey] = 0;
@@ -1222,7 +1222,7 @@ export const ApiService = {
                 }
                 return res;
             } catch (e) {
-                console.warn(`  ${logPrefix} ChatGPT error:`, e?.message || e);
+                console.warn(` ${logPrefix} ChatGPT error:`, e?.message || e);
                 return null;
             }
         };
@@ -1230,9 +1230,9 @@ export const ApiService = {
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
                 const model = opts.model_openrouter || settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
-                console.log(`  ${logPrefix} Trying OpenRouter (${model})...`);
+                console.log(` ${logPrefix} Trying OpenRouter (${model})...`);
                 return await this._callOpenRouter(messages, { ...opts, model });
-            } catch (e) { console.warn(`  ${logPrefix} OpenRouter error:`, e?.message || e); return null; }
+            } catch (e) { console.warn(` ${logPrefix} OpenRouter error:`, e?.message || e); return null; }
         };
 
         // Build chain with all available providers
@@ -1249,7 +1249,7 @@ export const ApiService = {
         if (primaryIdx > 0) fallbackChain.unshift(...fallbackChain.splice(primaryIdx, 1));
 
         const providerOrder = fallbackChain.map(p => p.name);
-        console.log(`  ${logPrefix} primaryProvider=${primary} | order=${providerOrder.join(' -> ') || '(none)'}`);
+        console.log(` ${logPrefix} primaryProvider=${primary} | order=${providerOrder.join(' ->') || '(none)'}`);
 
         let usedProvider = null;
         let result = null;
@@ -1259,11 +1259,11 @@ export const ApiService = {
                 usedProvider = provider.name;
                 break;
             }
-            console.log(`  ${logPrefix} ${provider.name} returned empty/null — trying next...`);
+            console.log(` ${logPrefix} ${provider.name} returned empty/null — trying next...`);
         }
 
         if (usedProvider && usedProvider !== primary) {
-            console.log(`  ${logPrefix} fallback used: requested=${primary} → actual=${usedProvider}`);
+            console.log(` ${logPrefix} fallback used: requested=${primary} → actual=${usedProvider}`);
         }
         return { content: result, usedProvider };
     },
@@ -1291,7 +1291,7 @@ export const ApiService = {
         let hostHint = '';
         try { hostHint = new URL(url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
 
-        console.log(`  🌐 [aiExtractFromUrl] Fetching via Jina: ${hostHint}`);
+        console.log(` [NET] [aiExtractFromUrl] Fetching via Jina: ${hostHint}`);
         try {
             const snap = await this._fetchTextWithTimeout(jinaUrl, {
                 method: 'GET',
@@ -1306,14 +1306,14 @@ export const ApiService = {
 
             const text = (snap?.text || '').trim();
             if (!snap?.ok || text.length < 100) {
-                console.log(`  🌐 [aiExtractFromUrl] Jina failed (ok=${snap?.ok} len=${text.length}) for ${hostHint}`);
+                console.log(` [NET] [aiExtractFromUrl] Jina failed (ok=${snap?.ok} len=${text.length}) for ${hostHint}`);
                 return null;
             }
 
-            console.log(`  🌐 [aiExtractFromUrl] Jina OK — ${text.length} chars for ${hostHint}`);
+            console.log(` [NET] [aiExtractFromUrl] Jina OK — ${text.length} chars for ${hostHint}`);
             return await this.aiExtractFromPage(text, questionText, hostHint);
         } catch (e) {
-            console.warn(`  🌐 [aiExtractFromUrl] Error for ${hostHint}:`, e?.message || e);
+            console.warn(` [NET] [aiExtractFromUrl] Error for ${hostHint}:`, e?.message || e);
             return null;
         }
     },
@@ -1355,7 +1355,7 @@ export const ApiService = {
         try { hostHint = new URL(url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
         try {
             const jinaUrl = `https://r.jina.ai/${url}`;
-            console.log(`  [Jina] Fetching ${hostHint}...`);
+            console.log(` [Jina] Fetching ${hostHint}...`);
             const snap = await this._fetchTextWithTimeout(jinaUrl, {
                 method: 'GET',
                 headers: {
@@ -1369,13 +1369,13 @@ export const ApiService = {
             const text = (snap?.text || '').trim();
             if (!snap?.ok || text.length < 150) {
                 // Menos de 150 chars = página de CAPTCHA, erro ou redirect vazio
-                console.log(`  [Jina] ⛔ Failed (ok=${snap?.ok}, len=${text.length}) for ${hostHint}`);
+                console.log(` [Jina] [BLOCKED] Failed (ok=${snap?.ok}, len=${text.length}) for ${hostHint}`);
                 return null;
             }
-            console.log(`  [Jina] ✅ Got ${text.length} chars from ${hostHint}`);
+            console.log(` [Jina] [OK] Got ${text.length} chars from ${hostHint}`);
             return text;
         } catch (e) {
-            console.warn(`  [Jina] ❌ Error for ${hostHint}:`, e?.message);
+            console.warn(` [Jina] [FAIL] Error for ${hostHint}:`, e?.message);
             return null;
         }
     },
@@ -1404,7 +1404,7 @@ export const ApiService = {
             'uma', 'são', 'dos', 'das', 'que', 'não', 'com', 'por',
         ]);
         const words = (questionText || '').toLowerCase()
-            .replace(/[^a-záàâãéèêíïóôõúüç\s]/gi, ' ')
+            .replace(/[^a-záàâãéèêíïóôõúüç\s]/gi, '')
             .split(/\s+/)
             .filter(w => w.length >= 4 && !stopwords.has(w));
         const keywords = [...new Set(words)].slice(0, 15);
@@ -1453,7 +1453,7 @@ export const ApiService = {
 
         const result = pageText.substring(bestStart, bestStart + maxLen);
         if (bestStart > 0) {
-            console.log(`  [smartTruncate] Janela otimizada: start=${bestStart}/${pageText.length} score=${bestScore} keywords=${keywords.length}`);
+            console.log(` [smartTruncate] Janela otimizada: start=${bestStart}/${pageText.length} score=${bestScore} keywords=${keywords.length}`);
         }
         return result;
     },
@@ -1498,7 +1498,7 @@ export const ApiService = {
      */
     async aiExtractTextFromPage(pageText, questionText, hostHint = '') {
         if (!pageText || pageText.length < 100 || !questionText) {
-            console.log(`  [aiExtractText] SKIP: texto muito curto (${(pageText || '').length} chars)`);
+            console.log(` [aiExtractText] SKIP: texto muito curto (${(pageText || '').length} chars)`);
             return null;
         }
 
@@ -1506,7 +1506,7 @@ export const ApiService = {
         const truncatedPage = this._smartTruncate(pageText, questionText, 8000);
         const truncatedQuestion = questionText.substring(0, 1800);
 
-        console.log(`  [aiExtractText] START host=${hostHint} pageLen=${truncatedPage.length}`);
+        console.log(` [aiExtractText] START host=${hostHint} pageLen=${truncatedPage.length}`);
 
         const systemMsg = `Você é um especialista em encontrar respostas de questões de múltipla escolha dentro de textos acadêmicos. Analise o texto fornecido com rigor. Responda APENAS com base no texto — nunca invente informações.`;
 
@@ -1573,7 +1573,7 @@ Responda no formato acima:`;
         );
 
         if (!content || /RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
-            console.log(`  [aiExtractText] RESULT: NAO_ENCONTRADO (provider=${usedProvider})`);
+            console.log(` [aiExtractText] RESULT: NAO_ENCONTRADO (provider=${usedProvider})`);
             return null;
         }
 
@@ -1586,7 +1586,7 @@ Responda no formato acima:`;
             if (fonteMatch?.[1]) {
                 const rawSourceAnswer = fonteMatch[1].trim().replace(/^["""''`]+|["""''`]+$/g, '').replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim();
                 const sourceLetter = letraFonteFora?.[1]?.toUpperCase() || null;
-                console.log(`  [aiExtractText] RESULT: ENCONTRADO_FORA rawAnswer="${rawSourceAnswer.slice(0, 100)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
+                console.log(` [aiExtractText] RESULT: ENCONTRADO_FORA rawAnswer="${rawSourceAnswer.slice(0, 100)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
                 return {
                     answerText: null,
                     rawSourceAnswer,
@@ -1604,12 +1604,12 @@ Responda no formato acima:`;
 
         if (!textMatch?.[1]) {
             // O modelo disse ENCONTRADO mas não incluiu TEXTO_CORRETO — resposta malformada
-            console.log(`  [aiExtractText] RESULT: sem TEXTO_CORRETO na resposta`);
+            console.log(` [aiExtractText] RESULT: sem TEXTO_CORRETO na resposta`);
             return null;
         }
 
         // Remove aspas e prefixos de letra que modelos frequentemente incluem
-        // Ex: TEXTO_CORRETO: "Chave de partição"  → "Chave de partição"
+        // Ex: TEXTO_CORRETO: "Chave de partição" → "Chave de partição"
         // Ex: TEXTO_CORRETO: A) Chave de partição → "Chave de partição"
         // Ex: TEXTO_CORRETO: A - Chave de partição → "Chave de partição"
         const answerText = textMatch[1].trim()
@@ -1622,7 +1622,7 @@ Responda no formato acima:`;
         const letraFonteMatch = content.match(/LETRA_FONTE:\s*([A-E])/i);
         const sourceLetter = letraFonteMatch?.[1]?.toUpperCase() || null;
 
-        console.log(`  [aiExtractText] RESULT: answerText="${answerText.slice(0, 100)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
+        console.log(` [aiExtractText] RESULT: answerText="${answerText.slice(0, 100)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
 
         return {
             answerText,
@@ -1692,7 +1692,7 @@ Responda no formato acima:`;
             `[Fonte ${i + 1} — ${s.host}]\n${s.title ? s.title + '\n' : ''}${s.snippet}`
         ).join('\n\n');
 
-        console.log(`  [snippetExtract] START: ${useful.length} snippets, ${combinedText.length} chars total`);
+        console.log(` [snippetExtract] START: ${useful.length} snippets, ${combinedText.length} chars total`);
 
         const systemMsg = `Você é um especialista em encontrar respostas de questões de múltipla escolha. Analise os trechos de busca e encontre o gabarito da questão. Responda APENAS com base nos trechos.`;
 
@@ -1739,7 +1739,7 @@ Responda no formato acima:`;
         );
 
         if (!content || /RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
-            console.log(`  [snippetExtract] RESULT: NAO_ENCONTRADO (provider=${usedProvider})`);
+            console.log(` [snippetExtract] RESULT: NAO_ENCONTRADO (provider=${usedProvider})`);
             return null;
         }
 
@@ -1754,7 +1754,7 @@ Responda no formato acima:`;
                     .replace(/^["""''`]+|["""''`]+$/g, '')
                     .replace(/^[A-E]\s*[\)\.\-:]\s*/i, '')
                     .trim();
-                console.log(`  [snippetExtract] RESULT: ENCONTRADO_FORA rawAnswer="${rawSourceAnswer.slice(0, 80)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
+                console.log(` [snippetExtract] RESULT: ENCONTRADO_FORA rawAnswer="${rawSourceAnswer.slice(0, 80)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
                 return { answerText: null, rawSourceAnswer, sourceLetter, evidence: (evidFora?.[1] || '').trim().slice(0, 400), confidence: 0.72 };
             }
         }
@@ -1762,7 +1762,7 @@ Responda no formato acima:`;
         const evidMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_CORRETO:|$)/i);
         const textMatch = content.match(/TEXTO_CORRETO:\s*(.+)/i);
         if (!textMatch?.[1]) {
-            console.log(`  [snippetExtract] RESULT: sem TEXTO_CORRETO`);
+            console.log(` [snippetExtract] RESULT: sem TEXTO_CORRETO`);
             return null;
         }
         const answerText = textMatch[1].trim()
@@ -1770,7 +1770,7 @@ Responda no formato acima:`;
             .replace(/^[A-E]\s*[\)\.\-:]\s*/i, '')
             .trim();
 
-        console.log(`  [snippetExtract] RESULT: answerText="${answerText.slice(0, 80)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
+        console.log(` [snippetExtract] RESULT: answerText="${answerText.slice(0, 80)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
         return { answerText, sourceLetter, evidence: (evidMatch?.[1] || '').trim().slice(0, 400), confidence: 0.78 };
     },
 
@@ -1786,7 +1786,7 @@ Responda no formato acima:`;
      */
     async aiExtractFromPage(pageText, questionText, hostHint = '') {
         if (!pageText || pageText.length < 100 || !questionText) {
-            console.log(`  🔬 [aiExtract] SKIP: text too short (${(pageText || '').length} chars)`);
+            console.log(` [EXTRACT] [aiExtract] SKIP: text too short (${(pageText || '').length} chars)`);
             return null;
         }
 
@@ -1794,7 +1794,7 @@ Responda no formato acima:`;
         const truncatedPage = this._smartTruncate(pageText, questionText, 8000);
         const truncatedQuestion = questionText.substring(0, 1800);
 
-        console.log(`  🔬 [aiExtract] START host=${hostHint} pageLen=${truncatedPage.length} questionLen=${truncatedQuestion.length}`);
+        console.log(` [EXTRACT] [aiExtract] START host=${hostHint} pageLen=${truncatedPage.length} questionLen=${truncatedQuestion.length}`);
 
         const systemMsg = `Você é um especialista em encontrar respostas de questões de múltipla escolha dentro de textos acadêmicos. Analise o texto fornecido com rigor. Responda APENAS com base no texto — nunca invente informações.`;
 
@@ -1808,7 +1808,7 @@ O texto pode conter VÁRIAS questões sobre o mesmo tema. Você DEVE:
 - NUNCA usar gabarito/resposta de uma questão DIFERENTE, mesmo que trate do mesmo assunto
 
 # O que procurar (em ordem de prioridade)
-1. Gabarito explícito: "Gabarito: X", "Resposta: X", "Alternativa correta: X", marcação ✓/★
+1. Gabarito explícito: "Gabarito: X", "Resposta: X", "Alternativa correta: X", marcação /
 2. Resolução da questão: explicação que conclua em uma alternativa
 3. Questão idêntica/similar com resposta em outro local do texto
 4. Definições ou conceitos que confirmem/refutem alternativas
@@ -1879,11 +1879,11 @@ Analise o texto passo a passo e responda no formato acima:`;
         /* ---------- Try Gemini (preferred — free, higher limits) ---------- */
         const tryGemini = async () => {
             if (!settings.geminiApiKey) {
-                console.log(`  🔬 [aiExtract] Gemini: no API key`);
+                console.log(` [EXTRACT] [aiExtract] Gemini: no API key`);
                 return null;
             }
             try {
-                console.log(`  🔬 [aiExtract] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
+                console.log(` [EXTRACT] [aiExtract] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
                 const result = await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -1892,11 +1892,11 @@ Analise o texto passo a passo e responda no formato acima:`;
                     max_tokens: 300,
                     model: 'gemini-2.5-flash' // Force fast model for heavy extraction loop
                 });
-                console.log(`  🔬 [aiExtract] Gemini response: ${result ? result.length + ' chars' : 'null'}`);
-                if (result) console.log(`  🔬 [aiExtract] Gemini preview: "${result.substring(0, 200)}"`);
+                console.log(` [EXTRACT] [aiExtract] Gemini response: ${result ? result.length + ' chars' : 'null'}`);
+                if (result) console.log(` [EXTRACT] [aiExtract] Gemini preview: "${result.substring(0, 200)}"`);
                 return result;
             } catch (e) {
-                console.warn(`  🔬 [aiExtract] Gemini error:`, e?.message || e);
+                console.warn(` [EXTRACT] [aiExtract] Gemini error:`, e?.message || e);
                 return null;
             }
         };
@@ -1924,15 +1924,15 @@ Analise o texto passo a passo e responda no formato acima:`;
         const tryGroq = async () => {
             const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
             if (!groqApiKey) {
-                console.log(`  🔬 [aiExtract] Groq: no API key`);
+                console.log(` [EXTRACT] [aiExtract] Groq: no API key`);
                 return null;
             }
             if (this._groqQuotaExhaustedUntil > Date.now()) {
-                console.log(`  🔬 [aiExtract] Groq: quota exhausted, skipping`);
+                console.log(` [EXTRACT] [aiExtract] Groq: quota exhausted, skipping`);
                 return null;
             }
             try {
-                console.log(`  🔬 [aiExtract] Trying Groq (${groqModelSmart})...`);
+                console.log(` [EXTRACT] [aiExtract] Trying Groq (${groqModelSmart})...`);
                 const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
@@ -1944,11 +1944,11 @@ Analise o texto passo a passo e responda no formato acima:`;
                     })
                 }));
                 const result = data?.choices?.[0]?.message?.content?.trim() || null;
-                console.log(`  🔬 [aiExtract] Groq response: ${result ? result.length + ' chars' : 'null'}`);
-                if (result) console.log(`  🔬 [aiExtract] Groq preview: "${result.substring(0, 200)}"`);
+                console.log(` [EXTRACT] [aiExtract] Groq response: ${result ? result.length + ' chars' : 'null'}`);
+                if (result) console.log(` [EXTRACT] [aiExtract] Groq preview: "${result.substring(0, 200)}"`);
                 return result;
             } catch (e) {
-                console.warn(`  🔬 [aiExtract] Groq error:`, e?.message || e);
+                console.warn(` [EXTRACT] [aiExtract] Groq error:`, e?.message || e);
                 return null;
             }
         };
@@ -1956,7 +1956,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         const tryChatGPT = async () => {
             if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
             try {
-                console.log(`  🔬 [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.2-codex'})...`);
+                console.log(` [EXTRACT] [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.2-codex'})...`);
                 const result = await this._callChatGPT([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -1965,10 +1965,10 @@ Analise o texto passo a passo e responda no formato acima:`;
                     max_tokens: 300,
                     model: settings.chatgptModel || 'gpt-5.2-codex'
                 });
-                console.log(`  🔬 [aiExtract] ChatGPT response: ${result ? result.length + ' chars' : 'null'}`);
+                console.log(` [EXTRACT] [aiExtract] ChatGPT response: ${result ? result.length + ' chars' : 'null'}`);
                 return result;
             } catch (e) {
-                console.warn('  🔬 [aiExtract] ChatGPT error:', e?.message || e);
+                console.warn(' [EXTRACT] [aiExtract] ChatGPT error:', e?.message || e);
                 return null;
             }
         };
@@ -1976,7 +1976,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         const tryCopilot = async () => {
             if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
             try {
-                console.log(`  🔬 [aiExtract] Trying Copilot (${settings.copilotModel || 'gpt-4o'})...`);
+                console.log(` [EXTRACT] [aiExtract] Trying Copilot (${settings.copilotModel || 'gpt-4o'})...`);
                 const result = await this._callCopilot([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -1985,10 +1985,10 @@ Analise o texto passo a passo e responda no formato acima:`;
                     max_tokens: 300,
                     model: settings.copilotModel || 'gpt-4o'
                 });
-                console.log(`  🔬 [aiExtract] Copilot response: ${result ? result.length + ' chars' : 'null'}`);
+                console.log(` [EXTRACT] [aiExtract] Copilot response: ${result ? result.length + ' chars' : 'null'}`);
                 return result;
             } catch (e) {
-                console.warn('  🔬 [aiExtract] Copilot error:', e?.message || e);
+                console.warn(' [EXTRACT] [aiExtract] Copilot error:', e?.message || e);
                 return null;
             }
         };
@@ -2031,8 +2031,8 @@ Analise o texto passo a passo e responda no formato acima:`;
         }
 
         const fallbackOrder = fallbackChain.map(p => p.name);
-        console.log(`  🔬 [aiExtract] primaryProvider(config)=${primary}`);
-        console.log(`  🔬 [aiExtract] providerOrder(run)=${fallbackOrder.length ? fallbackOrder.join(' -> ') : '(empty)'}`);
+        console.log(` [EXTRACT] [aiExtract] primaryProvider(config)=${primary}`);
+        console.log(` [EXTRACT] [aiExtract] providerOrder(run)=${fallbackOrder.length ? fallbackOrder.join(' ->') : '(empty)'}`);
 
         let usedProvider = null;
         for (const provider of fallbackChain) {
@@ -2045,19 +2045,19 @@ Analise o texto passo a passo e responda no formato acima:`;
             }
             // If provider returned null (likely quota error or crash) or explicitly NAO_ENCONTRADO,
             // we loop to the next provider in the chain.
-            console.log(`  🔬 [aiExtract] ${provider.name} failed or NAO_ENCONTRADO, trying next fallback...`);
+            console.log(` [EXTRACT] [aiExtract] ${provider.name} failed or NAO_ENCONTRADO, trying next fallback...`);
         }
 
         if (!content || content.length < 10) {
-            console.log(`  🔬 [aiExtract] RESULT: no response from any provider`);
+            console.log(` [EXTRACT] [aiExtract] RESULT: no response from any provider`);
             return null;
         }
 
-        console.log(`  🔬 [aiExtract] providerUsed(result)=${usedProvider || 'unknown'}`);
+        console.log(` [EXTRACT] [aiExtract] providerUsed(result)=${usedProvider || 'unknown'}`);
         if (usedProvider && usedProvider !== primary) {
-            console.log(`  🔬 [aiExtract] providerFallback=true (requested=${primary} -> used=${usedProvider})`);
+            console.log(` [EXTRACT] [aiExtract] providerFallback=true (requested=${primary} -> used=${usedProvider})`);
         } else {
-            console.log(`  🔬 [aiExtract] providerFallback=false`);
+            console.log(` [EXTRACT] [aiExtract] providerFallback=false`);
         }
 
         /* ---------- Parse response ---------- */
@@ -2065,8 +2065,8 @@ Analise o texto passo a passo e responda no formato acima:`;
         if (/RESULTADO:\s*CONHECIMENTO_PARCIAL/i.test(content)) {
             const knowledgeMatch = content.match(/CONHECIMENTOS?:\s*([\s\S]+)/i);
             const knowledge = knowledgeMatch ? knowledgeMatch[1].trim().substring(0, 1200) : content.substring(0, 1200);
-            console.log(`  🔬 [aiExtract] RESULT: PARTIAL KNOWLEDGE (${knowledge.length} chars)`);
-            console.log(`  🔬 [aiExtract] Knowledge preview: "${knowledge.substring(0, 200)}"`);
+            console.log(` [EXTRACT] [aiExtract] RESULT: PARTIAL KNOWLEDGE (${knowledge.length} chars)`);
+            console.log(` [EXTRACT] [aiExtract] Knowledge preview: "${knowledge.substring(0, 200)}"`);
             return {
                 letter: null,
                 evidence: null,
@@ -2078,7 +2078,7 @@ Analise o texto passo a passo e responda no formato acima:`;
 
         // Check for NAO_ENCONTRADO
         if (/RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
-            console.log(`  🔬 [aiExtract] RESULT: NAO_ENCONTRADO`);
+            console.log(` [EXTRACT] [aiExtract] RESULT: NAO_ENCONTRADO`);
             return null;
         }
 
@@ -2087,7 +2087,7 @@ Analise o texto passo a passo e responda no formato acima:`;
             || content.match(/\b([A-E])\s*[\):\.\-]\s*\S/);
         if (!letterMatch) {
             // No letter but might have useful knowledge
-            console.log(`  🔬 [aiExtract] RESULT: response but no letter found. Treating as knowledge.`);
+            console.log(` [EXTRACT] [aiExtract] RESULT: response but no letter found. Treating as knowledge.`);
             return {
                 letter: null,
                 evidence: null,
@@ -2100,7 +2100,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         const letter = letterMatch[1].toUpperCase();
         const evidenceMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
         const evidence = evidenceMatch ? evidenceMatch[1].trim() : content;
-        console.log(`  🔬 [aiExtract] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
+        console.log(` [EXTRACT] [aiExtract] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
 
         return {
             letter,
@@ -2121,7 +2121,7 @@ Analise o texto passo a passo e responda no formato acima:`;
      */
     async aiExtractFromHtml(htmlSnippet, questionText, hostHint = '') {
         if (!htmlSnippet || htmlSnippet.length < 300 || !questionText) {
-            console.log(`  🔬 [aiHtml] SKIP: snippet too short (${(htmlSnippet || '').length} chars)`);
+            console.log(` [EXTRACT] [aiHtml] SKIP: snippet too short (${(htmlSnippet || '').length} chars)`);
             return null;
         }
 
@@ -2129,7 +2129,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         const truncatedHtml = htmlSnippet.substring(0, 12000);
         const truncatedQuestion = questionText.substring(0, 1800);
 
-        console.log(`  🔬 [aiHtml] START host=${hostHint} htmlLen=${truncatedHtml.length} questionLen=${truncatedQuestion.length}`);
+        console.log(` [EXTRACT] [aiHtml] START host=${hostHint} htmlLen=${truncatedHtml.length} questionLen=${truncatedQuestion.length}`);
 
         const systemMsg = `Você é um especialista em análise de HTML/CSS de páginas educacionais. Sua tarefa é encontrar respostas de questões identificando DESTAQUES VISUAIS no HTML.`;
 
@@ -2192,21 +2192,21 @@ Analise o HTML e responda:`;
                 model_chatgpt: settings.chatgptModel || 'gpt-5.2',
                 model_copilot: settings.copilotModel || 'claude-sonnet-4.6'
             },
-            '🔬 [aiHtml]'
+            ' [aiHtml]'
         );
         if (usedProvider) {
-            console.log(`  🔬 [aiHtml] provider used: ${usedProvider}`);
+            console.log(` [EXTRACT] [aiHtml] provider used: ${usedProvider}`);
         }
 
         if (!content || content.length < 10) {
-            console.log(`  🔬 [aiHtml] RESULT: no response`);
+            console.log(` [EXTRACT] [aiHtml] RESULT: no response`);
             return null;
         }
 
-        console.log(`  🔬 [aiHtml] Response (${content.length} chars): "${content.substring(0, 250)}"`);
+        console.log(` [EXTRACT] [aiHtml] Response (${content.length} chars): "${content.substring(0, 250)}"`);
 
         if (/RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
-            console.log(`  🔬 [aiHtml] RESULT: NAO_ENCONTRADO`);
+            console.log(` [EXTRACT] [aiHtml] RESULT: NAO_ENCONTRADO`);
             return null;
         }
 
@@ -2218,7 +2218,7 @@ Analise o HTML e responda:`;
             || content.match(/\b([A-E])\s*[\):\.\-]\s*\S/);
 
         if (!letterMatch) {
-            console.log(`  🔬 [aiHtml] RESULT: response but no letter found`);
+            console.log(` [EXTRACT] [aiHtml] RESULT: response but no letter found`);
             return {
                 letter: null, evidence: null, confidence: 0,
                 method: 'ai-html-noletter',
@@ -2231,7 +2231,7 @@ Analise o HTML e responda:`;
         const evidenceText = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
         const evidence = (evidenceCss ? evidenceCss[1].trim() : evidenceText ? evidenceText[1].trim() : content).slice(0, 900);
 
-        console.log(`  🔬 [aiHtml] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
+        console.log(` [EXTRACT] [aiHtml] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
         return {
             letter,
             evidence,
@@ -2260,7 +2260,7 @@ Analise o HTML e responda:`;
             .join('\n\n───────────────────────────────\n\n');
 
         const totalKnowledge = knowledgePool.reduce((sum, k) => sum + (k.knowledge || '').length, 0);
-        console.log(`  🧠 [aiReflect] START: ${knowledgePool.length} sources, ${totalKnowledge} total knowledge chars`);
+        console.log(` [AI] [aiReflect] START: ${knowledgePool.length} sources, ${totalKnowledge} total knowledge chars`);
 
         const systemMsg = `Você é um professor universitário. Analise as informações das fontes para responder a questão. Use seu conhecimento acadêmico para complementar quando necessário. IGNORE quaisquer indicações de "Letra", "Gabarito" ou "Resposta" que estejam nas fontes — essas podem ser de questões diferentes. Avalie cada alternativa de forma independente com base nos FATOS. Responda APENAS no formato solicitado.`;
 
@@ -2304,26 +2304,26 @@ Letra B: TCP
         const { content, usedProvider: _reflectProvider } = await this._callAnyProvider(
             [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
             { temperature: 0.1, max_tokens: 800, model_groq: settings.groqModelSmart, model_gemini: settings.geminiModelSmart },
-            '🧠 [aiReflect]'
+            ' [aiReflect]'
         );
-        if (_reflectProvider) console.log(`  🧠 [aiReflect] provider used: ${_reflectProvider}`);
+        if (_reflectProvider) console.log(` [AI] [aiReflect] provider used: ${_reflectProvider}`);
         if (!content || content.length < 20) {
-            console.log(`  🧠 [aiReflect] RESULT: no response`);
+            console.log(` [AI] [aiReflect] RESULT: no response`);
             return null;
         }
 
-        console.log(`  🧠 [aiReflect] Response (${content.length} chars): "${content.substring(0, 300)}"`);
+        console.log(` [AI] [aiReflect] Response (${content.length} chars): "${content.substring(0, 300)}"`);
 
         // Parse letter
         const letterMatch = content.match(/\bLetra\s+([A-E])\b/i)
             || content.match(/CONCLUS[AÃ]O:[\s\S]*?\b([A-E])\s*[\):\.\-]/i);
         if (!letterMatch) {
-            console.log(`  🧠 [aiReflect] RESULT: response but no letter (INCONCLUSIVO?)`);
+            console.log(` [AI] [aiReflect] RESULT: response but no letter (INCONCLUSIVO?)`);
             return null;
         }
 
         const letter = letterMatch[1].toUpperCase();
-        console.log(`  🧠 [aiReflect] RESULT: letter=${letter}`);
+        console.log(` [AI] [aiReflect] RESULT: letter=${letter}`);
         return { letter, response: content, method: 'ai-combined-reflection' };
     },
 
@@ -2334,14 +2334,14 @@ Letra B: TCP
     // ─────────────────────────────────────────────────────────────────────────
     async aiVerifyLetterInContext(questionText, suggestedLetter, sourceText, host = '') {
         if (!questionText || !suggestedLetter || !sourceText || sourceText.length < 200) {
-            console.log(`  🔎 [aiVerify] SKIP: missing args or text too short (${(sourceText || '').length} chars)`);
+            console.log(` [SEARCH] [aiVerify] SKIP: missing args or text too short (${(sourceText || '').length} chars)`);
             return null;
         }
 
         const settings = await this._getSettings();
         const truncatedSource = sourceText.substring(0, 2000);
         const truncatedQuestion = questionText.substring(0, 1800);
-        console.log(`  🔎 [aiVerify] START host=${host} suggestedLetter=${suggestedLetter} sourceLen=${truncatedSource.length}`);
+        console.log(` [SEARCH] [aiVerify] START host=${host} suggestedLetter=${suggestedLetter} sourceLen=${truncatedSource.length}`);
 
         const systemMsg = `Você é um especialista em questões de múltipla escolha brasileiras. Sua tarefa é identificar qual é a resposta correta para a questão do aluno com base no texto de uma fonte. As alternativas podem estar embaralhadas ou com letras diferentes entre a fonte e a questão — identifique pelo CONTEÚDO (texto), não pela letra. Responda APENAS no formato solicitado.`;
 
@@ -2389,15 +2389,15 @@ INCONCLUSIVO: [motivo em 1 linha]`;
         const { content: _verifRaw, usedProvider: _verifProvider } = await this._callAnyProvider(
             [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
             { temperature: 0.05, max_tokens: 200, model_groq: settings.groqModelSmart || settings.groqModelFast || 'llama-3.3-70b-versatile', model_gemini: settings.geminiModelSmart || settings.geminiModelFast || 'gemini-2.5-flash' },
-            '🔎 [aiVerify]'
+            ' [aiVerify]'
         );
         const result = parseVerifyResponse(_verifRaw);
-        if (_verifProvider) console.log(`  🔎 [aiVerify] provider used: ${_verifProvider} | parsed: ${JSON.stringify(result)}`);
+        if (_verifProvider) console.log(` [SEARCH] [aiVerify] provider used: ${_verifProvider} | parsed: ${JSON.stringify(result)}`);
 
         if (result) {
-            console.log(`  🔎 [aiVerify] DONE: action=${result.action} letter=${result.letter} confidence=${result.confidence}`);
+            console.log(` [SEARCH] [aiVerify] DONE: action=${result.action} letter=${result.letter} confidence=${result.confidence}`);
         } else {
-            console.log(`  🔎 [aiVerify] DONE: no result from any provider`);
+            console.log(` [SEARCH] [aiVerify] DONE: no result from any provider`);
         }
         return result;
     },
@@ -2462,7 +2462,7 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                     renderWaitMs: _isStudocuTab ? 4000 : _isBrainlyTab ? 3500 : 2000
                 });
                 if (_tabText && _tabText.length > 80) {
-                    console.log(`[AH-TAB] ✅ Extracted ${_tabText.length} chars via hidden tab`);
+                    console.log(`[AH-TAB] [OK] Extracted ${_tabText.length} chars via hidden tab`);
                     return {
                         ok: true,
                         status: 200,
@@ -2572,26 +2572,26 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             // (e.g. from HTML truncation or anti-bot injectors like DataDome / captcha-display).
             const sanitized = html
                 // Remove ALL script blocks: paired, self-closing, unclosed, and JSON-embedded
-                .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-                .replace(/<script\b[^>]*\/?>/gi, ' ')
-                .replace(/<script\b[\s\S]*?(?=<(?:\/head|\/body|!--|meta|link))/gi, ' ')
-                .replace(/<\s*script\b[\s\S]*$/gi, ' ')
-                .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
-                .replace(/<noscript\b[^>]*\/?>/gi, ' ')
-                .replace(/<\s*noscript\b[\s\S]*$/gi, ' ')
-                .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, ' ')
-                .replace(/<iframe\b[^>]*\/?>/gi, ' ')
-                .replace(/<\s*iframe\b[\s\S]*$/gi, ' ')
-                .replace(/<object\b[\s\S]*?<\/object>/gi, ' ')
-                .replace(/<\s*object\b[\s\S]*$/gi, ' ')
-                .replace(/<embed\b[^>]*>/gi, ' ')
-                .replace(/<link\b[^>]*>/gi, ' ')
+                .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+                .replace(/<script\b[^>]*\/?>/gi, '')
+                .replace(/<script\b[\s\S]*?(?=<(?:\/head|\/body|!--|meta|link))/gi, '')
+                .replace(/<\s*script\b[\s\S]*$/gi, '')
+                .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, '')
+                .replace(/<noscript\b[^>]*\/?>/gi, '')
+                .replace(/<\s*noscript\b[\s\S]*$/gi, '')
+                .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
+                .replace(/<iframe\b[^>]*\/?>/gi, '')
+                .replace(/<\s*iframe\b[\s\S]*$/gi, '')
+                .replace(/<object\b[\s\S]*?<\/object>/gi, '')
+                .replace(/<\s*object\b[\s\S]*$/gi, '')
+                .replace(/<embed\b[^>]*>/gi, '')
+                .replace(/<link\b[^>]*>/gi, '')
                 // Remove anti-bot / captcha domains in ALL encoding forms
-                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
-                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.captcha-display\.com(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
-                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)(?:api-js\.)?datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
-                .replace(/datadome\.co/gi, ' ')
-                .replace(/captcha-display\.com/gi, ' ');
+                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, '')
+                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.captcha-display\.com(?:\/|\\?\/)[^\s"'<>]*/gi, '')
+                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)(?:api-js\.)?datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, '')
+                .replace(/datadome\.co/gi, '')
+                .replace(/captcha-display\.com/gi, '');
             const parser = new DOMParser();
             const doc = parser.parseFromString(sanitized, 'text/html');
             const elementsToRemove = doc.querySelectorAll('style, nav, header, footer, aside, noscript, [role="navigation"], [role="banner"], .ads, .advertisement, .sidebar');
@@ -2600,7 +2600,7 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             // to avoid word fragmentation in extracted text.
             doc.querySelectorAll('.blank').forEach(el => el.remove());
             doc.querySelectorAll('div, p, br, li, h1, h2, h3, h4, h5, h6, tr, td, article, section, footer, header').forEach(el => {
-                el.appendChild(doc.createTextNode(' '));
+                el.appendChild(doc.createTextNode(''));
             });
             derivedText = (doc.body?.textContent || '').trim();
         } catch {
@@ -3016,12 +3016,12 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             'Você é um validador de extração de questões de provas.',
             'Analise o texto abaixo e responda em JSON:',
             '{',
-            '  "valid": true/false,',
-            '  "reason": "string explicando",',
-            '  "questionCount": número de questões detectadas,',
-            '  "hasCompleteEnunciado": true/false,',
-            '  "hasOptions": true/false,',
-            '  "fixedText": "texto corrigido se valid=false e correção possível, senão null"',
+            ' "valid": true/false,',
+            ' "reason": "string explicando",',
+            ' "questionCount": número de questões detectadas,',
+            ' "hasCompleteEnunciado": true/false,',
+            ' "hasOptions": true/false,',
+            ' "fixedText": "texto corrigido se valid=false e correção possível, senão null"',
             '}',
             '',
             'Critérios:',
@@ -3149,7 +3149,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             .toLowerCase()
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9\s]/g, ' ')
+            .replace(/[^a-z0-9\s]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
         const STOPWORDS = new Set([
@@ -3158,11 +3158,11 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             'sobre', 'apenas', 'indica', 'afirmativa', 'fator', 'importante', 'desempenho'
         ]);
         const toTokens = (text) => normalizeForMatch(text)
-            .split(' ')
+            .split(/\s+/)
             .filter(t => t.length >= 3 && !STOPWORDS.has(t));
         const unique = (arr) => Array.from(new Set((arr || []).filter(Boolean)));
         const decodeHtml = (raw) => String(raw || '')
-            .replace(/&nbsp;/gi, ' ')
+            .replace(/&nbsp;/gi, '')
             .replace(/&amp;/gi, '&')
             .replace(/&quot;/gi, '"')
             .replace(/&#39;/gi, '\'')
@@ -3175,21 +3175,21 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
-            .replace(/->>/g, ' op_json_text ')
-            .replace(/->/g, ' op_json_obj ')
-            .replace(/=>/g, ' op_arrow ')
-            .replace(/::/g, ' op_dcolon ')
-            .replace(/:=/g, ' op_assign ')
-            .replace(/!=/g, ' op_neq ')
-            .replace(/<>/g, ' op_neq ')
-            .replace(/<=/g, ' op_lte ')
-            .replace(/>=/g, ' op_gte ')
-            .replace(/</g, ' op_lt ')
-            .replace(/>/g, ' op_gt ')
-            .replace(/:/g, ' op_colon ')
-            .replace(/=/g, ' op_eq ')
-            .replace(/[^a-z0-9_]+/g, ' ')
-            .replace(/\s+/g, ' ')
+            .replace(/->>/g, ' op_json_text')
+            .replace(/->/g, ' op_json_obj')
+            .replace(/=>/g, ' op_arrow')
+            .replace(/::/g, ' op_dcolon')
+            .replace(/:=/g, ' op_assign')
+            .replace(/!=/g, ' op_neq')
+            .replace(/<>/g, ' op_neq')
+            .replace(/<=/g, ' op_lte')
+            .replace(/>=/g, ' op_gte')
+            .replace(/</g, ' op_lt')
+            .replace(/>/g, ' op_gt')
+            .replace(/:/g, ' op_colon')
+            .replace(/=/g, ' op_eq')
+            .replace(/[^a-z0-9_]+/g, '')
+            .replace(/\s+/g, '')
             .trim();
         const extractOptionHints = (raw) => {
             const text = String(raw || '').replace(/\r\n/g, '\n');
@@ -3219,14 +3219,14 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
         };
 
         const compactOptionHint = (optRaw) => {
-            let opt = normalizeSpace(optRaw || '').replace(/["'`]+/g, ' ').trim();
+            let opt = normalizeSpace(optRaw || '').replace(/["'`]+/g, '').trim();
             if (!opt) return '';
 
             if (looksLikeCodeOption(opt)) {
                 // SQL alternatives usually share a long identical prefix (INSERT INTO ... VALUES).
                 // Keep only the discriminative JSON/operator segment.
                 opt = opt
-                    .replace(/\binsert\s+into[\s\S]*?\bvalues\s*\(/i, ' ')
+                    .replace(/\binsert\s+into[\s\S]*?\bvalues\s*\(/i, '')
                     .replace(/^\s*\(+/, '')
                     .replace(/\)+\s*;?$/, '')
                     .trim();
@@ -3237,7 +3237,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                 if (braceMatch && braceMatch[0].length > 6) opt = braceMatch[0];
             }
 
-            return normalizeSpace(opt).split(' ').slice(0, looksLikeCodeOption(optRaw) ? 12 : 7).join(' ');
+            return normalizeSpace(opt).split(/\s+/).slice(0, looksLikeCodeOption(optRaw) ? 12 : 7).join(' ');
         };
 
         const buildHintQuery = (stem, options) => {
@@ -3275,7 +3275,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             return (items || []).map((entry) => {
                 const title = normalizeSpace(entry?.title || '');
                 const link = normalizeSpace(entry?.link || entry?.url || '');
-                const snippet = normalizeSpace(entry?.snippet || entry?.snippet_highlighted_words?.join(' ') || '');
+                const snippet = normalizeSpace(entry?.snippet || entry?.snippet_highlighted_words?.join('') || '');
                 return { title, link, snippet };
             }).filter((entry) => entry.title && entry.link);
         };
@@ -3370,10 +3370,10 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                 if (!linkMatch) continue;
 
                 let link = decodeHtml(linkMatch[1] || '').trim();
-                const title = normalizeSpace(decodeHtml((linkMatch[2] || '').replace(/<[^>]+>/g, ' ')));
+                const title = normalizeSpace(decodeHtml((linkMatch[2] || '').replace(/<[^>]+>/g, '')));
                 const snippetMatch = block.match(/<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<div[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/div>/i);
                 const snippetRaw = snippetMatch ? (snippetMatch[1] || snippetMatch[2] || '') : '';
-                const snippet = normalizeSpace(decodeHtml(String(snippetRaw).replace(/<[^>]+>/g, ' ')));
+                const snippet = normalizeSpace(decodeHtml(String(snippetRaw).replace(/<[^>]+>/g, '')));
 
                 if (link.startsWith('/l/?')) {
                     try {
@@ -3469,7 +3469,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             'studocu.com',
             'brainly.com.br'
         ];
-        const siteFilter = BOOST_SITES.map(s2 => `site:${s2}`).join(' OR ');
+        const siteFilter = BOOST_SITES.map(s2 => `site:${s2}`).join(' OR');
         // Filtro acadêmico: universidades + slides + fontes curadas
         const academicSiteFilter = 'site:edu.br OR site:slideshare.net OR site:academia.edu OR site:scielo.br OR site:gov.br';
         const domainFromLink = (link) => {
@@ -3502,8 +3502,8 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             'pt.scribd.com': 0.75
         };
         const stemTokens = toTokens(cleanQuery).slice(0, 12);
-        const optionTokens = toTokens(optionHints.join(' ')).slice(0, 10);
-        const rareTokens = unique([...toTokens(cleanQuery), ...toTokens(optionHints.join(' '))])
+        const optionTokens = toTokens(optionHints.join('')).slice(0, 10);
+        const rareTokens = unique([...toTokens(cleanQuery), ...toTokens(optionHints.join(''))])
             .filter(t => t.length >= 7)
             .slice(0, 5);
         const scoreOrganic = (item, position = 0, queryBoost = 0, provider = 'serper') => {
@@ -3546,8 +3546,8 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
         };
         const buildQueryPlan = () => {
             const safe = cleanQuery.replace(/[:"']/g, '').slice(0, 200);
-            const compactTokens = toTokens(cleanQuery).slice(0, 10).join(' ');
-            const rareTokenQuery = rareTokens.slice(0, 3).join(' ');
+            const compactTokens = toTokens(cleanQuery).slice(0, 10).join('');
+            const rareTokenQuery = rareTokens.slice(0, 3).join('');
             const exactQuery = safe ? `"${safe}"` : '';
 
             // ── "plain" query: enunciado + alternativas sem palavra-chave ─────────
@@ -3558,7 +3558,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                 if (!options || options.length < 2) return normalizeSpace(stem).slice(0, 340);
                 const sortedOpts = [...options].filter(o => o && o.length >= 8).sort((a, b) => b.length - a.length);
                 const picked = sortedOpts.slice(0, 3).map(o => `"${normalizeSpace(o).slice(0, 45).replace(/["]/g, '')}"`);
-                const hintPart = picked.join(' ');
+                const hintPart = picked.join('');
                 const maxStem = Math.max(60, 340 - hintPart.length - 1);
                 return normalizeSpace(`${normalizeSpace(stem).slice(0, maxStem)} ${hintPart}`).slice(0, 340);
             };
@@ -3644,7 +3644,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                     const words = body.split(/\s+/)
                         .filter(w => w.length >= 4 && !STOPWORDS.has(normalizeForMatch(w)))
                         .slice(0, 6);
-                    if (words.length >= 3) phrases.push(words.join(' ').slice(0, 65));
+                    if (words.length >= 3) phrases.push(words.join('').slice(0, 65));
                     if (phrases.length >= 4) break;
                 }
                 return phrases;
@@ -3801,7 +3801,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
      */
     _extractOptionsLocally(sourceContent) {
         if (!sourceContent) return null;
-        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, '').trim();
         const normalized = sourceContent.replace(/\r\n/g, '\n');
 
         const byLines = () => {
@@ -4530,7 +4530,7 @@ REGRAS:
 - Nunca invente alternativas que não estejam na questão do cliente.
 - O ENUNCIADO define o critério: responda ao que ele PERGUNTA, não ao que parece "mais correto" em geral.
 - Textos explicativos/justificativos nas fontes são a evidência mais valiosa — use-os.
-${isDesperate ? `
+${isDesperate ?`
 ATENÇÃO - EVIDÊNCIA LIMITADA:
 As fontes acima contêm informação limitada e podem não ter a resposta explícita.
 Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
@@ -4640,7 +4640,7 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
             .map((item, index) => {
                 const title = String(item?.title || `Fonte ${index + 1}`).slice(0, 180);
                 const link = String(item?.link || '').slice(0, 500);
-                const text = String(item?.text || '').replace(/\s+/g, ' ').slice(0, 850);
+                const text = String(item?.text || '').replace(/\s+/g, '').slice(0, 850);
                 return `FONTE ${index + 1}\nTITULO: ${title}\nLINK: ${link || 'n/a'}\nTRECHO: ${text}`;
             })
             .join('\n\n');
@@ -4778,7 +4778,7 @@ REGRAS:
         const normQ = questionText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const wantsIncorrect = /\b(falsa|incorreta|errada|exceto|nao\s+correta)\b/i.test(normQ);
         const polarityNote = wantsIncorrect
-            ? '\n⚠️ A questão pede a alternativa INCORRETA/FALSA/EXCETO.'
+            ? '\n A questão pede a alternativa INCORRETA/FALSA/EXCETO.'
             : '';
 
         const prompt = `ANÁLISE ACADÊMICA POR ELIMINAÇÃO
@@ -5249,9 +5249,9 @@ REGRAS:
         const systemMsg = `Você é um professor que explica conceitos técnicos com clareza CRISTALINA, pensando em alunos com dificuldade de concentração.
 
 Para cada definição:
-(1) 📌 O que É — linguagem simples, frase curta
-(2) 🔗 Analogia do cotidiano — torne tangível ("é como o índice de um livro — mapeia onde cada coisa está")
-(3) ❌ O que NÃO é — evite a confusão mais comum
+(1) O que É — linguagem simples, frase curta
+(2) Analogia do cotidiano — torne tangível ("é como o índice de um livro — mapeia onde cada coisa está")
+(3) O que NÃO é — evite a confusão mais comum
 
 Regras ADHD-friendly:
 - Máximo 3-4 linhas
@@ -5293,14 +5293,14 @@ Sua personalidade docente:
 - Fala como gente, não como livro — mas com rigor técnico
 - Faz o aluno gostar da matéria
 
-🧠 PRINCÍPIOS CIENTÍFICOS (aplique sempre):
+ PRINCÍPIOS CIENTÍFICOS (aplique sempre):
 - DUAL CODING: use emoji/ícones como marcadores visuais para cada seção
 - CHUNKING: máximo 3 frases por parágrafo. Quebre blocos longos
 - ELABORAÇÃO: explique o "por quê" por trás de cada afirmação
 - EXEMPLOS CONCRETOS: pelo menos 1 exemplo do mundo real por conceito
 - ADHD-FRIENDLY: frases curtas, uma ideia por frase, evite paredes de texto
 
-⚠️ REGRA ABSOLUTA: A resposta correta é EXATAMENTE a que está indicada no GABARITO. Você NÃO pode discordar. Sua explicação DEVE justificar essa resposta.`;
+ REGRA ABSOLUTA: A resposta correta é EXATAMENTE a que está indicada no GABARITO. Você NÃO pode discordar. Sua explicação DEVE justificar essa resposta.`;
 
         const prompt = `QUESTÃO:
 ${question.slice(0, 1500)}
@@ -5312,18 +5312,18 @@ ${context ? `CONTEXTO ADICIONAL:\n${context.slice(0, 300)}\n` : ''}FORMATO OBRIG
 
 1. Comece com: "✅ Resposta correta: [copie exatamente a letra e/ou texto da resposta do gabarito]"
 
-2. **🎯 Primeiro, entenda o cenário** — Em 2-3 frases, contextualize o assunto como se fosse a primeira vez que o aluno ouve sobre isso. Use uma analogia ou exemplo do dia-a-dia para tornar concreto. O objetivo é que o aluno pense "ah, então é ISSO que esse conceito significa na prática".
+2. ** Primeiro, entenda o cenário** — Em 2-3 frases, contextualize o assunto como se fosse a primeira vez que o aluno ouve sobre isso. Use uma analogia ou exemplo do dia-a-dia para tornar concreto. O objetivo é que o aluno pense "ah, então é ISSO que esse conceito significa na prática".
 
 3. **🧩 Construindo o raciocínio** — Numere cada passo lógico (1., 2., 3., ...) que leva à resposta do gabarito:
    - Cada passo deve fluir naturalmente do anterior ("Se isso é verdade, então...")
    - Dê pelo menos 1 exemplo concreto ou analogia
-   - Destaque armadilhas: "⚠️ Cuidado: muitos confundem X com Y"
+   - Destaque armadilhas: "Cuidado: muitos confundem X com Y"
    - Se possível, mostre a aplicação real do conceito
 
 4. **❌ Eliminando as alternativas erradas** — Para cada alternativa incorreta, explique em 1-2 frases por que está errada de forma que o aluno NUNCA MAIS caia nessa armadilha. Formato:
-   "❌ Alternativa X: [por que está errada + armadilha que levaria o aluno a marcar esta]"
+   " Alternativa X: [por que está errada + armadilha que levaria o aluno a marcar esta]"
 
-5. **💡 Resumo pra levar pro resto da vida:** [1-2 frases que sintetizem o conceito de forma tão marcante que o aluno não esquece. Pode ser uma regra mnemônica, frase de efeito ou analogia-chave.]
+5. ** Resumo pra levar pro resto da vida:** [1-2 frases que sintetizem o conceito de forma tão marcante que o aluno não esquece. Pode ser uma regra mnemônica, frase de efeito ou analogia-chave.]
 
 REGRAS:
 - Linguagem CLARA e CONVERSACIONAL — como se estivesse explicando pessoalmente
@@ -5367,7 +5367,7 @@ Filosofia: "Se não consegue explicar pra avó, não entendeu."
 
 Seu trabalho: fichas que o aluno lê uma vez e GRAVA.
 
-🧠 PRINCÍPIOS CIENTÍFICOS (aplique sempre):
+ PRINCÍPIOS CIENTÍFICOS (aplique sempre):
 - DUAL CODING: cada seção tem emoji como âncora visual
 - CHUNKING: 2-3 frases por seção, nunca mais. Quebre blocos longos
 - RETRIEVAL PRACTICE: inclua 1 pergunta-gatilho que force o aluno a pensar antes de ler a resposta
@@ -5385,29 +5385,29 @@ ${answer.slice(0, 800)}
 
 ${context ? `CONTEXTO:\n${context.slice(0, 300)}\n` : ''}FORMATO OBRIGATÓRIO:
 
-📌 CONCEITO-CHAVE
+ CONCEITO-CHAVE
 [Nome do conceito + subtítulo que já ensina algo — ex: "Polimorfismo — Quando o mesmo comando faz coisas diferentes"]
 
-📖 EM PALAVRAS SIMPLES
+ EM PALAVRAS SIMPLES
 [Explique o conceito em 2-3 frases como se tivesse explicando pra um amigo no bar. Sem jargão desnecessário. Se usar um termo técnico, traduza entre parênteses. O objetivo é o aluno pensar "ah, é só isso?"]
 
-🔑 REGRAS DE OURO (pra nunca errar)
+ REGRAS DE OURO (pra nunca errar)
 - [Regra 1: afirmação direta + contra-exemplo curto se útil]
 - [Regra 2: use formato "X é..., mas NÃO é..." quando ajudar a distinguir conceitos parecidos]
 - [Regra 3: fórmula, acrônimo ou regra prática se aplicável]
 - [Regra 4 (opcional): diferença-chave entre este conceito e um facilmente confundido]
 
-⚠️ ARMADILHAS DE PROVA
+ ARMADILHAS DE PROVA
 - [Armadilha 1: descreva o que parece certo mas está errado + por que o aluno cai nessa]
 - [Armadilha 2: outra pegadinha clássica com cenário concreto]
 
-🧠 GATILHO DE MEMÓRIA
+ GATILHO DE MEMÓRIA
 [Crie algo MARCANTE e ORIGINAL: pode ser uma analogia inusitada, um mnemônico criativo, uma frase de efeito, ou uma micro-história. O teste: o aluno deve conseguir lembrar daqui 1 semana. Seja ousado.]
 
-🔗 CONECTE COM
+ CONECTE COM
 [2-3 temas diretamente relacionados que o aluno deve dominar junto — explique em ~5 palavras por que cada um é relevante]
 
-🎯 PERGUNTA-GATILHO
+ PERGUNTA-GATILHO
 [Uma pergunta curta que o aluno tenta responder ANTES de ler a ficha. Ex: "Qual a diferença entre TCP e UDP em uma palavra?" — Isso ativa retrieval practice e fixa melhor]
 
 REGRAS:
@@ -5536,7 +5536,7 @@ Seu estilo de tutoria:
 - Máximo 250 palavras — denso em valor, não volume
 - Não repita o enunciado da questão inteira
 
-🧠 FORMATO ADHD-FRIENDLY:
+ FORMATO ADHD-FRIENDLY:
 - Frases curtas (máximo 2 linhas)
 - Uma ideia por parágrafo
 - Use **negrito** nos termos-chave

@@ -103,7 +103,7 @@ MÁX: 300 palavras total. Tom: coach encorajador, nunca professor decepcionado.`
                 copilot: settings.copilotModel || 'gpt-4o',
             },
             label: 'generateWhyWrong',
-            fallbackValue: `🎯 Você escolheu ${wrongLetter}, mas a resposta correta é ${correctLetter}. Revise o conceito relacionado e tente novamente!`,
+            fallbackValue: `Você escolheu ${wrongLetter}, mas a resposta correta é ${correctLetter}. Revise o conceito relacionado e tente novamente!`,
         });
         return result;
     },
@@ -290,58 +290,81 @@ FORMATO JSON OBRIGATÓRIO:
     },
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 4. GENERATE MNEMONIC — Gerador de Mnemônicos Criativos
-    //    Cria mnemônicos personalizados para conceitos difíceis.
-    //    Baseado em: Dual Coding (Paivio), Von Restorff Effect, Elaborative Encoding
-    //    Impacto: mnemônicos criativos aumentam retenção em 40–60%
+    // 4. GENERATE MNEMONIC — Gerador de Mnemônicos Multi-Sensoriais
+    //    Cria mnemônicos pedagogicamente eficazes usando mecanismos psicológicos:
+    //    • Dual Coding (Paivio 1971): verbal + visual simultâneo
+    //    • Von Restorff Effect (1933): bizarreness → destaque na memória
+    //    • Elaborative Encoding (Bradshaw & Anderson 1982): conexões ricas
+    //    • Chunking (Miller 1956): 2-4 elementos gerenciáveis
+    //    • Testing Effect (Roediger 2006): auto-teste reforça consolidação
+    //    • Method of Loci: imagem mental espacial ancorada
+    //    Impacto: mnemônicos multi-sensoriais aumentam retenção em 40–70%
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Gera mnemônico criativo para um conceito de questão.
+     * Gera mnemônico multi-sensorial para um conceito de questão.
+     * Aplica mecanismos psicológicos comprovados: dual coding, bizarreness effect,
+     * elaborative encoding, chunking, testing effect.
      * @param {string} concept - Conceito ou fato a memorizar
-     * @param {string} [questionContext] - Contexto da questão
+     * @param {string} [questionContext] - Contexto da questão (resposta correta)
      * @param {'acronym'|'story'|'rhyme'|'visual'|'any'} preferredType - Tipo preferido
-     * @returns {Promise<Object>} { mnemonic, type, howToUse, emoji }
+     * @returns {Promise<Object>} { emoji, mnemonic, keyElements[], visualization, connection, selfTest, type }
      */
     async generateMnemonic(concept, questionContext = '', preferredType = 'any') {
         const settings = await ApiService._getSettings();
 
         const typeGuides = {
-            acronym: 'Use acrônimo ou acróstico: primeira letra de cada elemento-chave forma uma palavra ou frase fácil.',
-            story: 'Crie uma frase curta (máx 2 linhas) ligando os elementos-chave em sequência lógica.',
-            rhyme: 'Crie uma rima curta de 2-4 versos que encode os elementos-chave.',
-            visual: 'Descreva UMA imagem mental simples e marcante que represente o conceito.',
-            any: 'Escolha entre acrônimo, frase-chave, rima curta ou imagem mental — o que funcionar melhor.'
+            acronym: 'Use acrônimo ou acróstico: primeira letra de cada elemento-chave forma uma palavra ou frase memorável.',
+            story: 'Crie uma micro-narrativa de 1-2 frases ligando os elementos-chave em sequência absurda.',
+            rhyme: 'Crie uma rima curta de 2-4 versos que encode os elementos-chave com ritmo.',
+            visual: 'Foque em uma imagem mental impactante e espacial que represente o conceito.',
+            any: 'Escolha a técnica que melhor funcionar: acrônimo, frase-âncora, rima curta, analogia ou imagem mental.'
         };
 
-        const systemMsg = `Você cria mnemônicos ÚTEIS e SIMPLES para estudantes brasileiros.
+        const systemMsg = `Você é um especialista em técnicas de memorização baseadas em neurociência e psicologia cognitiva. Sua missão é criar mnemônicos que REALMENTE ensinam, aplicando mecanismos psicológicos comprovados.
 
-REGRAS OBRIGATÓRIAS:
-- O mnemônico deve codificar os ELEMENTOS-CHAVE do conceito (nomes, termos, ordem, relações)
-- Máximo 2-3 frases. Quanto mais curto, melhor.
-- NÃO invente histórias longas, personagens fictícios ou narrativas complexas
+MECANISMOS QUE VOCÊ DEVE APLICAR (em ordem de prioridade):
+
+1. CHUNKING (Miller 1956): Quebre o conceito em 2-4 elementos-chave gerenciáveis.
+2. DUAL CODING (Paivio 1971): O mnemônico deve ter uma parte VERBAL (frase curta) E uma parte VISUAL (imagem mental vívida). Ambas codificam a mesma informação por canais diferentes.
+3. EFEITO BIZARRENESS (Von Restorff 1933): A imagem mental deve ser INUSITADA, ABSURDA ou ENGRAÇADA — cenas bizarras são lembradas 2-3x mais que cenas comuns. Exemplo: "Um elefante rosa equilibrando uma tabela SQL na tromba" é melhor que "uma tabela de banco de dados".
+4. ELABORATIVE ENCODING (Bradshaw & Anderson 1982): Conecte o conceito a algo que o aluno JÁ CONHECE do cotidiano. Analogias concretas > definições abstratas.
+5. TESTING EFFECT (Roediger 2006): Inclua uma pergunta de auto-teste que SÓ é respondível se o mnemônico foi aprendido.
+
+PROCESSO OBRIGATÓRIO:
+PASSO 1 → Identifique 2-4 ELEMENTOS-CHAVE (termos, ordem, relações) que o aluno precisa lembrar.
+PASSO 2 → Crie uma FRASE-ÂNCORA curta e marcante (máximo 2 linhas) — o mnemônico principal.
+PASSO 3 → Descreva uma CENA MENTAL vívida, absurda ou engraçada que represente os elementos (canal visual).
+PASSO 4 → Explique a CONEXÃO — por que cada parte do mnemônico mapeia para o conceito real.
+PASSO 5 → Crie uma PERGUNTA DE AUTO-TESTE (respondível só com o mnemônico).
+
+REGRAS:
+- Idioma: português brasileiro
+- "mnemonic" = frase-âncora de no máximo 2 linhas
+- "visualization" = cena mental bizarra/engraçada em 1-3 frases
+- "connection" = explicação breve de como o mnemônico mapeia para o conceito (1-3 frases)
+- "selfTest" = pergunta que testa se o aluno aprendeu (1 frase)
+- "keyElements" = array de 2-4 strings no formato "elemento → significado"
 - NÃO use referências a celebridades, memes ou cultura pop
-- PRIORIZE: acrônimos, frases-chave, rimas curtas, associações diretas
-- O aluno deve conseguir RECONSTRUIR a resposta a partir do mnemônico
+- O aluno deve conseguir RECONSTRUIR a resposta COMPLETA a partir do mnemônico
 
-EXEMPLOS de bons mnemônicos:
-- "MaRiA VaI CoM aS OuTrAs" → ordem dos planetas (Mercúrio, Vênus, Terra...)
-- "SeCaPiCoFiReGe" → camadas OSI (Sessão, Apresentação, Aplicação...)
-- "Lei, Medida Provisória, Decreto" → hierarquia: "LeMeDe" 
-- Para SQL ALTER TABLE: "ALTER = ALTERAR estrutura, ADD = adicionar coluna, DROP = remover"
+EXEMPLOS DE SAÍDA:
 
-Responda APENAS em JSON válido, sem texto extra.`;
+CONCEITO: "Ordem dos planetas do sistema solar"
+{"emoji":"🪐","mnemonic":"Minha Vó Tem Muitas Joias, Só Usa No Pescoço","keyElements":["Minha→Mercúrio","Vó→Vênus","Tem→Terra","Muitas→Marte","Joias→Júpiter","Só→Saturno","Usa→Urano","No Pescoço→Netuno"],"visualization":"Imagine sua avó flutuando no espaço com TODAS as joias do mundo penduradas no pescoço — tão pesadas que ela orbita o Sol junto com os planetas, passando por cada um na ordem.","connection":"Cada inicial da frase corresponde à inicial do planeta, na ordem do mais próximo ao mais distante do Sol. Basta recitar a frase e extrair as iniciais.","selfTest":"Complete: 'Minha Vó ___ Muitas ___' — quais planetas são o T e o J?","type":"acronym"}
 
-        const prompt = `CONCEITO:
-${concept.slice(0, 400)}
+CONCEITO: "SQL ALTER TABLE ADD COLUMN"
+{"emoji":"🏗️","mnemonic":"ALTER a mesa, ADD uma tábua, escreva NOME e TIPO","keyElements":["ALTER TABLE→qual tabela modificar","ADD COLUMN→adicionar nova coluna","nome→nome da coluna","tipo→tipo de dado (INT, VARCHAR...)"],"visualization":"Imagine uma MESA de jantar velha. Você pega um MARTELO gigante (ALTER) e prega uma TÁBUA nova na lateral (ADD COLUMN). Na tábua, você escreve com tinta vermelha o NOME da coluna e o TIPO de dado — a tinta escorre e forma gotas que parecem ponto-e-vírgula.","connection":"ALTER = alterar/reformar, como reformar um móvel. ADD COLUMN = adicionar uma 'coluna' como se fosse uma coluna de jornal. A ordem na sintaxe é sempre: O QUÊ mudar (tabela) → COMO mudar (add) → DETALHES (nome, tipo).","selfTest":"Escreva o comando SQL para adicionar a coluna 'idade' do tipo INT na tabela 'alunos'. Qual a ordem dos termos?","type":"visual"}
 
-${questionContext ? `CONTEXTO:\n${questionContext.slice(0, 300)}\n` : ''}
-TIPO: ${typeGuides[preferredType] || typeGuides.any}
+Responda APENAS em JSON válido, sem texto extra, sem markdown.`;
 
-Identifique os 2-4 elementos-chave do conceito e crie UM mnemônico curto e prático.
+        const prompt = `CONCEITO A MEMORIZAR:
+${concept.slice(0, 500)}
 
-JSON:
-{"mnemonic": "texto curto do mnemônico", "type": "acronym|phrase|rhyme|visual", "howToUse": "como usar na prova (1 frase)", "emoji": "1 emoji"}`;
+${questionContext ? `RESPOSTA CORRETA / CONTEXTO:\n${questionContext.slice(0, 400)}\n` : ''}
+TÉCNICA PREFERIDA: ${typeGuides[preferredType] || typeGuides.any}
+
+Agora siga os 5 passos e gere o JSON:`;
 
         const parseResponse = (content) => {
             if (!content) return null;
@@ -351,13 +374,31 @@ JSON:
                     .replace(/^```(?:json)?\s*/i, '')
                     .replace(/\s*```$/, '')
                     .trim();
-                // Try to find JSON object in the response
+                // Some models wrap in <think> tags or add preamble; extract JSON
                 const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
                 if (jsonMatch) cleaned = jsonMatch[0];
-                return JSON.parse(cleaned);
+                const parsed = JSON.parse(cleaned);
+                // Normalize: ensure all fields exist with fallbacks
+                return {
+                    emoji: parsed.emoji || '',
+                    mnemonic: parsed.mnemonic || parsed.hook || '',
+                    keyElements: Array.isArray(parsed.keyElements) ? parsed.keyElements : [],
+                    visualization: parsed.visualization || parsed.visual || '',
+                    connection: parsed.connection || parsed.howToUse || '',
+                    selfTest: parsed.selfTest || parsed.self_test || '',
+                    type: parsed.type || 'phrase',
+                };
             } catch (_) {
                 if (content.trim().length > 5) {
-                    return { mnemonic: content.trim(), type: 'text', howToUse: 'Repita 3 vezes em voz alta.', emoji: '🧠' };
+                    return {
+                        emoji: '',
+                        mnemonic: content.trim(),
+                        keyElements: [],
+                        visualization: '',
+                        connection: '',
+                        selfTest: '',
+                        type: 'text',
+                    };
                 }
                 return null;
             }
@@ -368,7 +409,7 @@ JSON:
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: prompt }
             ],
-            opts: { temperature: 0.5, max_tokens: 200 },
+            opts: { temperature: 0.6, max_tokens: 600 },
             models: {
                 gemini: settings.geminiModel || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
@@ -377,13 +418,16 @@ JSON:
                 copilot: settings.copilotModel || 'gpt-4o',
             },
             postProcess: parseResponse,
-            isValid: (v) => v && typeof v.mnemonic === 'string' && v.mnemonic.length > 3 && v.mnemonic.length < 500,
+            isValid: (v) => v && typeof v.mnemonic === 'string' && v.mnemonic.length > 3 && v.mnemonic.length < 800,
             label: 'generateMnemonic',
             fallbackValue: {
+                emoji: '🧠',
                 mnemonic: `Para lembrar: "${concept.slice(0, 50)}"`,
+                keyElements: [],
+                visualization: 'Crie uma imagem mental associando este conceito a algo familiar.',
+                connection: 'Conecte este conceito a algo que você já conhece.',
+                selfTest: '',
                 type: 'association',
-                howToUse: 'Associe visualmente este conceito a algo familiar.',
-                emoji: '🧠'
             },
         });
         return result;
@@ -445,11 +489,11 @@ Referência de tom por desempenho:
 - Acertos: ${correct} (${pct}%)
 - Erros: ${wrong}
 - Puladas: ${skipped}
-- Disciplinas: ${subjects.join(', ') || 'Geral'}
+- Disciplinas: ${subjects.join(',') || 'Geral'}
 - Tempo de estudo: ${elapsedMinutes} minutos
 - XP ganho: ${xpEarned} XP
 - Streak atual: ${currentStreak} dia(s)
-- Erros em: ${wrongSubjects.join(', ') || 'nenhum'}
+- Erros em: ${wrongSubjects.join(',') || 'nenhum'}
 ${wrongTexts ? `- Questões com dificuldade:\n${wrongTexts}` : ''}
 ${goal ? `- Meta do aluno: ${goal}` : ''}
 
@@ -486,7 +530,7 @@ Máx: 120 palavras. Tom: coach esportivo, não professor avaliando prova.`;
                 copilot: settings.copilotModel || 'gpt-4o',
             },
             label: 'generateSessionSummary',
-            fallbackValue: `🎯 **Sessão concluída!** Você respondeu ${total} questão(ões) com ${pct}% de acerto.\n\n💪 Continue assim! Cada sessão é um passo em direção ao seu objetivo.`,
+            fallbackValue: `**Sessão concluída!** Você respondeu ${total} questão(ões) com ${pct}% de acerto.\n\n Continue assim! Cada sessão é um passo em direção ao seu objetivo.`,
         });
         return result;
     },
@@ -511,54 +555,54 @@ Máx: 120 palavras. Tom: coach esportivo, não professor avaliando prova.`;
      * // Antes de revelar: aluno clica 'Tenho certeza'
      * // Após revelar: chamamos getCalibrationFeedback('certain', false)
      * const fb = PedagogicalPromptsService.getCalibrationFeedback('certain', false);
-     * // => { badge: '⚠️ Atenção: Overconfidence!', sm2Action: 'again', ... }
+     * // => { badge: 'Atenção: Overconfidence!', sm2Action: 'again', ... }
      */
     getCalibrationFeedback(confidence, wasCorrect, subject = '') {
         // JOL Pattern Matrix (confidence × resultado)
         const patterns = {
-            // ✅ Acertou COM certeza → calibração perfeita
+            // Acertou COM certeza → calibração perfeita
             certain_correct: {
-                badge: '🎯 Calibrado!',
+                badge: 'Calibrado!',
                 message: 'Você sabia e estava certo. Excelente domínio deste conteúdo!',
                 color: '#16a34a',
                 sm2Action: 'easy',
                 insight: null
             },
-            // ✅ Acertou mas estava inseguro → underconfidence
+            // Acertou mas estava inseguro → underconfidence
             unsure_correct: {
-                badge: '😮 Você sabe mais do que pensa!',
+                badge: 'Você sabe mais do que pensa!',
                 message: 'Você acertou mesmo sem certeza. Confie mais em si mesmo neste tópico.',
                 color: '#0891b2',
                 sm2Action: 'good',
                 insight: 'Underconfidence detectado: você tem o conhecimento, só precisa de mais prática para consolidar a confiança.'
             },
-            // ✅ Acertou achando que sabia → bom instinto
+            // Acertou achando que sabia → bom instinto
             think_so_correct: {
-                badge: '✅ Bom instinto!',
+                badge: 'Bom instinto!',
                 message: 'Sua intuição estava certa. Continue praticando para ter certeza plena!',
                 color: '#16a34a',
                 sm2Action: 'good',
                 insight: null
             },
-            // ❌ Errou COM certeza → overconfidence (mais perigoso!)
+            // Errou COM certeza → overconfidence (mais perigoso!)
             certain_wrong: {
-                badge: '⚠️ Overconfidence detectado!',
+                badge: 'Overconfidence detectado!',
                 message: 'Você tinha certeza, mas errou. Este é o ponto que mais precisa de revisão prioritária.',
                 color: '#d97706',
                 sm2Action: 'again',
                 insight: 'Overconfidence é o erro mais traiçoeiro: você não sabia que não sabia. Marque este conceito para revisão intensiva.'
             },
-            // ❌ Errou achando que sabia → instinto errado
+            // Errou achando que sabia → instinto errado
             think_so_wrong: {
-                badge: '📚 Quase! Para revisar.',
+                badge: 'Quase! Para revisar.',
                 message: 'Sua intuição te traiu desta vez. Que tal entender exatamente o porquê?',
                 color: '#d97706',
                 sm2Action: 'hard',
                 insight: null
             },
-            // ❌ Errou e SABIA que não sabia → autoconsciência + aprendizado
+            // Errou e SABIA que não sabia → autoconsciência + aprendizado
             unsure_wrong: {
-                badge: '🎯 Autoconsciência em dia!',
+                badge: 'Autoconsciência em dia!',
                 message: 'Você sabia que não sabia — isso é metacognição real! Agora é hora de aprender.',
                 color: '#7c3aed',
                 sm2Action: 'again',

@@ -614,6 +614,27 @@
               </div>
               <div class="review-calendar" id="reviewCalendar"></div>
             </div>
+
+            <!-- Flagged cards section -->
+            <div class="panel" id="flaggedPanel">
+              <div class="panel-header">
+                <h2 class="panel-title">
+                  <span class="material-symbols-rounded">flag</span>
+                  Questões Marcadas
+                  <span class="badge badge-count" id="flaggedCount">0</span>
+                </h2>
+                <button class="btn btn-primary btn-sm" id="startFlaggedReview">
+                  <span class="material-symbols-rounded">play_arrow</span>
+                  Revisar Marcadas
+                </button>
+              </div>
+              <div class="flagged-list" id="flaggedList"></div>
+              <div id="flaggedEmpty" class="empty-state" style="padding:var(--sp-6) 0" hidden>
+                <span class="material-symbols-rounded" style="font-size:40px;color:var(--color-text-tertiary);margin-bottom:var(--sp-2)">flag</span>
+                <div class="empty-state__title" style="font-size:var(--text-sm)">Nenhuma questão marcada</div>
+                <div class="empty-state__desc">Use o botão <strong>Sinalizar</strong> durante uma sessão para salvar questões aqui.</div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -724,12 +745,14 @@
                 </div>
               </div>
               <div class="flashcard-container">
-                <div class="flashcard" id="flashcardEl" tabindex="0" role="button" aria-label="Flashcard — clique ou pressione Espaço para virar">
+                <div class="flashcard" id="flashcardEl" tabindex="0" role="button"
+                  aria-label="Flashcard — clique ou pressione Espaço para virar">
                   <div class="flashcard-face front">
                     <span class="flashcard-face-label">PERGUNTA</span>
                     <div class="flashcard-content" id="flashcardFront"></div>
                     <span class="flashcard-hint">
-                      <span class="material-symbols-rounded" style="font-size:14px;vertical-align:middle">touch_app</span>
+                      <span class="material-symbols-rounded"
+                        style="font-size:14px;vertical-align:middle">touch_app</span>
                       Clique para ver a resposta
                     </span>
                   </div>
@@ -764,7 +787,8 @@
                 </button>
               </div>
               <div class="flashcard-shortcuts-hint">
-                <kbd>←</kbd> Anterior &nbsp; <kbd>Espaço</kbd> Virar &nbsp; <kbd>→</kbd> Próximo &nbsp; <kbd>1-4</kbd> Avaliar
+                <kbd>←</kbd> Anterior &nbsp; <kbd>Espaço</kbd> Virar &nbsp; <kbd>→</kbd> Próximo &nbsp; <kbd>1-4</kbd>
+                Avaliar
               </div>
             </div>
           </div>
@@ -959,60 +983,22 @@
                 <p class="view-subtitle">Sua jornada de estudo, sessão a sessão</p>
               </div>
               <div class="view-header-actions">
-                <!-- Type filter dropdown -->
-                <div class="filter-dropdown" id="historyFilterType" data-value="all">
-                  <button class="filter-dropdown__trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
-                    <span class="material-symbols-rounded filter-dropdown__icon">filter_list</span>
-                    <span class="filter-dropdown__label">Todos os tipos</span>
-                    <span class="material-symbols-rounded filter-dropdown__chevron">expand_more</span>
-                  </button>
-                  <ul class="filter-dropdown__menu" role="listbox" aria-label="Filtrar por tipo">
-                    <li class="filter-dropdown__item filter-dropdown__item--active" data-value="all" role="option" aria-selected="true">
-                      <span class="material-symbols-rounded">checklist</span>
-                      <span>Todos os tipos</span>
-                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
-                    </li>
-                    <li class="filter-dropdown__item" data-value="quiz" role="option">
-                      <span class="material-symbols-rounded" style="color:var(--color-accent)">quiz</span>
-                      <span>Quiz Rápido</span>
-                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
-                    </li>
-                    <li class="filter-dropdown__item" data-value="simulado" role="option">
-                      <span class="material-symbols-rounded" style="color:var(--color-warning)">assignment</span>
-                      <span>Simulado</span>
-                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
-                    </li>
-                    <li class="filter-dropdown__item" data-value="ai-simulado" role="option">
-                      <span class="material-symbols-rounded" style="color:var(--color-new)">auto_awesome</span>
-                      <span>Simulado IA</span>
-                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
-                    </li>
-                    <li class="filter-dropdown__item" data-value="challenge" role="option">
-                      <span class="material-symbols-rounded" style="color:var(--color-ochre-muted)">casino</span>
-                      <span>Desafio</span>
-                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
-                    </li>
-                    <li class="filter-dropdown__item" data-value="study" role="option">
-                      <span class="material-symbols-rounded" style="color:var(--color-info)">school</span>
-                      <span>Sessão de Estudo</span>
-                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
-                    </li>
-                  </ul>
+                <div class="hist-filter-pill">
+                  <span class="material-symbols-rounded hist-filter-icon">filter_list</span>
+                  <select class="hist-filter-select" id="historyFilterType">
+                    <option value="all">Todos os tipos</option>
+                    <option value="quiz">Quiz Rápido</option>
+                    <option value="simulado">Simulado</option>
+                    <option value="ai-simulado">Simulado IA</option>
+                    <option value="challenge">Desafio</option>
+                    <option value="study">Sessão de Estudo</option>
+                  </select>
                 </div>
-                <!-- Discipline filter dropdown -->
-                <div class="filter-dropdown" id="historyFilterDisc" data-value="all">
-                  <button class="filter-dropdown__trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
-                    <span class="material-symbols-rounded filter-dropdown__icon">school</span>
-                    <span class="filter-dropdown__label">Todas disciplinas</span>
-                    <span class="material-symbols-rounded filter-dropdown__chevron">expand_more</span>
-                  </button>
-                  <ul class="filter-dropdown__menu" role="listbox" aria-label="Filtrar por disciplina">
-                    <li class="filter-dropdown__item filter-dropdown__item--active" data-value="all" role="option" aria-selected="true">
-                      <span class="material-symbols-rounded">menu_book</span>
-                      <span>Todas disciplinas</span>
-                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
-                    </li>
-                  </ul>
+                <div class="hist-filter-pill">
+                  <span class="material-symbols-rounded hist-filter-icon">school</span>
+                  <select class="hist-filter-select" id="historyFilterDisc">
+                    <option value="all">Todas disciplinas</option>
+                  </select>
                 </div>
                 <button class="btn btn-secondary btn-icon" id="historyClearAllBtn" aria-label="Limpar histórico">
                   <span class="material-symbols-rounded">delete_sweep</span>
@@ -1054,8 +1040,10 @@
 
             <!-- Timeline list -->
             <div class="panel">
-              <div class="hist-timeline" id="historyList">
-                <!-- Rendered dynamically -->
+              <div class="panel-body">
+                <div class="hist-timeline" id="historyList">
+                  <!-- Rendered dynamically -->
+                </div>
               </div>
             </div>
 
@@ -1064,7 +1052,8 @@
               <div class="empty-state">
                 <span class="material-symbols-rounded empty-state__icon">auto_stories</span>
                 <h3 class="empty-state__title">Nenhuma sessão registrada</h3>
-                <p class="empty-state__desc">Complete um simulado ou sessão de estudo e ela aparecerá aqui automaticamente.</p>
+                <p class="empty-state__desc">Complete um simulado ou sessão de estudo e ela aparecerá aqui
+                  automaticamente.</p>
                 <button class="btn btn-primary btn-pill" id="historyGoToPractice">
                   <span class="material-symbols-rounded">exercise</span>
                   Ir para Prática

@@ -28,7 +28,7 @@
             '[class*="answer-body"]', '[class*="answer-content"]',
             '[class*="resposta-body"]', '[class*="resposta-content"]',
             '[itemprop="acceptedAnswer"]'
-        ].join(', ');
+        ].join(',');
 
         document.querySelectorAll(combinedSelector).forEach((el) => {
             if (el && el.textContent && el.textContent.length > 20) {

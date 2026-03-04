@@ -38,7 +38,7 @@
 
 ### 1.2 Insights Extraídos por Categoria
 
-#### 📐 Organização de Conteúdo — Padrões Identificados
+#### [CALC] Organização de Conteúdo — Padrões Identificados
 
 | Padrão | Plataformas que Usam | Descrição |
 |---|---|---|
@@ -51,7 +51,7 @@
 
 **Insight Principal**: Plataformas profissionais NUNCA usam estrutura plana (lista de itens). Sempre há **hierarquia rica** com **metadados** (duração, nível, tipo, tags) e **múltiplos caminhos de acesso** ao mesmo conteúdo.
 
-#### 🎯 Caminhos de Aprendizado — Padrões Identificados
+#### [TARGET] Caminhos de Aprendizado — Padrões Identificados
 
 | Estratégia | Exemplos | Impacto |
 |---|---|---|
@@ -63,7 +63,7 @@
 
 **Insight Principal**: A combinação de **paths curados** + **adaptação por performance** é o padrão gold standard. O aluno tem um caminho recomendado mas o sistema ajusta com base no desempenho.
 
-#### 🔥 Engajamento — Ferramentas Mais Eficazes
+#### [STREAK] Engajamento — Ferramentas Mais Eficazes
 
 | Ferramenta | Impacto Comprovado | Plataformas |
 |---|---|---|
@@ -78,7 +78,7 @@
 
 **Insight Principal**: AnswerHunter já tem FSRS-5, hints Socráticos, streaks e XP — está **muito acima** de extensões de estudo comuns. O gap é em **organização visual**, **paths curados** e **social features**.
 
-#### 📊 Métricas e Analytics — Framework Comum
+#### [CHART] Métricas e Analytics — Framework Comum
 
 | Nível | Métricas | Exemplo Visual |
 |---|---|---|
@@ -95,21 +95,21 @@
 
 | Categoria | Feature Existente | Status | Maturidade |
 |---|---|---|---|
-| **Extração** | Extração de Q&A de qualquer página web | ✅ Funcional | ⭐⭐⭐⭐⭐ |
-| **Busca** | Pipeline de busca com múltiplas fontes + AI | ✅ Funcional | ⭐⭐⭐⭐⭐ |
-| **AI Multi-provider** | 5 provedores (Groq, Gemini, OpenRouter, ChatGPT, Copilot) | ✅ Funcional | ⭐⭐⭐⭐⭐ |
-| **Binder** | Organização em pastas com drag & drop | ✅ Funcional | ⭐⭐⭐ |
-| **Disciplinas** | Cards com cor, contagem, botões estudar/simulado | ✅ Funcional | ⭐⭐⭐ |
-| **Study Page** | Flashcards, simulado, Pomodoro, mind map | ✅ Funcional | ⭐⭐⭐⭐ |
-| **FSRS-5** | Spaced Repetition completo | ✅ Funcional | ⭐⭐⭐⭐⭐ |
-| **AI Pedagógica** | Why Wrong, Socratic Hints, Step-by-Step, Review Cards | ✅ Funcional | ⭐⭐⭐⭐⭐ |
-| **Dashboard** | Heatmap, retention chart, XP, streaks, JOL | ✅ Funcional | ⭐⭐⭐ |
-| **i18n** | pt-BR + English (popup apenas) | ⚠ Parcial | ⭐⭐⭐ |
-| **Dark Mode** | Study page only | ⚠ Parcial | ⭐⭐ |
+| **Extração** | Extração de Q&A de qualquer página web | [OK] Funcional | [STAR][STAR][STAR][STAR][STAR] |
+| **Busca** | Pipeline de busca com múltiplas fontes + AI | [OK] Funcional | [STAR][STAR][STAR][STAR][STAR] |
+| **AI Multi-provider** | 5 provedores (Groq, Gemini, OpenRouter, ChatGPT, Copilot) | [OK] Funcional | [STAR][STAR][STAR][STAR][STAR] |
+| **Binder** | Organização em pastas com drag & drop | [OK] Funcional | [STAR][STAR][STAR] |
+| **Disciplinas** | Cards com cor, contagem, botões estudar/simulado | [OK] Funcional | [STAR][STAR][STAR] |
+| **Study Page** | Flashcards, simulado, Pomodoro, mind map | [OK] Funcional | [STAR][STAR][STAR][STAR] |
+| **FSRS-5** | Spaced Repetition completo | [OK] Funcional | [STAR][STAR][STAR][STAR][STAR] |
+| **AI Pedagógica** | Why Wrong, Socratic Hints, Step-by-Step, Review Cards | [OK] Funcional | [STAR][STAR][STAR][STAR][STAR] |
+| **Dashboard** | Heatmap, retention chart, XP, streaks, JOL | [OK] Funcional | [STAR][STAR][STAR] |
+| **i18n** | pt-BR + English (popup apenas) | [WARN] Parcial | [STAR][STAR][STAR] |
+| **Dark Mode** | Study page only | [WARN] Parcial | [STAR][STAR] |
 
 ### 2.2 Gap Analysis — AnswerHunter vs. Padrão Profissional
 
-#### 🔴 Lacunas Críticas (Impacto Alto)
+#### [RED] Lacunas Críticas (Impacto Alto)
 
 | # | Lacuna | Padrão Profissional | Estado Atual AH | Impacto |
 |---|---|---|---|---|
@@ -120,7 +120,7 @@
 | G5 | **Sem calendário/planejamento** | Calendário de estudos com metas, deadlines e lembretes | Inexistente | Falta estrutura temporal para planejar sessões. |
 | G6 | **Sem busca inteligente interna** | Search com sugestões, filtros, relevância, histórico | Apenas filtro por disciplina na Study page | Encontrar conteúdo específico em 500+ itens é impossível. |
 
-#### 🟡 Lacunas Importantes (Impacto Médio)
+#### [YELLOW] Lacunas Importantes (Impacto Médio)
 
 | # | Lacuna | Padrão Profissional | Estado Atual AH | Impacto |
 |---|---|---|---|---|
@@ -131,7 +131,7 @@
 | G11 | **Sem recomendações automáticas** | Baseado em performance, identifica pontos fracos | Inexistente | Aluno não sabe onde focar esforço. |
 | G12 | **Sem export/relatórios profissionais** | PDF reports, progress sharing | Export JSON apenas | Não comunicável para terceiros. |
 
-#### 🟢 Lacunas Menores (Nice-to-have)
+#### [GREEN] Lacunas Menores (Nice-to-have)
 
 | # | Lacuna | Padrão Profissional | Estado Atual AH |
 |---|---|---|---|
@@ -380,7 +380,7 @@ const Badge = {
   id: 'badge_first_100',
   name: 'Centenário',
   description: 'Complete 100 questões',
-  icon: '🏆',                       // or SVG path
+  icon: '[TROPHY]', // or SVG path
   category: 'milestone',            // milestone | streak | mastery | special
   condition: { type: 'total_cards', threshold: 100 },
   earnedAt: null,
@@ -511,34 +511,34 @@ const Note = {
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  🎓 AnswerHunter                    🔍 Buscar...    ⚙️  🌙  👤     │
+│ [GRAD] AnswerHunter [SEARCH] Buscar... [GEAR] │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  ┌─ SIDEBAR ──┐  ┌─────────────────────────────────────────────┐    │
 │  │            │  │                                              │    │
-│  │ 📊 Overview│  │  Bom dia, Estudante!                         │    │
-│  │ 📚 Discipl.│  │  Nível: Estudioso (Lv.5) ████████░░ 2.340XP│    │
-│  │ 🛤 Trilhas │  │  🔥 Streak: 12 dias                         │    │
-│  │ 📅 Planner │  │                                              │    │
-│  │ 📈 Perform.│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐       │    │
-│  │ 🏆 Conquist│  │  │ 📝 327  │ │ ⏱ 45min │ │ 🎯 85%  │       │    │
-│  │ ⚙ Settings│  │  │Questions│ │ Today   │ │Accuracy │       │    │
+│ │ [CHART] Overview│ │ Bom dia, Estudante! │ │
+│ │ [STUDY] Discipl.│ │ Nível: Estudioso (Lv.5) ████████░░ 2.340XP│ │
+│ │ [PATH] Trilhas │ │ [STREAK] Streak: 12 dias │ │
+│ │ [DATE] Planner │ │ │ │
+│ │ [UP] Perform.│ │ ┌─────────┐ ┌─────────┐ ┌─────────┐ │ │
+│ │ [TROPHY] Conquist│ │ │ [NOTE] 327 │ │ [TIMER] 45min │ │ [TARGET] 85% │ │ │
+│ │ [GEAR] Settings│ │ │Questions│ │ Today │ │Accuracy │ │ │
 │  │            │  │  └─────────┘ └─────────┘ └─────────┘       │    │
 │  │            │  │                                              │    │
 │  │            │  │  ┌─── HOJE PARA REVISAR ─────────────────┐  │    │
-│  │            │  │  │ 🔴 12 cards vencidos  [Revisar agora]  │  │    │
-│  │            │  │  │ 🟡 8 cards para hoje  [Começar]        │  │    │
-│  │            │  │  │ 🟢 5 cards novos      [Aprender]       │  │    │
+│ │ │ │ │ [RED] 12 cards vencidos [Revisar agora] │ │ │
+│ │ │ │ │ [YELLOW] 8 cards para hoje [Começar] │ │ │
+│ │ │ │ │ [GREEN] 5 cards novos [Aprender] │ │ │
 │  │            │  │  └────────────────────────────────────────┘  │    │
 │  │            │  │                                              │    │
 │  │            │  │  ┌─── DISCIPLINAS ────────────────────────┐  │    │
 │  │            │  │  │                                         │  │    │
 │  │            │  │  │  ┌──────────┐ ┌──────────┐ ┌────────┐ │  │    │
-│  │            │  │  │  │ ⚖ Dir.   │ │ 📐 Matemat│ │ 🧬 Bio │ │  │    │
+│ │ │ │ │ │ [BALANCE] Dir. │ │ [CALC] Matemat│ │ Bio │ │ │ │
 │  │            │  │  │  │ Const.   │ │          │ │        │ │  │    │
 │  │            │  │  │  │ ████░ 65%│ │ ██░░ 40% │ │ █░░ 20%│ │  │    │
 │  │            │  │  │  │ 120 cards│ │ 87 cards │ │45 cards│ │  │    │
-│  │            │  │  │  │ 🕐 3h est│ │ 🕐 2h est│ │🕐 1h   │ │  │    │
+│ │ │ │ │ │ [CLOCK] 3h est│ │ [CLOCK] 2h est│ │[CLOCK] 1h │ │ │ │
 │  │            │  │  │  └──────────┘ └──────────┘ └────────┘ │  │    │
 │  │            │  │  │                                         │  │    │
 │  │            │  │  └────────────────────────────────────────┘  │    │
@@ -555,28 +555,28 @@ const Note = {
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  ← Dashboard  /  Direito Constitucional                    ⚙️ 🌙   │
+│ ← Dashboard / Direito Constitucional [GEAR] │
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  ┌─── HEADER DA DISCIPLINA ──────────────────────────────────────┐  │
-│  │  ⚖ Direito Constitucional                                      │  │
+│ │ [BALANCE] Direito Constitucional │ │
 │  │  ████████████████░░░░ 65% completo · 120 questões · 78 cards  │  │
-│  │  🏷 Tags: oab, constitucional, cláusulas-pétreas               │  │
+│ │ [LABEL] Tags: oab, constitucional, cláusulas-pétreas │ │
 │  │  Meta: Completar até 15/06/2026                                 │  │
 │  │                                                                  │  │
-│  │  [📝 Estudar]  [🎯 Simulado]  [📊 Performance]  [✏️ Editar]    │  │
+│ │ [[NOTE] Estudar] [[TARGET] Simulado] [[CHART] Performance] [[EDIT] Editar] │ │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─── MÓDULOS ───────────────────────────────────────────────────┐  │
 │  │                                                                  │  │
-│  │  ┌─ 1. Princípios Fundamentais ──────────────── ✅ 100% ────┐ │  │
+│ │ ┌─ 1. Princípios Fundamentais ──────────────── [OK] 100% ────┐ │ │
 │  │  │  Arts. 1° ao 4° · 15 questões · Básico                    │ │  │
 │  │  │  ├── Tópico: Fundamentos da República     ████████ 100%   │ │  │
 │  │  │  ├── Tópico: Separação de Poderes          ████████ 100%   │ │  │
 │  │  │  └── Tópico: Objetivos Fundamentais        ████████ 100%   │ │  │
 │  │  └────────────────────────────────────────────────────────────┘ │  │
 │  │                                                                  │  │
-│  │  ┌─ 2. Direitos Fundamentais ────────────────── 🟡 65% ─────┐ │  │
+│ │ ┌─ 2. Direitos Fundamentais ────────────────── [YELLOW] 65% ─────┐ │ │
 │  │  │  Arts. 5° ao 17° · 45 questões · Intermediário              │ │  │
 │  │  │  ├── Tópico: Art. 5° - Igualdade           ████████ 90%   │ │  │
 │  │  │  ├── Tópico: Art. 5° - Liberdades          ██████░░ 70%   │ │  │
@@ -584,16 +584,16 @@ const Note = {
 │  │  │  └── Tópico: Direitos Políticos            ██░░░░░░ 25%   │ │  │
 │  │  └────────────────────────────────────────────────────────────┘ │  │
 │  │                                                                  │  │
-│  │  ┌─ 3. Organização do Estado ────────────────── 🔒 Bloqueado ┐ │  │
+│ │ ┌─ 3. Organização do Estado ────────────────── [LOCK] Bloqueado ┐ │ │
 │  │  │  Pré-requisito: Complete módulo 2 com 70%+                  │ │  │
 │  │  └────────────────────────────────────────────────────────────┘ │  │
 │  │                                                                  │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─── INSIGHTS ──────────────────────────────────────────────────┐  │
-│  │  ⚠ Pontos fracos: Direitos Sociais (45% accuracy)              │  │
-│  │  💡 Recomendação: Foque em Art. 6° e 7° antes de avançar       │  │
-│  │  📊 Retention rate: 78% (acima da média)                        │  │
+│ │ [WARN] Pontos fracos: Direitos Sociais (45% accuracy) │ │
+│ │ [TIP] Recomendação: Foque em Art. 6° e 7° antes de avançar │ │
+│ │ [CHART] Retention rate: 78% (acima da média) │ │
 │  └──────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -607,24 +607,24 @@ const Note = {
 │                                                                      │
 │  ┌── FILTROS ────────────────────────────────────────────────────┐  │
 │  │  Nível: [Todos ▾]  Tipo: [Todos ▾]  Tags: [+ Adicionar]       │  │
-│  │  Dificuldade: ★☆☆☆☆ a ★★★★★   Ano: [2020-2026]               │  │
+│ │ Dificuldade: a Ano: [2020-2026] │ │
 │  │  Status: [◉Todos ○Novos ○Em revisão ○Dominados ○Difíceis]     │  │
-│  │  Ordenar: [Relevância ▾]  🔍 Buscar em 120 questões...         │  │
+│ │ Ordenar: [Relevância ▾] [SEARCH] Buscar em 120 questões... │ │
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌── RESULTADOS ─────────────────────────────────────────────────┐  │
 │  │  Mostrando 12 de 45 questões · Filtro ativo: Intermediário      │  │
 │  │                                                                  │  │
-│  │  ┌─ Q1 ─────────────────────────────────── ★★★ · 🔴 Vencido ┐ │  │
+│ │ ┌─ Q1 ─────────────────────────────────── · [RED] Vencido ┐ │ │
 │  │  │  O princípio da igualdade, previsto no art. 5°...           │ │  │
-│  │  │  📝 OAB 2024.1 · ⏱ ~2min · 🏷 igualdade, art5              │ │  │
-│  │  │  [Estudar] [Ver detalhes] [📌 Anotar]                       │ │  │
+│ │ │ [NOTE] OAB 2024.1 · [TIMER] ~2min · [LABEL] igualdade, art5 │ │ │
+│ │ │ [Estudar] [Ver detalhes] [[PIN] Anotar] │ │ │
 │  │  └────────────────────────────────────────────────────────────┘ │  │
 │  │                                                                  │  │
-│  │  ┌─ Q2 ─────────────────────────────────── ★★ · 🟢 3 dias ──┐ │  │
+│ │ ┌─ Q2 ─────────────────────────────────── · [GREEN] 3 dias ──┐ │ │
 │  │  │  Segundo o STF, a liberdade de expressão...                 │ │  │
-│  │  │  📝 CESPE 2023 · ⏱ ~1min · 🏷 liberdade, expressao          │ │  │
-│  │  │  [Estudar] [Ver detalhes] [📌 Anotar]                       │ │  │
+│ │ │ [NOTE] CESPE 2023 · [TIMER] ~1min · [LABEL] liberdade, expressao │ │ │
+│ │ │ [Estudar] [Ver detalhes] [[PIN] Anotar] │ │ │
 │  │  └────────────────────────────────────────────────────────────┘ │  │
 │  └──────────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -634,12 +634,12 @@ const Note = {
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  📊 Performance Analytics                              [Exportar PDF]│
+│ [CHART] Performance Analytics [Exportar PDF]│
 ├─────────────────────────────────────────────────────────────────────┤
 │                                                                      │
 │  ┌─── RESUMO GERAL ─────────────────────────────────────────────┐  │
 │  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────────┐ │  │
-│  │  │ 📝 327 │ │ ✅ 278 │ │ ⏱ 32h  │ │ 🎯 85% │ │ 📈 +12% this│ │  │
+│ │ │ [NOTE] 327 │ │ [OK] 278 │ │ [TIMER] 32h │ │ [TARGET] 85% │ │ [UP] +12% this│ │ │
 │  │  │ Total  │ │ Domin. │ │ Estud. │ │ Acur.  │ │    month   │ │  │
 │  │  └────────┘ └────────┘ └────────┘ └────────┘ └────────────┘ │  │
 │  └──────────────────────────────────────────────────────────────┘  │
@@ -663,15 +663,15 @@ const Note = {
 │  └──────────────────────────────────────────────────────────────┘  │
 │                                                                      │
 │  ┌─── INSIGHTS PERSONALIZADOS ──────────────────────────────────┐  │
-│  │  ⚠ FOCO RECOMENDADO                                           │  │
+│ │ [WARN] FOCO RECOMENDADO │ │
 │  │  • Português tem retention 55% — revise tópicos de gramática   │  │
 │  │  • 12 cards vencidos em Dir. Constitucional — priorize hoje    │  │
 │  │                                                                  │  │
-│  │  💪 PONTOS FORTES                                               │  │
+│ │ PONTOS FORTES │ │
 │  │  • Biologia: 90% accuracy, excelente retenção                  │  │
 │  │  • História: +8% de melhoria este mês                          │  │
 │  │                                                                  │  │
-│  │  📈 PREVISÃO                                                    │  │
+│ │ [UP] PREVISÃO │ │
 │  │  • No ritmo atual, você completará Dir. Const. em ~25 dias     │  │
 │  │  • Aderência ao plano: 85% — acima da meta de 80%              │  │
 │  └──────────────────────────────────────────────────────────────┘  │
@@ -864,7 +864,7 @@ FASE 4: Polish (2-3 semanas)
     │                  │                  │ Simulado Adv     │          │Perf  │
     │                  │                  │ AI Summaries     │          │      │
     └──────────────────┴──────────────────┴──────────────────┴──────────┴──────┘
-         ✓ Fundação       ✓ Navegação       ✓ Engajamento     ✓ Completo
+          Fundação Navegação Engajamento Completo
          pronta            funcional          ativo
 ```
 
@@ -1257,13 +1257,13 @@ const analyticsStore = {
 
 ```
 ┌─────────────────────────────────┐
-│  ⚖                              │  ← Ícone (Material Symbol, 32px)
+│ [BALANCE] │ ← Ícone (Material Symbol, 32px)
 │  Direito Constitucional         │  ← Título (Baloo 2, 18px, bold)
 │  120 questões · Intermediário   │  ← Metadados (Lexend, 12px, gray-500)
 │                                  │
 │  ████████████████░░░░ 65%       │  ← ProgressBar (8px height, rounded)
 │                                  │
-│  🕐 ~3h restantes              │  ← Estimativa (Lexend, 12px)
+│ [CLOCK] ~3h restantes │ ← Estimativa (Lexend, 12px)
 │  [Estudar]  [Simulado]          │  ← CTAs (botões small, pill shape)
 └─────────────────────────────────┘
 
@@ -1281,7 +1281,7 @@ Visual specs:
 
 ```
 ┌──────────────┐
-│  📝          │  ← Ícone (24px, muted)
+│ [NOTE] │ ← Ícone (24px, muted)
 │  327         │  ← Número (Baloo 2, 28px, bold)
 │  Questões    │  ← Label (Lexend, 12px, gray-500)
 │  ↑ +12%      │  ← Trend (12px, green/red)
@@ -1299,7 +1299,7 @@ Visual specs:
 #### InsightCard
 
 ```
-┌─ ⚠ FOCO RECOMENDADO ─────────────────────────────────┐
+┌─ [WARN] FOCO RECOMENDADO ─────────────────────────────────┐
 │  Português tem retention 55% — revise tópicos de       │
 │  gramática antes de avançar.                           │
 │  [Ver disciplina →]                                     │
@@ -1397,27 +1397,27 @@ Fill: 0 (outline default), 1 (active/selected state)
 
 Mapeamento de ícones por feature:
 ─────────────────────────────────
-📊 Overview      → dashboard
-📚 Disciplinas   → menu_book
-🛤 Trilhas       → route
-📅 Planner       → calendar_month
-📈 Performance   → trending_up
-🏆 Conquistas    → emoji_events
-⚙ Settings      → settings
-🔍 Buscar        → search
-🌙 Dark Mode     → dark_mode / light_mode
-👤 Perfil        → account_circle
-➕ Adicionar     → add_circle
-📝 Estudar       → school
-🎯 Simulado      → target
-✏️ Editar        → edit
-🗑 Excluir       → delete
-📌 Anotar        → note_add
-🔥 Streak        → local_fire_department
-⭐ XP            → star
-🔒 Bloqueado     → lock
-✅ Concluído     → check_circle
-⚠ Alerta        → warning
+[CHART] Overview → dashboard
+[STUDY] Disciplinas → menu_book
+[PATH] Trilhas → route
+[DATE] Planner → calendar_month
+[UP] Performance → trending_up
+[TROPHY] Conquistas → emoji_events
+[GEAR] Settings → settings
+[SEARCH] Buscar → search
+ Dark Mode → dark_mode / light_mode
+ Perfil → account_circle
+[PLUS] Adicionar → add_circle
+[NOTE] Estudar → school
+[TARGET] Simulado → target
+[EDIT] Editar → edit
+[DELETE] Excluir → delete
+[PIN] Anotar → note_add
+[STREAK] Streak → local_fire_department
+[STAR] XP → star
+[LOCK] Bloqueado → lock
+[OK] Concluído → check_circle
+[WARN] Alerta → warning
 ```
 
 ---
@@ -1426,28 +1426,28 @@ Mapeamento de ícones por feature:
 
 | Badge | Nome | Condição | Categoria |
 |---|---|---|---|
-| 🌱 | Primeiro Passo | Complete 1 questão | milestone |
-| 📝 | Dezena | Complete 10 questões | milestone |
-| 💯 | Centenário | Complete 100 questões | milestone |
-| 🏆 | Mil e Uma | Complete 1000 questões | milestone |
-| 🔥 | 3 Dias | Streak de 3 dias | streak |
-| 🔥🔥 | Semana de Fogo | Streak de 7 dias | streak |
-| 🔥🔥🔥 | Mês Incandescente | Streak de 30 dias | streak |
-| ⭐ | Mestre | Domine 1 disciplina (90%+) | mastery |
-| 🎓 | Formado | Domine 5 disciplinas | mastery |
-| 🧠 | Retenção de Ferro | Retention rate > 90% em qualquer disciplina | mastery |
-| 🎯 | Precisão Cirúrgica | 100% accuracy em um simulado (20+ questões) | special |
-| ⚡ | Velocista | Complete 50 cards em uma sessão | special |
-| 🌅 | Madrugador | Estude antes das 7h | special |
-| 🦉 | Coruja | Estude depois das 23h | special |
-| 📚 | Bibliotecário | Salve 500+ questões no binder | milestone |
-| 🗺 | Explorador | Estude 10 disciplinas diferentes | special |
-| 📊 | Analista | Consulte o dashboard 30 vezes | special |
-| 🛤 | Trilheiro | Complete 1 learning path | special |
-| ✍️ | Anotador | Crie 50 notas | special |
+| | Primeiro Passo | Complete 1 questão | milestone |
+| [NOTE] | Dezena | Complete 10 questões | milestone |
+| [100] | Centenário | Complete 100 questões | milestone |
+| [TROPHY] | Mil e Uma | Complete 1000 questões | milestone |
+| [STREAK] | 3 Dias | Streak de 3 dias | streak |
+| [STREAK][STREAK] | Semana de Fogo | Streak de 7 dias | streak |
+| [STREAK][STREAK][STREAK] | Mês Incandescente | Streak de 30 dias | streak |
+| [STAR] | Mestre | Domine 1 disciplina (90%+) | mastery |
+| [GRAD] | Formado | Domine 5 disciplinas | mastery |
+| [AI] | Retenção de Ferro | Retention rate > 90% em qualquer disciplina | mastery |
+| [TARGET] | Precisão Cirúrgica | 100% accuracy em um simulado (20+ questões) | special |
+| [FAST] | Velocista | Complete 50 cards em uma sessão | special |
+| | Madrugador | Estude antes das 7h | special |
+| | Coruja | Estude depois das 23h | special |
+| [STUDY] | Bibliotecário | Salve 500+ questões no binder | milestone |
+| [MAP] | Explorador | Estude 10 disciplinas diferentes | special |
+| [CHART] | Analista | Consulte o dashboard 30 vezes | special |
+| [PATH] | Trilheiro | Complete 1 learning path | special |
+| [WRITE] | Anotador | Crie 50 notas | special |
 | 🃏 | Flashcard Master | Crie 100 flashcards | special |
-| 📅 | Planejador | Mantenha 80%+ de aderência ao plano por 4 semanas | special |
-| 🤖 | AI Explorer | Use todas as 5 ferramentas AI pedagógicas | special |
+| [DATE] | Planejador | Mantenha 80%+ de aderência ao plano por 4 semanas | special |
+| [BOT] | AI Explorer | Use todas as 5 ferramentas AI pedagógicas | special |
 
 ---
 

@@ -435,6 +435,20 @@ function initKeyboard() {
     }
 
     // Study session shortcuts
+    if (state.session.active && state.session._isReview) {
+      // Review mode: arrow keys navigate
+      if (key === 'arrowleft' || key === 'arrowright') {
+        e.preventDefault();
+        if (key === 'arrowleft' && state.session.index > 0) {
+          state.session.index--;
+          renderReviewCard();
+        } else if (key === 'arrowright' && state.session.index < state.session.cards.length - 1) {
+          state.session.index++;
+          renderReviewCard();
+        }
+      }
+      return; // skip normal study shortcuts in review mode
+    }
     if (state.session.active && state.session.revealed) {
       const rateMap = { '1': 1, '2': 2, '3': 3, '4': 4 };
       if (rateMap[key]) rateCurrentCard(rateMap[key]);
@@ -840,6 +854,18 @@ function _cleanTempProps(hierarchy) {
       }
     }
   }
+}
+
+/* ─── Topbar XP Bar ────────────────────────────────────────────────── */
+
+function updateTopbarXp() {
+  const xp = state.xpData?.totalXP || 0;
+  const level = Math.floor(xp / 100) + 1;
+  const xpInLevel = xp % 100;
+
+  safeText('#topbarLevel', `Nv.${level}`);
+  const fill = $('#topbarXpFill');
+  if (fill) fill.style.width = `${xpInLevel}%`;
 }
 
 /* ─── Greeting ─────────────────────────────────────────────────────── */
@@ -1704,6 +1730,11 @@ function parseQuestionText(raw) {
 }
 
 function renderCurrentCard() {
+  // Dispatch to review renderer if in review mode
+  if (state.session._isReview) {
+    renderReviewCard();
+    return;
+  }
   const { cards, index } = state.session;
   const container = $('#currentCard');
   if (!container || index >= cards.length) return;
@@ -2185,6 +2216,15 @@ async function rateCurrentCard(rating) {
 }
 
 function endStudySession() {
+  // If in review mode, just go back to history
+  if (state.session._isReview) {
+    state.session = { active: false, cards: [], index: 0, results: [], revealed: false };
+    hide($('#studyActive'));
+    closeToolDock();
+    navigateTo('history');
+    return;
+  }
+
   state.session.active = false;
 
   hide($('#studyActive'));
@@ -2226,8 +2266,11 @@ function endStudySession() {
     cards: state.session.cards.map((c, i) => {
       const r = results[i] || {};
       return {
-        question: truncate(c.question || c.pergunta || '', 200),
-        answer: truncate(c.answer || c.resposta || '', 200),
+        question: c.question || c.pergunta || '',
+        answer: c.answer || c.resposta || '',
+        options: (c.options || c.alternatives || []).map(o =>
+          typeof o === 'string' ? o : (o.text || o.label || '')
+        ),
         rating: r.rating || 0,
         isCorrect: r.isCorrect,
         disc: c._disc || '',
@@ -2242,6 +2285,9 @@ function endStudySession() {
   state.xpData.totalXP = (state.xpData.totalXP || 0) + xp;
   state.xpData.level = Math.floor(state.xpData.totalXP / 100) + 1;
   chrome.storage.local.set({ ah_xpData: state.xpData }).catch(() => { });
+
+  // Update topbar XP bar immediately
+  updateTopbarXp();
 
   // Analytics: persist daily XP + end session
   AnalyticsService.addDailyXP?.(xp).catch(() => { });
@@ -2563,7 +2609,7 @@ async function readAloud() {
   }
 }
 
-function flagCard() {
+async function flagCard() {
   const card = state.session.cards[state.session.index];
   if (!card) return;
   card._flagged = !card._flagged;
@@ -2571,12 +2617,77 @@ function flagCard() {
   if (btn) {
     btn.classList.toggle('flagged', card._flagged);
   }
-  toast(card._flagged ? 'Card marcado para revisão posterior.' : 'Marcação removida.', 'info', 2000);
+
+  // Persist to storage immediately
+  if (card._flagged) {
+    await addFlaggedCard(card);
+    toast('Card salvo em Questões Marcadas.', 'success', 2500);
+  } else {
+    // Build a key to find & remove
+    const q = (card.question || card.pergunta || '').trim();
+    await removeFlaggedCardByQuestion(q);
+    toast('Marcação removida.', 'info', 2000);
+  }
+}
+
+/* ─── Flagged Cards Storage ────────────────────────────────────────── */
+
+async function loadFlaggedCards() {
+  try {
+    const data = await chrome.storage.local.get(FLAGGED_STORAGE_KEY);
+    return data[FLAGGED_STORAGE_KEY] || [];
+  } catch {
+    return [];
+  }
+}
+
+async function addFlaggedCard(card) {
+  try {
+    const list = await loadFlaggedCards();
+    const question = (card.question || card.pergunta || '').trim();
+    // Avoid duplicates (same question text)
+    if (list.some(f => f.question === question)) return;
+    list.unshift({
+      id: `flag_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      question,
+      answer: card.answer || card.resposta || '',
+      options: (card.options || card.alternatives || []).map(o =>
+        typeof o === 'string' ? o : (o.text || o.label || '')
+      ),
+      disc: card._disc || '',
+      topic: card._topic || '',
+      isAI: !!card._aiGenerated,
+      date: new Date().toISOString(),
+    });
+    if (list.length > FLAGGED_MAX) list.length = FLAGGED_MAX;
+    await chrome.storage.local.set({ [FLAGGED_STORAGE_KEY]: list });
+  } catch (err) {
+    console.warn('[Flagged] Save error:', err);
+  }
+}
+
+async function removeFlaggedCard(id) {
+  try {
+    const list = await loadFlaggedCards();
+    const filtered = list.filter(f => f.id !== id);
+    await chrome.storage.local.set({ [FLAGGED_STORAGE_KEY]: filtered });
+    return filtered;
+  } catch {
+    return [];
+  }
+}
+
+async function removeFlaggedCardByQuestion(question) {
+  try {
+    const list = await loadFlaggedCards();
+    const filtered = list.filter(f => f.question !== question);
+    await chrome.storage.local.set({ [FLAGGED_STORAGE_KEY]: filtered });
+  } catch { /* ignore */ }
 }
 
 /* ─── REVIEW VIEW ──────────────────────────────────────────────────── */
 
-function renderReview() {
+async function renderReview() {
   const allCards = getAllCards();
   const due = getDueCards();
   const overdue = getOverdueCards();
@@ -2701,6 +2812,107 @@ function renderReview() {
   if (startBtn) {
     startBtn.disabled = due.length === 0;
   }
+
+  // ── Render flagged cards section ──
+  await renderFlaggedSection();
+}
+
+async function renderFlaggedSection() {
+  const flaggedEl = $('#flaggedPanel');
+  if (!flaggedEl) return;
+
+  const flagged = await loadFlaggedCards();
+  safeText('#flaggedCount', flagged.length);
+
+  const listEl = $('#flaggedList');
+  const emptyEl = $('#flaggedEmpty');
+  const reviewBtn = $('#startFlaggedReview');
+
+  if (flagged.length === 0) {
+    if (listEl) listEl.innerHTML = '';
+    if (emptyEl) emptyEl.hidden = false;
+    if (reviewBtn) reviewBtn.disabled = true;
+    return;
+  }
+
+  if (emptyEl) emptyEl.hidden = true;
+  if (reviewBtn) reviewBtn.disabled = false;
+
+  if (listEl) {
+    listEl.innerHTML = flagged.slice(0, 50).map(f => {
+      const parsed = parseQuestionText(f.question);
+      const preview = parsed.alternatives.length >= 2 ? parsed.stem : f.question;
+      return `
+      <div class="flagged-item" data-flag-id="${escHtml(f.id)}">
+        <div class="flagged-item__icon">
+          <span class="material-symbols-rounded">${f.isAI ? 'auto_awesome' : 'flag'}</span>
+        </div>
+        <div class="flagged-item__body">
+          <span class="flagged-item__disc">${escHtml(f.disc || 'Geral')}</span>
+          <span class="flagged-item__q">${escHtml(truncate(preview, 100))}</span>
+        </div>
+        <button class="flagged-item__remove" data-unflag-id="${escHtml(f.id)}" aria-label="Remover marcação" title="Remover">
+          <span class="material-symbols-rounded" style="font-size:18px">close</span>
+        </button>
+      </div>`;
+    }).join('');
+
+    // Bind remove buttons
+    $$('[data-unflag-id]', listEl).forEach(btn => {
+      on(btn, 'click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.unflagId;
+        await removeFlaggedCard(id);
+        toast('Marcação removida.', 'info', 2000);
+        renderFlaggedSection();
+      });
+    });
+
+    // Click item to start review at that card
+    $$('.flagged-item', listEl).forEach((item, i) => {
+      item.style.cursor = 'pointer';
+      on(item, 'click', () => startFlaggedReview(flagged, i));
+    });
+  }
+
+  // Bind review all button (once)
+  if (reviewBtn && !reviewBtn._bound) {
+    reviewBtn._bound = true;
+    on(reviewBtn, 'click', () => startFlaggedReview(flagged, 0));
+  }
+}
+
+function startFlaggedReview(flaggedCards, startIndex = 0) {
+  const reviewCards = flaggedCards.map(f => ({
+    question: f.question || '',
+    answer: f.answer || '',
+    options: f.options || [],
+    _disc: f.disc || '',
+    _topic: f.topic || '',
+    _aiGenerated: f.isAI || false,
+    _flagId: f.id,
+  }));
+
+  state.session = {
+    active: true,
+    cards: reviewCards,
+    index: startIndex,
+    results: [],
+    revealed: false,
+    type: 'review',
+    startedAt: null,
+    _isReview: true,
+    _reviewEntry: { discipline: 'Questões Marcadas', cards: flaggedCards },
+  };
+
+  navigateTo('study');
+  hide($('#studySetup'));
+  hide($('#studySummary'));
+  show($('#studyActive'));
+  show($('#cardActionsBar'));
+  safeText('#sessionDiscBadge', '🚩 Questões Marcadas');
+
+  renderReviewCard();
 }
 
 /* ─── FLASHCARD VIEW ───────────────────────────────────────────────── */
@@ -4291,6 +4503,8 @@ function initAddQuestion() {
 
 const HISTORY_STORAGE_KEY = 'ah_simuladoHistory';
 const HISTORY_MAX_ENTRIES = 200;
+const FLAGGED_STORAGE_KEY = 'ah_flaggedCards';
+const FLAGGED_MAX = 500;
 
 const SESSION_TYPE_META = {
   'study':        { label: 'Sessão de Estudo', icon: 'school',         color: 'blue' },
@@ -4395,79 +4609,11 @@ function formatFullDate(isoStr) {
 }
 
 /**
- * Generic custom filter-dropdown wiring.
- * @param {HTMLElement} dropdown  .filter-dropdown element
- * @param {Function}    onChange  callback when value changes
- */
-function initFilterDropdown(dropdown, onChange) {
-  if (!dropdown) return;
-  const trigger = dropdown.querySelector('.filter-dropdown__trigger');
-  const menu = dropdown.querySelector('.filter-dropdown__menu');
-  if (!trigger || !menu) return;
-
-  // Toggle open/close
-  on(trigger, 'click', (e) => {
-    e.stopPropagation();
-    const wasOpen = dropdown.classList.contains('open');
-    // Close all other dropdowns first
-    $$('.filter-dropdown.open').forEach(d => {
-      d.classList.remove('open');
-      d.querySelector('.filter-dropdown__trigger')?.setAttribute('aria-expanded', 'false');
-    });
-    if (!wasOpen) {
-      dropdown.classList.add('open');
-      trigger.setAttribute('aria-expanded', 'true');
-    }
-  });
-
-  // Item selection
-  on(menu, 'click', (e) => {
-    const item = e.target.closest('.filter-dropdown__item');
-    if (!item) return;
-    e.stopPropagation();
-    const val = item.dataset.value;
-    // Update active state
-    menu.querySelectorAll('.filter-dropdown__item').forEach(i => {
-      i.classList.remove('filter-dropdown__item--active');
-      i.setAttribute('aria-selected', 'false');
-    });
-    item.classList.add('filter-dropdown__item--active');
-    item.setAttribute('aria-selected', 'true');
-    // Update trigger label
-    const label = trigger.querySelector('.filter-dropdown__label');
-    if (label) label.textContent = item.querySelector('span:nth-child(2)')?.textContent || val;
-    // Update data-value on container
-    dropdown.dataset.value = val;
-    // Close
-    dropdown.classList.remove('open');
-    trigger.setAttribute('aria-expanded', 'false');
-    onChange();
-  });
-
-  // Close on outside click
-  document.addEventListener('click', () => {
-    if (dropdown.classList.contains('open')) {
-      dropdown.classList.remove('open');
-      trigger.setAttribute('aria-expanded', 'false');
-    }
-  });
-
-  // Close on Escape
-  on(dropdown, 'keydown', (e) => {
-    if (e.key === 'Escape' && dropdown.classList.contains('open')) {
-      dropdown.classList.remove('open');
-      trigger.setAttribute('aria-expanded', 'false');
-      trigger.focus();
-    }
-  });
-}
-
-/**
  * Init history view: bind filters, clear button, empty-state CTA
  */
 function initHistory() {
-  initFilterDropdown($('#historyFilterType'), renderHistory);
-  initFilterDropdown($('#historyFilterDisc'), renderHistory);
+  on($('#historyFilterType'), 'change', renderHistory);
+  on($('#historyFilterDisc'), 'change', renderHistory);
 
   on($('#historyClearAllBtn'), 'click', () => {
     openModal('Limpar Histórico', `
@@ -4498,42 +4644,27 @@ function initHistory() {
  */
 async function renderHistory() {
   const allHistory = await loadHistory();
-  const filterType = $('#historyFilterType')?.dataset?.value || 'all';
-  const filterDisc = $('#historyFilterDisc')?.dataset?.value || 'all';
+  const filterType = $('#historyFilterType')?.value || 'all';
+  const filterDisc = $('#historyFilterDisc')?.value || 'all';
 
-  // Populate discipline filter dropdown from history data
-  const discDropdown = $('#historyFilterDisc');
-  if (discDropdown) {
-    const prevVal = discDropdown.dataset.value || 'all';
+  // Populate discipline filter from history data
+  const discFilter = $('#historyFilterDisc');
+  if (discFilter) {
+    const prevVal = discFilter.value;
     const allDiscs = new Set();
     allHistory.forEach(h => {
       if (h.discipline) allDiscs.add(h.discipline);
       (h.disciplines || []).forEach(d => allDiscs.add(d));
     });
-    const menu = discDropdown.querySelector('.filter-dropdown__menu');
-    if (menu) {
-      let menuHtml = `<li class="filter-dropdown__item${prevVal === 'all' ? ' filter-dropdown__item--active' : ''}" data-value="all" role="option" aria-selected="${prevVal === 'all'}">
-        <span class="material-symbols-rounded">menu_book</span>
-        <span>Todas disciplinas</span>
-        <span class="material-symbols-rounded filter-dropdown__check">check</span>
-      </li>`;
-      [...allDiscs].sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(d => {
-        const isActive = d === prevVal;
-        menuHtml += `<li class="filter-dropdown__item${isActive ? ' filter-dropdown__item--active' : ''}" data-value="${escHtml(d)}" role="option" aria-selected="${isActive}">
-          <span class="material-symbols-rounded">auto_stories</span>
-          <span>${escHtml(d)}</span>
-          <span class="material-symbols-rounded filter-dropdown__check">check</span>
-        </li>`;
-      });
-      menu.innerHTML = menuHtml;
-    }
-    // If prev value no longer exists, reset to "all"
-    const allVals = ['all', ...allDiscs];
-    if (!allVals.includes(prevVal)) {
-      discDropdown.dataset.value = 'all';
-      const label = discDropdown.querySelector('.filter-dropdown__label');
-      if (label) label.textContent = 'Todas disciplinas';
-    }
+    discFilter.innerHTML = '<option value="all">Todas disciplinas</option>';
+    [...allDiscs].sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      discFilter.appendChild(opt);
+    });
+    const exists = [...discFilter.options].some(o => o.value === prevVal);
+    discFilter.value = exists ? prevVal : 'all';
   }
 
   // Filter
@@ -4639,18 +4770,20 @@ async function renderHistory() {
                 <span>${formatDuration(h.durationSec)}</span>
               </div>
             </div>
-            <div class="hist-acc-ring">
-              <svg viewBox="0 0 42 42">
-                <circle class="ring-bg" cx="21" cy="21" r="${r}" />
-                <circle class="ring-fg" cx="21" cy="21" r="${r}"
-                  stroke="${accColor}"
-                  stroke-dasharray="${circ}"
-                  stroke-dashoffset="${offset}" />
-              </svg>
-              <span class="hist-acc-pct">${acc}%</span>
+            <div class="hist-entry-score">
+              <div class="hist-acc-ring">
+                <svg viewBox="0 0 42 42">
+                  <circle class="ring-bg" cx="21" cy="21" r="${r}" />
+                  <circle class="ring-fg" cx="21" cy="21" r="${r}"
+                    stroke="${accColor}"
+                    stroke-dasharray="${circ}"
+                    stroke-dashoffset="${offset}" />
+                </svg>
+                <span class="hist-acc-pct">${acc}%</span>
+              </div>
+              <span class="hist-entry-ratio">${h.correct}/${h.total}</span>
             </div>
-            <div class="hist-entry-ratio">${h.correct}/${h.total}</div>
-            <div class="hist-entry-time">${formatHistoryDate(h.date)}</div>
+            <span class="hist-entry-time">${formatHistoryDate(h.date)}</span>
             <button class="hist-entry-expand" aria-label="Expandir detalhes" data-expand-id="${escHtml(h.id)}">
               <span class="material-symbols-rounded">expand_more</span>
             </button>
@@ -4659,6 +4792,10 @@ async function renderHistory() {
             <div class="hist-detail-header">
               <span class="hist-detail-date">${formatFullDate(h.date)}</span>
               <span class="hist-detail-xp">+${h.xp || 0} XP</span>
+              <button class="hist-review-btn" data-review-id="${escHtml(h.id)}" aria-label="Revisar questões">
+                <span class="material-symbols-rounded" style="font-size:16px">play_circle</span>
+                Revisar
+              </button>
               <button class="hist-delete-btn" data-delete-id="${escHtml(h.id)}" aria-label="Excluir sessão">
                 <span class="material-symbols-rounded" style="font-size:16px">delete</span>
               </button>
@@ -4701,6 +4838,188 @@ async function renderHistory() {
       renderHistory();
     });
   });
+
+  // Bind individual card expand/collapse
+  $$('[data-hist-card-toggle]', listEl).forEach(header => {
+    on(header, 'click', (e) => {
+      e.stopPropagation();
+      const idx = header.dataset.histCardToggle;
+      const body = $(`#histCardBody_${idx}`, header.closest('.hist-entry-details'));
+      if (!body) return;
+      const isHidden = body.hidden;
+      body.hidden = !isHidden;
+      const item = header.closest('.hist-card-item');
+      if (item) item.classList.toggle('hist-card-expanded', !isHidden);
+    });
+  });
+
+  // Bind review buttons
+  $$('[data-review-id]', listEl).forEach(btn => {
+    on(btn, 'click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.reviewId;
+      const history = await loadHistory();
+      const entry = history.find(h => h.id === id);
+      if (entry && entry.cards && entry.cards.length > 0) {
+        startHistoryReview(entry);
+      } else {
+        toast('Sem questões para revisar nesta sessão.', 'warning');
+      }
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HISTORY REVIEW MODE — replays history cards in full study-card UI
+═══════════════════════════════════════════════════════════════════════ */
+
+function startHistoryReview(entry) {
+  // Build pseudo-cards compatible with the study card renderer
+  const reviewCards = (entry.cards || []).map(c => ({
+    question: c.question || '',
+    answer: c.answer || '',
+    options: c.options || [],
+    _disc: c.disc || entry.discipline || '',
+    _topic: c.topic || '',
+    _aiGenerated: c.isAI || false,
+    _reviewIsCorrect: c.isCorrect,
+  }));
+
+  // Set up a review pseudo-session
+  state.session = {
+    active: true,
+    cards: reviewCards,
+    index: 0,
+    results: [],
+    revealed: false,
+    type: 'review',
+    startedAt: null,
+    _isReview: true,
+    _reviewEntry: entry,
+  };
+
+  // Navigate to study view
+  navigateTo('study');
+  hide($('#studySetup'));
+  hide($('#studySummary'));
+  show($('#studyActive'));
+
+  // Show actions bar (for tools)
+  show($('#cardActionsBar'));
+
+  // Replace "Encerrar" button behavior
+  safeText('#sessionDiscBadge', `📖 Revisão — ${escHtml(entry.discipline || 'Geral')}`);
+
+  renderReviewCard();
+}
+
+function renderReviewCard() {
+  const { cards, index } = state.session;
+  const container = $('#currentCard');
+  if (!container || index >= cards.length) return;
+
+  const card = cards[index];
+  const progress = ((index) / cards.length) * 100;
+  const fill = $('#sessionProgressFill');
+  if (fill) fill.style.width = `${progress}%`;
+  safeText('#sessionProgressCount', `${index + 1}/${cards.length}`);
+
+  const question = card.question || card.answer || '—';
+  const answer = card.answer || '';
+  const options = card.options || [];
+  const parsed = parseQuestionText(question);
+  const hasExplicitOptions = options.length > 0;
+  const hasInlineAlts = parsed.alternatives.length >= 2;
+  const isCorrect = card._reviewIsCorrect;
+  const resultBadge = isCorrect === true
+    ? '<span class="review-result-badge review-result-badge--correct"><span class="material-symbols-rounded">check_circle</span> Você acertou</span>'
+    : isCorrect === false
+      ? '<span class="review-result-badge review-result-badge--wrong"><span class="material-symbols-rounded">cancel</span> Você errou</span>'
+      : '';
+
+  const letters = 'ABCDEFGHIJ';
+
+  let html = `
+    <div class="study-card review-card${card._aiGenerated ? ' ai-card' : ''}">
+      <div class="study-card__header">
+        <span class="study-card__disc-tag">${escHtml(card._disc || '—')}</span>
+        ${resultBadge}
+        <span class="study-card__num">${card._topic ? escHtml(card._topic) : ''}</span>
+      </div>`;
+
+  // Question stem
+  if (hasInlineAlts && !hasExplicitOptions) {
+    html += `<div class="study-card__question">${escHtml(parsed.stem).replace(/\n/g, '<br>')}</div>`;
+    html += `<div class="study-card__options study-card__options--parsed review-options">
+      ${parsed.alternatives.map((alt) => {
+      const isAnswer = answer && (
+        answer.trim().toLowerCase() === alt.text.trim().toLowerCase() ||
+        answer.trim().toLowerCase() === alt.letter.toLowerCase() ||
+        answer.trim().toLowerCase().startsWith(alt.letter.toLowerCase() + ')')
+      );
+      return `<div class="option-item option-item--parsed${isAnswer ? ' option-item--correct' : ''}" tabindex="-1">
+          <span class="option-item__letter">${escHtml(alt.letter)}</span>
+          <span class="option-item__text">${escHtml(alt.text)}</span>
+          ${isAnswer ? '<span class="material-symbols-rounded option-item__check">check_circle</span>' : ''}
+        </div>`;
+    }).join('')}
+    </div>`;
+  } else {
+    html += `<div class="study-card__question">${escHtml(question).replace(/\n/g, '<br>')}</div>`;
+  }
+
+  if (hasExplicitOptions) {
+    html += `<div class="study-card__options review-options">
+      ${options.map((opt, i) => {
+      const text = typeof opt === 'string' ? opt : (opt.text || opt.label || '');
+      const isAnswer = answer && text && (
+        answer.trim().toLowerCase() === text.trim().toLowerCase() ||
+        answer.trim().toLowerCase() === (letters[i] || '').toLowerCase() ||
+        answer.trim().toLowerCase().startsWith(letters[i].toLowerCase() + ')')
+      );
+      return `<div class="option-item${isAnswer ? ' option-item--correct' : ''}" tabindex="-1">
+          <span class="option-item__letter">${letters[i] || i + 1}</span>
+          <span>${escHtml(text)}</span>
+          ${isAnswer ? '<span class="material-symbols-rounded option-item__check">check_circle</span>' : ''}
+        </div>`;
+    }).join('')}
+    </div>`;
+  }
+
+  // Answer always revealed in review mode
+  html += `<div class="review-answer-section">
+      <div class="review-answer-label"><span class="material-symbols-rounded">school</span> Gabarito</div>
+      <div class="review-answer-text">${escHtml(answer) || 'Sem resposta registrada.'}</div>
+    </div>`;
+
+  // Navigation
+  html += `<div class="review-nav">
+      <button class="btn btn-secondary review-nav-btn" id="reviewPrevBtn" ${index === 0 ? 'disabled' : ''}>
+        <span class="material-symbols-rounded">arrow_back</span> Anterior
+      </button>
+      <span class="review-nav-counter">${index + 1} de ${cards.length}</span>
+      <button class="btn btn-secondary review-nav-btn" id="reviewNextBtn" ${index >= cards.length - 1 ? 'disabled' : ''}>
+        Próxima <span class="material-symbols-rounded">arrow_forward</span>
+      </button>
+    </div>`;
+
+  html += '</div>';
+
+  container.innerHTML = html;
+
+  // Nav bindings
+  on($('#reviewPrevBtn', container), 'click', () => {
+    if (state.session.index > 0) {
+      state.session.index--;
+      renderReviewCard();
+    }
+  });
+  on($('#reviewNextBtn', container), 'click', () => {
+    if (state.session.index < state.session.cards.length - 1) {
+      state.session.index++;
+      renderReviewCard();
+    }
+  });
 }
 
 /**
@@ -4717,13 +5036,67 @@ function renderHistoryCardsList(cards) {
     const correct = isCorrectKnown ? c.isCorrect : (c.rating >= 3);
     const statusIcon = correct ? 'check_circle' : 'cancel';
     const statusClass = correct ? 'correct' : 'wrong';
+    const question = c.question || '';
+    const answer = c.answer || '';
+    const parsed = parseQuestionText(question);
+    const hasInlineAlts = parsed.alternatives.length >= 2;
+    const hasExplicitOpts = Array.isArray(c.options) && c.options.length > 0;
+    const letters = 'ABCDEFGHIJ';
+
+    // Build alternatives HTML
+    let altsHtml = '';
+    if (hasExplicitOpts) {
+      altsHtml = '<div class="hist-card-alts">' +
+        c.options.map((opt, j) => {
+          const text = typeof opt === 'string' ? opt : (opt.text || opt.label || '');
+          const isAnswer = answer && text && (
+            answer.trim().toLowerCase() === text.trim().toLowerCase() ||
+            answer.trim().toLowerCase() === (letters[j] || '').toLowerCase() ||
+            answer.trim().toLowerCase().startsWith(letters[j].toLowerCase() + ')')
+          );
+          return `<div class="hist-alt-item${isAnswer ? ' hist-alt-correct' : ''}">
+            <span class="hist-alt-letter">${letters[j] || j + 1}</span>
+            <span class="hist-alt-text">${escHtml(text)}</span>
+            ${isAnswer ? '<span class="material-symbols-rounded hist-alt-check">check_circle</span>' : ''}
+          </div>`;
+        }).join('') + '</div>';
+    } else if (hasInlineAlts) {
+      altsHtml = '<div class="hist-card-alts">' +
+        parsed.alternatives.map(alt => {
+          const isAnswer = answer && (
+            answer.trim().toLowerCase() === alt.text.trim().toLowerCase() ||
+            answer.trim().toLowerCase() === alt.letter.toLowerCase() ||
+            answer.trim().toLowerCase().startsWith(alt.letter.toLowerCase() + ')')
+          );
+          return `<div class="hist-alt-item${isAnswer ? ' hist-alt-correct' : ''}">
+            <span class="hist-alt-letter">${escHtml(alt.letter)}</span>
+            <span class="hist-alt-text">${escHtml(alt.text)}</span>
+            ${isAnswer ? '<span class="material-symbols-rounded hist-alt-check">check_circle</span>' : ''}
+          </div>`;
+        }).join('') + '</div>';
+    }
+
+    const displayQuestion = hasInlineAlts && !hasExplicitOpts ? parsed.stem : question;
 
     html += `
       <div class="hist-card-item ${statusClass}">
-        <span class="hist-card-num">${i + 1}</span>
-        <div class="hist-card-q">${escHtml(truncate(c.question, 150))}</div>
-        <div class="hist-card-answer">${escHtml(truncate(c.answer, 100))}</div>
-        <span class="material-symbols-rounded hist-card-status ${statusClass}">${statusIcon}</span>
+        <div class="hist-card-header" data-hist-card-toggle="${i}">
+          <span class="hist-card-num">${i + 1}</span>
+          <div class="hist-card-q">${escHtml(truncate(displayQuestion, 120))}</div>
+          <span class="material-symbols-rounded hist-card-status ${statusClass}">${statusIcon}</span>
+          <button class="hist-card-expand-btn" aria-label="Ver questão completa">
+            <span class="material-symbols-rounded">expand_more</span>
+          </button>
+        </div>
+        <div class="hist-card-body" id="histCardBody_${i}" hidden>
+          <div class="hist-card-full-q">${escHtml(displayQuestion).replace(/\n/g, '<br>')}</div>
+          ${altsHtml}
+          <div class="hist-card-gabarito">
+            <span class="hist-card-gabarito-label">Gabarito:</span>
+            <span class="hist-card-gabarito-text">${escHtml(answer)}</span>
+          </div>
+          ${c.disc ? `<span class="hist-card-disc-tag">${escHtml(c.disc)}</span>` : ''}
+        </div>
       </div>`;
   });
   html += '</div>';
@@ -4788,6 +5161,9 @@ async function init() {
   initStudySession();
   initFlashcards();
   initLibraryControls();
+
+  // Update topbar XP bar from loaded state
+  updateTopbarXp();
 
   // Render home
   await renderHome();

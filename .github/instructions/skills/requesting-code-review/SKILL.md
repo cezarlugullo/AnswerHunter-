@@ -11,20 +11,20 @@ Auto-revisar código contra o plano e boas práticas antes de prosseguir.
 
 ## Checklist de Auto-Review
 
-### 🎯 Conformidade com o Plano
+### [TARGET] Conformidade com o Plano
 - [ ] Implementei EXATAMENTE o que o plano pedia?
 - [ ] Não adicionei features extras (YAGNI)?
 - [ ] Todos os requisitos da tarefa foram atendidos?
 - [ ] A verificação da tarefa passa?
 
-### 🧪 Testes
+### [TEST] Testes
 - [ ] Todos os testes estão passando?
 - [ ] Segui TDD (RED-GREEN-REFACTOR)?
 - [ ] Coverage está acima do threshold (80%)?
 - [ ] Testes são independentes e determinísticos?
 - [ ] Não há testes ignored/skipped?
 
-### 🏗️ Qualidade do Código
+### [BUILD] Qualidade do Código
 - [ ] Código está limpo e legível?
 - [ ] Nomes de variáveis/funções são descritivos?
 - [ ] Funções têm uma única responsabilidade?
@@ -32,19 +32,19 @@ Auto-revisar código contra o plano e boas práticas antes de prosseguir.
 - [ ] Sem console.log() esquecidos?
 - [ ] Sem TODOs não resolvidos?
 
-### 🔒 Boas Práticas
+### [LOCK] Boas Práticas
 - [ ] Tratamento de erros apropriado?
 - [ ] Validação de inputs adequada?
 - [ ] Sem hardcoded values (use constants)?
 - [ ] Async/await usado corretamente?
 - [ ] Memory leaks prevenidos?
 
-### 📝 Documentação
+### [NOTE] Documentação
 - [ ] JSDoc nas funções públicas?
 - [ ] README atualizado se necessário?
 - [ ] Comentários explicam "por quê", não "o quê"?
 
-### 🔍 AnswerHunter Específico
+### [SEARCH] AnswerHunter Específico
 - [ ] Manifesto da extensão atualizado (se necessário)?
 - [ ] Mensagens i18n adicionadas?
 - [ ] Backend API em sync com frontend?
@@ -53,7 +53,7 @@ Auto-revisar código contra o plano e boas práticas antes de prosseguir.
 
 ## Níveis de Severidade
 
-### 🔴 CRITICAL - Bloqueia progresso
+### [RED] CRITICAL - Bloqueia progresso
 - Testes falhando
 - Funcionalidade quebrada
 - Security issues
@@ -62,7 +62,7 @@ Auto-revisar código contra o plano e boas práticas antes de prosseguir.
 
 **Ação**: Corrigir imediatamente, não prosseguir
 
-### 🟡 MAJOR - Deve ser corrigido
+### [YELLOW] MAJOR - Deve ser corrigido
 - Código duplicado significativo
 - Má arquitetura/design
 - Missing error handling
@@ -71,7 +71,7 @@ Auto-revisar código contra o plano e boas práticas antes de prosseguir.
 
 **Ação**: Corrigir antes de commit final
 
-### 🟢 MINOR - Melhorias sugeridas
+### [GREEN] MINOR - Melhorias sugeridas
 - Nomes de variáveis pouco claros
 - Comentários desnecessários
 - Oportunidades de refactor
@@ -131,9 +131,9 @@ Abra o plano lado a lado:
 "Adicionar cache com TTL de 5 minutos"
 
 # Código faz:
-✅ Usa Map para cache
-✅ Implementa TTL
-❌ TTL está hardcoded (deveria ser configurável)
+[OK] Usa Map para cache
+[OK] Implementa TTL
+[FAIL] TTL está hardcoded (deveria ser configurável)
 ```
 
 ## Template de Review Report
@@ -156,14 +156,14 @@ Abra o plano lado a lado:
 
 ## Issues Found
 
-### 🔴 CRITICAL
+### [RED] CRITICAL
 None
 
-### 🟡 MAJOR
+### [YELLOW] MAJOR
 1. **SearchService.js:45** - Missing error handling for network timeout
    - **Como corrigir**: Add try/catch and specific error message
 
-### 🟢 MINOR
+### [GREEN] MINOR
 1. **PopupView.js:12** - Variable name `tmp` is not descriptive
    - **Sugestão**: Renomear para `searchResults`
 
@@ -175,7 +175,7 @@ None
 - **Tests added**: 8
 
 ## Recommendation
-⚠️ APPROVE WITH CHANGES - Fix MAJOR issues before merge
+[WARN] APPROVE WITH CHANGES - Fix MAJOR issues before merge
 
 ## Next Steps
 1. Add error handling in SearchService
@@ -188,7 +188,7 @@ None
 ### Cenário: Revisando adição de cache
 
 ```javascript
-// 🔍 Código sendo revisado
+// [SEARCH] Código sendo revisado
 class SearchService {
   cache = {};
   
@@ -203,14 +203,14 @@ class SearchService {
 
 ### Issues Identificados:
 
-🟡 **MAJOR**:
+[YELLOW] **MAJOR**:
 1. **Cache ilimitado** - pode causar memory leak
    - Fix: Implementar LRU cache ou TTL
 
 2. **Sem cache invalidation** - dados antigos ficam para sempre
    - Fix: Adicionar TTL ou método clear()
 
-🟢 **MINOR**:
+[GREEN] **MINOR**:
 3. **Object literal como Map** - menos eficiente
    - Sugestão: Usar `new Map()`
 
@@ -265,15 +265,15 @@ class SearchService {
 }
 ```
 
-✅ Issues resolvidos, pronto para commit
+[OK] Issues resolvidos, pronto para commit
 
 ## Anti-patterns
 
-❌ **Skipper**: "Está funcionando, não precisa revisar"
-❌ **Overconfident**: "Meu código está perfeito"
-❌ **Lazy**: Olhar só o diff sem entender contexto
-❌ **Ignorer**: Achar issues mas não corrigir
-❌ **Perfectionist**: Bloquear por issues MINOR
+[FAIL] **Skipper**: "Está funcionando, não precisa revisar"
+[FAIL] **Overconfident**: "Meu código está perfeito"
+[FAIL] **Lazy**: Olhar só o diff sem entender contexto
+[FAIL] **Ignorer**: Achar issues mas não corrigir
+[FAIL] **Perfectionist**: Bloquear por issues MINOR
 
 ## Automatização
 
@@ -292,11 +292,11 @@ npm test || exit 1
 
 # Check for console.log
 if grep -r "console.log" src/ --exclude="*.test.js" --exclude-dir=node_modules -q; then
-  echo "❌ Found console.log statements"
+  echo "[FAIL] Found console.log statements"
   exit 1
 fi
 
-echo "✅ Pre-commit checks passed"
+echo "[OK] Pre-commit checks passed"
 ```
 
 ### GitHub Actions (futuro)
@@ -326,7 +326,7 @@ Ao final da review:
 ## Integração com Workflow
 
 ```
-Task Complete → Self Review → Issues? → Fix → Re-review → ✅ Commit
+Task Complete → Self Review → Issues? → Fix → Re-review → [OK] Commit
 ```
 
 Não pule a review. É rápida (2-5 min) e previne horas de debug depois.

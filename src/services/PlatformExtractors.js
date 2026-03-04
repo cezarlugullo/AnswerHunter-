@@ -53,7 +53,7 @@ export const PlatformExtractors = {
      * PasseiDireto — Extracts from exercise/question pages
      */
     extractPasseiDiretoScript: function () {
-        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, '').trim();
         const noise = /\b(?:gabarito|resposta\s+correta|alternativa\s+correta|parabéns|confira|você\s+acertou)\b/i;
 
         // Question text
@@ -103,7 +103,7 @@ export const PlatformExtractors = {
      * QConcursos — Highly structured exam question site
      */
     extractQConcursosScript: function () {
-        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, '').trim();
 
         const questionEl =
             document.querySelector('.q-question-enunciation') ||
@@ -142,7 +142,7 @@ export const PlatformExtractors = {
      * Gran Cursos — Question pages
      */
     extractGranScript: function () {
-        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, '').trim();
 
         const questionEl =
             document.querySelector('[class*="question-text"]') ||
@@ -183,7 +183,7 @@ export const PlatformExtractors = {
      * Estratégia Concursos
      */
     extractEstrategiaScript: function () {
-        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, '').trim();
 
         const questionEl =
             document.querySelector('[class*="question-statement"]') ||
@@ -222,7 +222,7 @@ export const PlatformExtractors = {
      * Estácio SIA/AVA
      */
     extractEstacioScript: function () {
-        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, '').trim();
 
         // Estácio often wraps questions in .question-text or numbered divs
         const questionEl =

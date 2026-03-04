@@ -54,7 +54,7 @@ export const EvidenceService = {
         const windowSize = hasOptionTokens ? 10 : 5;
 
         for (let i = 0; i <= chunks.length - 1; i++) {
-            const windowText = chunks.slice(i, i + windowSize).join(' ');
+            const windowText = chunks.slice(i, i + windowSize).join('');
             const stemHits = QuestionParser.countTokenHits(windowText, stemTokens);
             const optHits = hasOptionTokens ? QuestionParser.countTokenHits(windowText, optionTokens) : 0;
             const score = stemHits + (optHits * 2);
@@ -62,11 +62,11 @@ export const EvidenceService = {
         }
 
         const stemThreshold = Math.max(3, Math.floor(stemTokens.length * 0.45));
-        const bestWindowText = bestStart >= 0 ? chunks.slice(bestStart, bestStart + windowSize).join(' ') : '';
+        const bestWindowText = bestStart >= 0 ? chunks.slice(bestStart, bestStart + windowSize).join('') : '';
         const bestStemHits = bestStart >= 0 ? QuestionParser.countTokenHits(bestWindowText, stemTokens) : 0;
         const bestOptHits = hasOptionTokens && bestStart >= 0 ? QuestionParser.countTokenHits(bestWindowText, optionTokens) : 0;
 
-        console.log(`    [find-block] bestStart=${bestStart}, stemHits=${bestStemHits}/${stemTokens.length}, optHits=${bestOptHits}/${optionTokens.length}, score=${bestScore}`);
+        console.log(` [find-block] bestStart=${bestStart}, stemHits=${bestStemHits}/${stemTokens.length}, optHits=${bestOptHits}/${optionTokens.length}, score=${bestScore}`);
 
         if (bestStart < 0 || bestStemHits < stemThreshold) return null;
 
@@ -77,11 +77,11 @@ export const EvidenceService = {
             // If stemHits are very high (≥80%), accept the block as a valid stem-only match.
             const isShortStemOnly = sourceText.length < 600 && bestStemHits >= Math.floor(stemTokens.length * 0.80);
             if (bestOptHits < minOptionHits && !isShortStemOnly) {
-                console.log(`    [find-block] REJECTED: only ${bestOptHits}/${optionTokens.length} option tokens found. Wrong question block.`);
+                console.log(` [find-block] REJECTED: only ${bestOptHits}/${optionTokens.length} option tokens found. Wrong question block.`);
                 return null;
             }
             if (isShortStemOnly && bestOptHits < minOptionHits) {
-                console.log(`    [find-block] ACCEPTED (short-stem-only): stemHits=${bestStemHits}/${stemTokens.length} textLen=${sourceText.length} — snippet with strong stem match`);
+                console.log(` [find-block] ACCEPTED (short-stem-only): stemHits=${bestStemHits}/${stemTokens.length} textLen=${sourceText.length} — snippet with strong stem match`);
             }
         }
 
@@ -125,7 +125,7 @@ export const EvidenceService = {
 
     extractHtmlAroundQuestion(html, questionStem, optionTokens, maxChars = 6000) {
         if (!html || !questionStem || html.length < 500) return null;
-        const stemNorm = (questionStem || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+        const stemNorm = (questionStem || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '').trim();
         const stemWords = stemNorm.split(/\s+/).filter(w => w.length >= 5).slice(0, 6);
         if (stemWords.length < 2) return null;
 
@@ -248,7 +248,7 @@ export const EvidenceService = {
 
         if (isShortAcronym && text.length > 80) {
             if (!QuestionParser.normalizeCodeAwareOption(text).includes(QuestionParser.normalizeCodeAwareOption(expectedBody))) {
-                console.log(`    [guard] REJECT: Explicit said ${letter} but short option "${expectedBody}" is absent.`);
+                console.log(` [guard] REJECT: Explicit said ${letter} but short option "${expectedBody}" is absent.`);
                 return false;
             }
         }
@@ -264,7 +264,7 @@ export const EvidenceService = {
                     let shared = 0;
                     for (const tk of nextTokens) { if (expectedBody.includes(tk)) shared++; }
                     if (shared === 0 && nextTokens.length >= 1 && nextTokens.length <= 4) {
-                        console.log(`    [guard] REJECT: Explicit text "${nextWords}" contradicts expected "${expectedBody}".`);
+                        console.log(` [guard] REJECT: Explicit text "${nextWords}" contradicts expected "${expectedBody}".`);
                         return false;
                     }
                 }
@@ -359,7 +359,7 @@ export const EvidenceService = {
         const topicHits = QuestionParser.countTokenHits(explNorm, stemTokens);
         const requiredTopicHits = Math.max(2, Math.floor(stemTokens.length * 0.4));
         if (topicHits < requiredTopicHits) {
-            console.log(`    [expl-match] REJECTED: topicHits=${topicHits} < required=${requiredTopicHits}`);
+            console.log(` [expl-match] REJECTED: topicHits=${topicHits} < required=${requiredTopicHits}`);
             return null;
         }
 
@@ -403,7 +403,7 @@ export const EvidenceService = {
             'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'resposta', 'gabarito',
             'dados', 'banco', 'bancos', 'modelo', 'modelos', 'nosql', 'sql', 'apenas', 'nao', 'com', 'sem'
         ]);
-        return QuestionParser.normalizeOption(optionBody).split(/\s+/).filter(t => t.length >= 4 && !stop.has(t)).slice(0, 7).join(' ');
+        return QuestionParser.normalizeOption(optionBody).split(/\s+/).filter(t => t.length >= 4 && !stop.has(t)).slice(0, 7).join('');
     },
 
     classifyOptionStance(evidenceText, optionBody, optionLetter) {
@@ -456,7 +456,7 @@ export const EvidenceService = {
             const nextScore = Math.max(prev.score || 0, Math.max(0.72, Math.min(0.96, Number(confidenceLocal) || 0.72)));
             optionEvals[chosen] = { stance: 'entails', score: nextScore };
         }
-        const citationText = String(evidenceText || '').replace(/\s+/g, ' ').trim().slice(0, 320);
+        const citationText = String(evidenceText || '').replace(/\s+/g, '').trim().slice(0, 320);
         return {
             questionFingerprint,
             sourceId,

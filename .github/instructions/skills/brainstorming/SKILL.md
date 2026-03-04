@@ -25,10 +25,10 @@ Apresente pelo menos 2-3 abordagens diferentes:
 - Abordagem inovadora (se aplicável)
 
 Para cada uma, liste:
-- ✅ Prós
-- ❌ Contras
-- ⏱️ Estimativa de esforço
-- 🎯 Casos de uso cobertos
+- [OK] Prós
+- [FAIL] Contras
+- [TIMER] Estimativa de esforço
+- [TARGET] Casos de uso cobertos
 
 ### 3. Apresentar Design em Seções
 Divida o design em seções digestíveis:
@@ -60,26 +60,26 @@ Após aprovação, salve em `.agents/specs/FEATURE_NAME.md` com:
 
 **Alternativas**:
 1. **Simples**: Integrar com API do Google Drive
-   - ✅ Rápido, confiável
-   - ❌ Depende de serviço externo
-   - ⏱️ 1 dia
+   - [OK] Rápido, confiável
+   - [FAIL] Depende de serviço externo
+   - [TIMER] 1 dia
 
 2. **Robusta**: Usar PDF.js para processar localmente
-   - ✅ Offline, privado
-   - ❌ Mais complexo
-   - ⏱️ 3-4 dias
+   - [OK] Offline, privado
+   - [FAIL] Mais complexo
+   - [TIMER] 3-4 dias
 
 3. **Híbrida**: PDF.js com cache inteligente
-   - ✅ Melhor dos dois mundos
-   - ❌ Requer mais planejamento
-   - ⏱️ 5 dias
+   - [OK] Melhor dos dois mundos
+   - [FAIL] Requer mais planejamento
+   - [TIMER] 5 dias
 
 ## Anti-patterns a Evitar
-❌ Começar a codificar antes de entender o problema
-❌ Assumir requisitos sem validar
-❌ Ignorar complexidade oculta
-❌ Não documentar decisões de design
-❌ Apresentar design completo de uma vez (too much info)
+[FAIL] Começar a codificar antes de entender o problema
+[FAIL] Assumir requisitos sem validar
+[FAIL] Ignorar complexidade oculta
+[FAIL] Não documentar decisões de design
+[FAIL] Apresentar design completo de uma vez (too much info)
 
 ## Output Esperado
 - Documento de spec aprovado em `.agents/specs/`

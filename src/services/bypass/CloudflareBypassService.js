@@ -44,7 +44,7 @@ export class CloudflareBypassService {
       // LAYER 1: reuse existing cf_clearance if available
       const cookieHit = await CloudflareBypassService._tryExistingCookies(url, site, extractorFn, cfg);
       if (cookieHit) {
-        console.log(`[CF-BYPASS] ✅ Cookie reuse success for ${site}`);
+        console.log(`[CF-BYPASS] [OK] Cookie reuse success for ${site}`);
         return { text: cookieHit, method: 'cookie-reuse', cookieReused: true };
       }
 
@@ -61,7 +61,7 @@ export class CloudflareBypassService {
       // Wait for challenge resolution
       const resolved = await CloudflareBypassService._waitForResolution(tabId, cfg);
       if (!resolved) {
-        console.warn(`[CF-BYPASS] ⚠️ Challenge not resolved in time for ${site}`);
+        console.warn(`[CF-BYPASS] [WARN] Challenge not resolved in time for ${site}`);
       }
 
       // LAYER 4: human behavior + extra wait for React/SPA rendering
@@ -76,14 +76,14 @@ export class CloudflareBypassService {
       await CloudflareBypassService._harvestCookies(tabId, site);
 
       if (text && text.length > 80) {
-        console.log(`[CF-BYPASS] ✅ Tab extraction success: ${text.length} chars (method=tab-stealth-early)`);
+        console.log(`[CF-BYPASS] [OK] Tab extraction success: ${text.length} chars (method=tab-stealth-early)`);
         return { text, method: 'tab-stealth-early', cookieReused: false };
       }
 
       return { text: '', method: 'failed', cookieReused: false };
 
     } catch (err) {
-      console.error(`[CF-BYPASS] ❌ Error:`, err?.message || err);
+      console.error(`[CF-BYPASS] [FAIL] Error:`, err?.message || err);
       return { text: '', method: 'error', cookieReused: false };
     } finally {
       // Close the minimized popup window (not just the tab) if we have a winId.
@@ -157,7 +157,7 @@ export class CloudflareBypassService {
               world: 'MAIN',
               func: CloudflareBypassService._stealthPatchFn,
             });
-            console.log(`[CF-BYPASS] 🛡️ Early patch #${patchCount} at loading (${Date.now() - t0}ms)`);
+            console.log(`[CF-BYPASS] [SHIELD] Early patch #${patchCount} at loading (${Date.now() - t0}ms)`);
           } catch (_) {
             // Normal — document may not be ready yet
           }
@@ -227,7 +227,7 @@ export class CloudflareBypassService {
         });
         if (firstSuccess < 0) {
           firstSuccess = Date.now();
-          console.log(`[CF-BYPASS] ⚡ First successful patch at +${count * 50}ms`);
+          console.log(`[CF-BYPASS] [FAST] First successful patch at +${count * 50}ms`);
         }
         count++;
       } catch (_) {
@@ -271,9 +271,9 @@ export class CloudflareBypassService {
     _try(() => {
       const dim = (obj, prop, val) =>
         Object.defineProperty(obj, prop, { get: () => val, configurable: true });
-      if (!window.outerWidth)  { dim(window, 'outerWidth',  1366); dim(window, 'outerHeight', 768); }
-      if (!window.innerWidth)  { dim(window, 'innerWidth',  1366); dim(window, 'innerHeight', 768); }
-      if (!screen.width)       { dim(screen,  'width',       1920); dim(screen,  'height',      1080); }
+      if (!window.outerWidth)  { dim(window, 'outerWidth', 1366); dim(window, 'outerHeight', 768); }
+      if (!window.innerWidth)  { dim(window, 'innerWidth', 1366); dim(window, 'innerHeight', 768); }
+      if (!screen.width)       { dim(screen,  'width', 1920); dim(screen,  'height',      1080); }
       dim(window, 'devicePixelRatio', 1);
     }, 'dimensions');
 
@@ -292,8 +292,8 @@ export class CloudflareBypassService {
       window.IntersectionObserver = function(cb, opts) {
         return new _IO((entries, obs) => {
           entries.forEach(e => {
-            _try(() => Object.defineProperty(e, 'isIntersecting',    { get: () => true, configurable: true }), '');
-            _try(() => Object.defineProperty(e, 'intersectionRatio', { get: () => 1.0,  configurable: true }), '');
+            _try(() => Object.defineProperty(e, 'isIntersecting', { get: () => true, configurable: true }), '');
+            _try(() => Object.defineProperty(e, 'intersectionRatio', { get: () => 1.0, configurable: true }), '');
           });
           cb(entries, obs);
         }, opts);
@@ -396,7 +396,7 @@ export class CloudflareBypassService {
       Intl.DateTimeFormat.prototype = _origDTF.prototype;
     }, 'timezone');
 
-    console.log('[CF-BYPASS-v2] ✅ 12 stealth patches applied');
+    console.log('[CF-BYPASS-v2] [OK] 12 stealth patches applied');
   }
 
   // ─── Layer 3: Challenge Resolution ───────────────────────────────────────
@@ -430,7 +430,7 @@ export class CloudflareBypassService {
         }).then(r => r?.[0]?.result).catch(() => true); // assume challenge if error
 
         if (!onChallenge) {
-          console.log('[CF-BYPASS] ✅ Page loaded — challenge passed or absent');
+          console.log('[CF-BYPASS] [OK] Page loaded — challenge passed or absent');
           return true;
         }
 
@@ -496,7 +496,7 @@ export class CloudflareBypassService {
       if (!tab?.url) return;
       const cfCookie = await chrome.cookies.get({ url: tab.url, name: 'cf_clearance' }).catch(() => null);
       if (cfCookie) {
-        console.log(`[CF-BYPASS] 🍪 cf_clearance harvested for ${site} (expires: ${new Date(cfCookie.expirationDate * 1000).toISOString()})`);
+        console.log(`[CF-BYPASS] [COOKIE] cf_clearance harvested for ${site} (expires: ${new Date(cfCookie.expirationDate * 1000).toISOString()})`);
       }
     } catch (_) {}
   }
@@ -520,7 +520,7 @@ export class CloudflareBypassService {
         const text = res?.[0]?.result || '';
         const cleaned = typeof text === 'string' ? text.trim() : '';
         if (cleaned.length > 120) {
-          console.log(`[CF-BYPASS] ✅ Extractor success on attempt ${attempt + 1}: ${cleaned.length} chars`);
+          console.log(`[CF-BYPASS] [OK] Extractor success on attempt ${attempt + 1}: ${cleaned.length} chars`);
           return cleaned.slice(0, CloudflareBypassService.CONFIG.maxExtractedChars);
         }
         console.log(`[CF-BYPASS] ⏳ Extractor attempt ${attempt + 1}: ${cleaned.length} chars — retrying...`);
@@ -528,7 +528,7 @@ export class CloudflareBypassService {
         console.warn(`[CF-BYPASS] Extractor attempt ${attempt + 1} error:`, e?.message);
       }
     }
-    console.warn('[CF-BYPASS] ❌ Extractor exhausted all attempts — returning empty');
+    console.warn('[CF-BYPASS] [FAIL] Extractor exhausted all attempts — returning empty');
     return '';
   }
 

@@ -56,7 +56,7 @@ import { SimpleSearchService } from './SimpleSearchService.js';
 // Coordinates (1) direct extraction and (2) web search + evidence-based refinement.
 //
 // ══════════════════════════════════════════════════════════════════════════════════
-// ⚠️  PIPELINE ATIVO: SimpleSearchService (reescrito em fev/2026)
+// PIPELINE ATIVO: SimpleSearchService (reescrito em fev/2026)
 // ══════════════════════════════════════════════════════════════════════════════════
 //
 // Os métodos searchOnly() e refineFromResults() abaixo redirecionam IMEDIATAMENTE
@@ -175,7 +175,7 @@ export const SearchService = {
     // ── 1) answerBox ──
     const ab = serperMeta.answerBox;
     if (ab) {
-      const abText = [ab.title, ab.snippet, ab.answer, ab.highlighted_words?.join(' ')].filter(Boolean).join(' ').trim();
+      const abText = [ab.title, ab.snippet, ab.answer, ab.highlighted_words?.join('')].filter(Boolean).join('').trim();
       if (abText.length >= 20) {
         const parsed = this._parseGoogleMetaText(abText, originalOptionsMap, originalOptions);
         if (parsed) {
@@ -251,7 +251,7 @@ export const SearchService = {
           kgParts.push(`${k}: ${v}`);
         }
       }
-      const kgText = kgParts.filter(Boolean).join(' ').trim();
+      const kgText = kgParts.filter(Boolean).join('').trim();
       if (kgText.length >= 20) {
         const parsed = this._parseGoogleMetaText(kgText, originalOptionsMap, originalOptions);
         if (parsed) {
@@ -286,7 +286,7 @@ export const SearchService = {
       }
       if (block.text_blocks) parts.push(this._flattenAiOverviewBlocks(block.text_blocks));
     }
-    return parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    return parts.filter(Boolean).join('').replace(/\s+/g, '').trim();
   },
   // Core parser: extracts answer letter from Google meta text by:
   // 1. Explicit "alternativa correta é a C" / "Letra C" patterns
@@ -322,7 +322,7 @@ export const SearchService = {
       }
     }
 
-    // Strategy 2: Check for "✅" or bold marker followed by letter
+    // Strategy 2: Check for "" or bold marker followed by letter
     const checkMarkPatterns = [/[✅✓☑]\s*(?:alternativa\s+|letra\s+)?([A-E])\b/gi, /(?:correta|certa|right|correct)\s*[:\-–]?\s*(?:alternativa\s+|letra\s+)?([A-E])\b/gi];
     for (const re of checkMarkPatterns) {
       const matches = [...text.matchAll(re)].map(m => (m[1] || '').toUpperCase()).filter(l => /^[A-E]$/.test(l));
@@ -395,7 +395,7 @@ export const SearchService = {
     let currentParts = [];
     const flush = () => {
       if (currentLetter && currentParts.length > 0) {
-        const body = currentParts.join(' ').replace(/\s+/g, ' ').trim();
+        const body = currentParts.join('').replace(/\s+/g, '').trim();
         if (body.length >= 5) map[currentLetter] = body;
       }
     };
@@ -431,14 +431,14 @@ export const SearchService = {
     // ── Fallback: inline option parsing (options concatenated on same line/few lines) ──
     // Handles: "...question stem... A) optA B) optB C) optC D) optD"
     if (Object.keys(map).length < 2) {
-      const flat = sourceText.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ');
+      const flat = sourceText.replace(/[\n\r]+/g, '').replace(/\s+/g, '');
       // Split on letter-separator boundaries: looks for " A) " " B. " " C- " etc.
       const parts = flat.split(/\s(?=[A-E]\s*[\)\.\-:])/i);
       for (const part of parts) {
         const m2 = part.match(/^([A-E])\s*[\)\.\-:]\s*(.{4,})/i);
         if (m2) {
           const letter = m2[1].toUpperCase();
-          if (!map[letter]) map[letter] = m2[2].trim().slice(0, 300).replace(/\s+/g, ' ');
+          if (!map[letter]) map[letter] = m2[2].trim().slice(0, 300).replace(/\s+/g, '');
         }
       }
     }
@@ -499,21 +499,21 @@ export const SearchService = {
         }
       }
     }
-    console.log(`    [reverseTextLookup] source=${sourceLetter} userToSourceMap=${JSON.stringify(sourceLetterForUser)}`);
+    console.log(` [reverseTextLookup] source=${sourceLetter} userToSourceMap=${JSON.stringify(sourceLetterForUser)}`);
     const matchedUsers = Object.entries(sourceLetterForUser)
       .filter(([, sLet]) => sLet === sourceLetter)
       .map(([uLet]) => uLet);
     if (matchedUsers.length > 1) {
-      console.log(`    [reverseTextLookup] AMBIGUOUS remap for ${sourceLetter}: candidates=[${matchedUsers.join(',')}] — keeping source letter`);
+      console.log(` [reverseTextLookup] AMBIGUOUS remap for ${sourceLetter}: candidates=[${matchedUsers.join(',')}] — keeping source letter`);
       return sourceLetter;
     }
     if (matchedUsers.length === 1) {
       const remapped = matchedUsers[0];
-      if (remapped !== sourceLetter) console.log(`    [reverseTextLookup] REMAPPED: ${sourceLetter} \u2192 ${remapped}`);
-      else console.log(`    [reverseTextLookup] CONFIRMED: ${sourceLetter}`);
+      if (remapped !== sourceLetter) console.log(` [reverseTextLookup] REMAPPED: ${sourceLetter} \u2192 ${remapped}`);
+      else console.log(` [reverseTextLookup] CONFIRMED: ${sourceLetter}`);
       return remapped;
     }
-    console.log(`    [reverseTextLookup] NO REMAP for ${sourceLetter}`);
+    console.log(` [reverseTextLookup] NO REMAP for ${sourceLetter}`);
     return sourceLetter;
   },
 
@@ -531,19 +531,19 @@ export const SearchService = {
     if (!sourceLetter || !userOptionsMap) return sourceLetter;
     if (Object.keys(userOptionsMap).length < 2) return sourceLetter;
     const sourceOptionsMap = sourceText ? this._buildSourceOptionsMapFromText(sourceText) : {};
-    console.log(`    [remapIfShuffled] letter=${sourceLetter} sourceTextLen=${(sourceText || '').length} sourceOpts=${Object.keys(sourceOptionsMap).length} keys=[${Object.keys(sourceOptionsMap).join(',')}]`);
+    console.log(` [remapIfShuffled] letter=${sourceLetter} sourceTextLen=${(sourceText || '').length} sourceOpts=${Object.keys(sourceOptionsMap).length} keys=[${Object.keys(sourceOptionsMap).join(',')}]`);
     if (Object.keys(sourceOptionsMap).length >= 2) {
       for (const [k, v] of Object.entries(sourceOptionsMap)) {
-        console.log(`      src ${k}) "${v.slice(0, 70)}"`);
+        console.log(` src ${k}) "${v.slice(0, 70)}"`);
       }
       return OptionsMatchService.remapLetterToUserOptions(sourceLetter, sourceOptionsMap, userOptionsMap);
     }
     // Fallback: reverse-text lookup — find each user option's text in source, detect nearby letter label
     if (sourceText && sourceText.length >= 30) {
-      console.log(`    [remapIfShuffled] FALLBACK to reverseTextLookup (sourceTextLen=${sourceText.length})`);
+      console.log(` [remapIfShuffled] FALLBACK to reverseTextLookup (sourceTextLen=${sourceText.length})`);
       return this._remapByReverseTextLookup(sourceLetter, sourceText, userOptionsMap);
     }
-    console.log(`    [remapIfShuffled] SKIP: no usable source text for remap`);
+    console.log(` [remapIfShuffled] SKIP: no usable source text for remap`);
     return sourceLetter;
   }
 
@@ -564,8 +564,8 @@ export const SearchService = {
   _canonicalizeQuestion(questionText) {
     const stem = QuestionParser.extractQuestionStem(questionText);
     const options = QuestionParser.extractOptionsFromQuestion(questionText);
-    const normStem = QuestionParser.normalizeOption(stem).replace(/\s+/g, ' ').trim();
-    const normOpts = (options || []).map(o => QuestionParser.normalizeOption(o).replace(/\s+/g, ' ').trim()).sort();
+    const normStem = QuestionParser.normalizeOption(stem).replace(/\s+/g, '').trim();
+    const normOpts = (options || []).map(o => QuestionParser.normalizeOption(o).replace(/\s+/g, '').trim()).sort();
     return `${normStem}||${normOpts.join('|')}`;
   },
   async _canonicalHash(questionText) {
@@ -1029,7 +1029,7 @@ export const SearchService = {
     return SimpleSearchService.refineFromResults(questionText, results, originalQuestionWithOptions, onStatus);
 
     // ─── PIPELINE LEGADO ─────────────────────────────────────────────────────
-    // ⛔ DEAD CODE — não executa mais (return acima interrompe antes de chegar aqui)
+    // DEAD CODE — não executa mais (return acima interrompe antes de chegar aqui)
     // Preservado para facilitar rollback: basta remover o return acima.
     //
     // Contém: BrainlyService (GQL), PasseiDiretoAnswersApiService,
@@ -1054,7 +1054,7 @@ export const SearchService = {
     });
 
     // AH-PERF: Performance timer for search flow bottleneck analysis
-    const _ahTimer = PerformanceTimer.create('🔍 AnswerHunter Search Flow');
+    const _ahTimer = PerformanceTimer.create(' AnswerHunter Search Flow');
 
     // Reset webcache 429 tracking for this search session.
     ApiService.resetWebcache429();
@@ -1089,7 +1089,7 @@ export const SearchService = {
     console.log(`SearchService: Polarity detected: ${questionPolarity}`);
 
     // ═══ DEBUG: Pipeline Start ═══
-    console.group('🔍 SearchService DEBUG — Pipeline Start');
+    console.group('[SEARCH] SearchService DEBUG — Pipeline Start');
     console.log('Question stem:', questionStem.slice(0, 120));
     console.log('Options extracted:', originalOptions);
     console.log('Has options:', hasOptions, '| Options count:', originalOptions.length);
@@ -1137,11 +1137,11 @@ export const SearchService = {
     };
     const extractExplicitAnswerTextCandidates = rawText => {
       if (!rawText) return [];
-      const lines = String(rawText || '').replace(/\r/g, '\n').split('\n').map(l => String(l || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      const lines = String(rawText || '').replace(/\r/g, '\n').split('\n').map(l => String(l || '').replace(/\s+/g, '').trim()).filter(Boolean);
       const candidates = [];
       const seen = new Set();
       const addCandidate = value => {
-        let cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+        let cleaned = String(value || '').replace(/\s+/g, '').trim();
         cleaned = cleaned.replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, '').trim();
         cleaned = cleaned.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim();
         if (cleaned.length < 18) return;
@@ -1238,7 +1238,7 @@ export const SearchService = {
         method: methodTag || mapped.method || 'textual-answer-map',
         letter: mapped.letter
       });
-      console.log(`  ✅ [TEXT-MAP] accepted letter=${mapped.letter} via ${methodTag || mapped.method} conf=${(mapped.confidence || 0).toFixed(2)} margin=${(mapped.margin || 0).toFixed(2)} weight=${weight.toFixed(2)}`);
+      console.log(` [OK] [TEXT-MAP] accepted letter=${mapped.letter} via ${methodTag || mapped.method} conf=${(mapped.confidence || 0).toFixed(2)} margin=${(mapped.margin || 0).toFixed(2)} weight=${weight.toFixed(2)}`);
     };
     const aiEvidence = [];
     const collectedForCombined = [];
@@ -1353,7 +1353,7 @@ export const SearchService = {
     };
     _ahTimer.mark('Setup & Question Parse');
     if (serperMeta && hasOptions) {
-      console.group('🌐 Google Meta Signals (answerBox / AI Overview / PAA)');
+      console.group('[NET] Google Meta Signals (answerBox / AI Overview / PAA)');
       console.log('answerBox:', serperMeta.answerBox ? 'present' : 'absent');
       console.log('aiOverview:', serperMeta.aiOverview ? 'present' : 'absent');
       console.log('peopleAlsoAsk:', serperMeta.peopleAlsoAsk ? `${serperMeta.peopleAlsoAsk.length} entries` : 'absent');
@@ -1389,13 +1389,13 @@ export const SearchService = {
           evidenceBlock
         });
         runStats.acceptedForVotes += 1;
-        console.log(`  ✅ Google meta ACCEPTED: letter=${googleMeta.letter} method=${googleMeta.method} weight=${adjustedWeight.toFixed(2)} confidence=${(googleMeta.confidence || 0).toFixed(2)}`);
+        console.log(` [OK] Google meta ACCEPTED: letter=${googleMeta.letter} method=${googleMeta.method} weight=${adjustedWeight.toFixed(2)} confidence=${(googleMeta.confidence || 0).toFixed(2)}`);
       } else {
-        console.log('  ℹ️ No answer letter extracted from Google meta signals');
+        console.log(' [INFO] No answer letter extracted from Google meta signals');
         // Still collect answerBox/aiOverview text as evidence for AI combined
         const metaTexts = [];
         if (serperMeta.answerBox) {
-          const abText = [serperMeta.answerBox.title, serperMeta.answerBox.snippet, serperMeta.answerBox.answer].filter(Boolean).join(' ').trim();
+          const abText = [serperMeta.answerBox.title, serperMeta.answerBox.snippet, serperMeta.answerBox.answer].filter(Boolean).join('').trim();
           if (abText.length >= 40) metaTexts.push(abText);
         }
         if (serperMeta.aiOverview) {
@@ -1423,7 +1423,7 @@ export const SearchService = {
               obfuscated: false,
               paywalled: false
             });
-            console.log(`  📝 Google meta text collected for AI combined (topicSim=${topicSim.toFixed(2)}, len=${combinedMeta.length})`);
+            console.log(` [NOTE] Google meta text collected for AI combined (topicSim=${topicSim.toFixed(2)}, len=${combinedMeta.length})`);
           }
         }
       }
@@ -1449,7 +1449,7 @@ export const SearchService = {
         _prefetchedSnaps.set(r.link, cached.snap);
         _cacheHits++;
         try {
-          console.log(`  📦 [cache-hit] ${new URL(r.link).hostname} (age=${Math.round((_cacheNow - cached.fetchedAt) / 1000)}s)`);
+          console.log(` [PKG] [cache-hit] ${new URL(r.link).hostname} (age=${Math.round((_cacheNow - cached.fetchedAt) / 1000)}s)`);
         } catch (_) {/* invalid URL */}
       }
     }
@@ -1499,7 +1499,7 @@ export const SearchService = {
     if (typeof onStatus === 'function') {
       const cached = batch1.filter(r => _prefetchedSnaps.has(r.link)).length;
       const fetching = batch1.length - cached;
-      onStatus(fetching > 0 ? `📡 Buscando conteúdo de ${fetching} fonte${fetching > 1 ? 's' : ''}${cached > 0 ? ` (${cached} em cache)` : ''}…` : `⚡ Analisando ${batch1.length} fontes em cache…`);
+      onStatus(fetching > 0 ? ` Buscando conteúdo de ${fetching} fonte${fetching > 1 ? 's' : ''}${cached > 0 ? ` (${cached} em cache)` : ''}…` : `Analisando ${batch1.length} fontes em cache…`);
     }
     const _batch1FetchMap = _startFetchBatch(batch1); // non-blocking — all 5 start now
     let _batch2FetchMap = null;
@@ -1521,7 +1521,7 @@ export const SearchService = {
         } = EvidenceService.computeVotesAndState(sources);
         const topVote = bestLetter ? votes[bestLetter] || 0 : 0;
         if (!debugForceAllSources && bestLetter && topVote >= 4.5) { // single strong source is sufficient
-          console.log(`SearchService: ⚡ Batch 1 sufficient — skipping batch 2 (votes[${bestLetter}]=${topVote.toFixed(1)})`);
+          console.log(`SearchService: [FAST] Batch 1 sufficient — skipping batch 2 (votes[${bestLetter}]=${topVote.toFixed(1)})`);
           _batch2Fetched = true; // skip fetch, but still mark as handled
           break; // exit analysis loop early
         } else if (debugForceAllSources && bestLetter && topVote >= 4.5) {
@@ -1530,7 +1530,7 @@ export const SearchService = {
         // Need more evidence — start all batch 2 fetches in parallel immediately
         console.log(`SearchService: Batch 1 insufficient (topVote=${topVote.toFixed(1)}) — starting batch 2 in parallel (${batch2.length} sources)...`);
         if (typeof onStatus === 'function') {
-          onStatus(`📡 Buscando mais ${batch2.length} fonte${batch2.length > 1 ? 's' : ''}…`);
+          onStatus(` Buscando mais ${batch2.length} fonte${batch2.length > 1 ? 's' : ''}…`);
         }
         _batch2FetchMap = _startFetchBatch(batch2); // non-blocking — all batch2 start now
         _batch2Fetched = true;
@@ -1550,7 +1550,7 @@ export const SearchService = {
           });
         }
         if (typeof onStatus === 'function') {
-          onStatus(`🔍 Lendo fonte ${runStats.analyzed} de ${topResults.length}…`);
+          onStatus(` Lendo fonte ${runStats.analyzed} de ${topResults.length}…`);
         }
         const snap = _prefetchedSnaps.get(link) || null;
         // ── PasseiDireto: inject pre-fetched __NEXT_DATA__ text (24KB real content) ──
@@ -1560,7 +1560,7 @@ export const SearchService = {
             ? (await _getPasseiText(link) || await _getPasseiApiText(link))
             : null;
         if (_passeiInjected) {
-            console.log(`[PasseiDireto] ✅ Injecting pre-fetched text (${_passeiInjected.length} chars) for ${link}`);
+            console.log(`[PasseiDireto] [OK] Injecting pre-fetched text (${_passeiInjected.length} chars) for ${link}`);
         }
 
         // ── Brainly: inject pre-fetched GQL answer as page text ──
@@ -1571,14 +1571,14 @@ export const SearchService = {
             ? (await _getBrainlyAnswer(link) || null)
             : null;
         if (_brainlyInjected) {
-            console.log(`[Brainly] ✅ Injecting GQL answer (${_brainlyInjected.length} chars) for ${link}`);
+            console.log(`[Brainly] [OK] Injecting GQL answer (${_brainlyInjected.length} chars) for ${link}`);
         }
 
         const pageText = (_passeiInjected || _brainlyInjected || snap?.text || '').trim();
         const combinedText = `${title}. ${snippet}\n\n${pageText}`.trim();
         const scopedCombinedText = EvidenceService.buildQuestionScopedText(combinedText, questionForInference, 3600);
         _scopedTextsMap.set(link, scopedCombinedText.slice(0, 2500)); // AI verification text store
-        console.log(`  📐 scopedCombinedText length=${scopedCombinedText.length} (full combined=${combinedText.length}) preview="${scopedCombinedText.slice(0, 200)}"`);
+        console.log(` [CALC] scopedCombinedText length=${scopedCombinedText.length} (full combined=${combinedText.length}) preview="${scopedCombinedText.slice(0, 200)}"`);
         const seedText = `${title}. ${snippet}`.trim();
         const snapshotWeak = !snap?.ok || pageText.length < 120;
         if (snapshotWeak && hasOptions) {
@@ -1605,7 +1605,7 @@ export const SearchService = {
             }
             const bypassLetter = snapGab?.letter || snippetAnswerLetter;
             if (bypassLetter && seedTopicSim >= 0.50) {
-              console.log(`  ✅ Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-gabarito-bypass letter=${bypassLetter} topicSim=${seedTopicSim.toFixed(2)} (option coverage low but explicit answer marker found in snippet)`);
+              console.log(` [OK] Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-gabarito-bypass letter=${bypassLetter} topicSim=${seedTopicSim.toFixed(2)} (option coverage low but explicit answer marker found in snippet)`);
               // fall through — let the evidence pipeline extract the gabarito from scopedCombinedText
             } else {
               // ── BrainlyService GraphQL bypass ──
@@ -1617,18 +1617,18 @@ export const SearchService = {
               if (_isBrainlyHost && _brainlyUrls.length > 0) {
                 const _gqlBypassAnswer = await _getBrainlyAnswer(link);
                 if (_gqlBypassAnswer && _gqlBypassAnswer.length > 20) {
-                  console.log(`  🧠 [BRAINLY-GQL] Bypassing snapshot rejection for ${_curHostHint} — GraphQL answer ready (${_gqlBypassAnswer.length} chars)`);
+                  console.log(` [AI] [BRAINLY-GQL] Bypassing snapshot rejection for ${_curHostHint} — GraphQL answer ready (${_gqlBypassAnswer.length} chars)`);
                   // fall through to full extraction pipeline
                 } else {
                   // ── URL → Jina Reader → AI (simplified pipeline) ──
                   const _brainlyHostHint = _curHostHint;
                   if (aiUrlExtractionCount < 3 && seedTopicSim >= 0.40 && hasOptions) {
-                    console.log(`  🌐 [URL→AI] Brainly GQL empty — trying Jina+AI for ${_brainlyHostHint}`);
+                    console.log(` [NET] [URL→AI] Brainly GQL empty — trying Jina+AI for ${_brainlyHostHint}`);
                     try {
                       const urlAiResult = await ApiService.aiExtractFromUrl(link, questionForInference);
                       aiUrlExtractionCount += 1;
                       if (urlAiResult?.letter && originalOptionsMap?.[urlAiResult.letter]) {
-                        console.log(`  🌐 [URL→AI] ✅ Found letter=${urlAiResult.letter} for ${_brainlyHostHint}`);
+                        console.log(` [NET] [URL→AI] [OK] Found letter=${urlAiResult.letter} for ${_brainlyHostHint}`);
                         const domainWeight = getDomainWeight(link);
                         sources.push({
                           title, link,
@@ -1646,10 +1646,10 @@ export const SearchService = {
                         continue;
                       }
                     } catch (_e) {
-                      console.warn(`  🌐 [URL→AI] Error for ${_brainlyHostHint}:`, _e?.message);
+                      console.warn(` [NET] [URL→AI] Error for ${_brainlyHostHint}:`, _e?.message);
                     }
                   }
-                  console.log(`⛔ Source #${runStats.analyzed} (${_curHostHint}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total}) [no GraphQL]`);
+                  console.log(`[BLOCKED] Source #${runStats.analyzed} (${_curHostHint}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total}) [no GraphQL]`);
                   runStats.blockedSnapshotMismatch += 1;
                   this._logSourceDiagnostic({ phase: 'decision', hostHint: _curHostHint, type: 'TYPE_SNAPSHOT_WEAK', topicSim: seedTopicSim, optionsMatch: false, obfuscation: null, decision: 'skip', reason: 'snapshot-empty-options-mismatch' });
                   continue;
@@ -1662,12 +1662,12 @@ export const SearchService = {
                 // Jina can render the page (e.g. generic educational sites, quizzes).
                 const _curHostHint2 = this._getHostHintFromLink(link);
                 if (aiUrlExtractionCount < 3 && seedTopicSim >= 0.40 && hasOptions) {
-                  console.log(`  🌐 [URL→AI] Snapshot weak — trying Jina+AI for ${_curHostHint2} (topicSim=${seedTopicSim.toFixed(2)})`);
+                  console.log(` [NET] [URL→AI] Snapshot weak — trying Jina+AI for ${_curHostHint2} (topicSim=${seedTopicSim.toFixed(2)})`);
                   try {
                     const urlAiResult = await ApiService.aiExtractFromUrl(link, questionForInference);
                     aiUrlExtractionCount += 1;
                     if (urlAiResult?.letter && originalOptionsMap?.[urlAiResult.letter]) {
-                      console.log(`  🌐 [URL→AI] ✅ Found letter=${urlAiResult.letter} conf=${(urlAiResult.confidence||0).toFixed(3)} for ${_curHostHint2}`);
+                      console.log(` [NET] [URL→AI] [OK] Found letter=${urlAiResult.letter} conf=${(urlAiResult.confidence||0).toFixed(3)} for ${_curHostHint2}`);
                       const domainWeight = getDomainWeight(link);
                       const urlAiWeight = Math.min(1.0, (urlAiResult.confidence || 0.65) * domainWeight * 0.90);
                       sources.push({
@@ -1686,12 +1686,12 @@ export const SearchService = {
                       console.groupEnd();
                       continue;
                     }
-                    console.log(`  🌐 [URL→AI] No letter found for ${_curHostHint2}`);
+                    console.log(` [NET] [URL→AI] No letter found for ${_curHostHint2}`);
                   } catch (_urlAiErr) {
-                    console.warn(`  🌐 [URL→AI] Error for ${_curHostHint2}:`, _urlAiErr?.message);
+                    console.warn(` [NET] [URL→AI] Error for ${_curHostHint2}:`, _urlAiErr?.message);
                   }
                 }
-                console.log(`⛔ Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
+                console.log(`[BLOCKED] Source #${runStats.analyzed} (${this._getHostHintFromLink(link)}): snapshot-empty-options-mismatch (seedCoverage: ${seedCoverage.hits}/${seedCoverage.total})`);
                 runStats.blockedSnapshotMismatch += 1;
                 this._logSourceDiagnostic({ phase: 'decision', hostHint: this._getHostHintFromLink(link), type: 'TYPE_SNAPSHOT_WEAK', topicSim: seedTopicSim, optionsMatch: false, obfuscation: null, decision: 'skip', reason: 'snapshot-empty-options-mismatch' });
                 continue;
@@ -1709,7 +1709,7 @@ export const SearchService = {
         const topicSimBase = QuestionParser.questionSimilarityScore(combinedText, questionStem);
 
         // ═══ DEBUG: Source Fetch ═══
-        console.group(`📄 Source #${runStats.analyzed}: ${hostHint}`);
+        console.group(`[DOC] Source #${runStats.analyzed}: ${hostHint}`);
         console.log('Link:', link);
         console.log('Fetch OK:', snap?.ok, '| HTML length:', htmlText.length, '| Text length:', pageText.length);
         console.log('Source type:', sourceType);
@@ -1734,7 +1734,7 @@ export const SearchService = {
             optionsMatchBase = true;
             console.log(`SearchService: Options matched via full-text fallback for ${hostHint} (hits=${fullCoverage.hits}/${fullCoverage.total})`);
           } else {
-            console.log(`  ❌ Full-text options fallback also failed: hits=${fullCoverage.hits}/${fullCoverage.total} ratio=${fullCoverage.ratio.toFixed(2)}`);
+            console.log(` [FAIL] Full-text options fallback also failed: hits=${fullCoverage.hits}/${fullCoverage.total} ratio=${fullCoverage.ratio.toFixed(2)}`);
           }
         }
         console.log('Options match:', optionsMatchBase, '| Coverage:', JSON.stringify(optionsCoverageBase));
@@ -1757,9 +1757,9 @@ export const SearchService = {
           // the _passeiInjected bypass text or the background-tab extracted text,
           // both of which reflect actual readable content despite the paywall overlay.
           const readableTextLen = Math.max((docText || '').length, pageText.length);
-          console.log(`  🔒 Paywall detected: readableTextLen=${readableTextLen} (docText=${(docText||'').length} pageText=${pageText.length})`);
+          console.log(` [LOCK] Paywall detected: readableTextLen=${readableTextLen} (docText=${(docText||'').length} pageText=${pageText.length})`);
           if (readableTextLen < 400) {
-            console.log(`  ⛔ BLOCKED: paywall-overlay (text too short: ${readableTextLen} < 400)`);
+            console.log(` [BLOCKED] BLOCKED: paywall-overlay (text too short: ${readableTextLen} < 400)`);
             console.groupEnd();
             runStats.blockedPaywall += 1;
             this._logSourceDiagnostic({
@@ -1783,10 +1783,10 @@ export const SearchService = {
             isPaywalled: false,
             softPassed: true
           };
-          console.log(`  ✅ Paywall SOFT-PASSED: text readable (${readableTextLen} chars) — flag cleared`);
+          console.log(` [OK] Paywall SOFT-PASSED: text readable (${readableTextLen} chars) — flag cleared`);
         }
         if (obfuscation?.isObfuscated) {
-          console.log(`  ⛔ BLOCKED: obfuscated HTML`);
+          console.log(` [BLOCKED] BLOCKED: obfuscated HTML`);
           // Still collect for AI combined if topic similarity is decent —
           // the combined pass uses title + snippet + text, not raw HTML.
           if (topicSimBase >= 0.30 && !paywall?.isPaywalled) {
@@ -1822,14 +1822,14 @@ export const SearchService = {
         }
         const allowStructuredMismatchBypass = hasOptions && !optionsMatchBase && !obfuscation?.isObfuscated && topicSimBase >= 0.26 && (hostHint === 'passeidireto.com' || hostHint === 'studocu.com');
         if (allowStructuredMismatchBypass) {
-          console.log(`  [BYPASS] options mismatch softened for structured extractors (host=${hostHint}, topicSim=${topicSimBase.toFixed(3)})`);
+          console.log(` [BYPASS] options mismatch softened for structured extractors (host=${hostHint}, topicSim=${topicSimBase.toFixed(3)})`);
         }
 
         // Hard integrity policy: options mismatch cannot contribute direct evidence/votes.
         // However, high-similarity sources are still collected for AI combined inference
         // AND can contribute knowledge via AI extraction.
         if (hasOptions && !optionsMatchBase && !allowStructuredMismatchBypass) {
-          console.log(`  ⛔ BLOCKED: options-mismatch-hard-block (topicSim=${topicSimBase.toFixed(3)})`);
+          console.log(` [BLOCKED] BLOCKED: options-mismatch-hard-block (topicSim=${topicSimBase.toFixed(3)})`);
           // Collect sources with decent topic similarity for AI combined pass.
           // Allow paywalled-but-readable sources (they passed the soft-block above).
           if (topicSimBase >= 0.25 && !obfuscation?.isObfuscated) {
@@ -1853,7 +1853,7 @@ export const SearchService = {
           // directly to the user's options when the letter itself is unreliable.
           const plainAnswerCandidates = extractExplicitAnswerTextCandidates(scopedCombinedText);
           if (plainAnswerCandidates.length > 0) {
-            console.log(`  🧩 [TEXT-MAP] explicit answer candidates found=${plainAnswerCandidates.length} host=${hostHint}`);
+            console.log(` [PIECE] [TEXT-MAP] explicit answer candidates found=${plainAnswerCandidates.length} host=${hostHint}`);
             let mappedFromPlain = null;
             let mappedCandidateText = '';
             for (const candidate of plainAnswerCandidates) {
@@ -1891,11 +1891,11 @@ export const SearchService = {
             if (_graphqlAnswer && _graphqlAnswer.length > 20) {
               // Inject GraphQL answer as pageText so FreeTextAnswerService can map it
               const _injectedText = _graphqlAnswer;
-              console.log('  🧠 [BRAINLY-GQL] Using GraphQL answer for ' + hostHint + ' (' + _graphqlAnswer.length + ' chars): ' + _graphqlAnswer.substring(0, 100));
+              console.log(' [AI] [BRAINLY-GQL] Using GraphQL answer for ' + hostHint + ' (' + _graphqlAnswer.length + ' chars): '+ _graphqlAnswer.substring(0, 100));
               try {
                 const ftGql = await FreeTextAnswerService.extractAnswerFromFreeText(_injectedText, originalOptionsMap, questionStem);
                 if (ftGql?.letter) {
-                  console.log('  🧠 [BRAINLY-GQL] Mapped to letter=' + ftGql.letter + ' conf=' + ftGql.confidence.toFixed(3));
+                  console.log(' [AI] [BRAINLY-GQL] Mapped to letter=' + ftGql.letter + ' conf=' + ftGql.confidence.toFixed(3));
                   const domainWeight = getDomainWeight(link);
                   const gqlWeight = Math.min(1.2, (ftGql.confidence || 0.70) * domainWeight * 1.05);
                   sources.push({
@@ -1914,19 +1914,19 @@ export const SearchService = {
                   console.groupEnd();
                   continue;
                 } else {
-                  console.log('  🧠 [BRAINLY-GQL] Could not map answer to option letter');
+                  console.log(' [AI] [BRAINLY-GQL] Could not map answer to option letter');
                 }
               } catch (gqlErr) {
-                console.warn('  🧠 [BRAINLY-GQL] FreeText mapping failed:', gqlErr?.message);
+                console.warn(' [AI] [BRAINLY-GQL] FreeText mapping failed:', gqlErr?.message);
               }
             }
           }
           if (isFreeTextHost && hasOptions && topicSimBase >= 0.28 && !obfuscation?.isObfuscated) {
-            console.log(`  🗒️ [FREETEXT] Attempting FreeTextAnswerService for ${hostHint} (topicSim=${topicSimBase.toFixed(3)})`);
+            console.log(` [MEMO] [FREETEXT] Attempting FreeTextAnswerService for ${hostHint} (topicSim=${topicSimBase.toFixed(3)})`);
             try {
               const ftResult = await FreeTextAnswerService.extractAnswerFromFreeText(pageText, originalOptionsMap, questionStem);
               if (ftResult?.letter) {
-                console.log(`  🗒️ [FREETEXT] Found letter=${ftResult.letter} method=${ftResult.method} confidence=${ftResult.confidence.toFixed(3)}`);
+                console.log(` [MEMO] [FREETEXT] Found letter=${ftResult.letter} method=${ftResult.method} confidence=${ftResult.confidence.toFixed(3)}`);
                 const domainWeight = getDomainWeight(link);
                 const ftWeight = Math.min(1.0, (ftResult.confidence || 0.70) * domainWeight * 0.95);
                 sources.push({
@@ -1956,7 +1956,7 @@ export const SearchService = {
                 continue;
               }
             } catch (ftErr) {
-              console.warn(`  🗒️ [FREETEXT] FreeTextAnswerService failed:`, ftErr?.message || ftErr);
+              console.warn(` [MEMO] [FREETEXT] FreeTextAnswerService failed:`, ftErr?.message || ftErr);
             }
           }
 
@@ -1974,7 +1974,7 @@ export const SearchService = {
               topicSim: topicSimBase,
               obfuscation
             });
-            console.log(`  🤖 [AI-MISMATCH] Deferred to post-loop (topicSim=${topicSimBase.toFixed(3)}, host=${hostHint}) — queue size=${_pendingMismatchAI.length}`);
+            console.log(` [BOT] [AI-MISMATCH] Deferred to post-loop (topicSim=${topicSimBase.toFixed(3)}, host=${hostHint}) — queue size=${_pendingMismatchAI.length}`);
           }
           runStats.blockedOptionsMismatch += 1;
           this._logSourceDiagnostic({
@@ -1991,7 +1991,7 @@ export const SearchService = {
           console.groupEnd();
           continue;
         }
-        console.log('  ✅ Passed all filters — entering extraction chain');
+        console.log(' [OK] Passed all filters — entering extraction chain');
 
         // 0) Structured extractors by page signature (PDF-like, AnswerCard, anchored gabarito).
         const structured = HtmlExtractorService.extractStructuredEvidence(htmlText, hostHint, questionForInference, questionStem, originalOptionsMap, originalOptions, {
@@ -2004,7 +2004,7 @@ export const SearchService = {
           obfuscation,
           paywall
         });
-        console.log(`  🏗️ Structured extractor: skip=${!!structured?.skip} reason=${structured?.reason || 'none'} letter=${structured?.letter || 'none'} method=${structured?.method || 'none'}`);
+        console.log(` [BUILD] Structured extractor: skip=${!!structured?.skip} reason=${structured?.reason || 'none'} letter=${structured?.letter || 'none'} method=${structured?.method || 'none'}`);
         if (structured?.skip) {
           this._logSourceDiagnostic({
             phase: 'decision',
@@ -2017,14 +2017,14 @@ export const SearchService = {
             reason: structured.reason || 'structured-skip'
           });
           if (structured.reason === 'obfuscated_html' || structured.reason === 'paywall-overlay') {
-            console.log(`  ⛔ Structured hard-skip: ${structured.reason}`);
+            console.log(` [BLOCKED] Structured hard-skip: ${structured.reason}`);
             console.groupEnd();
             continue;
           }
-          console.log(`  ⚠️ Structured skip (soft): ${structured.reason} — continuing to fallbacks`);
+          console.log(` [WARN] Structured skip (soft): ${structured.reason} — continuing to fallbacks`);
         }
         if (structured?.letter) {
-          console.log(`  🎯 Structured found letter: ${structured.letter} method=${structured.method} confidence=${structured.confidence} matchQuality=${structured.matchQuality}`);
+          console.log(` [TARGET] Structured found letter: ${structured.letter} method=${structured.method} confidence=${structured.confidence} matchQuality=${structured.matchQuality}`);
           const riskyHost = hostHint === 'passeidireto.com' || hostHint === 'brainly.com.br' || hostHint === 'brainly.com';
           const structuredMethod = structured.method || 'structured-html';
           const structuredSim = structured.matchQuality || 0;
@@ -2038,7 +2038,7 @@ export const SearchService = {
           const structuredOptionsMatch = !structuredCoverage.hasEnoughOptions || structuredCoverage.ratio >= 0.6 || structuredCoverage.hits >= Math.min(3, structuredCoverage.total || 3);
           const structuredOptionsStrong = !structuredCoverage.hasEnoughOptions || structuredCoverage.ratio >= 0.8 || structuredCoverage.hits >= Math.min(4, structuredCoverage.total || 4);
           const isGenericAnchor = structuredMethod === 'generic-anchor';
-          console.log(`  📊 Structured coverage: match=${structuredOptionsMatch} strong=${structuredOptionsStrong} hits=${structuredCoverage.hits}/${structuredCoverage.total} ratio=${structuredCoverage.ratio?.toFixed(2)} isGenericAnchor=${isGenericAnchor} riskyHost=${riskyHost} sim=${structuredSim.toFixed(2)}`);
+          console.log(` [CHART] Structured coverage: match=${structuredOptionsMatch} strong=${structuredOptionsStrong} hits=${structuredCoverage.hits}/${structuredCoverage.total} ratio=${structuredCoverage.ratio?.toFixed(2)} isGenericAnchor=${isGenericAnchor} riskyHost=${riskyHost} sim=${structuredSim.toFixed(2)}`);
           // FIX: Extend the risky-host demotion guard to ALL structured
           // methods (answercard-ql, pdf-anchor-text-match, etc.) when
           // option coverage is zero — not just generic-anchor.  Without
@@ -2046,7 +2046,7 @@ export const SearchService = {
           // gets accepted with high weight despite 0/5 option body matches.
           const isZeroCoverageOnRiskyHost = riskyHost && structuredCoverage.hasEnoughOptions && structuredCoverage.hits === 0 && structuredSim < 0.45;
           if (isZeroCoverageOnRiskyHost && !isGenericAnchor) {
-            console.log(`  ⚠️ Structured ${structuredMethod} demoted: risky host with 0 option hits and low sim=${structuredSim.toFixed(2)}`);
+            console.log(` [WARN] Structured ${structuredMethod} demoted: risky host with 0 option hits and low sim=${structuredSim.toFixed(2)}`);
             if (topicSimBase >= 0.2) {
               collectedForCombined.push({
                 title,
@@ -2099,14 +2099,14 @@ export const SearchService = {
               method: structuredMethod,
               reason: 'generic-anchor-options-mismatch'
             });
-            console.log(`  ⚠️ Generic anchor demoted to combined-only (risky=${riskyHost} strongOpts=${structuredOptionsStrong} sim=${structuredSim.toFixed(2)})`);
+            console.log(` [WARN] Generic anchor demoted to combined-only (risky=${riskyHost} strongOpts=${structuredOptionsStrong} sim=${structuredSim.toFixed(2)})`);
             console.groupEnd();
             continue;
           }
           // Remap letter if source has shuffled options — use evidence or scopedCombinedText for best coverage
-          console.log(`  🔀 Structured pre-remap letter: ${structured.letter} — attempting remap via evidence or scopedCombinedText...`);
+          console.log(` [SHUFFLE] Structured pre-remap letter: ${structured.letter} — attempting remap via evidence or scopedCombinedText...`);
           structured.letter = this._remapLetterIfShuffled(structured.letter, this._bestRemapText(structured.evidence, scopedCombinedText), originalOptionsMap);
-          console.log(`  🔀 Structured post-remap letter: ${structured.letter}`);
+          console.log(` [SHUFFLE] Structured post-remap letter: ${structured.letter}`);
           const baseWeight = getDomainWeight(link);
           const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
           const structuredBoost = (structured.confidence || 0.82) >= 0.9 ? 4.4 : 3.7;
@@ -2138,7 +2138,7 @@ export const SearchService = {
             evidenceBlock
           });
           runStats.acceptedForVotes += 1;
-          console.log(`  ✅ ACCEPTED via structured: letter=${structured.letter} weight=${weight.toFixed(2)} method=${structuredMethod}`);
+          console.log(` [OK] ACCEPTED via structured: letter=${structured.letter} weight=${weight.toFixed(2)} method=${structuredMethod}`);
           this._logSourceDiagnostic({
             phase: 'decision',
             hostHint,
@@ -2155,7 +2155,7 @@ export const SearchService = {
             votes
           } = EvidenceService.computeVotesAndState(sources);
           if (bestLetter && (votes[bestLetter] || 0) >= 6.5) {
-            console.log(`  🏁 Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
+            console.log(` [END] Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
             console.groupEnd();
             break;
           }
@@ -2167,9 +2167,9 @@ export const SearchService = {
         let extracted = null;
         if (hostHint === 'passeidireto.com' || hostHint === 'studocu.com') {
           const blockedByIntegrity = !!obfuscation?.isObfuscated || !!paywall?.isPaywalled || hasOptions && !optionsMatchBase && !allowStructuredMismatchBypass;
-          console.log(`  📄 PDF-highlight check: blockedByIntegrity=${blockedByIntegrity} (obf=${!!obfuscation?.isObfuscated} pw=${!!paywall?.isPaywalled} optMismatch=${hasOptions && !optionsMatchBase})`);
+          console.log(` [DOC] PDF-highlight check: blockedByIntegrity=${blockedByIntegrity} (obf=${!!obfuscation?.isObfuscated} pw=${!!paywall?.isPaywalled} optMismatch=${hasOptions && !optionsMatchBase})`);
           if (blockedByIntegrity) {
-            console.log(`  ⛔ PDF-highlight blocked: integrity check failed`);
+            console.log(` [BLOCKED] PDF-highlight blocked: integrity check failed`);
             this._logSourceDiagnostic({
               phase: 'decision',
               hostHint,
@@ -2185,7 +2185,7 @@ export const SearchService = {
             continue;
           }
           extracted = HtmlExtractorService.extractPdfHighlightLetter(snap?.html || '', questionStem, originalOptionsMap, originalOptions);
-          console.log(`  📄 PDF-highlight result: letter=${extracted?.letter || 'none'} method=${extracted?.method || 'none'} confidence=${extracted?.confidence || 0} evidence="${extracted?.evidence || 'none'}"`);
+          console.log(` [DOC] PDF-highlight result: letter=${extracted?.letter || 'none'} method=${extracted?.method || 'none'} confidence=${extracted?.confidence || 0} evidence="${extracted?.evidence || 'none'}"`);
 
           // AI-HTML fallback: when ff1-highlight couldn't find the answer,
           // send a chunk of raw HTML to AI so it can detect visual highlights
@@ -2198,16 +2198,16 @@ export const SearchService = {
             const optTokensForHtml = QuestionParser.extractOptionTokens(reconstructedQ);
             const htmlSnippet = EvidenceService.extractHtmlAroundQuestion(snap.html, questionStem, optTokensForHtml, 12000);
             if (htmlSnippet && htmlSnippet.length > 500) {
-              console.log(`  🤖 [AI-HTML] Attempting AI HTML extraction (host=${hostHint}, snippetLen=${htmlSnippet.length})`);
+              console.log(` [BOT] [AI-HTML] Attempting AI HTML extraction (host=${hostHint}, snippetLen=${htmlSnippet.length})`);
               if (typeof onStatus === 'function') {
-                onStatus(`🤖 IA analisando ${hostHint}…`);
+                onStatus(` IA analisando ${hostHint}…`);
               }
               // Check AI result cache first to avoid re-calling LLM on the same URL+question
               const _aiHtmlCacheKey = link + '|html';
               const _aiHtmlCached = SearchCacheService.getCachedAiResult(_aiHtmlCacheKey, questionForInference);
               let aiHtmlResult;
               if (_aiHtmlCached) {
-                console.log(`  🤖 [AI-HTML] 📦 Cache hit for ${hostHint} — skipping LLM call`);
+                console.log(` [BOT] [AI-HTML] [PKG] Cache hit for ${hostHint} — skipping LLM call`);
                 aiHtmlResult = _aiHtmlCached;
               } else {
                 aiHtmlResult = await ApiService.aiExtractFromHtml(htmlSnippet, questionForInference, hostHint);
@@ -2215,7 +2215,7 @@ export const SearchService = {
               }
               aiHtmlExtractionCount++;
               if (aiHtmlResult?.letter) {
-                console.log(`  🤖 [AI-HTML] Found letter=${aiHtmlResult.letter} via ${aiHtmlResult.method}`);
+                console.log(` [BOT] [AI-HTML] Found letter=${aiHtmlResult.letter} via ${aiHtmlResult.method}`);
                 extracted = {
                   letter: aiHtmlResult.letter,
                   confidence: aiHtmlResult.confidence || 0.85,
@@ -2223,7 +2223,7 @@ export const SearchService = {
                   evidence: aiHtmlResult.evidence || ''
                 };
               } else {
-                console.log(`  🤖 [AI-HTML] No letter found`);
+                console.log(` [BOT] [AI-HTML] No letter found`);
                 if (aiHtmlResult?.knowledge) {
                   aiKnowledgePool.push({
                     host: hostHint,
@@ -2237,7 +2237,7 @@ export const SearchService = {
             }
           }
           if (extracted?.letter) {
-            console.log(`  📄 PDF-highlight raw letter: ${extracted.letter} — attempting remap via evidence or scopedCombinedText...`);
+            console.log(` [DOC] PDF-highlight raw letter: ${extracted.letter} — attempting remap via evidence or scopedCombinedText...`);
             // Same user-space guard as aiExtract: if the user option body for the reported letter
             // is found in the evidence/scoped text, the AI already reported in user-space — skip remap.
             const _pdfUserOptBody = (originalOptionsMap || {})[extracted.letter];
@@ -2246,7 +2246,7 @@ export const SearchService = {
             const _pdfNormEvid = QuestionParser.normalizeOption((extracted.evidence || '') + ' ' + scopedCombinedText.slice(0, 500)).replace(/\s+/g, '');
             const _pdfEvidenceConfirms = _pdfProbe.length >= 4 && _pdfNormEvid.includes(_pdfProbe);
             if (_pdfEvidenceConfirms) {
-              console.log(`  📄 PDF probe "${_pdfProbe}" confirms ${extracted.letter} in user-space — skipping remap`);
+              console.log(` [DOC] PDF probe "${_pdfProbe}" confirms ${extracted.letter} in user-space — skipping remap`);
             } else {
               // Remap letter if source has shuffled options
               extracted.letter = this._remapLetterIfShuffled(extracted.letter, this._bestRemapText(extracted.evidence, scopedCombinedText), originalOptionsMap);
@@ -2259,7 +2259,7 @@ export const SearchService = {
             const signalBoost = heuristicSignal ? 1.8 : 3.2;
             const confFactor = Math.max(0.35, Math.min(1.0, Number(extracted.confidence) || 0.82));
             const adjustedSignalBoost = signalBoost * confFactor;
-            console.log(`  📄 PDF weight factors: base=${baseWeight.toFixed(2)} signal=${signalBoost.toFixed(2)} conf=${confFactor.toFixed(2)} adjustedSignal=${adjustedSignalBoost.toFixed(2)} quality=${quality}`);
+            console.log(` [DOC] PDF weight factors: base=${baseWeight.toFixed(2)} signal=${signalBoost.toFixed(2)} conf=${confFactor.toFixed(2)} adjustedSignal=${adjustedSignalBoost.toFixed(2)} quality=${quality}`);
             const weight = baseWeight + adjustedSignalBoost + quality * 0.25;
             const hostPrefix = hostHint === 'passeidireto.com' ? 'passeidireto' : 'studocu';
             const sourceId = `${hostHint || 'source'}:${sources.length + 1}`;
@@ -2303,7 +2303,7 @@ export const SearchService = {
               votes
             } = EvidenceService.computeVotesAndState(sources);
             if (bestLetter && (votes[bestLetter] || 0) >= 6.5) {
-              console.log(`  🏁 Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
+              console.log(` [END] Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
               console.groupEnd();
               break;
             }
@@ -2312,7 +2312,7 @@ export const SearchService = {
           }
         }
         if (hasOptions && !optionsMatchBase) {
-          console.log(`  [BLOCKED] options-mismatch-post-structured (topicSim=${topicSimBase.toFixed(3)})`);
+          console.log(` [BLOCKED] options-mismatch-post-structured (topicSim=${topicSimBase.toFixed(3)})`);
           runStats.blockedOptionsMismatch += 1;
           this._logSourceDiagnostic({
             phase: 'decision',
@@ -2331,25 +2331,25 @@ export const SearchService = {
 
         // 2) Enhanced local extraction (uses _findQuestionBlock + _extractExplicitGabarito)
         const localResult = EvidenceService.extractAnswerLocally(combinedText, questionForInference, originalOptions);
-        console.log(`  📝 Local extraction: letter=${localResult?.letter || 'none'} type=${localResult?.evidenceType || 'none'} confidence=${localResult?.confidence || 0}`);
+        console.log(` [NOTE] Local extraction: letter=${localResult?.letter || 'none'} type=${localResult?.evidenceType || 'none'} confidence=${localResult?.confidence || 0}`);
         // TopicSim gate: gabarito from low-similarity sources (compilados with many questions)
         // is extremely unreliable — the matched pattern is likely for a DIFFERENT question.
         if (localResult?.letter && topicSimBase < 0.50) {
-          console.log(`  ⛔ Gabarito REJECTED: topicSim=${topicSimBase.toFixed(3)} < 0.50 — likely wrong question in compilado`);
+          console.log(` [BLOCKED] Gabarito REJECTED: topicSim=${topicSimBase.toFixed(3)} < 0.50 — likely wrong question in compilado`);
           localResult.letter = null;
         }
         if (localResult?.letter) {
-          console.log(`  🔀 Local pre-remap letter: ${localResult.letter}`);
+          console.log(` [SHUFFLE] Local pre-remap letter: ${localResult.letter}`);
           // Remap letter if source has shuffled options
           localResult.letter = this._remapLetterIfShuffled(localResult.letter, this._bestRemapText(localResult.evidence, scopedCombinedText), originalOptionsMap);
-          console.log(`  🔀 Local post-remap letter: ${localResult.letter}`);
+          console.log(` [SHUFFLE] Local post-remap letter: ${localResult.letter}`);
           const baseWeight = getDomainWeight(link);
           const quality = this.computeMatchQuality(scopedCombinedText, questionForInference, originalOptions, originalOptionsMap);
           let weight = baseWeight + 2.6 + quality * 0.4;
           // Reduce gabarito weight when topicSim is moderate — source may be wrong question
           if (topicSimBase < 0.70) {
             weight *= topicSimBase;
-            console.log(`  ⚠️ Gabarito weight reduced: topicSim=${topicSimBase.toFixed(3)} → weight=${weight.toFixed(2)}`);
+            console.log(` [WARN] Gabarito weight reduced: topicSim=${topicSimBase.toFixed(3)} → weight=${weight.toFixed(2)}`);
           }
           const sourceId = `${hostHint || 'source'}:${sources.length + 1}`;
           const evidenceBlock = EvidenceService.buildEvidenceBlock({
@@ -2393,7 +2393,7 @@ export const SearchService = {
             votes
           } = EvidenceService.computeVotesAndState(sources);
           if (bestLetter && (votes[bestLetter] || 0) >= 6.5) {
-            console.log(`  🏁 Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
+            console.log(` [END] Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
             console.groupEnd();
             break;
           }
@@ -2403,12 +2403,12 @@ export const SearchService = {
 
         // 3) Fallback: simpler explicit letter extraction
         extracted = EvidenceService.extractExplicitLetterFromText(combinedText, questionStem, originalOptions);
-        console.log(`  🔤 Explicit letter: letter=${extracted?.letter || 'none'} confidence=${extracted?.confidence || 0}`);
+        console.log(` [TEXT] Explicit letter: letter=${extracted?.letter || 'none'} confidence=${extracted?.confidence || 0}`);
         if (extracted?.letter) {
-          console.log(`  🔀 Explicit pre-remap letter: ${extracted.letter}`);
+          console.log(` [SHUFFLE] Explicit pre-remap letter: ${extracted.letter}`);
           // Remap letter if source has shuffled options
           extracted.letter = this._remapLetterIfShuffled(extracted.letter, this._bestRemapText(extracted.evidence, scopedCombinedText), originalOptionsMap);
-          console.log(`  🔀 Explicit post-remap letter: ${extracted.letter}`);
+          console.log(` [SHUFFLE] Explicit post-remap letter: ${extracted.letter}`);
           const baseWeight = getDomainWeight(link);
           const weight = baseWeight + 2.0;
           const sourceId = `${hostHint || 'source'}:${sources.length + 1}`;
@@ -2451,7 +2451,7 @@ export const SearchService = {
             votes
           } = EvidenceService.computeVotesAndState(sources);
           if (bestLetter && (votes[bestLetter] || 0) >= 6.5) {
-            console.log(`  🏁 Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
+            console.log(` [END] Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
             console.groupEnd();
             break;
           }
@@ -2464,15 +2464,15 @@ export const SearchService = {
         // Truncating to 6000 chars (up from 3500) gives AI more context for multi-question pages.
         if (aiExtractionCount < 3 && topicSimBase >= 0.35 && !obfuscation?.isObfuscated && scopedCombinedText.length >= 250) {
           const aiScopedText = EvidenceService.buildQuestionScopedText(combinedText, questionForInference, 6000);
-          console.log(`  🤖 [AI-EXTRACT] Attempting AI page extraction (call ${aiExtractionCount + 1}/3, topicSim=${topicSimBase.toFixed(3)}, textLen=${aiScopedText.length}, host=${hostHint})`);
+          console.log(` [BOT] [AI-EXTRACT] Attempting AI page extraction (call ${aiExtractionCount + 1}/3, topicSim=${topicSimBase.toFixed(3)}, textLen=${aiScopedText.length}, host=${hostHint})`);
           if (typeof onStatus === 'function') {
-            onStatus(`🤖 IA analisando ${hostHint || 'fonte'} (${runStats.analyzed}/${topResults.length})…`);
+            onStatus(` IA analisando ${hostHint || 'fonte'} (${runStats.analyzed}/${topResults.length})…`);
           }
           // Check AI result cache to avoid re-calling LLM for same URL+question
           const _aiPageCached = SearchCacheService.getCachedAiResult(link, questionForInference);
           let aiExtracted;
           if (_aiPageCached) {
-            console.log(`  🤖 [AI-EXTRACT] 📦 Cache hit for ${hostHint} — skipping LLM call`);
+            console.log(` [BOT] [AI-EXTRACT] [PKG] Cache hit for ${hostHint} — skipping LLM call`);
             aiExtracted = _aiPageCached;
           } else {
             aiExtracted = await ApiService.aiExtractFromPage(aiScopedText, questionForInference, hostHint);
@@ -2489,7 +2489,7 @@ export const SearchService = {
               link,
               title
             });
-            console.log(`  🤖 [AI-EXTRACT] Knowledge collected from ${hostHint} (${aiExtracted.knowledge.length} chars, pool size=${aiKnowledgePool.length})`);
+            console.log(` [BOT] [AI-EXTRACT] Knowledge collected from ${hostHint} (${aiExtracted.knowledge.length} chars, pool size=${aiKnowledgePool.length})`);
           }
 
           // Cross-question guard: verify the AI's evidence actually relates to
@@ -2506,10 +2506,10 @@ export const SearchService = {
             const stemTokens = QuestionParser.extractKeyTokens(questionStem);
             const stemHits = stemTokens.filter(t => evNorm.includes(t)).length;
             const stemRatio = stemTokens.length > 0 ? stemHits / stemTokens.length : 1;
-            console.log(`  🤖 [AI-EXTRACT] Cross-Q check: claimedHits=${claimedHits}/${claimedTokens.length} (${claimedRatio.toFixed(2)}) stemHits=${stemHits}/${stemTokens.length} (${stemRatio.toFixed(2)})`);
+            console.log(` [BOT] [AI-EXTRACT] Cross-Q check: claimedHits=${claimedHits}/${claimedTokens.length} (${claimedRatio.toFixed(2)}) stemHits=${stemHits}/${stemTokens.length} (${stemRatio.toFixed(2)})`);
             if (claimedRatio < 0.38 && stemRatio < 0.25 || claimedRatio < 0.15) {
-              console.log(`  🤖 [AI-EXTRACT] ❌ Cross-question REJECTED: evidence relates to a different question on the page (claimRatio < 0.38 & stemRatio < 0.25, or claimRatio < 0.15)`);
-              console.log(`  🤖 [AI-EXTRACT] Keeping knowledge but discarding letter ${aiExtracted.letter}`);
+              console.log(` [BOT] [AI-EXTRACT] [FAIL] Cross-question REJECTED: evidence relates to a different question on the page (claimRatio < 0.38 & stemRatio < 0.25, or claimRatio < 0.15)`);
+              console.log(` [BOT] [AI-EXTRACT] Keeping knowledge but discarding letter ${aiExtracted.letter}`);
               aiExtracted.letter = null;
               // Strip misleading letter/resultado from knowledge so it
               // doesn't poison downstream reflection
@@ -2519,7 +2519,7 @@ export const SearchService = {
             }
           }
           if (aiExtracted?.letter) {
-            console.log(`  🤖 [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
+            console.log(` [BOT] [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
             // Skip remap when the AI's evidence already references the user-option body for the
             // reported letter. This means the AI was reasoning in user-option space and remapping
             // would corrupt a correct answer (e.g. D=JSONB_BUILD_OBJECT evidence → AI says D,
@@ -2530,16 +2530,16 @@ export const SearchService = {
             const _normEvid = QuestionParser.normalizeOption(aiExtracted.evidence || '').replace(/\s+/g, '');
             const _evidenceConfirmsLetter = _optProbe.length >= 3 && _normEvid.includes(_optProbe);
             if (_evidenceConfirmsLetter) {
-              console.log(`  🤖 [AI-EXTRACT] Evidence probe "${_optProbe}" confirms ${aiExtracted.letter} in user-space — skipping remap`);
+              console.log(` [BOT] [AI-EXTRACT] Evidence probe "${_optProbe}" confirms ${aiExtracted.letter} in user-space — skipping remap`);
             } else {
               aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, this._bestRemapText(aiExtracted.evidence, scopedCombinedText), originalOptionsMap);
             }
-            console.log(`  🤖 [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
+            console.log(` [BOT] [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
             // Validate the letter exists in the user's options map.
             // The AI may find a different question on the same page (e.g. one with 5 options)
             // and return a letter that doesn't exist in the current question (e.g. E when only A-D exist).
             if (originalOptionsMap && aiExtracted.letter && !originalOptionsMap[aiExtracted.letter]) {
-              console.log(`  🤖 [AI-EXTRACT] ❌ Letter ${aiExtracted.letter} not in options map [${Object.keys(originalOptionsMap).join(',')}] — discarding`);
+              console.log(` [BOT] [AI-EXTRACT] [FAIL] Letter ${aiExtracted.letter} not in options map [${Object.keys(originalOptionsMap).join(',')}] — discarding`);
               aiExtracted.letter = null;
             }
             const baseWeight = getDomainWeight(link);
@@ -2585,25 +2585,25 @@ export const SearchService = {
               method: 'ai-page-extraction',
               letter: aiExtracted.letter
             });
-            console.log(`  ✅ ACCEPTED via AI page extraction: letter=${aiExtracted.letter} weight=${weight.toFixed(2)}`);
+            console.log(` [OK] ACCEPTED via AI page extraction: letter=${aiExtracted.letter} weight=${weight.toFixed(2)}`);
             const {
               bestLetter,
               votes
             } = EvidenceService.computeVotesAndState(sources);
             if (bestLetter && (votes[bestLetter] || 0) >= 6.5) {
-              console.log(`  🏁 Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
+              console.log(` [END] Early exit: votes[${bestLetter}]=${votes[bestLetter]}`);
               console.groupEnd();
               break;
             }
             console.groupEnd();
             continue;
           } else {
-            console.log(`  🤖 [AI-EXTRACT] No letter found for ${hostHint} — knowledge ${aiExtracted?.knowledge ? 'saved' : 'empty'}`);
+            console.log(` [BOT] [AI-EXTRACT] No letter found for ${hostHint} — knowledge ${aiExtracted?.knowledge ? 'saved' : 'empty'}`);
           }
         }
 
         // 4) No explicit evidence found: keep as low-priority AI evidence.
-        console.log(`  ℹ️ No direct evidence found — collecting for AI combined`);
+        console.log(` [INFO] No direct evidence found — collecting for AI combined`);
         const clipped = scopedCombinedText.slice(0, 4000);
         if (clipped.length >= 200) {
           const topicSim = topicSimBase;
@@ -2656,19 +2656,19 @@ export const SearchService = {
       const { bestLetter: _midLetter, votes: _midVotes } = EvidenceService.computeVotesAndState(sources);
       const _midTopVote = _midLetter ? (_midVotes[_midLetter] || 0) : 0;
       if (_midTopVote < 5.5) {
-        console.log(`SearchService: 🤖 Processing ${_pendingMismatchAI.length} deferred mismatch AI sources (midTopVote=${_midTopVote.toFixed(1)})...`);
+        console.log(`SearchService: [BOT] Processing ${_pendingMismatchAI.length} deferred mismatch AI sources (midTopVote=${_midTopVote.toFixed(1)})...`);
         const toProcess = _pendingMismatchAI.slice(0, 3); // cap at 3 to limit latency
         for (const pending of toProcess) {
           if (aiExtractionCount >= 5) break;
           const { aiScopedText, hostHint: ph, sourceType: pst, title: pt, link: pl, topicSim: ptopicSim, obfuscation: pobf } = pending;
-          if (typeof onStatus === 'function') onStatus(`🤖 IA extraindo informações de ${ph || 'fonte'}…`);
+          if (typeof onStatus === 'function') onStatus(` IA extraindo informações de ${ph || 'fonte'}…`);
           try {
             const aiExtracted = await ApiService.aiExtractFromPage(aiScopedText, questionForInference, ph);
             aiExtractionCount++;
             if (aiExtracted?.knowledge) {
               const cleanKnowledge = aiExtracted.knowledge.replace(/^RESULTADO:\s*ENCONTRADO\s*$/gim, '').replace(/^Letra\s+[A-E]\b.*$/gim, '').trim();
               aiKnowledgePool.push({ host: ph, knowledge: cleanKnowledge, topicSim: ptopicSim, link: pl, title: pt, origin: 'mismatch' });
-              console.log(`  🤖 [AI-MISMATCH-DEFERRED] Knowledge collected: ${cleanKnowledge.length} chars (pool=${aiKnowledgePool.length})`);
+              console.log(` [BOT] [AI-MISMATCH-DEFERRED] Knowledge collected: ${cleanKnowledge.length} chars (pool=${aiKnowledgePool.length})`);
             }
             // Try to map AI evidence/knowledge to an answer letter
             const aiTextCandidates = [];
@@ -2691,14 +2691,14 @@ export const SearchService = {
               addTextMappedSource.call(this, { title: pt, link: pl, hostHint: ph, sourceType: pst, topicSim: ptopicSim, obfuscation: pobf, mapped: mappedFromAiText.mapped, evidenceText: mappedAiEvidenceText, methodTag: mappedFromAiText.methodTag });
             }
             if (aiExtracted?.letter && !mappedFromAiText) {
-              console.log(`  [AI-MISMATCH-DEFERRED] Letter ${aiExtracted.letter} found but IGNORED (options mismatch without validated textual mapping)`);
+              console.log(` [AI-MISMATCH-DEFERRED] Letter ${aiExtracted.letter} found but IGNORED (options mismatch without validated textual mapping)`);
             }
           } catch (e) {
-            console.warn(`  🤖 [AI-MISMATCH-DEFERRED] Extraction failed:`, e?.message || e);
+            console.warn(` [BOT] [AI-MISMATCH-DEFERRED] Extraction failed:`, e?.message || e);
           }
         }
       } else {
-        console.log(`SearchService: ⚡ Skipping deferred AI-mismatch (midTopVote=${_midTopVote.toFixed(1)} ≥ 5.5 — sufficient evidence)`);
+        console.log(`SearchService: [FAST] Skipping deferred AI-mismatch (midTopVote=${_midTopVote.toFixed(1)} ≥ 5.5 — sufficient evidence)`);
       }
     }
 
@@ -2708,7 +2708,7 @@ export const SearchService = {
     // snippet + title text for each result. This catches cases where the SERP itself
     // reveals the answer (e.g. "Gabarito: E" in snippet) without needing page fetch.
     if (sources.length === 0 && hasOptions) {
-      console.group('📋 Snippet-level gabarito extraction');
+      console.group('[LIST] Snippet-level gabarito extraction');
       for (const result of topResults) {
         const snipText = `${result.title || ''}. ${result.snippet || ''}`.trim();
         if (snipText.length < 60) continue;
@@ -2753,10 +2753,10 @@ export const SearchService = {
             evidenceBlock
           });
           runStats.acceptedForVotes += 1;
-          console.log(`  ✅ Snippet gabarito: letter=${letter} host=${hostHint} sim=${snipSim.toFixed(2)} coverage=${snipCoverage.hits}/${snipCoverage.total} weight=${weight.toFixed(2)}`);
+          console.log(` [OK] Snippet gabarito: letter=${letter} host=${hostHint} sim=${snipSim.toFixed(2)} coverage=${snipCoverage.hits}/${snipCoverage.total} weight=${weight.toFixed(2)}`);
         }
       }
-      console.log(`  Snippet gabarito sources added: ${sources.filter(s => s.evidenceType === 'snippet-gabarito').length}`);
+      console.log(` Snippet gabarito sources added: ${sources.filter(s => s.evidenceType === 'snippet-gabarito').length}`);
       console.groupEnd();
     }
 
@@ -2820,18 +2820,18 @@ export const SearchService = {
     });
 
     // ═══ DEBUG: AI Combined Pool ═══
-    console.group('🧠 AI Combined Evidence Pool');
+    console.group('[AI] AI Combined Evidence Pool');
     console.log(`Direct sources found: ${sources.length}`);
     console.log(`AI evidence pool: ${aiEvidence.length} | Mismatch pool: ${collectedForCombined.length} | Snippet pool: ${snippetEvidence.length}`);
     console.log(`AI knowledge pool: ${aiKnowledgePool.length} entries`);
     if (aiKnowledgePool.length > 0) {
       aiKnowledgePool.forEach((k, i) => {
-        console.log(`  📚 [${i}] host=${k.host} topicSim=${(k.topicSim || 0).toFixed(3)} knowledge=${(k.knowledge || '').length} chars origin=${k.origin || 'direct'}`);
+        console.log(` [STUDY] [${i}] host=${k.host} topicSim=${(k.topicSim || 0).toFixed(3)} knowledge=${(k.knowledge || '').length} chars origin=${k.origin || 'direct'}`);
       });
     }
     console.log(`Total for combined: ${allForCombined.length}`);
     allForCombined.forEach((e, i) => {
-      console.log(`  [${i}] origin=${e.origin} host=${e.hostHint} topicSim=${(e.topicSim || 0).toFixed(3)} optMatch=${e.optionsMatch} coverage=${JSON.stringify(e.optionsCoverage)} textLen=${(e.text || '').length}`);
+      console.log(` [${i}] origin=${e.origin} host=${e.hostHint} topicSim=${(e.topicSim || 0).toFixed(3)} optMatch=${e.optionsMatch} coverage=${JSON.stringify(e.optionsCoverage)} textLen=${(e.text || '').length}`);
     });
     console.groupEnd();
 
@@ -2843,7 +2843,7 @@ export const SearchService = {
     // If we have no explicit sources OR we need more evidence, do AI combined pass
     if (allForCombined.length > 0 && (!hasStrongExplicit || sources.length < 2)) {
       if (typeof onStatus === 'function') {
-        onStatus(sources.length === 0 ? '🧠 Nenhuma resposta explícita — IA raciocinando…' : '🔎 Cruzando informações de múltiplas fontes…');
+        onStatus(sources.length === 0 ? ' Nenhuma resposta explícita — IA raciocinando…' : 'Cruzando informações de múltiplas fontes…');
       }
 
       // Only use combined evidence with minimum topic + option alignment quality.
@@ -2851,7 +2851,7 @@ export const SearchService = {
       let relevant = allForCombined.filter(e => {
         const topicSim = e.topicSim || 0;
         if (topicSim < minTopicSim) {
-          console.log(`    ❌ Filtered (low topicSim ${topicSim.toFixed(3)} < ${minTopicSim}): ${e.hostHint}`);
+          console.log(` [FAIL] Filtered (low topicSim ${topicSim.toFixed(3)} < ${minTopicSim}): ${e.hostHint}`);
           return false;
         }
         if (!hasOptions) return true;
@@ -2870,7 +2870,7 @@ export const SearchService = {
         // DOES contain the user's question. Only reject when coverage is weak.
         if (origin === 'aievidence' && riskyCombinedHosts.has(host)) {
           if (!strongCoverage) {
-            console.log(`    ❌ Risky aiEvidence rejected (weak coverage): host=${host} topicSim=${topicSim.toFixed(2)} coverage=${coverage.hits}/${coverage.total}`);
+            console.log(` [FAIL] Risky aiEvidence rejected (weak coverage): host=${host} topicSim=${topicSim.toFixed(2)} coverage=${coverage.hits}/${coverage.total}`);
             return false;
           }
         }
@@ -2893,11 +2893,11 @@ export const SearchService = {
         // Requirements: high topicSim, substantial text, NOT a snippet, origin is mismatch.
         const veryHighSimLowCoverageOk = topicSim >= 0.85 && (coverage.hits || 0) >= 1 && isTrustedCombinedHost(host) && !e.obfuscated && !e.paywalled;
         if (origin === 'mismatch' && topicSim >= 0.62 && (e.text || '').length >= 500 && (hasMediumOptionCoverage(coverage) || veryHighSimLowCoverageOk) && !riskyCombinedHosts.has(host) && !e.obfuscated && !e.paywalled && isTrustedCombinedHost(host)) {
-          console.log(`    ✅ Cross-question evidence ADMITTED: host=${host} topicSim=${topicSim.toFixed(2)} textLen=${(e.text || '').length}`);
+          console.log(` [OK] Cross-question evidence ADMITTED: host=${host} topicSim=${topicSim.toFixed(2)} textLen=${(e.text || '').length}`);
           console.log(`SearchService: Cross-question evidence admitted for AI combined: host=${host} topicSim=${topicSim.toFixed(2)} textLen=${(e.text || '').length}`);
           return true;
         } else if (origin === 'mismatch') {
-          console.log(`    ❌ Cross-question REJECTED: host=${host} topicSim=${topicSim.toFixed(2)} len=${(e.text || '').length}`);
+          console.log(` [FAIL] Cross-question REJECTED: host=${host} topicSim=${topicSim.toFixed(2)} len=${(e.text || '').length}`);
         }
         if (riskyCombinedHosts.has(host) || e.obfuscated || e.paywalled) return false;
         const mediumCoverage = hasMediumOptionCoverage(coverage);
@@ -2943,14 +2943,14 @@ export const SearchService = {
       const minRelevantSources = hasOptions && !hasStrongExplicit ? (hasSingleStrongDirectFirst ? 1 : 2) : 1;
 
       // ═══ DEBUG: AI Combined Decision ═══
-      console.group('🤖 AI Combined Decision');
+      console.group('[BOT] AI Combined Decision');
       console.log(`Relevant sources after filtering: ${relevant.length}`);
       relevant.forEach((e, i) => {
-        console.log(`  [${i}] origin=${e.origin} host=${e.hostHint} topicSim=${(e.topicSim || 0).toFixed(3)} optMatch=${e.optionsMatch} textLen=${(e.text || '').length}`);
+        console.log(` [${i}] origin=${e.origin} host=${e.hostHint} topicSim=${(e.topicSim || 0).toFixed(3)} optMatch=${e.optionsMatch} textLen=${(e.text || '').length}`);
       });
       console.log(`desperateMode=false | hasStrongExplicit=${hasStrongExplicit} | hasReliableOptionAligned=${hasReliableOptionAlignedSource} | singleStrongDirectFirst=${hasSingleStrongDirectFirst} | minRelevantSources=${minRelevantSources}`);
       if (hasOptions && !hasReliableOptionAlignedSource && relevant.length < minRelevantSources) {
-        console.log(`⛔ AI combined SKIPPED: weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
+        console.log(`[BLOCKED] AI combined SKIPPED: weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
         console.log(`SearchService: AI combined skipped - weak option alignment (relevant=${relevant.length}, reliable=${hasReliableOptionAlignedSource})`);
         // Only bail out completely when we have no direct evidence at all.
         // When sources[] already contains snippet-gabarito or other direct hits,
@@ -3028,11 +3028,11 @@ export const SearchService = {
       const canProceedAI = relevant.length > 0 && sources.length > 0 && (!hasOptions || hasReliableOptionAlignedSource && (relevant.length >= minRelevantSources || hasSingleHighTrustAnchor)) || canProceedAISynthesisOnly;
       console.log(`canProceedAI=${canProceedAI}`);
       if (canProceedAISynthesisOnly) {
-        console.log(`✅ AI synthesis-only mode enabled: strongRelevant=${strongRelevant.length}, domainDiversity=${strongRelevantDomainCount}`);
-        console.log(`   anchorMode=${hasEliteAnchoredEvidence} corroboratingSnippets=${corroboratingSnippetCount} snippetStems=${highConfidenceSnippetStems.length} snippetDomains=${highConfidenceSnippetDomains}`);
+        console.log(`[OK] AI synthesis-only mode enabled: strongRelevant=${strongRelevant.length}, domainDiversity=${strongRelevantDomainCount}`);
+        console.log(` anchorMode=${hasEliteAnchoredEvidence} corroboratingSnippets=${corroboratingSnippetCount} snippetStems=${highConfidenceSnippetStems.length} snippetDomains=${highConfidenceSnippetDomains}`);
       }
       if (hasSingleHighTrustAnchor) {
-        console.log('✅ AI combined single-source override enabled: trusted high-confidence anchor');
+        console.log('[OK] AI combined single-source override enabled: trusted high-confidence anchor');
       }
       // Fix #18: skip AI combined when ≥2 direct sources unanimously agree on same letter
       const _sourcesWithLetters = sources.filter(s => s.letter);
@@ -3041,7 +3041,7 @@ export const SearchService = {
         if (_directConsensus) {
           console.log(`⏩ AI combined SKIPPED: ${sources.length} direct sources unanimously agree on ${_sourcesWithLetters[0].letter}`);
         } else {
-          console.log('❌ AI combined will NOT run');
+          console.log('[FAIL] AI combined will NOT run');
         }
         console.groupEnd();
       }
@@ -3074,7 +3074,7 @@ export const SearchService = {
             // only the question stem (no answer/option text), so lexical overlap between
             // evidence corpus and option bodies is meaningless. Trust the AI inference.
             if (canProceedAISynthesisOnly && !isSnippetStemSynthesis && hasOptions && originalOptionsMap) {
-              const evidenceCorpus = QuestionParser.normalizeOption(relevant.map(e => String(e.text || '').slice(0, 2200)).join(' '));
+              const evidenceCorpus = QuestionParser.normalizeOption(relevant.map(e => String(e.text || '').slice(0, 2200)).join(''));
               const optionEntries = Object.entries(originalOptionsMap).filter(([letter]) => /^[A-E]$/.test(String(letter || '').toUpperCase())).map(([letter, text]) => {
                 const norm = QuestionParser.normalizeOption(String(text || ''));
                 const tokens = norm.split(/\s+/).filter(token => token.length >= 4);
@@ -3104,7 +3104,7 @@ export const SearchService = {
               const selectedSupported = !!selected && selected.score >= supportMinScore && selected.tokenRatio >= supportMinTokenRatio && (!topOption || topOption.letter === selected.letter || supportMargin < effectiveMarginThreshold);
               console.log(`SearchService: AI synthesis support check => selected=${selected?.letter || 'none'} score=${(selected?.score || 0).toFixed(3)} tokenRatio=${(selected?.tokenRatio || 0).toFixed(3)} top=${topOption?.letter || 'none'} topScore=${(topOption?.score || 0).toFixed(3)} margin=${supportMargin.toFixed(3)}`);
               if (!selectedSupported) {
-                console.log(`⛔ AI combined letter rejected by evidence-support guard (selected=${aiLetter}, top=${topOption?.letter || 'none'})`);
+                console.log(`[BLOCKED] AI combined letter rejected by evidence-support guard (selected=${aiLetter}, top=${topOption?.letter || 'none'})`);
                 aiLetter = null;
               }
             }
@@ -3116,7 +3116,7 @@ export const SearchService = {
             const allCrossQuestion = relevant.every(e => String(e.origin || '') === 'mismatch' || e.optionsMatch === false);
             const aiWeight = hasStrongExplicit ? 0.3 : canProceedAISynthesisOnly ? 0.35 : allCrossQuestion ? 0.20 : 0.45;
             aiWeightUsed = aiWeight;
-            console.log(`  AI combined result: letter=${aiLetter} allCrossQuestion=${allCrossQuestion} weight=${aiWeight}`);
+            console.log(` AI combined result: letter=${aiLetter} allCrossQuestion=${allCrossQuestion} weight=${aiWeight}`);
             const sourceId = `ai-combined:${sources.length + 1}`;
             const evidenceBlock = EvidenceService.buildEvidenceBlock({
               questionFingerprint,
@@ -3243,13 +3243,13 @@ export const SearchService = {
     // from AI page extraction, try a combined reflection as last resort.
     _ahTimer.mark('AI Combined Pass End');
     if (sources.length === 0 && aiKnowledgePool.length > 0 && hasOptions) {
-      console.group('🧠 AI Combined Reflection Fallback');
+      console.group('[AI] AI Combined Reflection Fallback');
       console.log(`No voting sources. Knowledge pool has ${aiKnowledgePool.length} entries from AI extraction.`);
       aiKnowledgePool.forEach((k, i) => {
-        console.log(`  [${i}] host=${k.host} topicSim=${(k.topicSim || 0).toFixed(3)} knowledge=${(k.knowledge || '').length} chars origin=${k.origin || 'direct'}`);
+        console.log(` [${i}] host=${k.host} topicSim=${(k.topicSim || 0).toFixed(3)} knowledge=${(k.knowledge || '').length} chars origin=${k.origin || 'direct'}`);
       });
       if (typeof onStatus === 'function') {
-        onStatus('🧠 IA consolidando conhecimento das fontes…');
+        onStatus(' IA consolidando conhecimento das fontes…');
       }
       try {
         const reflectionResult = await ApiService.aiReflectOnSources(questionForInference, aiKnowledgePool);
@@ -3258,7 +3258,7 @@ export const SearchService = {
           if (/^[A-E]$/.test(reflectLetter)) {
             // Remap if options were shuffled
             reflectLetter = this._remapLetterIfShuffled(reflectLetter, '', originalOptionsMap);
-            console.log(`  🧠 [REFLECTION] Letter found: ${reflectLetter}`);
+            console.log(` [AI] [REFLECTION] Letter found: ${reflectLetter}`);
             const reflectWeight = 1.2; // Lower than direct evidence but higher than zero
             const sourceId = `ai-reflection:${sources.length + 1}`;
             const evidenceBlock = EvidenceService.buildEvidenceBlock({
@@ -3284,19 +3284,19 @@ export const SearchService = {
               evidenceBlock
             });
             runStats.acceptedForVotes += 1;
-            console.log(`  ✅ AI reflection accepted: letter=${reflectLetter} weight=${reflectWeight}`);
+            console.log(` [OK] AI reflection accepted: letter=${reflectLetter} weight=${reflectWeight}`);
           } else {
-            console.log(`  ❌ AI reflection returned invalid letter: "${reflectionResult.letter}"`);
+            console.log(` [FAIL] AI reflection returned invalid letter: "${reflectionResult.letter}"`);
           }
         } else {
-          console.log(`  ❌ AI reflection returned no letter (INCONCLUSIVO)`);
+          console.log(` [FAIL] AI reflection returned no letter (INCONCLUSIVO)`);
         }
       } catch (e) {
-        console.warn(`  🧠 AI reflection error:`, e?.message || e);
+        console.warn(` [AI] AI reflection error:`, e?.message || e);
       }
       console.groupEnd();
     } else if (sources.length === 0 && aiKnowledgePool.length === 0) {
-      console.log('🧠 No knowledge pool accumulated — reflection fallback skipped');
+      console.log('[AI] No knowledge pool accumulated — reflection fallback skipped');
     }
     _ahTimer.mark('AI Reflection Fallback');
     if (sources.length === 0) {
@@ -3339,12 +3339,12 @@ export const SearchService = {
     ) {
       const _verifSrc = sources[0];
       const _verifText = _scopedTextsMap.get(_verifSrc.link) || '';
-      console.group('🔎 AI Verification (low-confidence single-source)');
-      console.log(`  trigger: resultState=${resultState} confidence=${(confidence||0).toFixed(2)} sources=${sources.length} aiCombinedRan=${aiCombinedRan}`);
-      console.log(`  source: host=${_verifSrc.hostHint} letter=${_verifSrc.letter} scopedText=${_verifText.length} chars`);
+      console.group('[SEARCH] AI Verification (low-confidence single-source)');
+      console.log(` trigger: resultState=${resultState} confidence=${(confidence||0).toFixed(2)} sources=${sources.length} aiCombinedRan=${aiCombinedRan}`);
+      console.log(` source: host=${_verifSrc.hostHint} letter=${_verifSrc.letter} scopedText=${_verifText.length} chars`);
       if (_verifText.length >= 200 && _verifSrc.letter) {
         try {
-          if (typeof onStatus === 'function') onStatus('✅ Verificando resposta final com IA…');
+          if (typeof onStatus === 'function') onStatus(' Verificando resposta final com IA…');
           const _verifResult = await ApiService.aiVerifyLetterInContext(
             questionForInference,
             _verifSrc.letter,
@@ -3356,11 +3356,11 @@ export const SearchService = {
             // The AI returned the TEXT of the correct answer from the student's question.
             // Map that text to the correct letter in the original question.
             const _verifLetter = OptionsMatchService.findLetterByAnswerText(_verifResult.answerText, originalOptionsMap);
-            console.log(`  🤖 AI verification result: answerText="${_verifResult.answerText.slice(0,60)}" → letter=${_verifLetter || 'no-match'} (source letter was: ${_verifSrc.letter})`);
+            console.log(` [BOT] AI verification result: answerText="${_verifResult.answerText.slice(0,60)}" → letter=${_verifLetter || 'no-match'} (source letter was: ${_verifSrc.letter})`);
             if (!_verifLetter) {
-              console.log(`  ⚠️ AI verification: no option match for text "${_verifResult.answerText.slice(0,60)}" — discarding`);
+              console.log(` [WARN] AI verification: no option match for text "${_verifResult.answerText.slice(0,60)}" — discarding`);
             } else if (_verifLetter !== _verifSrc.letter) {
-              console.log(`  ⚠️ AI disagrees with source letter — adding verification source for recompute`);
+              console.log(` [WARN] AI disagrees with source letter — adding verification source for recompute`);
               const _verifEvidBlock = EvidenceService.buildEvidenceBlock({
                 questionFingerprint,
                 sourceId: `ai-verif:${_verifSrc.sourceId || _verifSrc.link}`,
@@ -3392,27 +3392,27 @@ export const SearchService = {
               confidence = _recomputed.confidence;
               reason = _recomputed.reason;
               evidenceConsensus = _recomputed.evidenceConsensus;
-              console.log(`  ✅ Recomputed votes: bestLetter=${bestLetter} state=${resultState} confidence=${(confidence||0).toFixed(2)}`);
+              console.log(` [OK] Recomputed votes: bestLetter=${bestLetter} state=${resultState} confidence=${(confidence||0).toFixed(2)}`);
             } else {
-              console.log(`  ✅ AI confirms letter ${_verifLetter} — boosting confidence`);
+              console.log(` [OK] AI confirms letter ${_verifLetter} — boosting confidence`);
               confidence = Math.min(0.88, (confidence || 0.5) + 0.15);
             }
           } else {
-            console.log(`  ❌ AI verification returned no valid result: ${JSON.stringify(_verifResult)}`);
+            console.log(` [FAIL] AI verification returned no valid result: ${JSON.stringify(_verifResult)}`);
           }
         } catch (_verifErr) {
-          console.warn(`  🔎 AI verification error:`, _verifErr?.message || _verifErr);
+          console.warn(` [SEARCH] AI verification error:`, _verifErr?.message || _verifErr);
         }
       } else {
-        console.log(`  ⏭️ Skip: scopedText too short (${_verifText.length} chars) or no source letter`);
+        console.log(` [SKIP] Skip: scopedText too short (${_verifText.length} chars) or no source letter`);
       }
       console.groupEnd();
     }
     _ahTimer.mark('AI Verification Step');
-    console.group('🏳️ Final Voting Breakdown');
+    console.group('[FLAG] Final Voting Breakdown');
     console.log('All sources:');
     sources.forEach((s, i) => {
-      console.log(`  [${i}] host=${s.hostHint} letter=${s.letter} weight=${s.weight?.toFixed?.(2) || s.weight} type=${s.evidenceType} method=${s.extractionMethod || 'n/a'}`);
+      console.log(` [${i}] host=${s.hostHint} letter=${s.letter} weight=${s.weight?.toFixed?.(2) || s.weight} type=${s.evidenceType} method=${s.extractionMethod || 'n/a'}`);
     });
     console.log('Votes:', JSON.stringify(votes));
     console.log('Base votes:', JSON.stringify(baseVotes));
@@ -3545,7 +3545,7 @@ export const SearchService = {
   async searchAndRefine(questionText, originalQuestionWithOptions = '', onStatus = null) {
     const questionForInference = originalQuestionWithOptions || questionText;
     // AH-PERF: Outer timer for full search pipeline
-    const _outerTimer = PerformanceTimer.create('🎯 searchAndRefine() — Full Pipeline');
+    const _outerTimer = PerformanceTimer.create(' searchAndRefine() — Full Pipeline');
     const questionFingerprint = await this._canonicalHash(questionForInference);
     const buildInconclusiveNoEvidence = reason => [{
       question: questionText,

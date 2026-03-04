@@ -20,25 +20,25 @@ export const HtmlExtractorService = {
         if (!html || html.length < 200) return { doc: null, nodes: [] };
         const rawHtml = String(html || '');
         const sanitize = (input) => String(input || '')
-            .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-            .replace(/<script\b[^>]*\/?>/gi, ' ')
-            .replace(/<script\b[\s\S]*?(?=<(?:\/head|\/body|!--|meta|link))/gi, ' ')
-            .replace(/<\s*script\b[\s\S]*$/gi, ' ')
-            .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
-            .replace(/<noscript\b[^>]*\/?>/gi, ' ')
-            .replace(/<\s*noscript\b[\s\S]*$/gi, ' ')
-            .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, ' ')
-            .replace(/<iframe\b[^>]*\/?>/gi, ' ')
-            .replace(/<\s*iframe\b[\s\S]*$/gi, ' ')
-            .replace(/<object\b[\s\S]*?<\/object>/gi, ' ')
-            .replace(/<\s*object\b[\s\S]*$/gi, ' ')
-            .replace(/<embed\b[^>]*>/gi, ' ')
-            .replace(/<link\b[^>]*>/gi, ' ')
-            .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
-            .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.captcha-display\.com(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
-            .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)(?:api-js\.)?datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
-            .replace(/datadome\.co/gi, ' ')
-            .replace(/captcha-display\.com/gi, ' ');
+            .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+            .replace(/<script\b[^>]*\/?>/gi, '')
+            .replace(/<script\b[\s\S]*?(?=<(?:\/head|\/body|!--|meta|link))/gi, '')
+            .replace(/<\s*script\b[\s\S]*$/gi, '')
+            .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, '')
+            .replace(/<noscript\b[^>]*\/?>/gi, '')
+            .replace(/<\s*noscript\b[\s\S]*$/gi, '')
+            .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
+            .replace(/<iframe\b[^>]*\/?>/gi, '')
+            .replace(/<\s*iframe\b[\s\S]*$/gi, '')
+            .replace(/<object\b[\s\S]*?<\/object>/gi, '')
+            .replace(/<\s*object\b[\s\S]*$/gi, '')
+            .replace(/<embed\b[^>]*>/gi, '')
+            .replace(/<link\b[^>]*>/gi, '')
+            .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, '')
+            .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.captcha-display\.com(?:\/|\\?\/)[^\s"'<>]*/gi, '')
+            .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)(?:api-js\.)?datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, '')
+            .replace(/datadome\.co/gi, '')
+            .replace(/captcha-display\.com/gi, '');
 
         let doc = null;
         let nodes = [];
@@ -73,10 +73,10 @@ export const HtmlExtractorService = {
             const clone = doc.body.cloneNode(true);
             clone.querySelectorAll('script, style, noscript, .blank').forEach(n => n.remove());
             clone.querySelectorAll('div, p, br, li, h1, h2, h3, h4, h5, h6, tr, td, article, section, footer, header')
-                .forEach(el => el.appendChild(doc.createTextNode(' ')));
-            return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+                .forEach(el => el.appendChild(doc.createTextNode('')));
+            return (clone.textContent || '').replace(/\s+/g, '').trim();
         } catch {
-            return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+            return (doc.body.textContent || '').replace(/\s+/g, '').trim();
         }
     },
 
@@ -154,7 +154,7 @@ export const HtmlExtractorService = {
         if (!doc || nodes.length < 20) return null;
 
         const frags = nodes.map(n => {
-            const text = (n.textContent || '').replace(/\s+/g, ' ').trim();
+            const text = (n.textContent || '').replace(/\s+/g, '').trim();
             if (!text) return null;
             return { text, cls: (n.getAttribute('class') || '').toLowerCase() };
         }).filter(Boolean);
@@ -177,7 +177,7 @@ export const HtmlExtractorService = {
         let bestBlock = null;
         let bestBlockScore = 0;
         for (const b of blocks) {
-            const text = frags.slice(b.start, b.end + 1).map(x => x.text).join(' ');
+            const text = frags.slice(b.start, b.end + 1).map(x => x.text).join('');
             const sim = QuestionParser.questionSimilarityScore(text, questionStem);
             if (sim > bestBlockScore) { bestBlockScore = sim; bestBlock = { ...b, text }; }
         }
@@ -206,7 +206,7 @@ export const HtmlExtractorService = {
             if (i > anchorIdx + 1 && stopRe.test(line)) break;
             evidenceParts.push(line);
         }
-        const evidenceText = evidenceParts.join(' ').trim();
+        const evidenceText = evidenceParts.join('').trim();
         if (!evidenceText || evidenceText.length < 20) return null;
 
         const explicit = extractorRefs.extractExplicitGabarito(evidenceText, questionForInference)
@@ -233,7 +233,7 @@ export const HtmlExtractorService = {
 
         const candidates = [];
         for (const c of containers.slice(0, 18)) {
-            let text = (c.textContent || '').replace(/\s+/g, ' ').trim();
+            let text = (c.textContent || '').replace(/\s+/g, '').trim();
             if (!text || text.length < 40 || this.isLikelyObfuscated(text)) continue;
 
             const block = extractorRefs.findQuestionBlock(text, questionStem);
@@ -332,10 +332,10 @@ export const HtmlExtractorService = {
         const obfuscation = diagnosticsCtx?.obfuscation || this.obfuscationSignals(docText);
         const paywall = diagnosticsCtx?.paywall || this.paywallSignals(html, docText, hostHint);
 
-        console.log(`    [Structured] host=${hostHint} type=${type} paywall=${paywall?.isPaywalled} obfuscated=${obfuscation?.isObfuscated}`);
+        console.log(` [Structured] host=${hostHint} type=${type} paywall=${paywall?.isPaywalled} obfuscated=${obfuscation?.isObfuscated}`);
 
         if (paywall?.isPaywalled) {
-            console.log(`    [Structured] ⛔ Blocked by paywall`);
+            console.log(` [Structured] [BLOCKED] Blocked by paywall`);
             return { skip: true, reason: 'paywall-overlay', diagnostics: { type, obfuscation, paywall } };
         }
 
@@ -374,11 +374,11 @@ export const HtmlExtractorService = {
         const hasOptTokens = optTokens.length >= 2;
 
         const { doc, nodes } = this.parseHtmlDom(html);
-        console.log(`    [ff1-highlight] check: html_len=${html.length} div.t nodes=${nodes.length}`);
+        console.log(` [ff1-highlight] check: html_len=${html.length} div.t nodes=${nodes.length}`);
         if (nodes.length < 15) return null;
 
         const frags = nodes.map(n => ({
-            text: (n.textContent || '').replace(/\s+/g, ' ').trim(),
+            text: (n.textContent || '').replace(/\s+/g, '').trim(),
             cls: (n.getAttribute('class') || '').toLowerCase(),
             style: (n.getAttribute('style') || '').toLowerCase(),
             inner: (n.innerHTML || '').toLowerCase()
@@ -391,26 +391,26 @@ export const HtmlExtractorService = {
         let bestAnchorScore = 0;
         const anchorWindowSize = hasOptTokens ? 10 : 5;
         for (let i = 0; i < frags.length; i++) {
-            const windowText = frags.slice(i, Math.min(frags.length, i + anchorWindowSize)).map(f => f.text).join(' ');
+            const windowText = frags.slice(i, Math.min(frags.length, i + anchorWindowSize)).map(f => f.text).join('');
             const stemHits = QuestionParser.countTokenHits(windowText, tokens);
             const optHits = hasOptTokens ? QuestionParser.countTokenHits(windowText, optTokens) : 0;
             const score = stemHits + (optHits * 2);
             if (score > bestAnchorScore) { bestAnchorScore = score; bestIdx = i; }
         }
 
-        const bestWindowText = bestIdx >= 0 ? frags.slice(bestIdx, Math.min(frags.length, bestIdx + anchorWindowSize)).map(f => f.text).join(' ') : '';
+        const bestWindowText = bestIdx >= 0 ? frags.slice(bestIdx, Math.min(frags.length, bestIdx + anchorWindowSize)).map(f => f.text).join('') : '';
         const bestStemHits = bestIdx >= 0 ? QuestionParser.countTokenHits(bestWindowText, tokens) : 0;
         const bestOptHits = hasOptTokens && bestIdx >= 0 ? QuestionParser.countTokenHits(bestWindowText, optTokens) : 0;
         const minAnchorHits = Math.max(2, Math.floor(tokens.length * 0.35));
 
-        console.log(`    [ff1-highlight] tokens=${JSON.stringify(tokens)} bestIdx=${bestIdx} stemHits=${bestStemHits}/${tokens.length} optHits=${bestOptHits}/${optTokens.length} score=${bestAnchorScore} minRequired=${minAnchorHits}`);
+        console.log(` [ff1-highlight] tokens=${JSON.stringify(tokens)} bestIdx=${bestIdx} stemHits=${bestStemHits}/${tokens.length} optHits=${bestOptHits}/${optTokens.length} score=${bestAnchorScore} minRequired=${minAnchorHits}`);
 
         if (bestIdx < 0 || bestStemHits < minAnchorHits) {
-            console.log(`    [ff1-highlight] REJECTED: anchor not found`);
+            console.log(` [ff1-highlight] REJECTED: anchor not found`);
             return null;
         }
         if (hasOptTokens && bestOptHits < 1) {
-            console.log(`    [ff1-highlight] REJECTED: stem matched but 0/${optTokens.length} option tokens near anchor. Wrong question block.`);
+            console.log(` [ff1-highlight] REJECTED: stem matched but 0/${optTokens.length} option tokens near anchor. Wrong question block.`);
             return null;
         }
 
@@ -423,7 +423,7 @@ export const HtmlExtractorService = {
         let optionHits = 0;
         const normWindow = QuestionParser.normalizeOption(windowText);
         for (const body of optBodies) { if (body && normWindow.includes(body)) optionHits++; }
-        console.log(`    [ff1-highlight] optionHits=${optionHits}/${optBodies.length} windowLen=${windowText.length}`);
+        console.log(` [ff1-highlight] optionHits=${optionHits}/${optBodies.length} windowLen=${windowText.length}`);
 
         const parseAlternativeStart = (rawText) => {
             const t = (rawText || '').trim();
@@ -472,7 +472,7 @@ export const HtmlExtractorService = {
         const letters = Object.keys(groups);
         if (letters.length < 2) return null;
         if (originalOptions?.length >= 2 && optionHits < 1) {
-            console.log(`    [ff1-highlight] REJECTED: 0 option-body matches in window`);
+            console.log(` [ff1-highlight] REJECTED: 0 option-body matches in window`);
             return null;
         }
 
@@ -522,7 +522,7 @@ export const HtmlExtractorService = {
             if (score > bestScore) { secondScore = bestScore; bestScore = score; bestLetter = letter; }
             else if (score > secondScore) { secondScore = score; }
         }
-        console.log(`    [ff1-highlight] Strategy1: bestLetter=${bestLetter} bestScore=${bestScore} secondScore=${secondScore}`);
+        console.log(` [ff1-highlight] Strategy1: bestLetter=${bestLetter} bestScore=${bestScore} secondScore=${secondScore}`);
 
         if (bestLetter && bestScore >= 1 && bestScore > secondScore) {
             const remappedFf1 = OptionsMatchService.remapLetterToUserOptions(bestLetter, sourceOptionsFromGroups, originalOptionsMap);
@@ -605,7 +605,7 @@ export const HtmlExtractorService = {
 
         const remappedSig = OptionsMatchService.remapLetterToUserOptions(sigBestLetter, sourceOptionsFromGroups, originalOptionsMap);
         const sigConf = OptionsMatchService.verifyHighlightMatch(sigBestLetter, remappedSig, sourceOptionsFromGroups, originalOptionsMap, Math.max(0.82, Math.min(0.9, 0.82 + (sigMargin * 0.06))));
-        if (!sigConf) { console.log(`    [css-signature] REJECTED by content verification`); return null; }
+        if (!sigConf) { console.log(` [css-signature] REJECTED by content verification`); return null; }
         return { letter: sigConf.letter, confidence: sigConf.confidence, method: 'css-signature', evidence: `sig_score=${sigBestScore.toFixed(2)} margin=${sigMargin.toFixed(2)} option_hits=${optionHits}` };
     },
 
@@ -622,6 +622,6 @@ export const HtmlExtractorService = {
             const isMidWord = /[a-z\u00e0-\u00fc]/i.test(prevChar) && /[a-z\u00e0-\u00fc]/.test(nextChar);
             result += isMidWord ? t : ' ' + t;
         }
-        return result.replace(/\s+/g, ' ').trim();
+        return result.replace(/\s+/g, '').trim();
     },
 };

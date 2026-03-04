@@ -43,8 +43,8 @@ export const ExtractionService = {
 
         function cleanText(text) {
             return text
-                .replace(/\s+/g, ' ')
-                .replace(/\n+/g, ' ')
+                .replace(/[ \t\r]+/g, ' ')
+                .replace(/\n{2,}/g, '\n')
                 .trim()
                 .substring(0, 3000);
         }
@@ -152,7 +152,7 @@ export const ExtractionService = {
         console.log('AnswerHunter: Iniciando extracao (v19 - DOM only)...');
 
         function cleanText(text) {
-            return (text || '').replace(/\s+/g, ' ').trim();
+            return (text || '').replace(/[ \t\r]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
         }
 
         function sanitizeQuestionText(text) {
@@ -223,7 +223,7 @@ export const ExtractionService = {
                 const parts = Array.from(questionContainer.querySelectorAll('p'))
                     .map(p => p.innerText)
                     .filter(Boolean);
-                questionText = sanitizeQuestionText(parts.join(' '));
+                questionText = sanitizeQuestionText(parts.join(''));
             } else {
                 const questionEl = sectionEl.querySelector('[data-testid="openResponseQuestionHeader"] p p') ||
                     sectionEl.querySelector('[data-testid="openResponseQuestionHeader"] p');
@@ -242,7 +242,7 @@ export const ExtractionService = {
                     .filter(p => !p.closest('button'))
                     .map(p => p.innerText)
                     .filter(Boolean);
-                questionText = sanitizeQuestionText(looseParts.slice(0, 3).join(' '));
+                questionText = sanitizeQuestionText(looseParts.slice(0, 3).join(''));
             }
 
             const optionButtons = optionScope.querySelectorAll('button[type="submit"]');
@@ -465,7 +465,7 @@ export const ExtractionService = {
      */
     extractViewportCentricScript: function () {
         function cleanText(text) {
-            return (text || '').replace(/\s+/g, ' ').trim();
+            return (text || '').replace(/[ \t\r]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
         }
         function sanitize(text) {
             if (!text) return '';
@@ -594,7 +594,7 @@ export const ExtractionService = {
      */
     extractOptionsOnlyScript: function () {
         function cleanText(text) {
-            return (text || '').replace(/\s+/g, ' ').trim();
+            return (text || '').replace(/[ \t\r]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
         }
 
         const OPTION_SELECTORS =
@@ -612,8 +612,8 @@ export const ExtractionService = {
             return (text || '')
                 .toLowerCase()
                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^a-z0-9]+/g, ' ')
-                .replace(/\s+/g, ' ')
+                .replace(/[^a-z0-9]+/g, '')
+                .replace(/\s+/g, '')
                 .trim();
         }
 
@@ -671,8 +671,8 @@ export const ExtractionService = {
             const qNorm = normalizeText(questionText);
             if (bNorm.length >= 40 && qNorm.length >= 40) {
                 if (qNorm.includes(bNorm)) return true;
-                const bTokens = bNorm.split(' ').filter(t => t.length >= 3);
-                const qTokens = new Set(qNorm.split(' ').filter(t => t.length >= 3));
+                const bTokens = bNorm.split('').filter(t => t.length >= 3);
+                const qTokens = new Set(qNorm.split('').filter(t => t.length >= 3));
                 if (bTokens.length >= 6) {
                     let hit = 0;
                     for (const t of bTokens) {
@@ -968,7 +968,7 @@ export const ExtractionService = {
     
 
   extractPasseiDiretoExplicitAnswerScript: function (questionText = '') {
-    const normalize = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+    const normalize = (t) => String(t || '').replace(/\s+/g, '').trim();
     const text = normalize(document?.body?.innerText || '');
     if (!text) return null;
 
@@ -1006,7 +1006,7 @@ export const ExtractionService = {
 
 
   extractCanonicalExplicitAnswerScript: function () {
-    const text = String(document?.body?.innerText || '').replace(/\s+/g, ' ').trim();
+    const text = String(document?.body?.innerText || '').replace(/\s+/g, '').trim();
     if (!text) return null;
 
     const patterns = [
@@ -1043,7 +1043,7 @@ extractGabaritoFromPageScript: function (questionText = '') {
             const normalize = (t) => String(t || '')
                 .toLowerCase()
                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                .replace(/[^a-z0-9]+/g, ' ')
+                .replace(/[^a-z0-9]+/g, '')
                 .trim();
 
             const qNorm = normalize(questionText).slice(0, 240);
@@ -1065,7 +1065,7 @@ extractGabaritoFromPageScript: function (questionText = '') {
 
                     const start = Math.max(0, m.index - 180);
                     const end = Math.min(raw.length, m.index + 220);
-                    const evidence = raw.substring(start, end).replace(/\s+/g, ' ').trim();
+                    const evidence = raw.substring(start, end).replace(/\s+/g, '').trim();
 
                     let conf = p.confidence;
                     if (qNorm && qNorm.length >= 40) {

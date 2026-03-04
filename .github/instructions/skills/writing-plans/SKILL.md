@@ -198,12 +198,12 @@ Use este template para cada tarefa:
 
 ## Anti-patterns
 
-❌ Tarefas vagas ("melhorar performance")
-❌ Tarefas muito grandes (>10 minutos)
-❌ Falar de testes mas não escrever
-❌ Esquecer dependências entre tarefas
-❌ Não especificar arquivos exatos
-❌ Detalhes de implementação ambíguos
+[FAIL] Tarefas vagas ("melhorar performance")
+[FAIL] Tarefas muito grandes (>10 minutos)
+[FAIL] Falar de testes mas não escrever
+[FAIL] Esquecer dependências entre tarefas
+[FAIL] Não especificar arquivos exatos
+[FAIL] Detalhes de implementação ambíguos
 
 ## Output Esperado
 

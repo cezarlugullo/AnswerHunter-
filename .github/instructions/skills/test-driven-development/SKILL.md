@@ -11,7 +11,7 @@ Garantir código testável, correto e manutenível através do ciclo RED-GREEN-R
 
 ## O Ciclo Sagrado
 
-### 🔴 RED - Write a Failing Test
+### [RED] RED - Write a Failing Test
 1. **Escreva UM teste** que falha
 2. **Execute o teste** e veja falhar
 3. **Veja a mensagem de erro** específica
@@ -19,7 +19,7 @@ Garantir código testável, correto e manutenível através do ciclo RED-GREEN-R
 
 **Tempo**: 1-2 minutos
 
-### 🟢 GREEN - Make it Pass
+### [GREEN] GREEN - Make it Pass
 1. **Escreva o código mínimo** para passar
 2. **Execute o teste** novamente
 3. **Verde?** Avance. **Vermelho?** Debug
@@ -27,7 +27,7 @@ Garantir código testável, correto e manutenível através do ciclo RED-GREEN-R
 
 **Tempo**: 2-3 minutos
 
-### 🔵 REFACTOR - Improve the Code
+### [REFACTOR] REFACTOR - Improve the Code
 1. **Revise o código** (DRY? Clean? Performante?)
 2. **Refatore** mantendo testes verdes
 3. **Execute testes** a cada mudança
@@ -37,14 +37,14 @@ Garantir código testável, correto e manutenível através do ciclo RED-GREEN-R
 
 ## Regras Absolutas
 
-### ❌ Proibições
+### [FAIL] Proibições
 1. **NUNCA escreva código de produção sem teste que falhe primeiro**
 2. **NUNCA escreva mais de um teste por vez**
 3. **NUNCA ignore/skip testes falhando**
 4. **NUNCA commite código sem testes passando**
 5. **NUNCA confie em testes manuais para validação**
 
-### ✅ Obrigações
+### [OK] Obrigações
 1. **SEMPRE rode testes antes de começar** (baseline limpo)
 2. **SEMPRE veja o teste falhar** antes de implementar
 3. **SEMPRE escreva o código mais simples** que passa
@@ -55,7 +55,7 @@ Garantir código testável, correto e manutenível através do ciclo RED-GREEN-R
 
 ### Feature: Adicionar cache de buscas
 
-#### 🔴 RED (2 min)
+#### [RED] RED (2 min)
 
 ```javascript
 // src/services/__tests__/SearchService.test.js
@@ -80,9 +80,9 @@ describe('SearchService', () => {
 ```
 
 **Execute**: `npm test SearchService`
-**Resultado esperado**: ❌ FAIL - searchService.search is not implemented
+**Resultado esperado**: [FAIL] FAIL - searchService.search is not implemented
 
-#### 🟢 GREEN (3 min)
+#### [GREEN] GREEN (3 min)
 
 ```javascript
 // src/services/SearchService.js
@@ -113,11 +113,11 @@ class SearchService {
 ```
 
 **Execute**: `npm test SearchService`
-**Resultado esperado**: ✅ PASS
+**Resultado esperado**: [OK] PASS
 
 **Commit**: `feat: add search result caching`
 
-#### 🔵 REFACTOR (2 min)
+#### [REFACTOR] REFACTOR (2 min)
 
 ```javascript
 // src/services/SearchService.js
@@ -142,7 +142,7 @@ class SearchService {
 ```
 
 **Execute**: `npm test SearchService`
-**Resultado esperado**: ✅ PASS (ainda verde)
+**Resultado esperado**: [OK] PASS (ainda verde)
 
 **Commit**: `refactor: improve SearchService testability with DI`
 
@@ -235,36 +235,36 @@ describe('PopupView', () => {
 
 ## Anti-patterns a Evitar
 
-### 🚫 Test After (escrever código primeiro)
+### [STOP] Test After (escrever código primeiro)
 ```javascript
-// ❌ NUNCA faça isso
+// [FAIL] NUNCA faça isso
 // 1. Escrevi SearchService.js completo
 // 2. Agora vou escrever testes...
 // 3. Ah, não é testável, preciso refatorar tudo
 ```
 
-### 🚫 Test Everything (teste demais de uma vez)
+### [STOP] Test Everything (teste demais de uma vez)
 ```javascript
-// ❌ Teste que valida muitas coisas
+// [FAIL] Teste que valida muitas coisas
 it('should work correctly', () => {
   // 50 linhas de assertions...
 });
 
-// ✅ Separe em testes específicos
+// [OK] Separe em testes específicos
 it('should cache results', () => { /*...*/ });
 it('should invalidate stale cache', () => { /*...*/ });
 it('should handle cache misses', () => { /*...*/ });
 ```
 
-### 🚫 No Assertion (teste sem verificação)
+### [STOP] No Assertion (teste sem verificação)
 ```javascript
-// ❌ Teste que não verifica nada
+// [FAIL] Teste que não verifica nada
 it('should search', async () => {
   await SearchService.search('query');
   // Passou... mas não verificou nada!
 });
 
-// ✅ Sempre assert algo
+// [OK] Sempre assert algo
 it('should return results when query is valid', async () => {
   const results = await SearchService.search('query');
   expect(results).toBeDefined();
@@ -272,16 +272,16 @@ it('should return results when query is valid', async () => {
 });
 ```
 
-### 🚫 Testing Implementation (testar privates)
+### [STOP] Testing Implementation (testar privates)
 ```javascript
-// ❌ Não teste detalhes internos
+// [FAIL] Não teste detalhes internos
 it('should call internal method', () => {
   spyOn(service, '_internalMethod');
   service.publicMethod();
   expect(service._internalMethod).toHaveBeenCalled();
 });
 
-// ✅ Teste comportamento público
+// [OK] Teste comportamento público
 it('should return formatted result', () => {
   const result = service.publicMethod('input');
   expect(result).toBe('expected output');

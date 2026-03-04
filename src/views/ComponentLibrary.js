@@ -155,8 +155,8 @@ export const ComponentLibrary = {
       card.addEventListener('click', () => onClick(disc.id));
     }
 
-    card.innerHTML = `
-      <div class="ah-disc-card__icon">${disc.icon || '📚'}</div>
+    card.innerHTML =`
+      <div class="ah-disc-card__icon">${disc.icon || ''}</div>
       <div class="ah-disc-card__title">${this._esc(disc.name)}</div>
       <div class="ah-disc-card__meta">${stats.totalCards || 0} cards · ${stats.due || 0} due</div>
       <div class="ah-disc-card__progress">
@@ -318,7 +318,7 @@ export const ComponentLibrary = {
     if (onClear) {
       const clearBtn = el('button', {
         className: 'ah-btn ah-btn--ghost ah-btn--sm',
-        textContent: '✕',
+        textContent: '',
         style: { position: 'absolute', right: '4px' }
       });
       clearBtn.addEventListener('click', () => {

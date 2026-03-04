@@ -31,8 +31,8 @@ function _norm(t) {
     return String(t || '')
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9 ]+/g, ' ')
-        .replace(/\s+/g, ' ')
+        .replace(/[^a-z0-9 ]+/g, '')
+        .replace(/\s+/g, '')
         .trim();
 }
 
@@ -133,7 +133,7 @@ export const PageGabaritoCache = {
                 count: Object.keys({ ...prev, ...questions }).length
             };
             await this._save(cache);
-            console.log(`[PageGabaritoCache] ✅ ${Object.keys(questions).length} Q&A cached for ${urlKey} (total=${cache[urlKey].count})`);
+            console.log(`[PageGabaritoCache] [OK] ${Object.keys(questions).length} Q&A cached for ${urlKey} (total=${cache[urlKey].count})`);
         } catch (_) {}
     },
 

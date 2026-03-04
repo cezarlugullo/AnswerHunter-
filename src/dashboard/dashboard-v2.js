@@ -22,15 +22,15 @@ const IS_EMBEDDED = window.self !== window.top;
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────────────
 const LEVELS = [
-  { min: 0,     max: 100,   lbl: 'Nível 1 — Iniciante',  badge: '🌱' },
-  { min: 100,   max: 300,   lbl: 'Nível 2 — Aprendiz',   badge: '📖' },
-  { min: 300,   max: 700,   lbl: 'Nível 3 — Estudioso',  badge: '💡' },
-  { min: 700,   max: 1500,  lbl: 'Nível 4 — Dedicado',   badge: '🎯' },
-  { min: 1500,  max: 3000,  lbl: 'Nível 5 — Focado',     badge: '⚡' },
-  { min: 3000,  max: 6000,  lbl: 'Nível 6 — Avançado',   badge: '🔥' },
-  { min: 6000,  max: 12000, lbl: 'Nível 7 — Expert',     badge: '🏆' },
-  { min: 12000, max: 25000, lbl: 'Nível 8 — Mestre',     badge: '💎' },
-  { min: 25000, max: 1e9,   lbl: 'Nível 9 — Lendário',   badge: '👑' },
+  { min: 0, max: 100, lbl: 'Nível 1 — Iniciante', badge: 'L1' },
+  { min: 100, max: 300, lbl: 'Nível 2 — Aprendiz', badge: 'L2' },
+  { min: 300, max: 700, lbl: 'Nível 3 — Estudioso', badge: 'L3' },
+  { min: 700, max: 1500, lbl: 'Nível 4 — Dedicado', badge: 'L4' },
+  { min: 1500, max: 3000, lbl: 'Nível 5 — Focado', badge: 'L5' },
+  { min: 3000, max: 6000, lbl: 'Nível 6 — Avançado', badge: 'L6' },
+  { min: 6000, max: 12000, lbl: 'Nível 7 — Expert', badge: 'L7' },
+  { min: 12000, max: 25000, lbl: 'Nível 8 — Mestre', badge: 'L8' },
+  { min: 25000, max: 1e9, lbl: 'Nível 9 — Lendário', badge: 'L9' },
 ];
 
 function getLevel(xp) { return LEVELS.find(l => xp >= l.min && xp < l.max) || LEVELS[LEVELS.length - 1]; }
@@ -46,7 +46,7 @@ function makeDemoData(keys) {
   const SUBJS = ['Direito Constitucional', 'Direito Administrativo', 'Português', 'Matemática'];
   const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFD43B'];
   const hierarchy = SUBJS.map((name, i) => ({
-    id: 'd_demo_' + i, name, icon: ['📜', '⚖️', '📝', '🔢'][i], color: COLORS[i],
+    id: 'd_demo_' + i, name, icon: ['balance', 'account_balance', 'translate', 'calculate'][i], color: COLORS[i],
     modules: [{
       id: 'm_demo_' + i, name: 'Módulo 1', order: 0,
       topics: [{
@@ -148,7 +148,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     fab.href = fullUrl;
     fab.target = '_blank';
     fab.title = 'Abrir em nova aba (versão completa com sidebar)';
-    fab.style.cssText = `
+    fab.style.cssText =`
       position: fixed; bottom: 20px; right: 20px; z-index: 999;
       display: flex; align-items: center; gap: 6px;
       padding: 10px 18px; background: var(--ah-coral, #FF6B6B); color: #fff;
@@ -222,10 +222,10 @@ function navigateTo(pageId) {
 function renderGreeting() {
   const h = new Date().getHours();
   let greeting;
-  if (h < 6) greeting = 'Boa madrugada! 🌙';
-  else if (h < 12) greeting = 'Bom dia! ☀️';
-  else if (h < 18) greeting = 'Boa tarde! 🌤️';
-  else greeting = 'Boa noite! 🌙';
+  if (h < 6) greeting = 'Boa madrugada!';
+  else if (h < 12) greeting = 'Bom dia!';
+  else if (h < 18) greeting = 'Boa tarde!';
+  else greeting = 'Boa noite!';
 
   const totalDue = countDue();
   document.getElementById('greetingTitle').textContent = greeting;
@@ -290,7 +290,7 @@ function renderDisciplineGrid() {
 
   if (hierarchyData.length === 0) {
     emptyMount.appendChild(EmptyState({
-      icon: '📚',
+      icon: '',
       title: 'Nenhuma disciplina ainda',
       description: 'Crie sua primeira disciplina ou salve questões no Binder para organizá-las.',
       action: { label: 'Criar Disciplina', onClick: () => promptNewDiscipline() }
@@ -346,7 +346,7 @@ function renderDueList() {
 
   if (dueCards.length === 0) {
     emptyMount.appendChild(EmptyState({
-      icon: '🎉',
+      icon: '',
       title: 'Tudo em dia!',
       description: 'Nenhum card para revisar hoje. Que tal adicionar novas questões?'
     }));
@@ -678,7 +678,7 @@ function promptNewDiscipline() {
   if (DEMO) {
     const COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFD43B', '#DDA0DD', '#98D8C8'];
     hierarchyData.push({
-      id: 'd_' + Date.now(), name: name.trim(), icon: '📚',
+      id: 'd_' + Date.now(), name: name.trim(), icon: '',
       color: COLORS[hierarchyData.length % COLORS.length],
       modules: [], createdAt: Date.now(), updatedAt: Date.now()
     });
@@ -852,10 +852,10 @@ async function renderBadgesPage() {
             style: { fontSize: 'var(--ah-text-xs)', color: 'var(--ah-text-muted)', marginTop: 'var(--ah-space-1)' }
           }),
           isUnlocked ? el('div', {
-            textContent: '✓ Desbloqueado',
+            textContent: 'Desbloqueado',
             style: { fontSize: 'var(--ah-text-xs)', color: 'var(--ah-mint)', fontWeight: '600', marginTop: 'var(--ah-space-2)' }
           }) : el('div', {
-            textContent: '🔒 Bloqueado',
+            textContent: 'Bloqueado',
             style: { fontSize: 'var(--ah-text-xs)', color: 'var(--ah-text-muted)', marginTop: 'var(--ah-space-2)' }
           })
         ]);

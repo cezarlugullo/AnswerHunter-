@@ -49,13 +49,13 @@
 
 ```
 Study Hub (study.html)
-├── 🏠 Home (Today)
+├── Home (Today)
 │   ├── Continue Studying (hero CTA → resumes last session)
 │   ├── Daily Briefing (due reviews, streak, recommendations)
 │   ├── Quick Stats (cards studied, accuracy, time, streak)
 │   └── Recent Activity Feed
 │
-├── 📚 Library
+├── [STUDY] Library
 │   ├── View Toggle: Cards / List / Board
 │   ├── Smart Collections
 │   │   ├── In Progress
@@ -69,7 +69,7 @@ Study Hub (study.html)
 │   ├── Sort (progress, priority, due date, last activity, difficulty)
 │   └── Filters (tags, status, difficulty, date range)
 │
-├── 📖 Study Session
+├── [BOOK] Study Session
 │   ├── Session Setup (source selection, mode, card count)
 │   ├── Active Session
 │   │   ├── Card Display (question + reveal + rate)
@@ -84,25 +84,25 @@ Study Hub (study.html)
 │   │   └── Generate Review Card
 │   └── Session Summary (results + next steps)
 │
-├── 🔄 Review (Spaced Repetition)
+├── [RETRY] Review (Spaced Repetition)
 │   ├── Due Today Queue
 │   ├── Overdue Queue
 │   ├── Review Session (same card UI + SRS rating)
 │   └── Forecast (upcoming reviews by day)
 │
-├── 🧪 Practice
+├── [TEST] Practice
 │   ├── Quiz Mode (AI-generated MCQ)
 │   ├── Simulado (timed mock exam)
 │   ├── Flashcard Mode (3D flip)
 │   └── Challenge Mode (random mix)
 │
-├── 🗺️ Planning
+├── [MAP] Planning
 │   ├── Study Plans (daily/weekly auto-generated)
 │   ├── Learning Paths (prerequisite chains)
 │   ├── Goal Setting (exam dates, targets)
 │   └── Calendar View (upcoming reviews + exams)
 │
-├── 📊 Insights
+├── [CHART] Insights
 │   ├── Overview Dashboard (XP, level, accuracy, time)
 │   ├── Activity Heatmap
 │   ├── Discipline Breakdown
@@ -110,7 +110,7 @@ Study Hub (study.html)
 │   ├── Streak & Consistency
 │   └── Export / Backup
 │
-└── ⚙️ Settings
+└── [GEAR] Settings
     ├── Theme (light/dark/auto)
     ├── Language (pt-BR/en)
     ├── AI Provider config

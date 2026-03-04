@@ -38,12 +38,12 @@ function formatReasoning(raw) {
       continue;
     }
 
-    // Option row: A) **V** - text  or  A) **F** - text / A) ✅ / A) ❌
+    // Option row: A) **V** - text or A) **F** - text / A) / A) 
     const optM = trimmed.match(/^[-*]?\s*\*?\*?([A-E])\)\*?\*?\s*(?:\*\*(V|F)\*\*|[-–]\s*(V|F)|(✅|❌))\s*[-–:]?\s*(.+)$/i);
     if (optM) {
       closeBulletList();
       let verdictRaw = (optM[2] || optM[3] || optM[4] || '').toUpperCase();
-      let isCorrect = verdictRaw === 'V' || verdictRaw === '✅';
+      let isCorrect = verdictRaw === 'V' || verdictRaw === '';
       const verdict = isCorrect ? 'V' : 'F';
       const cls = isCorrect ? 'rz-v' : 'rz-f';
       out.push(
@@ -428,7 +428,7 @@ export const PopupView = {
 
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `
+    toast.innerHTML =`
       <span class="material-symbols-rounded" style="font-size:18px;">${iconByType[type] || 'info'}</span>
       <span>${escapeHtml(message)}</span>
     `;
@@ -647,7 +647,7 @@ export const PopupView = {
     if (!document.getElementById('confetti-style')) {
       const style = document.createElement('style');
       style.id = 'confetti-style';
-      style.textContent = `
+      style.textContent =`
         @keyframes confettiFall {
           0% { transform: translateY(0) rotate(0); opacity: 1; }
           100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
@@ -680,11 +680,11 @@ export const PopupView = {
 
     const sanitizeInjectedMarkup = (markup) => String(markup || '')
       // Defensive cleanup: prevent accidental active content if any dynamic field bypasses escaping.
-      .replace(/<\s*script\b[\s\S]*?(?:<\/\s*script\s*>|$)/gi, ' ')
-      .replace(/<\s*iframe\b[\s\S]*?(?:<\/\s*iframe\s*>|$)/gi, ' ')
-      .replace(/<\s*object\b[\s\S]*?(?:<\/\s*object\s*>|$)/gi, ' ')
-      .replace(/<\s*embed\b[^>]*>?/gi, ' ')
-      .replace(/<\s*link\b[^>]*>?/gi, ' ');
+      .replace(/<\s*script\b[\s\S]*?(?:<\/\s*script\s*>|$)/gi, '')
+      .replace(/<\s*iframe\b[\s\S]*?(?:<\/\s*iframe\s*>|$)/gi, '')
+      .replace(/<\s*object\b[\s\S]*?(?:<\/\s*object\s*>|$)/gi, '')
+      .replace(/<\s*embed\b[^>]*>?/gi, '')
+      .replace(/<\s*link\b[^>]*>?/gi, '');
 
     const html = results.map((item, index) => {
       const isSaved = Boolean(item.saved);
@@ -769,7 +769,7 @@ export const PopupView = {
           .filter((ref) => ref.title || ref.link)
         : [];
 
-      return `
+      return`
         <div class="qa-card" style="animation-delay:${index * 0.07}s;">
           <div class="qa-card-header">
             <span class="material-symbols-rounded question-icon">help</span>
@@ -783,11 +783,6 @@ export const PopupView = {
           </div>
 
           <div class="qa-card-question">${formatQuestionText(item.question)}</div>
-
-          ${item.extractionConfidence ? `<div class="qa-card-extraction-confidence qa-confidence-${escapeHtml(item.extractionConfidence.level)}">
-            <span class="material-symbols-rounded">${item.extractionConfidence.level === 'high' ? 'verified' : item.extractionConfidence.level === 'medium' ? 'gpp_maybe' : 'warning'}</span>
-            <span>${escapeHtml(this.t('result.extractionConfidence') || 'Confiança da extração')}: ${item.extractionConfidence.score}%</span>
-          </div>` : ''}
 
           <div class="qa-card-ai-warning">
             <span class="material-symbols-rounded">info</span>
@@ -822,7 +817,7 @@ export const PopupView = {
           if (item.aiFallback) return this.t('result.aiSuggestion');
           return this.t('result.correctAnswer');
         })())}</span>
-              ${confidence !== null ? `
+              ${confidence !== null ?`
               <div class="confidence-pill" style="--conf-color: ${confidence >= 80 ? '#27AE60' : confidence >= 60 ? '#F39C12' : confidence >= 40 ? '#E67E22' : '#E74C3C'}">
                 <svg class="confidence-ring" viewBox="0 0 36 36">
                   <circle class="confidence-ring-bg" cx="18" cy="18" r="15.9" />
@@ -852,7 +847,7 @@ export const PopupView = {
           ? `<div class="answer-option"><div class="alternative answer-alternative"><span class="alt-letter">${escapeHtml(answerLetter)}</span><span class="alt-text">${escapeHtml(answerBody)}</span></div></div>`
           : `<div class="qa-card-answer-text">${escapeHtml(answerBody)}</div>`}
 
-            ${item.aiReasoning ? `
+            ${item.aiReasoning ?`
             <details class="answer-reasoning">
               <summary class="answer-reasoning-toggle">
                 <span class="material-symbols-rounded">psychology</span>
@@ -862,7 +857,7 @@ export const PopupView = {
               <div class="answer-reasoning-body">${formatReasoning(item.aiReasoning)}</div>
             </details>` : ''}
 
-            ${item.optionsMap && Object.keys(item.optionsMap).length >= 2 ? `
+            ${item.optionsMap && Object.keys(item.optionsMap).length >= 2 ?`
             <div class="answer-override-section">
               <button class="answer-override-trigger" type="button" title="${escapeHtml(this.t('result.override.tooltip'))}">
                 <span class="material-symbols-rounded">edit</span>
@@ -880,7 +875,7 @@ export const PopupView = {
             </div>` : ''}
 
             <div class="study-actions-container">
-              <button class="study-action-btn btn-tutor" type="button" data-question="${encodeURIComponent(item.question)}" data-answer="${encodeURIComponent(item.answer || '')}" data-context="${encodeURIComponent(overviewSummary || Object.values(item.optionsMap || {}).join(' '))}" title="${escapeHtml(this.t('result.tutor.title'))}">
+              <button class="study-action-btn btn-tutor" type="button" data-question="${encodeURIComponent(item.question)}" data-answer="${encodeURIComponent(item.answer || '')}" data-context="${encodeURIComponent(overviewSummary || Object.values(item.optionsMap || {}).join(''))}" title="${escapeHtml(this.t('result.tutor.title'))}">
                 <span class="material-symbols-rounded">school</span>
                 <span>${escapeHtml(this.t('result.tutor.btn'))}</span>
               </button>
@@ -888,7 +883,7 @@ export const PopupView = {
                 <span class="material-symbols-rounded">quiz</span>
                 <span>${escapeHtml(this.t('result.similar.btn'))}</span>
               </button>
-              <button class="study-action-btn btn-chat" type="button" data-question="${encodeURIComponent(item.question)}" data-answer="${encodeURIComponent(item.answer || '')}" data-context="${encodeURIComponent(overviewSummary || Object.values(item.optionsMap || {}).join(' '))}" title="${escapeHtml(this.t('result.chat.title') || 'Follow-up Chat')}">
+              <button class="study-action-btn btn-chat" type="button" data-question="${encodeURIComponent(item.question)}" data-answer="${encodeURIComponent(item.answer || '')}" data-context="${encodeURIComponent(overviewSummary || Object.values(item.optionsMap || {}).join(''))}" title="${escapeHtml(this.t('result.chat.title') || 'Follow-up Chat')}">
                 <span class="material-symbols-rounded">forum</span>
                 <span>${escapeHtml(this.t('result.chat.btn') || 'Dúvidas')}</span>
               </button>
@@ -902,7 +897,7 @@ export const PopupView = {
                 <span>${escapeHtml(this.t('result.overview.title'))}</span>
               </div>
               ${overviewSummary ? `<p class="ah-overview-summary">${escapeHtml(overviewSummary)}</p>` : ''}
-              ${overviewPoints.length > 0 ? `
+              ${overviewPoints.length > 0 ?`
               <div class="ah-overview-section">
                 <div class="ah-overview-section-title">
                   <span class="material-symbols-rounded">format_list_bulleted</span>
@@ -912,7 +907,7 @@ export const PopupView = {
                   ${overviewPoints.map(point => `<li>${escapeHtml(point)}</li>`).join('')}
                 </ul>
               </div>` : ''}
-              ${overviewReferences.length > 0 ? `
+              ${overviewReferences.length > 0 ?`
               <div class="ah-overview-section">
                 <div class="ah-overview-section-title">
                   <span class="material-symbols-rounded">link</span>
@@ -933,10 +928,6 @@ export const PopupView = {
           </div>
 
           <div class="qa-card-actions">
-            <button class="feedback-btn" data-content="${dataContent}" title="${escapeHtml(this.t('result.reportExtraction') || 'Reportar erro na extração')}">
-              <span class="material-symbols-rounded" style="font-size:14px;">flag</span>
-              <span style="font-size:10.5px; white-space: nowrap;">${escapeHtml(this.t('result.reportExtraction') || 'Erro na extração?')}</span>
-            </button>
             ${sourceEntries.length > 0
           ? `<div class="sources-box">
                   <button class="sources-toggle" type="button" aria-expanded="false">
@@ -975,7 +966,7 @@ export const PopupView = {
       const compact = discardedUrlDiagnostics
         .slice(0, 6)
         .map((d) => `[${d.context}] ${d.reason}: ${d.raw}`)
-        .join(' | ');
+        .join(' |');
       console.warn(`AnswerHunter: Sanitizer discarded ${discardedUrlDiagnostics.length} URL(s): ${compact}`);
     }
   },
@@ -1005,8 +996,8 @@ export const PopupView = {
 
       questionRaw = String(questionRaw || '')
         .replace(/^\s*Q\d+\s*:\s*/i, '')
-        .replace(/\bENUNCIADO\b/gi, ' ')
-        .replace(/\bALTERNATIVAS?\b/gi, ' ')
+        .replace(/\bENUNCIADO\b/gi, '')
+        .replace(/\bALTERNATIVAS?\b/gi, '')
         .replace(/\s+/g, ' ')
         .trim();
 
@@ -1021,7 +1012,7 @@ export const PopupView = {
       } else {
         const letter = card.querySelector('.answer-alternative .alt-letter')?.innerText?.trim() || '';
         const body = card.querySelector('.answer-alternative .alt-text')?.innerText?.trim() || '';
-        answer = [letter, body].filter(Boolean).join(' - ');
+        answer = [letter, body].filter(Boolean).join(' -');
       }
 
       text += `Q${index + 1}: ${question}\nA: ${answer}\n\n`;
@@ -1081,20 +1072,20 @@ export const PopupView = {
     };
 
     const sanitizeInjectedMarkup = (markup) => String(markup || '')
-      .replace(/<\s*script\b[\s\S]*?(?:<\/\s*script\s*>|$)/gi, ' ')
-      .replace(/<\s*iframe\b[\s\S]*?(?:<\/\s*iframe\s*>|$)/gi, ' ')
-      .replace(/<\s*object\b[\s\S]*?(?:<\/\s*object\s*>|$)/gi, ' ')
-      .replace(/<\s*embed\b[^>]*>?/gi, ' ')
-      .replace(/<\s*link\b[^>]*>?/gi, ' ');
+      .replace(/<\s*script\b[\s\S]*?(?:<\/\s*script\s*>|$)/gi, '')
+      .replace(/<\s*iframe\b[\s\S]*?(?:<\/\s*iframe\s*>|$)/gi, '')
+      .replace(/<\s*object\b[\s\S]*?(?:<\/\s*object\s*>|$)/gi, '')
+      .replace(/<\s*embed\b[^>]*>?/gi, '')
+      .replace(/<\s*link\b[^>]*>?/gi, '');
 
     const reminderHtml = showBackupReminder
       ? `<div class="backup-reminder"><span class="material-symbols-rounded">backup</span><span>${escapeHtml(this.t('binder.backupReminder'))}</span><button class="dismiss-reminder" title="${escapeHtml(this.t('binder.backupDismiss'))}"><span class="material-symbols-rounded" style="font-size:16px;">close</span></button></div>`
       : '';
 
-    let html = `
+    let html =`
       ${reminderHtml}
       <div class="binder-actions-panel">
-        ${folder.id !== 'root' ? `
+        ${folder.id !== 'root' ?`
         <div class="folder-breadcrumb">
           <button id="btnBackRoot" class="breadcrumb-back" title="${escapeHtml(this.t('binder.back'))}">
             <span class="material-symbols-rounded">arrow_back</span>
@@ -1138,7 +1129,7 @@ export const PopupView = {
     } else {
       folder.children.forEach((item) => {
         if (item.type === 'folder') {
-          html += `
+          html +=`
             <div class="folder-item drop-zone" draggable="true" data-id="${item.id}" data-type="folder">
               <div class="folder-info">
                 <span class="material-symbols-rounded folder-icon">folder</span>
@@ -1204,7 +1195,7 @@ export const PopupView = {
             .map(entry => entry.source);
         })();
 
-        html += `
+        html +=`
           <div class="qa-item expandable" draggable="true" data-id="${item.id}" data-type="question">
             <div class="summary-view">
               <div class="summary-icon"><span class="material-symbols-rounded">quiz</span></div>
@@ -1221,7 +1212,7 @@ export const PopupView = {
 
                 <div class="qa-card-question">${formatQuestionText(questionText)}</div>
 
-                ${isStudyMode ? `
+                ${isStudyMode ?`
                 <button class="study-reveal-btn" type="button">
                   <span class="material-symbols-rounded">visibility</span>
                   <span>${escapeHtml(this.t('binder.studyMode.reveal') || 'Ver Resposta')}</span>

@@ -21,7 +21,7 @@ export const QuestionParser = {
             .toLowerCase()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
-            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/[^a-z0-9]+/g, '')
             .trim();
     },
 
@@ -35,26 +35,26 @@ export const QuestionParser = {
             .toLowerCase()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
-            .replace(/->>/g, ' op_json_text ')
-            .replace(/->/g, ' op_json_obj ')
-            .replace(/=>/g, ' op_arrow ')
-            .replace(/::/g, ' op_dcolon ')
-            .replace(/:=/g, ' op_assign ')
-            .replace(/!=/g, ' op_neq ')
-            .replace(/<>/g, ' op_neq ')
-            .replace(/<=/g, ' op_lte ')
-            .replace(/>=/g, ' op_gte ')
-            .replace(/</g, ' op_lt ')
-            .replace(/>/g, ' op_gt ')
-            .replace(/:/g, ' op_colon ')
-            .replace(/=/g, ' op_eq ')
-            .replace(/[^a-z0-9_]+/g, ' ')
-            .replace(/\s+/g, ' ')
+            .replace(/->>/g, ' op_json_text')
+            .replace(/->/g, ' op_json_obj')
+            .replace(/=>/g, ' op_arrow')
+            .replace(/::/g, ' op_dcolon')
+            .replace(/:=/g, ' op_assign')
+            .replace(/!=/g, ' op_neq')
+            .replace(/<>/g, ' op_neq')
+            .replace(/<=/g, ' op_lte')
+            .replace(/>=/g, ' op_gte')
+            .replace(/</g, ' op_lt')
+            .replace(/>/g, ' op_gt')
+            .replace(/:/g, ' op_colon')
+            .replace(/=/g, ' op_eq')
+            .replace(/[^a-z0-9_]+/g, '')
+            .replace(/\s+/g, '')
             .trim();
     },
 
     isUsableOptionBody(body) {
-        const cleaned = String(body || '').replace(/\s+/g, ' ').trim();
+        const cleaned = String(body || '').replace(/\s+/g, '').trim();
         if (!cleaned || cleaned.length < 1) return false;
         if (/^[A-E]\s*[\)\.\-:]?\s*$/i.test(cleaned)) return false;
         if (/^(?:[A-E]\s*(?:[\)\-:]|(?:\.\s))\s*){1,2}$/i.test(cleaned)) return false;
@@ -98,7 +98,8 @@ export const QuestionParser = {
         // "... C.CODIGONIVEL A Sim ... B Nao ... C Sim ..."
         // If we detect ordered A->B markers in the tail, cut at first A marker.
         const compactStart = stem.search(/\sA\s+(?=[A-ZÀ-ÖÙ-Ý])/);
-        if (compactStart > 40) {
+        const hasRomanAssertions = /\bI\.\s+[A-ZÀ-ÖÙ-Ý]/.test(stem) && /\bII\.\s+[A-ZÀ-ÖÙ-Ý]/.test(stem);
+        if (compactStart > 40 && !hasRomanAssertions) {
             const tail = stem.slice(compactStart);
             const hasOrderedAB = /\sA\s+(?=[A-ZÀ-ÖÙ-Ý])[\s\S]{0,500}\sB\s+(?=[A-ZÀ-ÖÙ-Ý])/.test(tail);
             const compactMarkers = tail.match(/\s[ABCDE]\s+(?=[A-ZÀ-ÖÙ-Ý])/g) || [];
@@ -334,7 +335,7 @@ export const QuestionParser = {
             'que', 'qual', 'quais', 'como', 'para', 'por', 'com', 'sem', 'uma', 'um', 'de', 'da', 'do',
             'das', 'dos', 'na', 'no', 'nas', 'nos', 'ao', 'aos', 'as', 'os', 'e', 'ou', 'em'
         ]);
-        const tokens = this.normalizeOption(stem).split(' ').filter(Boolean);
+        const tokens = this.normalizeOption(stem).split('').filter(Boolean);
         return tokens.filter(t => t.length >= 5 && !stop.has(t)).slice(0, 10);
     },
 
@@ -452,8 +453,8 @@ export const QuestionParser = {
     canonicalizeQuestion(questionText) {
         const stem = this.extractQuestionStem(questionText);
         const options = this.extractOptionsFromQuestion(questionText);
-        const normStem = this.normalizeOption(stem).replace(/\s+/g, ' ').trim();
-        const normOpts = (options || []).map(o => this.normalizeOption(o).replace(/\s+/g, ' ').trim()).sort();
+        const normStem = this.normalizeOption(stem).replace(/\s+/g, '').trim();
+        const normOpts = (options || []).map(o => this.normalizeOption(o).replace(/\s+/g, '').trim()).sort();
         return `${normStem}||${normOpts.join('|')}`;
     },
 };

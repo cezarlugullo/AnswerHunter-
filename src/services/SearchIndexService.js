@@ -60,7 +60,7 @@ export const SearchIndexService = {
                 card.question, card.answer, card.source, card.notes,
                 disc.name, mod.name, topic.name,
                 ...(card.tags || [])
-              ].join(' ').toLowerCase()
+              ].join('').toLowerCase()
             });
           }
         }

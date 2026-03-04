@@ -26,7 +26,7 @@
 - [ ] Critério 2
 - [ ] Critério 3
 
-**Priority**: 🔴 High / 🟡 Medium / 🟢 Low
+**Priority**: [RED] High / [YELLOW] Medium / [GREEN] Low
 
 ---
 
@@ -64,19 +64,19 @@
 #### Alternative 1: [Nome]
 **Description**: [Breve descrição]
 **Pros**:
-- ✅ Pro 1
-- ✅ Pro 2
+- [OK] Pro 1
+- [OK] Pro 2
 
 **Cons**:
-- ❌ Con 1
-- ❌ Con 2
+- [FAIL] Con 1
+- [FAIL] Con 2
 
 **Effort**: [1-5 days]
-**Decision**: ❌ Rejected because [razão]
+**Decision**: [FAIL] Rejected because [razão]
 
 #### Alternative 2: [Nome]
 [Mesmo formato]
-**Decision**: ✅ Chosen
+**Decision**: [OK] Chosen
 
 ---
 
@@ -188,7 +188,7 @@ ChromeStorage ← StorageModel ← Controller ← ApiService ← Backend
 │                                     │
 │  [ Search query here...        ]   │
 │                                     │
-│  ☑ Enable new feature              │
+│ [CHECK] Enable new feature │
 │  ┌────────────────────────────┐   │
 │  │ Option 1: [dropdown    ▼]  │   │
 │  │ Option 2: [  slider  ──●]  │   │
@@ -293,9 +293,9 @@ ChromeStorage ← StorageModel ← Controller ← ApiService ← Backend
 
 ## Open Questions
 
-- ❓ Should we support offline mode?
-- ❓ What's the cache TTL?
-- ❓ Do we need analytics for this?
+- [Q] Should we support offline mode?
+- [Q] What's the cache TTL?
+- [Q] Do we need analytics for this?
 
 [Capture dúvidas que precisam ser resolvidas]
 

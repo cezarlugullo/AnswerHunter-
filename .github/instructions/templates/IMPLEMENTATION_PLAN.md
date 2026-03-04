@@ -3,7 +3,7 @@
 **Based on Spec**: `.agents/specs/FEATURE_NAME.md`
 **Date**: YYYY-MM-DD
 **Estimated Total Time**: X hours (Y tasks × ~Z minutes each)
-**Status**: ⬜ Not Started / 🟡 In Progress / ✅ Complete
+**Status**: ⬜ Not Started / [YELLOW] In Progress / [OK] Complete
 
 ---
 
@@ -30,7 +30,7 @@
 
 ## Tasks
 
-### 📦 Setup & Dependencies
+### [PKG] Setup & Dependencies
 
 #### Task 1: Install required packages
 
@@ -52,12 +52,12 @@
 
 ---
 
-### 🧪 Phase: Backend API
+### [TEST] Phase: Backend API
 
 #### Task 2: Create API route test (RED)
 
 **Estimativa**: 3 min
-**TDD Phase**: 🔴 RED
+**TDD Phase**: [RED] RED
 **Arquivos**:
 - `backend/src/routes/__tests__/xxx.test.js` (criar)
 
@@ -90,7 +90,7 @@ describe('POST /api/xxx', () => {
 #### Task 3: Create API route (GREEN)
 
 **Estimativa**: 4 min
-**TDD Phase**: 🟢 GREEN
+**TDD Phase**: [GREEN] GREEN
 **Arquivos**:
 - `backend/src/routes/xxx.js` (criar)
 - `backend/src/server.js` (modificar)
@@ -141,7 +141,7 @@ app.use('/api/xxx', xxxRouter);
 #### Task 4: Create service test (RED)
 
 **Estimativa**: 4 min
-**TDD Phase**: 🔴 RED
+**TDD Phase**: [RED] RED
 **Arquivos**:
 - `backend/src/services/__tests__/XxxService.test.js` (criar)
 
@@ -178,7 +178,7 @@ describe('XxxService', () => {
 #### Task 5: Implement service (GREEN)
 
 **Estimativa**: 5 min
-**TDD Phase**: 🟢 GREEN
+**TDD Phase**: [GREEN] GREEN
 **Arquivos**:
 - `backend/src/services/XxxService.js` (criar)
 
@@ -211,7 +211,7 @@ module.exports = XxxService;
 #### Task 6: Integrate service with route
 
 **Estimativa**: 3 min
-**TDD Phase**: 🔵 REFACTOR
+**TDD Phase**: [REFACTOR] REFACTOR
 **Arquivos**:
 - `backend/src/routes/xxx.js` (modificar)
 
@@ -242,12 +242,12 @@ router.post('/', async (req, res) => {
 
 ---
 
-### 🎨 Phase: Frontend Integration
+### Phase: Frontend Integration
 
 #### Task 7: Create ApiService method test (RED)
 
 **Estimativa**: 3 min
-**TDD Phase**: 🔴 RED
+**TDD Phase**: [RED] RED
 **Arquivos**:
 - `src/services/__tests__/ApiService.test.js` (modificar)
 
@@ -286,7 +286,7 @@ describe('ApiService.xxx', () => {
 #### Task 8: Implement ApiService method (GREEN)
 
 **Estimativa**: 4 min
-**TDD Phase**: 🟢 GREEN
+**TDD Phase**: [GREEN] GREEN
 **Arquivos**:
 - `src/services/ApiService.js` (modificar)
 
@@ -323,7 +323,7 @@ class ApiService {
 #### Task 9: Create controller method test (RED)
 
 **Estimativa**: 4 min
-**TDD Phase**: 🔴 RED
+**TDD Phase**: [RED] RED
 **Arquivos**:
 - `src/controllers/__tests__/PopupController.test.js` (modificar)
 
@@ -365,7 +365,7 @@ describe('PopupController.handleXxx', () => {
 #### Task 10: Implement controller method (GREEN)
 
 **Estimativa**: 5 min
-**TDD Phase**: 🟢 GREEN
+**TDD Phase**: [GREEN] GREEN
 **Arquivos**:
 - `src/controllers/PopupController.js` (modificar)
 
@@ -397,12 +397,12 @@ class PopupController {
 
 ---
 
-### 🎨 Phase: UI Implementation
+### Phase: UI Implementation
 
 #### Task 11: Create view method test (RED)
 
 **Estimativa**: 3 min
-**TDD Phase**: 🔴 RED
+**TDD Phase**: [RED] RED
 **Arquivos**:
 - `src/views/__tests__/PopupView.test.js` (modificar)
 
@@ -438,7 +438,7 @@ describe('PopupView.displayResult', () => {
 #### Task 12: Implement view method (GREEN)
 
 **Estimativa**: 4 min
-**TDD Phase**: 🟢 GREEN
+**TDD Phase**: [GREEN] GREEN
 **Arquivos**:
 - `src/views/PopupView.js` (modificar)
 - `src/popup/popup.html` (modificar)
@@ -449,7 +449,7 @@ describe('PopupView.displayResult', () => {
 class PopupView {
   displayResult(result) {
     const resultsDiv = this.container.querySelector('.results');
-    resultsDiv.innerHTML = `
+    resultsDiv.innerHTML =`
       <div class="result-item">
         <strong>Result:</strong> ${result.processed}
       </div>
@@ -549,12 +549,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
 ---
 
-### 📝 Phase: Edge Cases & Polish
+### [NOTE] Phase: Edge Cases & Polish
 
 #### Task 15: Add loading states test
 
 **Estimativa**: 3 min
-**TDD Phase**: 🔴 RED
+**TDD Phase**: [RED] RED
 **Arquivos**:
 - `src/views/__tests__/PopupView.test.js` (modificar)
 
@@ -584,7 +584,7 @@ it('should hide loading spinner', () => {
 #### Task 16: Implement loading states (GREEN)
 
 **Estimativa**: 3 min
-**TDD Phase**: 🟢 GREEN
+**TDD Phase**: [GREEN] GREEN
 **Arquivos**:
 - `src/views/PopupView.js` (modificar)
 - `src/popup/popup.html` (modificar)
@@ -613,7 +613,7 @@ hideLoading() {
 #### Task 17: Add error handling tests
 
 **Estimativa**: 4 min
-**TDD Phase**: 🔴 RED → 🟢 GREEN
+**TDD Phase**: [RED] RED → [GREEN] GREEN
 **Arquivos**:
 - Various test files (add error cases to existing tests)
 
@@ -645,7 +645,7 @@ it('should handle empty response', async () => {
 #### Task 18: Add input validation
 
 **Estimativa**: 3 min
-**TDD Phase**: 🔵 REFACTOR
+**TDD Phase**: [REFACTOR] REFACTOR
 **Arquivos**:
 - Backend route, frontend controller (add validation)
 
@@ -675,7 +675,7 @@ if (!input || input.trim().length === 0) {
 
 ---
 
-### 📚 Phase: Documentation
+### [STUDY] Phase: Documentation
 
 #### Task 19: Add JSDoc comments
 

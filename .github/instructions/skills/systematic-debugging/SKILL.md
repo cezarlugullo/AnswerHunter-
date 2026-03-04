@@ -59,8 +59,8 @@ Identificar exatamente onde no código o bug ocorre.
 Comente metade do código até isolar a seção problemática:
 ```javascript
 // function search(query) {
-//   const normalized = normalize(query); // ✅ OK até aqui
-//   const tokens = tokenize(normalized); // ❌ Falha aqui
+// const normalized = normalize(query); // [OK] OK até aqui
+// const tokens = tokenize(normalized); // [FAIL] Falha aqui
 //   return tokens;
 // }
 ```
@@ -68,11 +68,11 @@ Comente metade do código até isolar a seção problemática:
 **B. Logging Estratégico**
 ```javascript
 function problematicFunction(input) {
-  console.log('🔍 Input:', input);
+  console.log('[SEARCH] Input:', input);
   const step1 = processStep1(input);
-  console.log('🔍 After step1:', step1);
+  console.log('[SEARCH] After step1:', step1);
   const step2 = processStep2(step1);
-  console.log('🔍 After step2:', step2);
+  console.log('[SEARCH] After step2:', step2);
   return step2;
 }
 ```
@@ -125,30 +125,30 @@ Entender **POR QUÊ** o bug ocorre (causa raiz).
 
 3. **Qual é a root cause?**
 
-**❌ Sintoma**: "App crasha"
-**❌ Causa proximal**: "Variable is undefined"
-**✅ Root cause**: "API retorna null quando rate-limited, código não valida"
+**[FAIL] Sintoma**: "App crasha"
+**[FAIL] Causa proximal**: "Variable is undefined"
+**[OK] Root cause**: "API retorna null quando rate-limited, código não valida"
 
 #### Root Cause Analysis
 
 Use os "5 Porquês":
 ```
-❓ Por quê o search falha?
+[Q] Por quê o search falha?
 → Porque tokenize() recebe null
 
-❓ Por quê tokenize recebe null?
+[Q] Por quê tokenize recebe null?
 → Porque normalize() retorna null
 
-❓ Por quê normalize retorna null?
+[Q] Por quê normalize retorna null?
 → Porque input.trim() falha
 
-❓ Por quê trim falha?
+[Q] Por quê trim falha?
 → Porque input é undefined
 
-❓ Por quê input é undefined?
+[Q] Por quê input é undefined?
 → Porque API retorna null em rate-limit sem validação
 
-🎯 ROOT CAUSE: Missing null validation after API call
+[TARGET] ROOT CAUSE: Missing null validation after API call
 ```
 
 #### Output
@@ -169,13 +169,13 @@ Corrigir a root cause, não o sintoma.
 Adicione validações em múltiplas camadas:
 
 ```javascript
-// ❌ Fix no sintoma (band-aid)
+// [FAIL] Fix no sintoma (band-aid)
 function tokenize(text) {
   if (!text) return []; // Só trata o null aqui
-  return text.split(' ');
+  return text.split('');
 }
 
-// ✅ Fix na root cause + defesa
+// [OK] Fix na root cause + defesa
 // Layer 1: API call
 async function searchApi(query) {
   const response = await fetch('/search', { query });
@@ -203,7 +203,7 @@ function tokenize(text) {
   if (!text || typeof text !== 'string') {
     return [];
   }
-  return text.split(' ');
+  return text.split('');
 }
 ```
 
@@ -315,14 +315,14 @@ describe('Word extraction', () => {
   });
 });
 ```
-❌ Test FAILS with "Cannot read property 'text' of undefined"
+[FAIL] Test FAILS with "Cannot read property 'text' of undefined"
 
 ### Phase 2: LOCATE
 ```javascript
 // BinderController.js:67
 async extractContent() {
   const paragraphs = await this.wordApp.ActiveDocument.Paragraphs;
-  const text = paragraphs[0].Range.Text; // ❌ CRASHES HERE
+  const text = paragraphs[0].Range.Text; // [FAIL] CRASHES HERE
   return text;
 }
 ```
@@ -330,19 +330,19 @@ Found: Linha 67, acessa paragraphs[0] sem verificar se existe
 
 ### Phase 3: DIAGNOSE
 ```
-❓ Por quê crasha?
+[Q] Por quê crasha?
 → paragraphs[0] é undefined
 
-❓ Por quê undefined?
+[Q] Por quê undefined?
 → Array está vazio (documento vazio)
 
-❓ Por quê não valida?
+[Q] Por quê não valida?
 → Código assume sempre há paragraphs
 
-❓ Por quê assume isso?
+[Q] Por quê assume isso?
 → Desenvolvedor testou só com docs populados
 
-🎯 ROOT CAUSE: Missing empty document validation
+[TARGET] ROOT CAUSE: Missing empty document validation
 ```
 
 ### Phase 4: FIX
@@ -406,7 +406,7 @@ describe('BinderController.extractContent', () => {
 });
 ```
 
-✅ All tests GREEN
+[OK] All tests GREEN
 
 **Commits**:
 ```bash
@@ -426,7 +426,7 @@ git commit -m "test: add edge cases for document extraction #456"
 ```javascript
 // In background script
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  console.log('📨 Message received:', {
+  console.log('[MSG] Message received:', {
     msg,
     sender: sender.tab?.url,
     timestamp: new Date().toISOString()
@@ -440,10 +440,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 async function testWordConnection() {
   try {
     const word = new ActiveXObject("Word.Application");
-    console.log('✅ Word connected:', word.Version);
+    console.log('[OK] Word connected:', word.Version);
     return true;
   } catch (e) {
-    console.error('❌ Word connection failed:', e);
+    console.error('[FAIL] Word connection failed:', e);
     return false;
   }
 }
@@ -462,11 +462,11 @@ curl -X POST http://localhost:3000/api/search \
 
 ## Anti-patterns
 
-❌ **Guess & Check**: Mudar código aleatoriamente até funcionar
-❌ **Symptom Fix**: Corrigir só onde falha visualmente
-❌ **No Test**: Corrigir sem teste reprodutor
-❌ **Quick Fix**: Corrigir sem entender o porquê
-❌ **Move On**: Corrigir e não adicionar testes preventivos
+[FAIL] **Guess & Check**: Mudar código aleatoriamente até funcionar
+[FAIL] **Symptom Fix**: Corrigir só onde falha visualmente
+[FAIL] **No Test**: Corrigir sem teste reprodutor
+[FAIL] **Quick Fix**: Corrigir sem entender o porquê
+[FAIL] **Move On**: Corrigir e não adicionar testes preventivos
 
 ## Integration com AnswerHunter
 
@@ -483,10 +483,10 @@ Para cada área, tenha defensive programming.
 
 ```javascript
 // Use níveis apropriados
-console.error('🔴 CRITICAL:', err); // Quebra funcionalidade
-console.warn('🟡 WARNING:', issue); // Degradação
-console.info('🔵 INFO:', event); // Eventos importantes
-console.debug('🟤 DEBUG:', data); // Debugging detalhado
+console.error('[RED] CRITICAL:', err); // Quebra funcionalidade
+console.warn('[YELLOW] WARNING:', issue); // Degradação
+console.info('[REFACTOR] INFO:', event); // Eventos importantes
+console.debug('[BROWN] DEBUG:', data); // Debugging detalhado
 ```
 
 ## Quando Chamar Ajuda

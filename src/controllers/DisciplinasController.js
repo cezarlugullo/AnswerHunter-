@@ -81,7 +81,7 @@ export const DisciplinasController = {
         const hasAnything = folders.length > 0 || extraDiscs.length > 0;
 
         if (!hasAnything) {
-            container.innerHTML = `
+            container.innerHTML =`
                 <div class="disc-empty">
                     <span class="material-symbols-rounded disc-empty-icon">school</span>
                     <p class="disc-empty-title">Nenhuma disciplina ainda</p>
@@ -118,7 +118,7 @@ export const DisciplinasController = {
 
         const allCards = [...folderCards, ...extraCards];
 
-        container.innerHTML = allCards.map(card => `
+        container.innerHTML = allCards.map(card =>`
             <div class="disc-card" data-disc-id="${card.id}" data-disc-type="${card.type}">
                 <div class="disc-card-accent" style="background:${card.color}"></div>
                 <div class="disc-card-body">
@@ -127,7 +127,7 @@ export const DisciplinasController = {
                             <span class="material-symbols-rounded disc-card-type-icon">${card.type === 'folder' ? 'folder' : 'label'}</span>
                             <span class="disc-card-name">${card.name}</span>
                         </div>
-                        ${card.type === 'explicit' ? `
+                        ${card.type === 'explicit' ?`
                         <div class="disc-card-menu-wrap">
                             <button class="disc-menu-btn" data-disc-opts="${card.id}" title="Opções" aria-label="Opções">
                                 <span class="material-symbols-rounded">more_vert</span>
