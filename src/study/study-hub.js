@@ -4395,11 +4395,79 @@ function formatFullDate(isoStr) {
 }
 
 /**
+ * Generic custom filter-dropdown wiring.
+ * @param {HTMLElement} dropdown  .filter-dropdown element
+ * @param {Function}    onChange  callback when value changes
+ */
+function initFilterDropdown(dropdown, onChange) {
+  if (!dropdown) return;
+  const trigger = dropdown.querySelector('.filter-dropdown__trigger');
+  const menu = dropdown.querySelector('.filter-dropdown__menu');
+  if (!trigger || !menu) return;
+
+  // Toggle open/close
+  on(trigger, 'click', (e) => {
+    e.stopPropagation();
+    const wasOpen = dropdown.classList.contains('open');
+    // Close all other dropdowns first
+    $$('.filter-dropdown.open').forEach(d => {
+      d.classList.remove('open');
+      d.querySelector('.filter-dropdown__trigger')?.setAttribute('aria-expanded', 'false');
+    });
+    if (!wasOpen) {
+      dropdown.classList.add('open');
+      trigger.setAttribute('aria-expanded', 'true');
+    }
+  });
+
+  // Item selection
+  on(menu, 'click', (e) => {
+    const item = e.target.closest('.filter-dropdown__item');
+    if (!item) return;
+    e.stopPropagation();
+    const val = item.dataset.value;
+    // Update active state
+    menu.querySelectorAll('.filter-dropdown__item').forEach(i => {
+      i.classList.remove('filter-dropdown__item--active');
+      i.setAttribute('aria-selected', 'false');
+    });
+    item.classList.add('filter-dropdown__item--active');
+    item.setAttribute('aria-selected', 'true');
+    // Update trigger label
+    const label = trigger.querySelector('.filter-dropdown__label');
+    if (label) label.textContent = item.querySelector('span:nth-child(2)')?.textContent || val;
+    // Update data-value on container
+    dropdown.dataset.value = val;
+    // Close
+    dropdown.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+    onChange();
+  });
+
+  // Close on outside click
+  document.addEventListener('click', () => {
+    if (dropdown.classList.contains('open')) {
+      dropdown.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+    }
+  });
+
+  // Close on Escape
+  on(dropdown, 'keydown', (e) => {
+    if (e.key === 'Escape' && dropdown.classList.contains('open')) {
+      dropdown.classList.remove('open');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.focus();
+    }
+  });
+}
+
+/**
  * Init history view: bind filters, clear button, empty-state CTA
  */
 function initHistory() {
-  on($('#historyFilterType'), 'change', renderHistory);
-  on($('#historyFilterDisc'), 'change', renderHistory);
+  initFilterDropdown($('#historyFilterType'), renderHistory);
+  initFilterDropdown($('#historyFilterDisc'), renderHistory);
 
   on($('#historyClearAllBtn'), 'click', () => {
     openModal('Limpar Histórico', `
@@ -4430,27 +4498,42 @@ function initHistory() {
  */
 async function renderHistory() {
   const allHistory = await loadHistory();
-  const filterType = $('#historyFilterType')?.value || 'all';
-  const filterDisc = $('#historyFilterDisc')?.value || 'all';
+  const filterType = $('#historyFilterType')?.dataset?.value || 'all';
+  const filterDisc = $('#historyFilterDisc')?.dataset?.value || 'all';
 
-  // Populate discipline filter from history data
-  const discFilter = $('#historyFilterDisc');
-  if (discFilter) {
-    const prevVal = discFilter.value;
+  // Populate discipline filter dropdown from history data
+  const discDropdown = $('#historyFilterDisc');
+  if (discDropdown) {
+    const prevVal = discDropdown.dataset.value || 'all';
     const allDiscs = new Set();
     allHistory.forEach(h => {
       if (h.discipline) allDiscs.add(h.discipline);
       (h.disciplines || []).forEach(d => allDiscs.add(d));
     });
-    discFilter.innerHTML = '<option value="all">Todas disciplinas</option>';
-    [...allDiscs].sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d;
-      opt.textContent = d;
-      discFilter.appendChild(opt);
-    });
-    const exists = [...discFilter.options].some(o => o.value === prevVal);
-    discFilter.value = exists ? prevVal : 'all';
+    const menu = discDropdown.querySelector('.filter-dropdown__menu');
+    if (menu) {
+      let menuHtml = `<li class="filter-dropdown__item${prevVal === 'all' ? ' filter-dropdown__item--active' : ''}" data-value="all" role="option" aria-selected="${prevVal === 'all'}">
+        <span class="material-symbols-rounded">menu_book</span>
+        <span>Todas disciplinas</span>
+        <span class="material-symbols-rounded filter-dropdown__check">check</span>
+      </li>`;
+      [...allDiscs].sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(d => {
+        const isActive = d === prevVal;
+        menuHtml += `<li class="filter-dropdown__item${isActive ? ' filter-dropdown__item--active' : ''}" data-value="${escHtml(d)}" role="option" aria-selected="${isActive}">
+          <span class="material-symbols-rounded">auto_stories</span>
+          <span>${escHtml(d)}</span>
+          <span class="material-symbols-rounded filter-dropdown__check">check</span>
+        </li>`;
+      });
+      menu.innerHTML = menuHtml;
+    }
+    // If prev value no longer exists, reset to "all"
+    const allVals = ['all', ...allDiscs];
+    if (!allVals.includes(prevVal)) {
+      discDropdown.dataset.value = 'all';
+      const label = discDropdown.querySelector('.filter-dropdown__label');
+      if (label) label.textContent = 'Todas disciplinas';
+    }
   }
 
   // Filter

@@ -959,22 +959,60 @@
                 <p class="view-subtitle">Sua jornada de estudo, sessão a sessão</p>
               </div>
               <div class="view-header-actions">
-                <div class="hist-filter-pill">
-                  <span class="material-symbols-rounded hist-filter-icon">filter_list</span>
-                  <select class="hist-filter-select" id="historyFilterType">
-                    <option value="all">Todos os tipos</option>
-                    <option value="quiz">Quiz Rápido</option>
-                    <option value="simulado">Simulado</option>
-                    <option value="ai-simulado">Simulado IA</option>
-                    <option value="challenge">Desafio</option>
-                    <option value="study">Sessão de Estudo</option>
-                  </select>
+                <!-- Type filter dropdown -->
+                <div class="filter-dropdown" id="historyFilterType" data-value="all">
+                  <button class="filter-dropdown__trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="material-symbols-rounded filter-dropdown__icon">filter_list</span>
+                    <span class="filter-dropdown__label">Todos os tipos</span>
+                    <span class="material-symbols-rounded filter-dropdown__chevron">expand_more</span>
+                  </button>
+                  <ul class="filter-dropdown__menu" role="listbox" aria-label="Filtrar por tipo">
+                    <li class="filter-dropdown__item filter-dropdown__item--active" data-value="all" role="option" aria-selected="true">
+                      <span class="material-symbols-rounded">checklist</span>
+                      <span>Todos os tipos</span>
+                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
+                    </li>
+                    <li class="filter-dropdown__item" data-value="quiz" role="option">
+                      <span class="material-symbols-rounded" style="color:var(--color-accent)">quiz</span>
+                      <span>Quiz Rápido</span>
+                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
+                    </li>
+                    <li class="filter-dropdown__item" data-value="simulado" role="option">
+                      <span class="material-symbols-rounded" style="color:var(--color-warning)">assignment</span>
+                      <span>Simulado</span>
+                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
+                    </li>
+                    <li class="filter-dropdown__item" data-value="ai-simulado" role="option">
+                      <span class="material-symbols-rounded" style="color:var(--color-new)">auto_awesome</span>
+                      <span>Simulado IA</span>
+                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
+                    </li>
+                    <li class="filter-dropdown__item" data-value="challenge" role="option">
+                      <span class="material-symbols-rounded" style="color:var(--color-ochre-muted)">casino</span>
+                      <span>Desafio</span>
+                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
+                    </li>
+                    <li class="filter-dropdown__item" data-value="study" role="option">
+                      <span class="material-symbols-rounded" style="color:var(--color-info)">school</span>
+                      <span>Sessão de Estudo</span>
+                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
+                    </li>
+                  </ul>
                 </div>
-                <div class="hist-filter-pill">
-                  <span class="material-symbols-rounded hist-filter-icon">school</span>
-                  <select class="hist-filter-select" id="historyFilterDisc">
-                    <option value="all">Todas disciplinas</option>
-                  </select>
+                <!-- Discipline filter dropdown -->
+                <div class="filter-dropdown" id="historyFilterDisc" data-value="all">
+                  <button class="filter-dropdown__trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="material-symbols-rounded filter-dropdown__icon">school</span>
+                    <span class="filter-dropdown__label">Todas disciplinas</span>
+                    <span class="material-symbols-rounded filter-dropdown__chevron">expand_more</span>
+                  </button>
+                  <ul class="filter-dropdown__menu" role="listbox" aria-label="Filtrar por disciplina">
+                    <li class="filter-dropdown__item filter-dropdown__item--active" data-value="all" role="option" aria-selected="true">
+                      <span class="material-symbols-rounded">menu_book</span>
+                      <span>Todas disciplinas</span>
+                      <span class="material-symbols-rounded filter-dropdown__check">check</span>
+                    </li>
+                  </ul>
                 </div>
                 <button class="btn btn-secondary btn-icon" id="historyClearAllBtn" aria-label="Limpar histórico">
                   <span class="material-symbols-rounded">delete_sweep</span>
