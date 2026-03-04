@@ -23,10 +23,19 @@ export const StorageModel = {
      * Initializes storage, loading data from chrome.storage.local
      * @returns {Promise<void>}
      */
+    _initFailed: false,
+
     async init() {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             chrome.storage.local.get(['binderStructure'], (result) => {
-                const localData = result.binderStructure;
+                if (chrome.runtime.lastError) {
+                    console.error('StorageModel: init failed:', chrome.runtime.lastError);
+                    this._initFailed = true;
+                    reject(new Error('StorageModel init failed: ' + chrome.runtime.lastError.message));
+                    return;
+                }
+                this._initFailed = false;
+                const localData = result?.binderStructure;
                 if (Array.isArray(localData)) {
                     this.data = localData;
                 } else {
@@ -38,15 +47,25 @@ export const StorageModel = {
     },
 
     /**
-     * Saves current state to storage
+     * Saves current state to storage.
+     * Uses a queue to prevent concurrent writes.
      * @returns {Promise<void>}
      */
+    _saveQueue: Promise.resolve(),
+
     async save() {
+        this._saveQueue = this._saveQueue.then(() => this._doSave()).catch(() => this._doSave());
+        return this._saveQueue;
+    },
+
+    async _doSave() {
         console.log('StorageModel: Salvando estrutura...', this.countItems());
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             chrome.storage.local.set({ binderStructure: this.data }, () => {
                 if (chrome.runtime.lastError) {
                     console.error('StorageModel: Local save failed:', chrome.runtime.lastError);
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
                 }
                 resolve();
             });
@@ -113,7 +132,7 @@ export const StorageModel = {
                 ...(extraContent || {}),
                 ...(leanSources !== undefined ? { sources: leanSources } : {})
             };
-            const nowTs = Date.now();
+            const uid = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
             const baseSm2 = {
                 interval: 0,
                 repetition: 0,
@@ -132,11 +151,11 @@ export const StorageModel = {
                 ...((mergedExtra && mergedExtra.sm2 && typeof mergedExtra.sm2 === 'object') ? mergedExtra.sm2 : {})
             };
             current.children.push({
-                id: 'q' + nowTs,
+                id: 'q' + uid,
                 type: 'question',
                 content: { question: normQ, answer, source, ...mergedExtra, sm2: mergedSm2 },
-                createdAt: nowTs,
-                updatedAt: nowTs
+                createdAt: Date.now(),
+                updatedAt: Date.now()
             });
             await this.save();
             return true;
@@ -155,7 +174,7 @@ export const StorageModel = {
         const current = this.findNode(this.currentFolderId);
         if (current && current.type === 'folder') {
             current.children.push({
-                id: 'f' + Date.now(),
+                id: 'f' + crypto.randomUUID().replace(/-/g, '').slice(0, 12),
                 type: 'folder',
                 title: name,
                 children: [],
@@ -301,6 +320,13 @@ export const StorageModel = {
     async moveItem(itemId, targetFolderId) {
         if (itemId === targetFolderId) return;
 
+        // Verify target exists BEFORE extracting the node (prevents data loss)
+        const targetFolder = this.findNode(targetFolderId);
+        if (!targetFolder || targetFolder.type !== 'folder') {
+            console.error('StorageModel: moveItem target not found:', targetFolderId);
+            return;
+        }
+
         // Helper to remove and return the item
         const extractFromTree = (nodes, id) => {
             for (let i = 0; i < nodes.length; i++) {
@@ -317,14 +343,8 @@ export const StorageModel = {
 
         const itemNode = extractFromTree(this.data, itemId);
         if (itemNode) {
-            const targetFolder = this.findNode(targetFolderId);
-            if (targetFolder && targetFolder.type === 'folder') {
-                targetFolder.children.push(itemNode);
-                await this.save();
-            } else {
-                // If fails, try to restore by reloading (not ideal, but safe)
-                await this.init();
-            }
+            targetFolder.children.push(itemNode);
+            await this.save();
         }
     },
 
@@ -386,23 +406,55 @@ export const StorageModel = {
     },
 
     /**
-     * Clears everything (Factory Reset)
+     * Clears everything (Factory Reset).
+     * Creates a backup before wiping to allow recovery.
      */
     async clearAll() {
+        try {
+            await new Promise((resolve) => {
+                chrome.storage.local.set({ binderStructure_backup: this.data }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.warn('StorageModel: clearAll backup failed:', chrome.runtime.lastError);
+                    }
+                    resolve();
+                });
+            });
+        } catch (_) { /* best-effort backup */ }
         this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
         this.currentFolderId = 'root';
         await this.save();
     },
 
     /**
-     * Imports data from a backup JSON
+     * Imports data from a backup JSON.
+     * Validates basic structure and creates a backup before overwriting.
      * @param {Array} importedData
+     * @returns {Promise<boolean>} true if import succeeded
      */
     async importData(importedData) {
-        if (!Array.isArray(importedData) || importedData.length === 0) return;
+        if (!Array.isArray(importedData) || importedData.length === 0) return false;
+        // Validate basic node shape
+        for (const node of importedData) {
+            if (!node || typeof node !== 'object' || !node.id || !node.type) {
+                console.error('StorageModel: importData rejected — invalid node shape:', node);
+                return false;
+            }
+        }
+        // Backup current data before overwriting
+        try {
+            await new Promise((resolve) => {
+                chrome.storage.local.set({ binderStructure_backup: this.data }, () => {
+                    if (chrome.runtime.lastError) {
+                        console.warn('StorageModel: import backup failed:', chrome.runtime.lastError);
+                    }
+                    resolve();
+                });
+            });
+        } catch (_) { /* best-effort backup */ }
         this.data = importedData;
         this.currentFolderId = 'root';
         await this.save();
+        return true;
     },
 
     /**
@@ -462,7 +514,12 @@ export const StorageModel = {
     async exportFull() {
         if (!this.data.length) await this.init();
         const xpData = await new Promise((resolve) => {
-            chrome.storage.local.get(['ah_xpData'], (d) => resolve(d.ah_xpData || {}));
+            chrome.storage.local.get(['ah_xpData'], (d) => {
+                if (chrome.runtime.lastError) {
+                    console.error('StorageModel: exportFull get xpData failed:', chrome.runtime.lastError);
+                }
+                resolve(d?.ah_xpData || {});
+            });
         });
         return {
             version: 2,
@@ -489,7 +546,12 @@ export const StorageModel = {
         await this.save();
 
         if (!isLegacy && data?.xpData && typeof data.xpData === 'object') {
-            await new Promise((resolve) => chrome.storage.local.set({ ah_xpData: data.xpData }, () => resolve()));
+            await new Promise((resolve) => chrome.storage.local.set({ ah_xpData: data.xpData }, () => {
+                if (chrome.runtime.lastError) {
+                    console.error('StorageModel: importFull set xpData failed:', chrome.runtime.lastError);
+                }
+                resolve();
+            }));
         }
         return true;
     },
@@ -527,7 +589,12 @@ export const StorageModel = {
      */
     async getDisciplines() {
         return new Promise((resolve) => {
-            chrome.storage.local.get(['ah_disciplines'], (d) => resolve(d.ah_disciplines || []));
+            chrome.storage.local.get(['ah_disciplines'], (d) => {
+                if (chrome.runtime.lastError) {
+                    console.error('StorageModel: getDisciplines failed:', chrome.runtime.lastError);
+                }
+                resolve(d?.ah_disciplines || []);
+            });
         });
     },
 
@@ -537,7 +604,12 @@ export const StorageModel = {
      */
     async saveDisciplines(list) {
         return new Promise((resolve) => {
-            chrome.storage.local.set({ ah_disciplines: list }, () => resolve());
+            chrome.storage.local.set({ ah_disciplines: list }, () => {
+                if (chrome.runtime.lastError) {
+                    console.error('StorageModel: saveDisciplines failed:', chrome.runtime.lastError);
+                }
+                resolve();
+            });
         });
     },
 
@@ -552,7 +624,7 @@ export const StorageModel = {
         const nameTrim = name.trim();
         const exists = list.find(d => d.name.toLowerCase() === nameTrim.toLowerCase());
         if (exists) return exists;
-        const disc = { id: 'd' + Date.now(), name: nameTrim, color, createdAt: Date.now() };
+        const disc = { id: 'd' + crypto.randomUUID().replace(/-/g, '').slice(0, 12), name: nameTrim, color, createdAt: Date.now() };
         list.push(disc);
         await this.saveDisciplines(list);
         return disc;

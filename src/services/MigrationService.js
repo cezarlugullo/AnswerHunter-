@@ -102,25 +102,41 @@ export const MigrationService = {
   async rollback() {
     try {
       const backup = await new Promise(resolve => {
-        chrome.storage.local.get([BACKUP_KEY], d => resolve(d[BACKUP_KEY]));
+        chrome.storage.local.get([BACKUP_KEY], d => {
+          if (chrome.runtime.lastError) {
+            console.error('[MigrationService] rollback get failed:', chrome.runtime.lastError);
+          }
+          resolve(d?.[BACKUP_KEY]);
+        });
       });
       if (!backup) {
         console.warn('[MigrationService] No backup found for rollback.');
         return false;
       }
 
-      await new Promise(resolve => {
-        chrome.storage.local.set({
+      // Atomic rollback: restore data + remove hierarchy + reset meta in one operation
+      await new Promise((resolve, reject) => {
+        const restoreData = {
           binderStructure: backup.binderStructure,
-          ah_disciplines: backup.ah_disciplines || []
-        }, resolve);
+          ah_disciplines: backup.ah_disciplines || [],
+          ah_hierarchy: null, // null to clear the key
+          ah_migration_meta: { version: 1, rolledBackAt: Date.now() }
+        };
+        if (backup.ah_xpData) {
+          restoreData.ah_xpData = backup.ah_xpData;
+        }
+        chrome.storage.local.set(restoreData, () => {
+          if (chrome.runtime.lastError) {
+            console.error('[MigrationService] rollback set failed:', chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message));
+            return;
+          }
+          // Remove the null-ed key and backup
+          chrome.storage.local.remove(['ah_hierarchy', BACKUP_KEY], () => {
+            resolve();
+          });
+        });
       });
-
-      // Remove hierarchy and reset version
-      await new Promise(resolve => {
-        chrome.storage.local.remove(['ah_hierarchy'], resolve);
-      });
-      await this._setMeta({ version: 1, rolledBackAt: Date.now() });
 
       console.log('[MigrationService] Rollback complete.');
       return true;
@@ -228,7 +244,7 @@ export const MigrationService = {
       if (!disciplineMap.has(discKey)) {
         const color = colorLookup[discKey] || PALETTE[colorIdx++ % PALETTE.length];
         disciplineMap.set(discKey, {
-          id: 'd_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          id: 'd_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12),
           name: discName,
           icon: '📚',
           color,
@@ -242,7 +258,7 @@ export const MigrationService = {
       const modKey = moduleName.toLowerCase();
       if (!disc.modules.has(modKey)) {
         disc.modules.set(modKey, {
-          id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          id: 'm_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12),
           name: moduleName,
           order: disc.modules.size,
           topics: new Map(),
@@ -255,7 +271,7 @@ export const MigrationService = {
       const topKey = topicName.toLowerCase();
       if (!mod.topics.has(topKey)) {
         mod.topics.set(topKey, {
-          id: 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          id: 't_' + crypto.randomUUID().replace(/-/g, '').slice(0, 12),
           name: topicName,
           order: mod.topics.size,
           cards: [],
@@ -297,7 +313,12 @@ export const MigrationService = {
 
   async _loadRaw() {
     return new Promise(resolve => {
-      chrome.storage.local.get(['binderStructure', 'ah_disciplines', 'ah_xpData'], d => resolve(d));
+      chrome.storage.local.get(['binderStructure', 'ah_disciplines', 'ah_xpData'], d => {
+        if (chrome.runtime.lastError) {
+          console.error('[MigrationService] _loadRaw failed:', chrome.runtime.lastError);
+        }
+        resolve(d || {});
+      });
     });
   },
 
@@ -308,14 +329,28 @@ export const MigrationService = {
       ah_xpData: raw.ah_xpData || {},
       backedUpAt: Date.now()
     };
-    return new Promise(resolve => {
-      chrome.storage.local.set({ [BACKUP_KEY]: backup }, resolve);
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set({ [BACKUP_KEY]: backup }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('[MigrationService] _createBackup failed:', chrome.runtime.lastError);
+          reject(new Error('Backup creation failed: ' + chrome.runtime.lastError.message));
+          return;
+        }
+        resolve();
+      });
     });
   },
 
   async _persistHierarchy(hierarchy) {
-    return new Promise(resolve => {
-      chrome.storage.local.set({ ah_hierarchy: hierarchy }, resolve);
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.set({ ah_hierarchy: hierarchy }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('[MigrationService] _persistHierarchy failed:', chrome.runtime.lastError);
+          reject(new Error('_persistHierarchy failed: ' + chrome.runtime.lastError.message));
+          return;
+        }
+        resolve();
+      });
     });
   },
 
@@ -333,21 +368,34 @@ export const MigrationService = {
       }
     }
     return new Promise(resolve => {
-      chrome.storage.local.set({ ah_disciplines: updated }, resolve);
+      chrome.storage.local.set({ ah_disciplines: updated }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('[MigrationService] _syncDisciplines failed:', chrome.runtime.lastError);
+        }
+        resolve();
+      });
     });
   },
 
   async _getMeta() {
     return new Promise(resolve => {
       chrome.storage.local.get([MIGRATION_KEY], d => {
-        resolve(d[MIGRATION_KEY] || { version: 1 });
+        if (chrome.runtime.lastError) {
+          console.error('[MigrationService] _getMeta failed:', chrome.runtime.lastError);
+        }
+        resolve(d?.[MIGRATION_KEY] || { version: 1 });
       });
     });
   },
 
   async _setMeta(meta) {
     return new Promise(resolve => {
-      chrome.storage.local.set({ [MIGRATION_KEY]: meta }, resolve);
+      chrome.storage.local.set({ [MIGRATION_KEY]: meta }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('[MigrationService] _setMeta failed:', chrome.runtime.lastError);
+        }
+        resolve();
+      });
     });
   }
 };

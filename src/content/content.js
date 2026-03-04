@@ -10,8 +10,9 @@
             if (request && request.action === 'highlight') {
                 highlightAnswers();
                 sendResponse({ success: true });
+                return true;
             }
-            return true;
+            return false;
         });
     }
 
@@ -21,21 +22,18 @@
             el.classList.remove('qa-extractor-highlight');
         });
 
-        // Answer selectors
-        const answerSelectors = [
-            '[class*="answer"]',
-            '[class*="resposta"]',
-            '[class*="solution"]',
-            '[class*="reply"]',
+        // Combined selector — word-boundary class matches + semantic itemprop
+        const combinedSelector = [
+            '[class~="answer"]', '[class~="resposta"]', '[class~="solution"]', '[class~="reply"]',
+            '[class*="answer-body"]', '[class*="answer-content"]',
+            '[class*="resposta-body"]', '[class*="resposta-content"]',
             '[itemprop="acceptedAnswer"]'
-        ];
+        ].join(', ');
 
-        answerSelectors.forEach((selector) => {
-            document.querySelectorAll(selector).forEach((el) => {
-                if (el && el.innerText && el.innerText.length > 20) {
-                    el.classList.add('qa-extractor-highlight');
-                }
-            });
+        document.querySelectorAll(combinedSelector).forEach((el) => {
+            if (el && el.textContent && el.textContent.length > 20) {
+                el.classList.add('qa-extractor-highlight');
+            }
         });
     }
 })();

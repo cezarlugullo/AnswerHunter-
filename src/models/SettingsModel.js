@@ -100,35 +100,108 @@ export const SettingsModel = {
         return this.getProviderReadiness(settings);
     },
 
+    // API key fields that must stay in local-only storage (never synced)
+    _sensitiveKeys: [
+        'groqApiKey', 'serperApiKey', 'geminiApiKey', 'openrouterApiKey',
+        'groqApiUrl', 'serperApiUrl', 'geminiApiUrl'
+    ],
+
     /**
-     * Returns settings merged with defaults.
+     * One-time migration: move API keys from chrome.storage.sync to chrome.storage.local.
+     * Safe to call repeatedly (no-op if already migrated).
      */
-    async getSettings() {
-        return new Promise((resolve) => {
-            chrome.storage.sync.get(['settings'], (result) => {
-                const stored = result.settings || {};
-                const merged = { ...this.defaults, ...stored };
+    async _migrateKeysToLocal() {
+        try {
+            const syncData = await new Promise(r => chrome.storage.sync.get(['settings'], r));
+            const syncSettings = syncData?.settings;
+            if (!syncSettings) return;
 
-                // Force hot-migrate any old 'gemini-2.5-pro' to 'gemini-2.5-flash'
-                if (merged.geminiModelSmart === 'gemini-2.5-pro') {
-                    merged.geminiModelSmart = 'gemini-2.5-flash';
+            const keysToMove = {};
+            let hasKeys = false;
+            for (const k of this._sensitiveKeys) {
+                if (syncSettings[k] && typeof syncSettings[k] === 'string' && syncSettings[k].trim()) {
+                    keysToMove[k] = syncSettings[k];
+                    hasKeys = true;
                 }
+            }
+            if (!hasKeys) return;
 
-                // Hot-migrate old groqModelFast default — gpt-oss-20b had same 1K RPD as 70b (no benefit)
-                if (merged.groqModelFast === 'openai/gpt-oss-20b') {
-                    merged.groqModelFast = 'llama-3.1-8b-instant';
-                }
+            // Write sensitive keys to local storage
+            const localData = await new Promise(r => chrome.storage.local.get(['ah_settings_local'], r));
+            const localSettings = localData?.ah_settings_local || {};
+            const merged = { ...localSettings, ...keysToMove };
+            await new Promise(r => chrome.storage.local.set({ ah_settings_local: merged }, r));
 
-                merged.language = this.normalizeLanguage(merged.language || this.getBrowserDefaultLanguage());
-                merged.requiredProviders = this.normalizeRequiredProviders(merged.requiredProviders);
-                merged.setupCompleted = this.computeSetupCompleted(merged);
-                resolve(merged);
-            });
-        });
+            // Remove sensitive keys from sync
+            const cleanSync = { ...syncSettings };
+            for (const k of this._sensitiveKeys) {
+                delete cleanSync[k];
+            }
+            await new Promise(r => chrome.storage.sync.set({ settings: cleanSync }, r));
+            console.log('[SettingsModel] Migrated API keys from sync to local storage.');
+        } catch (e) {
+            console.warn('[SettingsModel] Key migration error:', e?.message);
+        }
     },
 
     /**
-     * Persists settings into chrome.storage.sync.
+     * Returns settings merged with defaults.
+     * Sensitive keys (API keys/URLs) are read from chrome.storage.local.
+     * Non-sensitive settings are read from chrome.storage.sync.
+     */
+    async getSettings() {
+        // Ensure one-time migration has run (set flag first to prevent races)
+        if (!this._migrationDone) {
+            this._migrationDone = true;
+            try {
+                await this._migrateKeysToLocal();
+            } catch (e) {
+                this._migrationDone = false;
+                console.error('SettingsModel: migration failed, will retry:', e);
+            }
+        }
+
+        const [syncResult, localResult] = await Promise.all([
+            new Promise((resolve, reject) => chrome.storage.sync.get(['settings'], res => {
+                if (chrome.runtime.lastError) {
+                    console.error('SettingsModel: sync get failed:', chrome.runtime.lastError);
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                resolve(res);
+            })),
+            new Promise((resolve, reject) => chrome.storage.local.get(['ah_settings_local'], res => {
+                if (chrome.runtime.lastError) {
+                    console.error('SettingsModel: local get failed:', chrome.runtime.lastError);
+                    reject(new Error(chrome.runtime.lastError.message));
+                    return;
+                }
+                resolve(res);
+            }))
+        ]);
+
+        const syncSettings = syncResult?.settings || {};
+        const localSettings = localResult?.ah_settings_local || {};
+        const merged = { ...this.defaults, ...syncSettings, ...localSettings };
+
+        // Force hot-migrate any old 'gemini-2.5-pro' to 'gemini-2.5-flash'
+        if (merged.geminiModelSmart === 'gemini-2.5-pro') {
+            merged.geminiModelSmart = 'gemini-2.5-flash';
+        }
+
+        // Hot-migrate old groqModelFast default
+        if (merged.groqModelFast === 'openai/gpt-oss-20b') {
+            merged.groqModelFast = 'llama-3.1-8b-instant';
+        }
+
+        merged.language = this.normalizeLanguage(merged.language || this.getBrowserDefaultLanguage());
+        merged.requiredProviders = this.normalizeRequiredProviders(merged.requiredProviders);
+        merged.setupCompleted = this.computeSetupCompleted(merged);
+        return merged;
+    },
+
+    /**
+     * Persists settings. Sensitive keys go to local, rest to sync.
      */
     async saveSettings(newSettings) {
         const current = await this.getSettings();
@@ -136,9 +209,35 @@ export const SettingsModel = {
         updated.language = this.normalizeLanguage(updated.language || this.getBrowserDefaultLanguage());
         updated.requiredProviders = this.normalizeRequiredProviders(updated.requiredProviders);
         updated.setupCompleted = this.computeSetupCompleted(updated);
-        return new Promise((resolve) => {
-            chrome.storage.sync.set({ settings: updated }, () => resolve());
-        });
+
+        // Split: sensitive keys → local, everything else → sync
+        const localPart = {};
+        const syncPart = { ...updated };
+        for (const k of this._sensitiveKeys) {
+            if (updated[k] !== undefined) {
+                localPart[k] = updated[k];
+            }
+            delete syncPart[k];
+        }
+
+        const results = await Promise.all([
+            new Promise((resolve, reject) => chrome.storage.sync.set({ settings: syncPart }, () => {
+                if (chrome.runtime.lastError) {
+                    console.error('SettingsModel: sync save failed:', chrome.runtime.lastError);
+                    reject(new Error('sync save failed: ' + chrome.runtime.lastError.message));
+                    return;
+                }
+                resolve();
+            })),
+            new Promise((resolve, reject) => chrome.storage.local.set({ ah_settings_local: localPart }, () => {
+                if (chrome.runtime.lastError) {
+                    console.error('SettingsModel: local save failed:', chrome.runtime.lastError);
+                    reject(new Error('local save failed: ' + chrome.runtime.lastError.message));
+                    return;
+                }
+                resolve();
+            }))
+        ]);
     },
 
     /**
