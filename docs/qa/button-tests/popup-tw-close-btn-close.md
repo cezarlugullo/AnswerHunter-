@@ -18,11 +18,11 @@ Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\con
 
 Trecho mínimo do binding:
 ```js
-4996:       overlay._wizardBound = true;
-4997: 
-4998:       document.getElementById('tw-close-btn')?.addEventListener('click', () => this._closeTurboWizard());
-4999:       document.getElementById('tw-skip-btn')?.addEventListener('click', () => this._closeTurboWizard());
-5000:       document.getElementById('tw-start-btn')?.addEventListener('click', () => this._turboWizardBeginDownload());
+4996:     // Show banner
+4997:     banner.classList.remove('hidden');
+4998:     dot.className = 'native-bridge-dot';
+4999:     label.textContent = 'NativeFetch Bridge: checking...';
+5000: 
 ```
 
 ## 2.2 Verificação dinâmica (rodando)

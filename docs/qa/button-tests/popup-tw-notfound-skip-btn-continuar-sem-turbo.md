@@ -18,11 +18,11 @@ Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\con
 
 Trecho mínimo do binding:
 ```js
-5005:         this._checkNativeBridgeStatus();
-5006:       });
-5007:       document.getElementById('tw-notfound-skip-btn')?.addEventListener('click', () => this._closeTurboWizard());
-5008:       document.getElementById('tw-retry-btn')?.addEventListener('click', () => this._turboWizardGoTo('tw-step-2'));
-5009: 
+5005:       ]);
+5006: 
+5007:       if (available) {
+5008:         banner.classList.remove('warn', 'err');
+5009:         dot.className = 'native-bridge-dot ok';
 ```
 
 ## 2.2 Verificação dinâmica (rodando)

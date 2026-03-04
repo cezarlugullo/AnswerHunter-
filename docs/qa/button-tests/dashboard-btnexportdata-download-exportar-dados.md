@@ -3,7 +3,7 @@
 - Contexto: `dashboard`
 - Elemento: `#btnExportData` em `src/dashboard/dashboard-v2.html:437`
 - Evento: `click`
-- Handler: `async (` (src/dashboard/dashboard-v2.js:600)
+- Handler: `async (` (src/dashboard/dashboard-v2.js:604)
 - Use-case/service: ExportService
 - Side-effects: [Unverified] não foi possível validar
 
@@ -14,15 +14,15 @@
 - Traço UI -> handler -> serviço -> side-effect: mapeado parcialmente com evidência de chamada e heurística de serviço.
 
 Arquivo DOM: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\dashboard\dashboard-v2.html:437`
-Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\dashboard\dashboard-v2.js:600`
+Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\dashboard\dashboard-v2.js:604`
 
 Trecho mínimo do binding:
 ```js
-598: 
-599:   // Export — full JSON backup using ExportService
-600:   document.getElementById('btnExportData')?.addEventListener('click', async () => {
-601:     if (DEMO) { showToast('Exportação não disponível em modo demo', { type: 'warning' }); return; }
-602:     try {
+602: 
+603:   // Export — full JSON backup using ExportService
+604:   document.getElementById('btnExportData')?.addEventListener('click', async () => {
+605:     if (DEMO) { showToast('Exportação não disponível em modo demo', { type: 'warning' }); return; }
+606:     try {
 ```
 
 ## 2.2 Verificação dinâmica (rodando)
@@ -31,11 +31,11 @@ Trecho mínimo do binding:
 ## 2.3 Cenários obrigatórios
 | Cenário | Resultado | Evidência |
 | --- | --- | --- |
-| happy | [Unverified] não foi possível validar | sem evidência dinâmica |
-| empty | [Unverified] não foi possível validar | sem evidência dinâmica |
-| invalid | [Unverified] não foi possível validar | sem evidência dinâmica |
-| repeat | [Unverified] não foi possível validar | sem evidência dinâmica |
-| offline | [Unverified] não foi possível validar | sem evidência dinâmica |
+| happy | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
+| empty | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
+| invalid | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
+| repeat | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=2 |
+| offline | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
 | missing_permissions | [Unverified] não foi possível validar | sem evidência dinâmica |
 
 ## 2.4 Resultado e correções

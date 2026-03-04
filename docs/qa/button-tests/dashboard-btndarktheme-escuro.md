@@ -31,11 +31,11 @@ Trecho mínimo do binding:
 ## 2.3 Cenários obrigatórios
 | Cenário | Resultado | Evidência |
 | --- | --- | --- |
-| happy | [Unverified] não foi possível validar | sem evidência dinâmica |
-| empty | [Unverified] não foi possível validar | sem evidência dinâmica |
-| invalid | [Unverified] não foi possível validar | sem evidência dinâmica |
-| repeat | [Unverified] não foi possível validar | sem evidência dinâmica |
-| offline | [Unverified] não foi possível validar | sem evidência dinâmica |
+| happy | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
+| empty | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
+| invalid | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
+| repeat | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=2 |
+| offline | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
 | missing_permissions | [Unverified] não foi possível validar | sem evidência dinâmica |
 
 ## 2.4 Resultado e correções

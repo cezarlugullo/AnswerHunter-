@@ -31,14 +31,14 @@ Trecho mínimo do binding:
 ## 2.3 Cenários obrigatórios
 | Cenário | Resultado | Evidência |
 | --- | --- | --- |
-| happy | [Unverified] não foi possível validar | sem evidência dinâmica |
-| empty | [Unverified] não foi possível validar | sem evidência dinâmica |
-| invalid | [Unverified] não foi possível validar | sem evidência dinâmica |
-| repeat | [Unverified] não foi possível validar | sem evidência dinâmica |
-| offline | [Unverified] não foi possível validar | sem evidência dinâmica |
-| missing_permissions | [Unverified] não foi possível validar | sem evidência dinâmica |
+| happy | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; after={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; pageErrors=0 |
+| empty | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; after={"ls":0,"ss":0,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; pageErrors=0 |
+| invalid | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; pageErrors=0 |
+| repeat | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; pageErrors=0 |
+| offline | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; pageErrors=0 |
+| missing_permissions | ⚠️ clique executado sem mudança observável | clicked=true; hidden=false; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/study/study.html"}; pageErrors=0 |
 
 ## 2.4 Resultado e correções
-- Status: [Unverified] não foi possível validar
+- Status: ⚠️ parcial
 - Causa raiz: não identificado crash específico para este botão nas execuções registradas.
 - Correção mínima proposta: endurecer validações de estado e mensagens de erro para cenários inválidos/permissões/offline.

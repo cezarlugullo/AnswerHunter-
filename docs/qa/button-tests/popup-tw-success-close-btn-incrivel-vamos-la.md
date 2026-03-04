@@ -4,7 +4,7 @@
 - Elemento: `#tw-success-close-btn` em `src/popup/popup.html:1418`
 - Evento: `click`
 - Handler: `(` (src/controllers/PopupController.js:5003)
-- Use-case/service: [Unverified] não foi possível validar
+- Use-case/service: NativeFetchBridgeService
 - Side-effects: [Unverified] não foi possível validar
 
 ## 2.1 Verificação estática (código)
@@ -18,11 +18,11 @@ Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\con
 
 Trecho mínimo do binding:
 ```js
-5001:       document.getElementById('tw-back-btn')?.addEventListener('click', () => this._turboWizardGoTo('tw-step-1'));
-5002:       document.getElementById('tw-done-install-btn')?.addEventListener('click', () => this._turboWizardVerify());
-5003:       document.getElementById('tw-success-close-btn')?.addEventListener('click', () => {
-5004:         this._closeTurboWizard();
-5005:         this._checkNativeBridgeStatus();
+5001:     try {
+5002:       const available = await Promise.race([
+5003:         NativeFetchBridgeService.isAvailable(),
+5004:         new Promise(r => setTimeout(() => r(false), 3000)),
+5005:       ]);
 ```
 
 ## 2.2 Verificação dinâmica (rodando)

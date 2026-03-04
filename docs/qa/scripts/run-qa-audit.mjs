@@ -507,6 +507,12 @@ function main() {
   ensureDir(BUTTON_TESTS_DIR);
   ensureDir(SCRIPTS_DIR);
 
+  // Defensive cleanup to avoid stale pipe/session collisions between runs.
+  if (!SKIP_DYNAMIC) {
+    try { runPwCli(['close-all']); } catch {}
+    try { runPwCli(['kill-all']); } catch {}
+  }
+
   let htmlFiles = listFilesRecursive(SRC_DIR, ['.html']);
   if (PAGE_FILTER) {
     htmlFiles = htmlFiles.filter((p) => relFromProject(p).toLowerCase().includes(PAGE_FILTER));
