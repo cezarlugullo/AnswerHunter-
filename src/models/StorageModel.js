@@ -627,6 +627,8 @@ export const StorageModel = {
         const disc = { id: 'd' + crypto.randomUUID().replace(/-/g, '').slice(0, 12), name: nameTrim, color, createdAt: Date.now() };
         list.push(disc);
         await this.saveDisciplines(list);
+        // Sync to ah_hierarchy so Study tab sees it
+        await this._syncAddToHierarchy(disc);
         return disc;
     },
 
@@ -637,6 +639,8 @@ export const StorageModel = {
     async deleteDiscipline(id) {
         const list = await this.getDisciplines();
         await this.saveDisciplines(list.filter(d => d.id !== id));
+        // Sync removal to ah_hierarchy so Study tab sees it
+        await this._syncDeleteFromHierarchy(id);
     },
 
     /**
@@ -650,6 +654,8 @@ export const StorageModel = {
         if (disc) {
             disc.name = newName.trim();
             await this.saveDisciplines(list);
+            // Sync rename to ah_hierarchy so Study tab sees it
+            await this._syncRenameInHierarchy(id, newName.trim());
         }
     },
 
@@ -680,6 +686,52 @@ export const StorageModel = {
             const s = q?.content?.subject || q?.content?.topic || q?.content?.discipline || '';
             return s.toLowerCase() === disciplineName.toLowerCase();
         });
+    },
+
+    // ─── Hierarchy sync helpers (ah_disciplines ↔ ah_hierarchy) ──────
+
+    async _getHierarchy() {
+        return new Promise(resolve => {
+            chrome.storage.local.get(['ah_hierarchy'], d => resolve(d?.ah_hierarchy || []));
+        });
+    },
+
+    async _saveHierarchy(h) {
+        return new Promise(resolve => {
+            chrome.storage.local.set({ ah_hierarchy: h }, resolve);
+        });
+    },
+
+    async _syncAddToHierarchy(disc) {
+        const h = await this._getHierarchy();
+        if (h.some(d => d.id === disc.id || d.name.toLowerCase() === disc.name.toLowerCase())) return;
+        h.push({
+            id: disc.id,
+            name: disc.name,
+            icon: '',
+            color: disc.color,
+            modules: [],
+            createdAt: disc.createdAt,
+            updatedAt: Date.now()
+        });
+        await this._saveHierarchy(h);
+    },
+
+    async _syncDeleteFromHierarchy(id) {
+        let h = await this._getHierarchy();
+        const before = h.length;
+        h = h.filter(d => d.id !== id);
+        if (h.length !== before) await this._saveHierarchy(h);
+    },
+
+    async _syncRenameInHierarchy(id, newName) {
+        const h = await this._getHierarchy();
+        const disc = h.find(d => d.id === id);
+        if (disc) {
+            disc.name = newName;
+            disc.updatedAt = Date.now();
+            await this._saveHierarchy(h);
+        }
     },
 
 };

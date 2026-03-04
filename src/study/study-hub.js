@@ -5168,6 +5168,16 @@ async function init() {
   // Render home
   await renderHome();
 
+  // Listen for external storage changes (e.g. popup creating/deleting disciplines)
+  chrome.storage.onChanged.addListener(async (changes, area) => {
+    if (area === 'local' && changes.ah_hierarchy) {
+      console.log('[StudyHub] ah_hierarchy changed externally, reloading...');
+      ContentHierarchyService.invalidate();
+      state.hierarchy = await ContentHierarchyService.load(true);
+      await renderHome();
+    }
+  });
+
   // Handle URL parameters (e.g., ?discipline=X&mode=simulado)
   handleUrlParams();
 
