@@ -449,11 +449,99 @@ export const SimpleSearchService = {
         // QuestionParser.extractOptionsFromQuestion() suporta variações de formato:
         //   "A) texto", "a) texto", "A. texto", "(A) texto", etc.
         const options = QuestionParser.extractOptionsFromQuestion(questionForInference);
-        const originalOptionsMap = {};
+        let originalOptionsMap = {};
         for (const opt of options) {
             const m = opt.match(/^([A-E])\)\s*(.+)$/is);
             if (m) originalOptionsMap[m[1].toUpperCase()] = m[2].trim();
         }
+
+        const sanitizeOptionsMap = (stemText, rawMap) => {
+            const orderedLetters = ['A', 'B', 'C', 'D', 'E'];
+            const entries = orderedLetters
+                .filter((letter) => rawMap && rawMap[letter])
+                .map((letter) => ({
+                    letter,
+                    body: QuestionParser.stripOptionTailNoise(rawMap[letter] || '')
+                }))
+                .filter((entry) => !!entry.body);
+
+            const contiguous = [];
+            for (let i = 0; i < entries.length; i++) {
+                const expected = String.fromCharCode(65 + i);
+                if (entries[i].letter !== expected) break;
+                contiguous.push(entries[i]);
+            }
+            let working = contiguous.length >= 2 ? contiguous : entries;
+
+            const lengths = working.map((entry) => entry.body.length).sort((a, b) => a - b);
+            const medianLen = lengths.length > 0 ? lengths[Math.floor(lengths.length / 2)] : 0;
+            const leakMarkers = /\b(?:considere|assinale|marque|associe|associa[cç][aã]o|sobre a|sobre o|s[aã]o corretas|est[aã]o corretas|analise|verifique|qual(?:is)?\b|quest[aã]o|pergunta)\b/i;
+            const questionishBodyRe = /\b(?:marque|assinale|considere|associe|qual(?:is)?|pergunta|quest[aã]o)\b/i;
+            const hardLeakPattern = /\b(?:\d{1,2}\s+(?:marcar|revis[aã]o|quest[aã]o|um|uma|voce|você)|marcar\s+para\s+revis[aã]o)\b/i;
+
+            working = working.filter((entry) => {
+                const body = String(entry.body || '').trim();
+                if (!body || !QuestionParser.isUsableOptionBody(body)) return false;
+                if (body.length > 320) return false;
+                if (hardLeakPattern.test(body)) return false;
+                if (body.length >= 45 && questionishBodyRe.test(body)) return false;
+                if (medianLen > 0 && body.length > Math.max(90, medianLen * 3.5) && leakMarkers.test(body)) return false;
+                return true;
+            });
+
+            const deduped = [];
+            const seen = new Set();
+            for (const entry of working) {
+                const norm = QuestionParser.looksLikeCodeOption(entry.body)
+                    ? QuestionParser.normalizeCodeAwareOption(entry.body)
+                    : QuestionParser.normalizeOption(entry.body);
+                if (!norm || seen.has(norm)) continue;
+                seen.add(norm);
+                deduped.push(entry);
+            }
+
+            const sanitized = {};
+            for (const entry of deduped) sanitized[entry.letter] = entry.body;
+
+            // Reliability: require lexical contact between stem and at least one option when options are verbose.
+            const tokenize = (text) => String(text || '')
+                .toLowerCase()
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, ' ')
+                .trim()
+                .split(/\s+/)
+                .filter((t) => t.length >= 4);
+            const stemTokens = tokenize(stemText);
+            const stemSet = new Set(stemTokens);
+            const optionEntries = Object.entries(sanitized);
+            const verboseOptions = optionEntries.filter(([, body]) => String(body || '').length >= 22);
+            const overlapHits = verboseOptions.reduce((acc, [, body]) => {
+                const hit = tokenize(body).some((tk) => stemSet.has(tk));
+                return acc + (hit ? 1 : 0);
+            }, 0);
+
+            const contiguousLetters = (() => {
+                const letters = Object.keys(sanitized).sort();
+                if (letters.length === 0) return false;
+                for (let i = 0; i < letters.length; i++) {
+                    if (letters[i] !== String.fromCharCode(65 + i)) return false;
+                }
+                return true;
+            })();
+
+            const reliable = optionEntries.length >= 3
+                && contiguousLetters
+                && (verboseOptions.length === 0 || stemTokens.length < 6 || overlapHits >= 1);
+
+            return {
+                map: sanitized,
+                reliable,
+                contiguous: contiguousLetters
+            };
+        };
+
+        const optionIntegrity = sanitizeOptionsMap(questionText, originalOptionsMap);
+        originalOptionsMap = optionIntegrity.map;
 
         const hasOptions = Object.keys(originalOptionsMap).length >= 2;
         if (!hasOptions) {
@@ -464,6 +552,9 @@ export const SimpleSearchService = {
             return [];
         }
 
+        if (!optionIntegrity.reliable) {
+            console.log('[SimpleSearch] [WARN] Mapa de opções parcial/inconsistente após sanitização; busca seguirá com opções limpas.');
+        }
         console.log('[SimpleSearch] Mapa de opções:', originalOptionsMap);
 
         // ── Validação de coerência enunciado↔alternativas ─────────────────────────

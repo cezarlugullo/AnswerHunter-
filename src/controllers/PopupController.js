@@ -4321,48 +4321,41 @@ export const PopupController = {
     }
   },
   _extractOptionsMap(text) {
-    const map = {};
-    const cleanOptionBody = (raw) => {
-      let body = normalizeSpaces(raw);
-      const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o\s+gabarito|explica[cç][aã]o)\b/i;
-      const idx = body.search(noiseMarker);
-      if (idx > 20) body = body.slice(0, idx).trim();
-      return body.replace(/[;:,\-.\s]+$/g, '').trim();
-    };
-    const isUsableBody = (body) => {
-      if (!body || body.length < 1) return false;
-      if (/^[A-E]\s*[\)\.\-:]?\s*$/i.test(body)) return false;
-      if (/^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(body)) return false;
-      return true;
-    };
-    const lines = String(text || '').split('\n');
-    const re = /^\s*["'“”‘’]?\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
-    const matchedLines = new Set();
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const m = line.match(re);
-      if (m) {
-        // Guard: dot-space format "X. text" may be sentence continuation
-        const isDotSpaceFmt = /^\s*["'“”‘’]?\s*[A-E]\s*\.\s/i.test(line);
-        if (isDotSpaceFmt) {
-          let prevNonOptLine = null;
-          for (let j = i - 1; j >= 0; j--) {
-            if (!matchedLines.has(j) && lines[j].trim()) {
-              prevNonOptLine = lines[j].trim();
-              break;
-            }
-          }
-          if (prevNonOptLine && /[a-zA-Z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF]\s*$/.test(prevNonOptLine)) {
-            continue;
-          }
-        }
-        const cleaned = cleanOptionBody(m[2]);
-        if (!isUsableBody(cleaned)) continue;
-        map[m[1].toUpperCase()] = cleaned;
-        matchedLines.add(i);
-      }
+    const baseMap = QuestionParser.buildOptionsMap(String(text || ''));
+    const entries = ['A', 'B', 'C', 'D', 'E']
+      .filter((letter) => !!baseMap[letter])
+      .map((letter) => ({
+        letter,
+        body: QuestionParser.stripOptionTailNoise(baseMap[letter] || '')
+      }))
+      .filter((entry) => !!entry.body);
+    if (entries.length === 0) return {};
+
+    const contiguous = [];
+    for (let i = 0; i < entries.length; i++) {
+      const expected = String.fromCharCode(65 + i);
+      if (entries[i].letter !== expected) break;
+      contiguous.push(entries[i]);
     }
-    return map;
+    const working = contiguous.length >= 2 ? contiguous : entries;
+
+    const lengths = working.map((entry) => entry.body.length).sort((a, b) => a - b);
+    const medianLen = lengths.length > 0 ? lengths[Math.floor(lengths.length / 2)] : 0;
+    const leakMarkers = /\b(?:considere|assinale|marque|associe|associa[cç][aã]o|sobre a|sobre o|s[aã]o corretas|est[aã]o corretas|analise|verifique|qual(?:is)?\b|quest[aã]o|pergunta)\b/i;
+    const questionishBodyRe = /\b(?:marque|assinale|considere|associe|qual(?:is)?|pergunta|quest[aã]o)\b/i;
+    const hardLeakPattern = /\b(?:\d{1,2}\s+(?:marcar|revis[aã]o|quest[aã]o|um|uma|voce|você)|marcar\s+para\s+revis[aã]o)\b/i;
+
+    const out = {};
+    for (const entry of working) {
+      const body = String(entry.body || '').trim();
+      if (!body || !QuestionParser.isUsableOptionBody(body)) continue;
+      if (body.length > 320) continue;
+      if (hardLeakPattern.test(body)) continue;
+      if (body.length >= 45 && questionishBodyRe.test(body)) continue;
+      if (medianLen > 0 && body.length > Math.max(90, medianLen * 3.5) && leakMarkers.test(body)) continue;
+      out[entry.letter] = body;
+    }
+    return out;
   },
 
   _canonicalizeDisplayQuestion(rawText, fallbackStemText = '') {

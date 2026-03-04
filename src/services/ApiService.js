@@ -3229,11 +3229,13 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             const lengths = workingEntries.map((entry) => entry.body.length).sort((a, b) => a - b);
             const medianLen = lengths.length > 0 ? lengths[Math.floor(lengths.length / 2)] : 0;
             const leakMarkers = /\b(?:considere|assinale|marque|associe|associa[cç][aã]o|sobre a|sobre o|s[aã]o corretas|est[aã]o corretas|analise|verifique|qual(?:is)?\b|quest[aã]o|pergunta)\b/i;
+            const questionishBodyRe = /\b(?:marque|assinale|considere|associe|qual(?:is)?|pergunta|quest[aã]o)\b/i;
 
             const filteredEntries = workingEntries.filter((entry) => {
                 const body = String(entry.body || '').trim();
                 if (!body) return false;
                 if (body.length > 320) return false;
+                if (body.length >= 45 && questionishBodyRe.test(body)) return false;
                 if (medianLen > 0 && body.length > Math.max(90, medianLen * 3.5) && leakMarkers.test(body)) {
                     return false;
                 }
