@@ -43,17 +43,16 @@ export class BackgroundTabExtractorService {
    */
   static async extractFromUrl(url, options = {}) {
     const site = BackgroundTabExtractorService._detectSite(url);
-    if (!site) return null;
-    const extractor = BackgroundTabExtractorService._getExtractor(site);
-    if (!extractor) return null;
+    const extractor = site ? BackgroundTabExtractorService._getExtractor(site) : null;
 
     // Route CF-protected sites through full bypass pipeline
-    if (CF_PROTECTED_SITES.has(site)) {
+    if (site && CF_PROTECTED_SITES.has(site) && extractor) {
       return BackgroundTabExtractorService._extractWithCFBypass(url, site, extractor, options);
     }
 
-    // Standard extraction for non-CF sites
-    return BackgroundTabExtractorService._extractStandard(url, site, extractor, options);
+    // Standard extraction — works for known sites (with specific extractor) AND
+    // unknown sites (generic textContent fallback kicks in automatically)
+    return BackgroundTabExtractorService._extractStandard(url, site || 'generic', extractor, options);
   }
 
   /**
@@ -145,13 +144,18 @@ export class BackgroundTabExtractorService {
       }
 
       await new Promise(r => setTimeout(r, waitMs));
-      const results = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: extractor,
-        world: 'MAIN'
-      });
-      const extracted = results?.[0]?.result || '';
-      let text = typeof extracted === 'string' ? extracted.trim() : '';
+
+      let text = '';
+      // Run site-specific extractor if available; generic sites skip straight to textContent
+      if (extractor) {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
+          func: extractor,
+          world: 'MAIN'
+        });
+        const extracted = results?.[0]?.result || '';
+        text = typeof extracted === 'string' ? extracted.trim() : '';
+      }
 
       // Universal safety-net: if site-specific extractor returned nothing, grab raw body
       // textContent (not innerText) so we always get something even on bot-detection pages.

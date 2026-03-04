@@ -344,7 +344,7 @@ async function _processSingleSource(result, idx, total, questionForInference, or
     // ── C) Cache hit: usar o método que já funcionou antes ──────────────────
     if (cachedMethod) {
         console.log(`[SimpleSearch] [CACHE] ${hostHint}: usando método cacheado "${cachedMethod}"`);
-        if (cachedMethod === 'bgtab' && allowBgTab && isSpa) {
+        if (cachedMethod === 'bgtab' && allowBgTab) {
             try {
                 pageText = await BackgroundTabExtractorService.extractFromUrl(link, { timeoutMs: 15000 });
                 if (pageText) { usedMethod = 'bgtab'; console.log(`[SimpleSearch] [OK] BackgroundTab (cached): ${pageText.length} chars`); }
@@ -395,7 +395,8 @@ async function _processSingleSource(result, idx, total, questionForInference, or
         }
 
         // BackgroundTab fallback final (quando server fetch falhou, BgTab está disponível, e não tentamos antes)
-        if (!pageText && !cancel.cancelled && allowBgTab && isSpa && !useRenderFirst) {
+        // Tenta para QUALQUER domínio — extração genérica (textContent) funciona em qualquer site.
+        if (!pageText && !cancel.cancelled && allowBgTab && !useRenderFirst) {
             console.log(`[SimpleSearch] [RETRY] Métodos server falharam → tentando BackgroundTab...`);
             try {
                 pageText = await BackgroundTabExtractorService.extractFromUrl(link, { timeoutMs: 15000 });
