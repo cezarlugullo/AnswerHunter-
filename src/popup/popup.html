@@ -145,8 +145,10 @@
                     <li data-i18n="setup.groq.step2">On Groq, open "API Keys" and create a new key.</li>
                     <li data-i18n="setup.groq.step3">Copy the key, paste below, then click "Validate key".</li>
                   </ol>
-                  <p class="ob-hint" data-i18n="setup.groq.tagline">Groq is required. It helps the extension understand
-                    and analyze each question.</p>
+                  <div class="ob-required-callout">
+                    <span class="material-symbols-rounded">priority_high</span>
+                    <p data-i18n-html="setup.groq.tagline">Groq é <strong>obrigatório</strong> — é o cérebro de IA que analisa suas questões. Sem ele, a extensão não funciona.</p>
+                  </div>
                 </div>
               </div>
 
@@ -1410,7 +1412,8 @@
         </div>
         <h2 class="tw-heading" data-i18n="turbo.wizard.instructions.title">Quase lá!</h2>
         <p class="tw-sub" data-i18n-html="turbo.wizard.instructions.sub">2 arquivos foram baixados em
-          <strong>Downloads</strong>. Agora siga:</p>
+          <strong>Downloads</strong>. Agora siga:
+        </p>
 
         <div class="tw-step-scroll">
           <ol class="tw-steps-list">
@@ -1548,10 +1551,14 @@
   <div id="tt-spotlight" class="tt-spotlight hidden"></div>
   <div id="tt-popover" class="tt-popover hidden" role="dialog" aria-modal="true">
     <div class="tt-arrow" id="tt-arrow"></div>
-    <div class="tt-popover__step" id="tt-step-label"></div>
-    <div class="tt-popover__icon" id="tt-icon"></div>
-    <h3 class="tt-popover__title" id="tt-title"></h3>
-    <p class="tt-popover__desc" id="tt-desc"></p>
+    <div class="tt-popover-body">
+      <div class="tt-popover__icon" id="tt-icon"></div>
+      <div class="tt-popover__text">
+        <div class="tt-popover__step" id="tt-step-label"></div>
+        <div class="tt-popover__title" id="tt-title"></div>
+        <div class="tt-popover__desc" id="tt-desc"></div>
+      </div>
+    </div>
     <div class="tt-popover__footer">
       <div class="tt-dots" id="tt-dots"></div>
       <div class="tt-nav-btns">

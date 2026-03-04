@@ -6167,6 +6167,35 @@ input:focus {
   content: "\2139\00a0";
 }
 
+/* Required-key callout (Groq) */
+.ob-required-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #fff3e0 0%, #fff8e1 100%);
+  border: 1.5px solid #ffb74d;
+  border-radius: 10px;
+  margin: 4px 0 0;
+}
+.ob-required-callout .material-symbols-rounded {
+  font-size: 20px;
+  color: #e65100;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.ob-required-callout p {
+  font-size: 0.82rem;
+  color: #4e342e;
+  line-height: 1.45;
+  margin: 0;
+  font-weight: 500;
+}
+.ob-required-callout strong {
+  color: #e65100;
+  font-weight: 700;
+}
+
 /* Form Card */
 .ob-form-card {
   flex: 0 0 auto;
@@ -10279,35 +10308,40 @@ button:active:not(:disabled) {
    ═══════════════════════════════════════ */
 
 .toast {
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  background: rgba(26, 26, 26, 0.88) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow: var(--ah-shadow-4) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: rgba(30, 30, 30, 0.55) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.05) !important;
   animation: toastSlideIn 0.5s var(--ah-ease-spring) !important;
-  font-family: 'Lexend', sans-serif !important;
+  font-family: var(--ah-font-body) !important;
   font-weight: 600 !important;
-  border-radius: 16px !important;
+  border-radius: 14px !important;
+  color: #fff !important;
 }
 
 .toast.success {
-  background: rgba(216, 245, 224, 0.92) !important;
-  border: 1px solid rgba(34, 197, 94, 0.25) !important;
+  background: rgba(39, 174, 96, 0.15) !important;
+  border: 1px solid rgba(39, 174, 96, 0.3) !important;
+  color: #a7f3d0 !important;
 }
 
 .toast.error {
-  background: rgba(255, 228, 228, 0.92) !important;
-  border: 1px solid rgba(192, 57, 43, 0.2) !important;
+  background: rgba(231, 76, 60, 0.15) !important;
+  border: 1px solid rgba(231, 76, 60, 0.3) !important;
+  color: #fecaca !important;
 }
 
 .toast.warning {
-  background: rgba(255, 243, 205, 0.92) !important;
-  border: 1px solid rgba(180, 83, 9, 0.2) !important;
+  background: rgba(243, 156, 18, 0.15) !important;
+  border: 1px solid rgba(243, 156, 18, 0.3) !important;
+  color: #fde68a !important;
 }
 
 .toast.info {
-  background: rgba(221, 244, 255, 0.92) !important;
-  border: 1px solid rgba(77, 171, 247, 0.25) !important;
+  background: rgba(52, 152, 219, 0.15) !important;
+  border: 1px solid rgba(52, 152, 219, 0.3) !important;
+  color: #bae6fd !important;
 }
 
 @keyframes toastSlideIn {
@@ -11530,15 +11564,23 @@ footer .material-symbols-rounded {
   position: fixed;
   inset: 0;
   z-index: 9998;
-  background: rgba(0,0,0,0.38);
+  background: rgba(0, 0, 0, 0.38);
   backdrop-filter: blur(2px);
   animation: tt-fade-in 0.25s ease;
 }
-.tt-backdrop.hidden { display: none; }
+
+.tt-backdrop.hidden {
+  display: none;
+}
 
 @keyframes tt-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* Spotlight ring on the target element */
@@ -11553,172 +11595,227 @@ footer .material-symbols-rounded {
 }
 
 @keyframes tt-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px var(--ah-primary), 0 0 18px var(--ah-primary-glow-strong); }
-  50%      { box-shadow: 0 0 0 5px var(--ah-primary), 0 0 28px var(--ah-primary-glow-strong); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--ah-primary), 0 0 18px var(--ah-primary-glow-strong);
+  }
+
+  50% {
+    box-shadow: 0 0 0 5px var(--ah-primary), 0 0 28px var(--ah-primary-glow-strong);
+  }
 }
 
-/* Floating popover card */
+/* Floating popover card - Styled EXACTLY like Pomodoro Drag Tip */
 .tt-popover {
   position: absolute;
   z-index: 10000;
-  width: 280px;
+  max-width: 340px;
   background: var(--ah-surface);
-  border-radius: 14px;
-  padding: 16px 16px 12px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.1);
-  animation: tt-pop-in 0.28s cubic-bezier(0.34, 1.4, 0.64, 1);
+  border: 1.5px solid var(--ah-primary);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  animation: tt-pop-in 0.3s ease;
+  /* Using native ease closer to pomodoro */
+  font-family: var(--ah-font-body);
 }
-.tt-popover.hidden { display: none; }
 
-.tt-popover::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  border-radius: 14px 14px 0 0;
-  background: linear-gradient(90deg, var(--ah-primary), var(--ah-secondary), var(--ah-mint));
+.tt-popover-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tt-popover.hidden {
+  display: none;
 }
 
 @keyframes tt-pop-in {
-  from { opacity: 0; transform: scale(0.9) translateY(6px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 /* Arrow pointing to target */
 .tt-arrow {
   position: absolute;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   background: var(--ah-surface);
   transform: rotate(45deg);
-  box-shadow: -2px -2px 4px rgba(0,0,0,0.06);
 }
+
 .tt-popover[data-placement="bottom"] .tt-arrow {
-  top: -7px;
+  top: -8px;
   left: 50%;
   margin-left: -7px;
+  border-top: 1.5px solid var(--ah-primary);
+  border-left: 1.5px solid var(--ah-primary);
 }
+
 .tt-popover[data-placement="top"] .tt-arrow {
-  bottom: -7px;
+  bottom: -8px;
   left: 50%;
   margin-left: -7px;
-  box-shadow: 2px 2px 4px rgba(0,0,0,0.06);
+  border-bottom: 1.5px solid var(--ah-primary);
+  border-right: 1.5px solid var(--ah-primary);
 }
 
 /* Content */
+.tt-popover__text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
 .tt-popover__step {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--ah-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  display: none !important;
 }
 
 .tt-popover__icon {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 6px;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
-.tt-popover__icon .material-symbols-rounded { font-size: 20px; }
-.tt-popover__icon--blue   { background: var(--ah-secondary-light); color: var(--ah-secondary-dark); }
-.tt-popover__icon--orange { background: var(--ah-orange-light);    color: var(--ah-orange); }
-.tt-popover__icon--purple { background: var(--ah-lavender-light);  color: var(--ah-lavender); }
-.tt-popover__icon--green  { background: var(--ah-mint-light);      color: var(--ah-mint); }
-.tt-popover__icon--primary{ background: var(--ah-primary-light);   color: var(--ah-primary); }
+
+.tt-popover__icon .material-symbols-rounded {
+  font-size: 22px;
+  color: var(--ah-primary);
+  animation: pomodoroDragTipBounce 1.2s ease infinite;
+}
+
+@keyframes pomodoroDragTipBounce {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* Override background colors since it only uses the icon now */
+.tt-popover__icon--blue .material-symbols-rounded {
+  color: var(--ah-secondary-dark);
+}
+
+.tt-popover__icon--orange .material-symbols-rounded {
+  color: var(--ah-primary);
+}
+
+.tt-popover__icon--purple .material-symbols-rounded {
+  color: var(--ah-lavender);
+}
+
+.tt-popover__icon--green .material-symbols-rounded {
+  color: var(--ah-mint);
+}
+
+.tt-popover__icon--primary .material-symbols-rounded {
+  color: var(--ah-primary);
+}
 
 .tt-popover__title {
-  font-family: 'Baloo 2', 'Lexend', sans-serif;
-  font-size: 1rem;
-  font-weight: 800;
-  color: #1a1a1a;
-  line-height: 1.2;
-  margin: 0 0 4px;
+  display: none !important;
+  /* Pomodoro tip has no bold header, it's just raw text with strong tags */
 }
 
 .tt-popover__desc {
-  font-size: 0.8rem;
-  color: #555;
+  font-size: 0.8125rem;
+  /* ~13px matching text-sm */
   line-height: 1.5;
+  color: var(--ah-text-primary);
   margin: 0;
 }
-.tt-popover__desc strong { color: #1a1a1a; }
 
-/* Footer with dots + nav */
+.tt-popover__desc strong {
+  color: var(--ah-primary);
+  font-weight: 700;
+}
+
+/* Footer with nav */
 .tt-popover__footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--ah-border-color);
 }
 
-.tt-dots { display: flex; gap: 5px; }
-.tt-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--ah-border-strong);
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  transition: all 0.2s ease;
-}
-.tt-dot--active {
-  width: 16px;
-  border-radius: 3px;
-  background: var(--ah-primary);
+.tt-dots {
+  display: none;
 }
 
-.tt-nav-btns { display: flex; gap: 5px; }
+.tt-nav-btns {
+  display: flex;
+  gap: 4px;
+}
 
 .tt-btn {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 5px 10px;
-  border-radius: 8px;
-  font-size: 0.75rem;
-  font-weight: 700;
+  gap: 2px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
   cursor: pointer;
   border: none;
   transition: all 0.15s ease;
-  font-family: 'Lexend', sans-serif;
+  font-family: var(--ah-font-body);
 }
-.tt-btn.hidden { display: none; }
+
+.tt-btn.hidden {
+  display: none;
+}
 
 .tt-btn--skip {
   background: transparent;
-  color: #999;
-  padding: 5px 6px;
-  font-weight: 600;
+  color: #a0a0a0;
+  padding: 3px 4px;
 }
-.tt-btn--skip:hover { color: #666; }
 
-.tt-btn--ghost { background: var(--ah-surface-alt); color: #888; }
-.tt-btn--ghost:hover:not(:disabled) { background: #ede8e8; }
-.tt-btn--ghost:disabled { opacity: 0.35; cursor: default; }
-.tt-btn--ghost .material-symbols-rounded { font-size: 15px; }
+.tt-btn--skip:hover {
+  color: #777;
+}
+
+.tt-btn--ghost {
+  display: none;
+  /* Hide 'prev' arrow to be cleaner */
+}
 
 .tt-btn--primary {
-  background: linear-gradient(135deg, var(--ah-primary), #e05959);
-  color: #fff;
-  box-shadow: 0 2px 8px var(--ah-primary-glow);
+  background: color-mix(in srgb, var(--ah-primary) 12%, transparent);
+  color: var(--ah-primary);
 }
-.tt-btn--primary:hover { box-shadow: 0 3px 12px var(--ah-primary-glow-strong); transform: translateY(-1px); }
-.tt-btn--primary .material-symbols-rounded { font-size: 15px; }
+
+.tt-btn--primary:hover {
+  background: color-mix(in srgb, var(--ah-primary) 18%, transparent);
+}
+
+.tt-btn--primary .material-symbols-rounded {
+  font-size: 14px;
+}
 
 .tt-btn--finish {
-  background: linear-gradient(135deg, var(--ah-mint), #2dab49);
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(64,192,87,0.3);
+  background: color-mix(in srgb, var(--ah-mint) 15%, transparent);
+  color: var(--ah-mint-dark, #20c997);
 }
-.tt-btn--finish:hover { transform: translateY(-1px); box-shadow: 0 3px 12px rgba(64,192,87,0.45); }
-.tt-btn--finish .material-symbols-rounded { font-size: 15px; }
+
+.tt-btn--finish:hover {
+  background: color-mix(in srgb, var(--ah-mint) 25%, transparent);
+}
+
+.tt-btn--finish .material-symbols-rounded {
+  font-size: 14px;
+}
 
 /* Target element gets promoted above backdrop */
 .tt-target-highlight {

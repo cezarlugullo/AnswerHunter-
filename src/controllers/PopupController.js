@@ -130,7 +130,7 @@ export const PopupController = {
     this.view.elements.prevPrefs?.addEventListener('click', () => this.goToSetupStep(4));
 
     this.view.elements.saveSetupBtn?.addEventListener('click', () => this.handleSaveSetup());
-    this.view.elements.setupSkipBtn?.addEventListener('click', () => this.handleSaveSetup());
+    this.view.elements.setupSkipBtn?.addEventListener('click', () => this.handleSkipSetup());
 
     // Bind main search provider setting
     this.view.elements.selectSearchProvider?.addEventListener('change', () => {
@@ -426,9 +426,14 @@ export const PopupController = {
     const readiness = await this.getProviderReadiness();
     if (readiness.ready) return true;
 
+    // Build a friendly message listing exactly which keys are missing
+    const missing = readiness.missingRequired;
+    const names = missing.map(k => k === 'groq' ? 'Groq (IA)' : k === 'serper' ? 'Serper (busca)' : k).join(' e ');
+    const friendlyMsg = `⚙️ Configure sua chave ${names} para usar o AnswerHunter`;
+
     this.view.setSettingsAttention(true);
-    this.view.showToast(this.t('setup.toast.required'), 'error');
-    this.view.showStatus('error', this.t('setup.toast.required'));
+    this.view.showToast(friendlyMsg, 'error');
+    this.view.showStatus('error', friendlyMsg);
 
     if (!this.onboardingFlags.welcomed) {
       this.view.showWelcomeOverlay();
@@ -728,16 +733,16 @@ export const PopupController = {
     const activeLabel = PROVIDER_LABEL[primaryProvider] ?? primaryProvider;
 
     console.group(
-'%c AnswerHunter %c Provedor de IA atualizado',
+      '%c AnswerHunter %c Provedor de IA atualizado',
       'background:#7c3aed;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;',
       'color:#7c3aed;font-weight:bold;font-size:13px;'
     );
- console.log(`%c[FAST] Ativo agora: ${activeLabel} › ${activeModel}`,'color:#16a34a;font-weight:bold;font-size:12px;');
+    console.log(`%c[FAST] Ativo agora: ${activeLabel} › ${activeModel}`, 'color:#16a34a;font-weight:bold;font-size:12px;');
     console.table(
       Object.entries(providerModelMap).map(([provider, model]) => ({
         'Provider': (PROVIDER_LABEL[provider] ?? provider),
         'Modelo': model,
-'Status': provider === primaryProvider ?' ATIVO' :'○',
+        'Status': provider === primaryProvider ? ' ATIVO' : '○',
       }))
     );
     console.groupEnd();
@@ -1096,7 +1101,7 @@ export const PopupController = {
     try {
       const token = await CopilotAuthService.getValidToken();
       if (!token) {
- if (resultEl) resultEl.innerHTML ='<span style="color:#ff7b72;"> Sem token válido. Faça login novamente.</span>';
+        if (resultEl) resultEl.innerHTML = '<span style="color:#ff7b72;"> Sem token válido. Faça login novamente.</span>';
         return;
       }
 
@@ -1120,17 +1125,17 @@ export const PopupController = {
 
       if (response.ok) {
         const data = await response.json();
- const reply = data.choices?.[0]?.message?.content?.trim() ||'';
- if (resultEl) resultEl.innerHTML =`<span style="color:#3fb950;"> Conectado! Modelo respondeu:"${reply.slice(0, 40)}"</span>`;
+        const reply = data.choices?.[0]?.message?.content?.trim() || '';
+        if (resultEl) resultEl.innerHTML = `<span style="color:#3fb950;"> Conectado! Modelo respondeu:"${reply.slice(0, 40)}"</span>`;
         // Refresh token info since it may have been refreshed
         await this.refreshCopilotAuthUI();
       } else {
         const errText = await response.text().catch(() => '');
         const snippet = errText.slice(0, 120);
- if (resultEl) resultEl.innerHTML =`<span style="color:#ff7b72;"> HTTP ${response.status}: ${snippet}</span>`;
+        if (resultEl) resultEl.innerHTML = `<span style="color:#ff7b72;"> HTTP ${response.status}: ${snippet}</span>`;
       }
     } catch (err) {
- if (resultEl) resultEl.innerHTML =`<span style="color:#ff7b72;"> ${err.message || String(err)}</span>`;
+      if (resultEl) resultEl.innerHTML = `<span style="color:#ff7b72;"> ${err.message || String(err)}</span>`;
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -1746,6 +1751,42 @@ export const PopupController = {
     }
   },
 
+  async handleSkipSetup() {
+    try {
+      // Save whatever keys the user has entered so far (even if empty)
+      const groqApiKey = this.sanitizeKey(this.view.elements.inputGroq?.value);
+      const serperApiKey = this.sanitizeKey(this.view.elements.inputSerper?.value);
+      const openrouterApiKey = this.sanitizeKey(this.view.elements.inputOpenrouter?.value);
+      const geminiApiKey = this.sanitizeKey(this.view.elements.inputGemini?.value);
+      const firecrawlApiKey = this.sanitizeKey(this.view.elements.inputFirecrawl?.value);
+
+      await SettingsModel.saveSettings({
+        groqApiKey,
+        serperApiKey,
+        geminiApiKey,
+        openrouterApiKey,
+        firecrawlApiKey,
+        requiredProviders: { groq: true, serper: false, gemini: false }
+      });
+      this._settingsCache = {
+        ...(this._settingsCache || {}),
+        groqApiKey, serperApiKey, geminiApiKey, openrouterApiKey, firecrawlApiKey
+      };
+
+      this.onboardingFlags.setupDone = true;
+      this.onboardingFlags.welcomed = true;
+      await this.saveOnboardingFlags();
+      await this.clearDraftKeys();
+
+      this.view.setSettingsAttention(!groqApiKey);
+      this.view.setSetupVisible(false);
+      this.view.showToast('Setup pulado — você pode configurar as chaves a qualquer momento ⚙️', 'info');
+    } catch (error) {
+      console.error('Skip setup error:', error);
+      this.view.showToast(`Erro: ${error.message}`, 'error');
+    }
+  },
+
   sanitizeKey(value) {
     return (value || '').trim();
   },
@@ -1875,8 +1916,8 @@ export const PopupController = {
    * Called once after first-time setup. Wired entirely to DOM — no external deps.
    */
   _showToolkitTour() {
-    const popover   = document.getElementById('tt-popover');
-    const backdrop  = document.getElementById('tt-backdrop');
+    const popover = document.getElementById('tt-popover');
+    const backdrop = document.getElementById('tt-backdrop');
     const spotlight = document.getElementById('tt-spotlight');
     if (!popover) return;
 
@@ -1885,39 +1926,41 @@ export const PopupController = {
       {
         target: '#searchBtn',
         icon: 'travel_explore', iconClass: 'tt-popover__icon--blue',
-        title: 'Buscar Respostas 🔍',
-        desc: 'Com uma questão aberta no navegador, clique aqui para <strong>buscar gabaritos</strong> em múltiplas fontes automaticamente.',
+        desc: 'Para <strong>buscar gabaritos</strong> (carregar as questões), clique aqui com uma questão aberta.',
         placement: 'bottom',
       },
       {
         target: '#extractBtn',
         icon: 'description', iconClass: 'tt-popover__icon--orange',
-        title: 'Extrair Questão ✂️',
-        desc: 'Captura o <strong>texto da questão</strong> direto da página com IA — útil quando o copiar/colar não funciona.',
+        desc: '<strong>Extraia o texto da questão</strong> da página usando IA caso o copiar/colar falhe.',
         placement: 'bottom',
       },
       {
         target: '.tab-btn[data-tab="binder"]',
         icon: 'menu_book', iconClass: 'tt-popover__icon--orange',
-        title: 'Binder — Suas Questões 📚',
-        desc: 'Todas as questões salvas ficam aqui, <strong>organizadas por disciplina</strong>. Toque para abrir.',
+        desc: 'Suas questões salvas ficam aqui, <strong>organizadas por disciplina</strong>.',
         placement: 'bottom',
-        beforeShow: () => {},
+        beforeShow: () => {
+          const tab = document.querySelector('.tab-btn[data-tab="binder"]');
+          if (tab && !tab.classList.contains('active')) tab.click();
+        },
       },
       {
         target: '.tab-btn[data-tab="disciplinas"]',
         icon: 'school', iconClass: 'tt-popover__icon--purple',
-        title: 'Disciplinas 🏫',
-        desc: 'Crie matérias como <em>"Direito Civil"</em> ou <em>"Redes"</em> e organize suas questões por assunto.',
+        desc: 'Crie ou gerencie suas <strong>Disciplinas</strong> para organizar o conteúdo.',
         placement: 'bottom',
       },
       {
-        target: '#copyBtn',
+        target: '#openStudyPageBtn',
         icon: 'local_library', iconClass: 'tt-popover__icon--primary',
-        title: 'Study Hub 🧠',
-        desc: 'Abra o <strong>Study Hub</strong> para revisar com flashcards e revisão espaçada — ele organiza o que você precisa revisar hoje!',
+        desc: 'Clique neste botão para <strong>abrir a página e estudar</strong> com flashcards e simulados.',
         placement: 'bottom',
         isFinal: true,
+        beforeShow: () => {
+          const tab = document.querySelector('.tab-btn[data-tab="binder"]');
+          if (tab && !tab.classList.contains('active')) tab.click();
+        },
       },
     ];
 
@@ -1935,10 +1978,10 @@ export const PopupController = {
       dotsContainer.appendChild(dot);
     });
 
-    const prevBtn   = document.getElementById('ttPrevBtn');
-    const nextBtn   = document.getElementById('ttNextBtn');
+    const prevBtn = document.getElementById('ttPrevBtn');
+    const nextBtn = document.getElementById('ttNextBtn');
     const finishBtn = document.getElementById('ttFinishBtn');
-    const skipBtn   = document.getElementById('ttSkipBtn');
+    const skipBtn = document.getElementById('ttSkipBtn');
 
     function positionPopover(step) {
       const targetEl = document.querySelector(step.target);
@@ -1954,9 +1997,9 @@ export const PopupController = {
 
       // Spotlight around target
       spotlight.classList.remove('hidden');
-      spotlight.style.left   = `${rect.left - 4}px`;
-      spotlight.style.top    = `${rect.top - 4}px`;
-      spotlight.style.width  = `${rect.width + 8}px`;
+      spotlight.style.left = `${rect.left - 4}px`;
+      spotlight.style.top = `${rect.top - 4}px`;
+      spotlight.style.width = `${rect.width + 8}px`;
       spotlight.style.height = `${rect.height + 8}px`;
 
       // Arrow + popover position
@@ -1974,10 +2017,10 @@ export const PopupController = {
 
       // Clamp within popup window
       left = Math.max(8, Math.min(left, window.innerWidth - popW - 8));
-      top  = Math.max(8, Math.min(top, window.innerHeight - 200));
+      top = Math.max(8, Math.min(top, window.innerHeight - 200));
 
       popover.style.left = `${left}px`;
-      popover.style.top  = `${top}px`;
+      popover.style.top = `${top}px`;
 
       // Arrow position relative to target center
       const arrowLeft = Math.max(20, Math.min(rect.left + rect.width / 2 - left, popW - 20));
@@ -1996,7 +2039,15 @@ export const PopupController = {
       const iconEl = document.getElementById('tt-icon');
       iconEl.className = 'tt-popover__icon ' + step.iconClass;
       iconEl.innerHTML = `<span class="material-symbols-rounded">${step.icon}</span>`;
-      document.getElementById('tt-title').textContent = step.title;
+
+      const titleEl = document.getElementById('tt-title');
+      if (step.title && titleEl) {
+        titleEl.textContent = step.title;
+        titleEl.style.display = 'block';
+      } else if (titleEl) {
+        titleEl.style.display = 'none';
+      }
+
       document.getElementById('tt-desc').innerHTML = step.desc;
 
       // Update dots
@@ -2043,13 +2094,13 @@ export const PopupController = {
       return fresh;
     };
 
-    rebind('ttPrevBtn',   () => goTo(current - 1));
-    rebind('ttNextBtn',   () => goTo(current + 1));
+    rebind('ttPrevBtn', () => goTo(current - 1));
+    rebind('ttNextBtn', () => goTo(current + 1));
     rebind('ttFinishBtn', () => {
       chrome.tabs.create({ url: chrome.runtime.getURL('src/study/study.html') });
       close();
     });
-    rebind('ttSkipBtn',   () => close());
+    rebind('ttSkipBtn', () => close());
 
     // Click backdrop to close
     backdrop.onclick = () => close();
@@ -2245,7 +2296,7 @@ export const PopupController = {
       // Step 1: Capture screenshot
       const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 65 });
       if (!dataUrl) {
-         throw new Error('Falha ao capturar screenshot da aba.');
+        throw new Error('Falha ao capturar screenshot da aba.');
       }
       const screenshotBase64 = dataUrl.split(',')[1];
       this._flowLog(_flow, 'VISION', 'OK', 'Screenshot capturado');
@@ -2266,9 +2317,9 @@ export const PopupController = {
       // Step 3: LLM Vision Extraction
       this.view.showStatus('loading', this.t('status.visionOcr') || 'Montando questão via IA...');
       const vgResult = await ApiService.visionGuidedExtraction(screenshotBase64, htmlContent, null);
-      
+
       if (!vgResult || vgResult.length < 30) {
-         throw new Error('A IA não conseguiu interpretar a questão na tela. Tente rolar para enquadrar melhor.');
+        throw new Error('A IA não conseguiu interpretar a questão na tela. Tente rolar para enquadrar melhor.');
       }
 
       const displayQuestion = vgResult;
@@ -2312,7 +2363,7 @@ export const PopupController = {
 
       this.view.showStatus('loading', this.t('status.searchingBackground'));
       this._startPollBackgroundSearch(requestId, displayQuestion, bestQuestion);
-      
+
     } catch (error) {
       _flowOutcome = 'ERROR';
       console.error('Search flow error:', error);
@@ -2738,7 +2789,7 @@ export const PopupController = {
   _parseMarkdown(text) {
     if (!text) return '';
     let html = this._escapeHtml(text);
-    
+
     // Horizontal rules (---)
     html = html.replace(/^---$/gm, '<hr style="border:0; border-top:1px solid rgba(0,0,0,0.1); margin: 16px 0;">');
 
@@ -2746,11 +2797,11 @@ export const PopupController = {
     html = html.replace(/^### (.*$)/gim, '<h3 style="margin-top:16px; margin-bottom:8px; font-size:1.1em; color:var(--text-1);"><strong>$1</strong></h3>');
     html = html.replace(/^## (.*$)/gim, '<h2 style="margin-top:20px; margin-bottom:10px; font-size:1.3em; color:var(--text-1);"><strong>$1</strong></h2>');
     html = html.replace(/^# (.*$)/gim, '<h1 style="margin-top:24px; margin-bottom:12px; font-size:1.5em; color:var(--text-1);"><strong>$1</strong></h1>');
-    
+
     // Bold & Italic
     html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
-    
+
     // Code blocks and inline code
     html = html.replace(/```(?:[a-z]+)?\n([\s\S]*?)```/gi, '<div style="background:#f4f4f5; padding:10px; border-radius:6px; font-family:monospace; margin:8px 0; overflow-x:auto;">$1</div>');
     html = html.replace(/`(.*?)`/g, '<code style="background:#f4f4f5; padding:2px 4px; border-radius:4px; font-family:monospace; color:#ef4444;">$1</code>');
@@ -2759,59 +2810,59 @@ export const PopupController = {
     html = html.replace(/^&gt; (.*$)/gim, '<blockquote style="border-left: 4px solid var(--primary); margin: 12px 0; color:var(--text-2); background:var(--surface-hover); padding:8px 12px; border-radius: 0 4px 4px 0;">$1</blockquote>');
 
     // AI Emojis markers
- html = html.replace(/^\u2705(.*)$/gim,'<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">$1</div>');
- html = html.replace(/^\u{1F4A1}(.*)$/gimu,'<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">$1</div>');
- html = html.replace(/^\u274C(.*)$/gim,'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">$1</div>');
-    
+    html = html.replace(/^\u2705(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">$1</div>');
+    html = html.replace(/^\u{1F4A1}(.*)$/gimu, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">$1</div>');
+    html = html.replace(/^\u274C(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">$1</div>');
+
     // Numbered lists
     html = html.replace(/^(\d+)\.\s+(.*)/gim, '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;padding:8px 12px;background:rgba(255,255,255,0.7);border-radius:8px;border-left:3px solid var(--primary);"><span style="background:var(--primary);color:#fff;font-weight:700;font-size:0.78rem;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$1</span><span>$2</span></div>');
-    
+
     // Unordered lists (handling - and +)
     html = html.replace(/^[-+]\s+(.*)$/gim, '<div style="display:flex; gap:8px; margin-bottom:4px;"><span style="color:var(--primary); font-weight:bold;">•</span> <span>$1</span></div>');
-    
+
     // Tables
     // Find lines starting and ending with |
     const tableRegex = /(^\|.+?\|$(?:\r?\n)?)+/gim;
     html = html.replace(tableRegex, (match) => {
-        let rowsHtml = '';
-        const rows = match.trim().split('\n');
-        let isHeader = true;
-        
-        for (const row of rows) {
-            if (/^\|[-:| ]+\|$/.test(row)) {
-                isHeader = false;
-                continue;
-            }
-            
-            const cells = row.split('|').slice(1, -1);
-            let rowHtml = '<tr>';
-            for (const cell of cells) {
-                const tag = isHeader ? 'th' : 'td';
-                const style = isHeader 
-                    ? 'background:var(--surface-hover); font-weight:bold; padding:8px; border:1px solid var(--border); text-align:left;' 
-                    : 'padding:8px; border:1px solid var(--border);';
-                rowHtml += `<${tag} style="${style}">${cell.trim()}</${tag}>`;
-            }
-            rowHtml += '</tr>';
-            rowsHtml += rowHtml;
+      let rowsHtml = '';
+      const rows = match.trim().split('\n');
+      let isHeader = true;
+
+      for (const row of rows) {
+        if (/^\|[-:| ]+\|$/.test(row)) {
+          isHeader = false;
+          continue;
         }
-        
-        return `<table style="width:100%; border-collapse:collapse; margin:12px 0; font-size: 0.9em;">\n${rowsHtml}\n</table>\n`;
+
+        const cells = row.split('|').slice(1, -1);
+        let rowHtml = '<tr>';
+        for (const cell of cells) {
+          const tag = isHeader ? 'th' : 'td';
+          const style = isHeader
+            ? 'background:var(--surface-hover); font-weight:bold; padding:8px; border:1px solid var(--border); text-align:left;'
+            : 'padding:8px; border:1px solid var(--border);';
+          rowHtml += `<${tag} style="${style}">${cell.trim()}</${tag}>`;
+        }
+        rowHtml += '</tr>';
+        rowsHtml += rowHtml;
+      }
+
+      return `<table style="width:100%; border-collapse:collapse; margin:12px 0; font-size: 0.9em;">\n${rowsHtml}\n</table>\n`;
     });
 
     // Handle newlines
     let blocks = html.split('\n');
     for (let i = 0; i < blocks.length; i++) {
-        const line = blocks[i].trim();
-        if (line === '') continue; // skip empty lines after blocks
-        if (!line.match(/^<h|^<div|^<hr|^<blockquote|^<table|^<tr|<td/)) {
-            blocks[i] = line + '<br>';
-        }
+      const line = blocks[i].trim();
+      if (line === '') continue; // skip empty lines after blocks
+      if (!line.match(/^<h|^<div|^<hr|^<blockquote|^<table|^<tr|<td/)) {
+        blocks[i] = line + '<br>';
+      }
     }
-    
+
     // Clean up excessive breaks
     html = blocks.join('\n').replace(/(<br>\n?){2,}/g, '<br><br>');
-    
+
     return html;
   },
 
@@ -2835,10 +2886,10 @@ export const PopupController = {
   /** Logs a user-friendly DevTools table showing extraction source, success, and answer. */
   _logExtractionTable(results) {
     const SOURCE_ICON = {
- cache:'',
- page:'',
-'page-cache':'',
- ai:'',
+      cache: '',
+      page: '',
+      'page-cache': '',
+      ai: '',
     };
     const getDomain = (url) => {
       try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
@@ -2854,12 +2905,12 @@ export const PopupController = {
         : '—';
       if (srcList.length > 0) {
         srcList.forEach((s, j) => {
- const icon = SOURCE_ICON[s.type] ??'';
+          const icon = SOURCE_ICON[s.type] ?? '';
           const label = s.link || getDomain(s.link) || String(s.title || '?').slice(0, 80);
           rows.push({
             '#': j === 0 ? i + 1 : ' └',
             'Fonte': `${icon} ${label}`,
-'Extraiu?': ok ?'' :'',
+            'Extraiu?': ok ? '' : '',
             'Gabarito': gabarito,
             'Confiança': j === 0 ? confidence : '',
           });
@@ -2867,8 +2918,8 @@ export const PopupController = {
       } else {
         rows.push({
           '#': i + 1,
-'Fonte': r.aiFallback ?' IA (fallback)' :'—',
-'Extraiu?': ok ?'' :'',
+          'Fonte': r.aiFallback ? ' IA (fallback)' : '—',
+          'Extraiu?': ok ? '' : '',
           'Gabarito': gabarito,
           'Confiança': confidence,
         });
@@ -2876,13 +2927,13 @@ export const PopupController = {
     });
 
     const found = (results || []).filter(r => /^[A-E]$/.test(String(r.answerLetter || r.bestLetter || '').toUpperCase())).length;
- const badge = found > 0 ?`%c [OK] ${found} gabarito(s) encontrado(s)` :`%c [FAIL] Sem gabarito`;
+    const badge = found > 0 ? `%c [OK] ${found} gabarito(s) encontrado(s)` : `%c [FAIL] Sem gabarito`;
     const badgeStyle = found > 0
       ? 'background:#16a34a;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;'
       : 'background:#dc2626;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;';
 
     console.group(
-'%c AnswerHunter %c Resultado da Extração' + badge,
+      '%c AnswerHunter %c Resultado da Extração' + badge,
       'background:#0ea5e9;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;',
       'color:#0ea5e9;font-weight:bold;font-size:13px;',
       badgeStyle
@@ -3225,7 +3276,7 @@ export const PopupController = {
             .map(([letter, text]) => `<div class="similar-option"><strong>${this._escapeHtml(letter)})</strong> ${this._escapeHtml(text)}</div>`)
             .join('');
 
-          container.innerHTML =`
+          container.innerHTML = `
             <div class="similar-question-block">
               <div class="similar-q-text"><strong>Q:</strong> ${this._escapeHtml(newQuestion.questionText)}</div>
               <div class="similar-options-list">${optionsHtml}</div>
@@ -3261,7 +3312,7 @@ export const PopupController = {
       if (!container.dataset.chatInitialized) {
         container.dataset.chatInitialized = 'true';
         container.classList.remove('hidden');
-        container.innerHTML =`
+        container.innerHTML = `
           <div class="study-chat-container">
             <div class="study-chat-history">
               <div class="chat-message ai-message">
@@ -3292,7 +3343,7 @@ export const PopupController = {
           input.disabled = true;
           sendBtn.disabled = true;
 
-          history.insertAdjacentHTML('beforeend',`
+          history.insertAdjacentHTML('beforeend', `
             <div class="chat-message user-message">
               <div class="msg-content">${this._escapeHtml ? this._escapeHtml(userMsg) : userMsg}</div>
               <span class="material-symbols-rounded">person</span>
@@ -3317,7 +3368,7 @@ export const PopupController = {
             // Transform markdown safely
             const htmlResponse = this._parseMarkdown(response);
 
-            history.insertAdjacentHTML('beforeend',`
+            history.insertAdjacentHTML('beforeend', `
               <div class="chat-message ai-message">
                 <span class="material-symbols-rounded">robot_2</span>
                 <div class="msg-content">${htmlResponse}</div>
@@ -3327,7 +3378,7 @@ export const PopupController = {
             console.error('AnswerHunter Chat Error:', err);
             const pending = history.querySelector('.pending-msg');
             if (pending) pending.remove();
-            history.insertAdjacentHTML('beforeend',`
+            history.insertAdjacentHTML('beforeend', `
               <div class="chat-message ai-message error-msg">
                 <span class="material-symbols-rounded">error</span>
                 <div class="msg-content">Erro de conexão. Tente novamente.</div>
@@ -3384,7 +3435,7 @@ export const PopupController = {
         if (entryBtn) {
           entryBtn.classList.add('turbo-entry-btn--active');
           const sub = entryBtn.querySelector('.turbo-entry-sub');
- if (sub) sub.textContent ='Ativo · buscando em Turbo Mode';
+          if (sub) sub.textContent = 'Ativo · buscando em Turbo Mode';
         }
       } else {
         // Bridge not installed — hide the banner entirely.
@@ -3477,7 +3528,7 @@ export const PopupController = {
     try {
       setProgress(10, 'Buscando os arquivos…');
       await this._downloadBridgeInstaller();
- setProgress(100,'Tudo pronto!');
+      setProgress(100, 'Tudo pronto!');
       await new Promise(r => setTimeout(r, 600));
       this._turboWizardGoTo('tw-step-2');
       this._turboUpdateDots(2);
