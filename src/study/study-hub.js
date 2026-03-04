@@ -299,7 +299,7 @@ function initCommandPalette() {
     } else if (action === 'toggle-theme') {
       setTheme(state.theme === 'dark' ? 'light' : 'dark');
     } else if (action === 'pomodoro') {
-      togglePomodoroWidget();
+      togglePomodoroTimer();
     }
   }
 
@@ -411,25 +411,13 @@ function initKeyboard() {
 /* ─── Pomodoro Timer ───────────────────────────────────────────────── */
 
 function initPomodoro() {
-  on($('#btnPomodoro'), 'click', togglePomodoroWidget);
   on($('#pomodoroToggle'), 'click', togglePomodoroTimer);
-  on($('#pomodoroClose'), 'click', () => {
-    const w = $('#pomodoroWidget');
-    if (w) w.classList.remove('active');
-    stopPomodoro();
-  });
   on($('#pomodoroReset'), 'click', () => {
     stopPomodoro();
     state.pomodoro.mode = 'focus';
     state.pomodoro.seconds = 25 * 60;
     updatePomodoroDisplay();
   });
-}
-
-function togglePomodoroWidget() {
-  const w = $('#pomodoroWidget');
-  if (!w) return;
-  w.classList.toggle('active');
 }
 
 function togglePomodoroTimer() {
@@ -475,8 +463,31 @@ function updatePomodoroDisplay() {
   const s = state.pomodoro.seconds % 60;
   const timeEl = $('#pomodoroTime');
   const labelEl = $('#pomodoroLabel');
+  const progressEl = $('#pomodoroProgress');
+  const wrapEl = $('#topbarPomodoro');
+
   if (timeEl) timeEl.textContent = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   if (labelEl) labelEl.textContent = state.pomodoro.mode === 'focus' ? 'Foco' : 'Pausa';
+
+  if (progressEl) {
+    const total = state.pomodoro.mode === 'focus' ? 25 * 60 : 5 * 60;
+    const progress = (state.pomodoro.seconds / total) * 100;
+    progressEl.style.width = `${progress}%`;
+  }
+
+  if (wrapEl) {
+    if (state.pomodoro.mode === 'break') {
+      wrapEl.classList.add('break-mode');
+    } else {
+      wrapEl.classList.remove('break-mode');
+    }
+
+    if (state.pomodoro.running) {
+      wrapEl.classList.add('is-running');
+    } else {
+      wrapEl.classList.remove('is-running');
+    }
+  }
 }
 
 /* ─── Data Loading ─────────────────────────────────────────────────── */
@@ -534,7 +545,12 @@ function getAllCards() {
       for (const topic of topics) {
         const tCards = topic.cards || [];
         for (const card of tCards) {
-          cards.push({ ...card, _disc: disc.name, _discId: disc.id, _topic: topic.name });
+          // IMPORTANT: Keep original reference so mutations (e.g. sm2 updates)
+          // propagate back to state.hierarchy for correct persistence.
+          card._disc = disc.name;
+          card._discId = disc.id;
+          card._topic = topic.name;
+          cards.push(card);
         }
       }
     }
@@ -562,6 +578,27 @@ function getOverdueCards() {
 
 function getNewCards() {
   return getAllCards().filter(c => !c.sm2 || !c.sm2.lastRated);
+}
+
+/**
+ * Remove temporary runtime metadata from cards before persisting.
+ * These props (_disc, _discId, _topic) are added at runtime by getAllCards()
+ * and should not be serialized into chrome.storage.
+ */
+function _cleanTempProps(hierarchy) {
+  if (!Array.isArray(hierarchy)) return;
+  for (const disc of hierarchy) {
+    for (const mod of (disc.modules || [])) {
+      for (const topic of (mod.topics || [])) {
+        for (const card of (topic.cards || [])) {
+          delete card._disc;
+          delete card._discId;
+          delete card._topic;
+          delete card._aiGenerated;
+        }
+      }
+    }
+  }
 }
 
 /* ─── Greeting ─────────────────────────────────────────────────────── */
@@ -1067,6 +1104,24 @@ function renderLibraryList(discs) {
 }
 
 function initLibraryControls() {
+  // Create discipline (main + empty state CTA)
+  const handleCreateDiscipline = async () => {
+    const name = prompt('Nome da nova disciplina:');
+    if (!name || !name.trim()) return;
+    try {
+      await ContentHierarchyService.createDiscipline({ name: name.trim() });
+      state.hierarchy = await ContentHierarchyService.load(true);
+      populateDisciplineSelects();
+      renderLibrary();
+      renderHome();
+      toast('Disciplina criada com sucesso!', 'success');
+    } catch (err) {
+      toast('Erro ao criar disciplina.', 'error');
+    }
+  };
+  on($('#addDiscBtn'), 'click', handleCreateDiscipline);
+  on($('#addDiscBtnEmpty'), 'click', handleCreateDiscipline);
+
   // View toggle (grid/list)
   on($('#libGridToggle'), 'click', () => {
     $('#libGridToggle')?.classList.add('active');
@@ -1161,6 +1216,7 @@ function initStudySession() {
   };
 
   // Card action buttons
+  on($('#revealBtn'), 'click', () => revealAnswer());
   on($('#actExplain'), 'click', () => aiAction('explain'));
   on($('#actHint'), 'click', () => aiAction('hint'));
   on($('#actMnemonic'), 'click', () => aiAction('mnemonic'));
@@ -1286,7 +1342,7 @@ function startStudySession() {
   show($('#studyActive'));
 
   renderCurrentCard();
-  AnalyticsService.startSession?.().catch(() => { });
+  try { AnalyticsService.startSession?.(); } catch (_) { }
 }
 
 /**
@@ -1380,7 +1436,8 @@ function renderCurrentCard() {
   if (!container || index >= cards.length) return;
 
   state.session.revealed = false;
-  hide($('#cardActionsBar'));
+  // Always keep card actions bar visible
+  show($('#cardActionsBar'));
 
   const card = cards[index];
   const progress = ((index) / cards.length) * 100;
@@ -1608,17 +1665,129 @@ async function showWhyWrongPanel(question, wrongLetter, wrongText, correctLetter
 }
 
 /**
- * Simple Markdown-like formatter for AI output.
- * Handles **bold**, emoji, and line breaks.
+ * Enhanced Markdown-like formatter for AI pedagogical output.
+ * Creates a didactic layout with color-coded sections, keyword highlights,
+ * expandable alternative analyses, and visual hierarchy for learning.
  */
 function formatMarkdown(text) {
   if (!text) return '';
-  return escHtml(text)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n\n/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-    .replace(/^/, '<p>')
-    .replace(/$/, '</p>');
+
+  let html = escHtml(text);
+
+  // ── 1. Restore <details> and <summary> safely ──
+  html = html
+    .replace(/&lt;details&gt;/g, '%%DETAILS_OPEN%%')
+    .replace(/&lt;\/details&gt;/g, '%%DETAILS_CLOSE%%')
+    .replace(/&lt;summary&gt;([\s\S]*?)&lt;\/summary&gt;/g, '%%SUMMARY_START%%$1%%SUMMARY_END%%');
+
+  // ── 2. Parse section headers with emoji identifiers ──
+  // 🎯 "O que você estava pensando" → empathy card (blue)
+  html = html.replace(/(🎯)\s*\*\*(.*?)\*\*[:]*/g,
+    '%%SECTION_EMPATHY_START%%<span class="ww-sec__emoji">$1</span><span class="ww-sec__title">$2</span>%%SECTION_TITLE_END%%');
+
+  // 🔑 "Regra para nunca mais errar" → key takeaway card (green)
+  html = html.replace(/(🔑)\s*\*\*(.*?)\*\*[:]*/g,
+    '%%SECTION_KEY_START%%<span class="ww-sec__emoji">$1</span><span class="ww-sec__title">$2</span>%%SECTION_TITLE_END%%');
+
+  // 🧠 "Checkpoint de compreensão" → challenge card (purple)
+  html = html.replace(/(🧠)\s*\*\*(.*?)\*\*[:]*/g,
+    '%%SECTION_CHALLENGE_START%%<span class="ww-sec__emoji">$1</span><span class="ww-sec__title">$2</span>%%SECTION_TITLE_END%%');
+
+  // 📋 generic section header
+  html = html.replace(/(📋)\s*\*\*(.*?)\*\*[:]*/g,
+    '%%SECTION_GENERIC_START%%<span class="ww-sec__emoji">$1</span><span class="ww-sec__title">$2</span>%%SECTION_TITLE_END%%');
+
+  // ── 3. Highlight ✅ and ❌ markers with styled spans ──
+  html = html.replace(/✅/g, '<span class="ww-mark ww-mark--correct">✅</span>');
+  html = html.replace(/❌/g, '<span class="ww-mark ww-mark--wrong">❌</span>');
+
+  // ── 4. Bold text → accent-colored strong ──
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="ww-keyword">$1</strong>');
+
+  // ── 5. Backtick-wrapped text → highlighted code/concept pill ──
+  html = html.replace(/`([^`]+)`/g, '<code class="ww-concept">$1</code>');
+
+  // ── 6. Individual alternative analysis lines: "- A) ✅/❌ explanation" ──
+  // Match lines dynamically, even if they are mashed together without newlines
+  const altRegex = /(?:^|<br>|\s|[-*]\s*)\*?\*?([A-E])\)\*?\*?\s*(?:.*?)?(<span class="ww-mark ww-mark--(correct|wrong)">[^<]+<\/span>)\s*(.*?)(?=(?:<br>|\s|[-*]\s*)\*?\*?[A-E]\)|\n|$|%%DETAILS|📋|🔑|🧠)/g;
+  html = html.replace(altRegex, (_, letter, mark, type, explanation) => {
+    const isCorrect = type === 'correct';
+    const cls = isCorrect ? 'ww-alt-card--correct' : 'ww-alt-card--wrong';
+    const iconLabel = isCorrect ? '<span class="material-symbols-rounded">check_circle</span> Correta' : '<span class="material-symbols-rounded">cancel</span> Incorreta';
+    
+    // Clean up explanation of trailing markup
+    let cleanExp = explanation.replace(/<\/?(div|span|p)[^>]*>/g, '').trim();
+    // Remove "**Por que?**" or similar prefixes if AI generated them
+    cleanExp = cleanExp.replace(/^\*\*(Por que\??|Motivo|Justificativa)\*\*\s*/i, '');
+    
+    return `</div><div class="ww-alt-card ${cls}">
+      <div class="ww-alt-card__header">
+        <span class="ww-alt-card__badge">${letter}</span>
+        <span class="ww-alt-card__status">${iconLabel}</span>
+      </div>
+      <div class="ww-alt-card__explanation">${cleanExp}</div>
+    </div><div class="ww-sec__body">`;
+  });
+
+  // ── 7. Split into blocks and wrap ──
+  let blocks = html.split(/\n\n+/);
+  let output = '';
+  let inSection = false;
+  let sectionType = '';
+
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    if (!trimmed) continue;
+
+    // Check for section starts
+    const sectionMatch = trimmed.match(/%%SECTION_(EMPATHY|KEY|CHALLENGE|GENERIC)_START%%/);
+    if (sectionMatch) {
+      if (inSection) output += '</div></div>'; // close previous section
+      sectionType = sectionMatch[1].toLowerCase();
+      const sectionHtml = trimmed
+        .replace(/%%SECTION_\w+_START%%/, `<div class="ww-sec ww-sec--${sectionType}"><div class="ww-sec__header">`)
+        .replace(/%%SECTION_TITLE_END%%/, '</div><div class="ww-sec__body">')
+        .replace(/\n/g, '<br>');
+      output += sectionHtml;
+      inSection = true;
+      continue;
+    }
+
+    // Details/summary
+    if (trimmed.includes('%%DETAILS_OPEN%%')) {
+      if (inSection) output += '</div></div>';
+      inSection = false;
+      const processed = trimmed
+        .replace(/%%DETAILS_OPEN%%/, '<details class="why-wrong-details">')
+        .replace(/%%DETAILS_CLOSE%%/, '</details>')
+        .replace(/%%SUMMARY_START%%/, '<summary class="why-wrong-summary"><span class="material-symbols-rounded view-more-icon">chevron_right</span><span class="summary-text">')
+        .replace(/%%SUMMARY_END%%/, '</span></summary>')
+        .replace(/\n/g, '<br>');
+      output += processed;
+      continue;
+    }
+    if (trimmed.includes('%%DETAILS_CLOSE%%')) {
+      output += trimmed.replace(/%%DETAILS_CLOSE%%/, '</details>');
+      continue;
+    }
+
+    // Regular content block
+    const blockHtml = trimmed.replace(/\n/g, '<br>');
+    if (inSection) {
+      output += `<p>${blockHtml}</p>`;
+    } else {
+      output += `<p>${blockHtml}</p>`;
+    }
+  }
+
+  if (inSection) output += '</div></div>'; // close last section
+
+  // Clean up any remaining placeholders
+  output = output
+    .replace(/%%\w+%%/g, '')
+    .replace(/<p>\s*<\/p>/g, '');
+
+  return output;
 }
 
 function revealAnswer(wasCorrect = null) {
@@ -1636,7 +1805,7 @@ function revealAnswer(wasCorrect = null) {
     hide($('#revealPromptArea'));
   }
 
-  show($('#cardActionsBar'));
+  // show($('#cardActionsBar')); already visible
 
   // If was an option selection, auto-suggest a rating
   if (wasCorrect !== null) {
@@ -1659,8 +1828,10 @@ async function rateCurrentCard(rating) {
       const result = FSRSService.calculate(card.sm2 || {}, rating);
       card.sm2 = result;
 
+      // Clean temporary metadata from all cards before saving
+      _cleanTempProps(state.hierarchy);
       // Save to hierarchy
-      await ContentHierarchyService.save?.(state.hierarchy);
+      await ContentHierarchyService.save(state.hierarchy);
     } catch (err) {
       console.warn('[StudyHub] FSRS error:', err);
     }
@@ -1668,7 +1839,7 @@ async function rateCurrentCard(rating) {
 
   // Record analytics
   try {
-    await AnalyticsService.recordReview?.(card._discId, rating);
+    AnalyticsService.recordReview?.({ cardId: card.id, disciplineId: card._discId, rating });
   } catch { }
 
   // Check badges
@@ -2192,37 +2363,34 @@ async function renderInsightBadges() {
 /* ─── EXPORT / IMPORT ──────────────────────────────────────────────── */
 
 function initExport() {
-  on($('#exportJson'), 'click', async () => {
-    try { await ExportService.exportFullJSON(); toast('Backup JSON exportado!', 'success'); }
-    catch (e) { toast('Erro ao exportar: ' + e.message, 'error'); }
-  });
-  on($('#exportCsv'), 'click', async () => {
-    try { await ExportService.exportCSV(); toast('CSV exportado!', 'success'); }
-    catch (e) { toast('Erro ao exportar: ' + e.message, 'error'); }
-  });
-  on($('#exportAnki'), 'click', async () => {
-    try { await ExportService.exportAnki(); toast('Anki TSV exportado!', 'success'); }
-    catch (e) { toast('Erro ao exportar: ' + e.message, 'error'); }
-  });
-  on($('#importBtn'), 'click', () => $('#importFile')?.click());
-  on($('#importFile'), 'change', async e => {
-    const file = e.target.files?.[0];
+  const ensureImportInput = () => {
+    let input = $('#importFile');
+    if (input) return input;
+    input = document.createElement('input');
+    input.type = 'file';
+    input.id = 'importFile';
+    input.accept = '.json';
+    input.hidden = true;
+    document.body.appendChild(input);
+    return input;
+  };
+
+  const handleImportFile = async (file) => {
     if (!file) return;
     try {
       const text = await file.text();
-      const data = JSON.parse(text);
-      await ExportService.importFullJSON(data);
+      const result = await ExportService.importFullJSON(text);
+      if (!result?.success) throw new Error(result?.message || 'Falha na importação');
       toast('Backup importado! Recarregando...', 'success');
       setTimeout(() => location.reload(), 1500);
     } catch (err) {
-      toast('Erro ao importar: ' + err.message, 'error');
+      toast('Erro ao importar: ' + (err.message || err), 'error');
     }
-  });
+  };
 
-  // Settings export/import/reset
-  on($('#settingsExport'), 'click', () => $('#exportJson')?.click());
-  on($('#settingsImport'), 'click', () => $('#importFile')?.click());
-  on($('#settingsReset'), 'click', () => {
+  const triggerImportPicker = () => ensureImportInput().click();
+
+  const confirmAndResetData = () => {
     openModal('Resetar todos os dados', `
       <p style="color:var(--danger);font-weight:600;margin-bottom:var(--sp-3)">Esta ação é irreversível!</p>
       <p style="font-size:var(--text-sm);color:var(--text-2)">Todos os seus cards, notas, estatísticas e configurações serão apagados permanentemente.</p>
@@ -2242,7 +2410,48 @@ function initExport() {
         closeModal();
       });
     }, 50);
+  };
+
+  const importInput = ensureImportInput();
+  on(importInput, 'change', async e => {
+    const file = e.target.files?.[0];
+    await handleImportFile(file);
+    e.target.value = '';
   });
+
+  on($('#exportJson'), 'click', async () => {
+    try { await ExportService.exportFullJSON(); toast('Backup JSON exportado!', 'success'); }
+    catch (e) { toast('Erro ao exportar: ' + e.message, 'error'); }
+  });
+  on($('#exportDataBtn'), 'click', async () => {
+    try { await ExportService.downloadBackup(); toast('Backup exportado!', 'success'); }
+    catch (e) { toast('Erro ao exportar: ' + e.message, 'error'); }
+  });
+  on($('#exportCsv'), 'click', async () => {
+    try { ExportService.downloadCSV(getAllCardsHierarchySafe()); toast('CSV exportado!', 'success'); }
+    catch (e) { toast('Erro ao exportar: ' + e.message, 'error'); }
+  });
+  on($('#exportAnki'), 'click', async () => {
+    try { ExportService.downloadAnki(getAllCardsHierarchySafe()); toast('Anki TSV exportado!', 'success'); }
+    catch (e) { toast('Erro ao exportar: ' + e.message, 'error'); }
+  });
+  on($('#importBtn'), 'click', triggerImportPicker);
+
+  // Settings export/import/reset
+  on($('#settingsExport'), 'click', async () => {
+    try { await ExportService.downloadBackup(); toast('Backup exportado!', 'success'); }
+    catch (e) { toast('Erro ao exportar: ' + e.message, 'error'); }
+  });
+  on($('#settingsImport'), 'click', triggerImportPicker);
+  on($('#settingsReset'), 'click', confirmAndResetData);
+
+  // Expose for settings modal dynamic buttons
+  window.__studyHubTriggerImport = triggerImportPicker;
+  window.__studyHubResetAllData = confirmAndResetData;
+}
+
+function getAllCardsHierarchySafe() {
+  return Array.isArray(state.hierarchy) ? state.hierarchy : [];
 }
 
 /* ─── SETTINGS ─────────────────────────────────────────────────────── */
@@ -2382,12 +2591,19 @@ async function openSettingsModal() {
     }
 
     // Data buttons → proxy to existing handlers
-    on($('#settingsExportBtn'), 'click', () => { closeModal(); $('#exportJson')?.click(); });
-    on($('#settingsImportBtn'), 'click', () => { closeModal(); $('#importFile')?.click(); });
+    on($('#settingsExportBtn'), 'click', async () => {
+      try {
+        await ExportService.downloadBackup();
+        toast('Backup exportado!', 'success');
+      } catch (err) {
+        toast('Erro ao exportar: ' + (err.message || err), 'error');
+      }
+      closeModal();
+    });
+    on($('#settingsImportBtn'), 'click', () => { closeModal(); window.__studyHubTriggerImport?.(); });
     on($('#settingsResetBtn'), 'click', () => {
       closeModal();
-      // Trigger reset flow
-      $('#settingsReset')?.click();
+      window.__studyHubResetAllData?.();
     });
   }, 50);
 }
@@ -2646,7 +2862,7 @@ async function startAISimulado(filter, count, difficulty) {
 
   toast(`Simulado IA iniciado: ${aiCards.length} questões geradas!`, 'success');
   renderCurrentCard();
-  AnalyticsService.startSession?.().catch(() => { });
+  try { AnalyticsService.startSession?.(); } catch (_) { }
 }
 
 /* ─── Notifications Button ─────────────────────────────────────────── */
@@ -2702,12 +2918,34 @@ function initAddQuestion() {
           return;
         }
         try {
-          await ContentHierarchyService.createCard?.(discId, null, null, {
+          let modules = await ContentHierarchyService.getModules(discId);
+          let moduleId = modules?.[0]?.id;
+          if (!moduleId) {
+            const createdModule = await ContentHierarchyService.createModule(discId, { name: 'Geral' });
+            moduleId = createdModule?.id;
+          }
+
+          let topics = moduleId ? await ContentHierarchyService.getTopics(discId, moduleId) : [];
+          let topicId = topics?.[0]?.id;
+          if (!topicId && moduleId) {
+            const createdTopic = await ContentHierarchyService.createTopic(discId, moduleId, { name: 'Geral' });
+            topicId = createdTopic?.id;
+          }
+
+          if (!moduleId || !topicId) {
+            throw new Error('Não foi possível preparar disciplina/módulo/tópico para salvar o card.');
+          }
+
+          const createdCard = await ContentHierarchyService.createCard(discId, moduleId, topicId, {
             question: q, answer: a || '', pergunta: q, resposta: a || ''
           });
+          if (!createdCard) {
+            throw new Error('Não foi possível criar o card.');
+          }
+
           toast('Card adicionado!', 'success');
           closeModal();
-          state.hierarchy = await ContentHierarchyService.load();
+          state.hierarchy = await ContentHierarchyService.load(true);
         } catch (e) {
           toast('Erro ao criar card: ' + e.message, 'error');
         }

@@ -129,9 +129,23 @@
             <span class="material-symbols-rounded">notifications</span>
             <span class="notif-dot" id="notifDot" hidden></span>
           </button>
-          <button class="icon-btn" id="btnPomodoro" aria-label="Pomodoro" title="Timer Pomodoro">
-            <span class="material-symbols-rounded">timer</span>
-          </button>
+          <div class="topbar-pomodoro" id="topbarPomodoro" title="Pomodoro - Clique para opções">
+            <!-- Progress Fill Background -->
+            <div class="pomodoro-progress" id="pomodoroProgress" style="width: 100%;"></div>
+
+            <div class="pomodoro-content">
+              <div class="pomodoro-info">
+                <span class="pomodoro-time-mini" id="pomodoroTime">25:00</span>
+                <span class="pomodoro-mode-mini" id="pomodoroLabel">Foco</span>
+              </div>
+              <button class="icon-btn btn-sm pomodoro-btn" id="pomodoroToggle" aria-label="Iniciar/Pausar">
+                <span class="material-symbols-rounded" style="font-size: 18px;">play_arrow</span>
+              </button>
+              <button class="icon-btn btn-sm pomodoro-btn" id="pomodoroReset" aria-label="Resetar">
+                <span class="material-symbols-rounded" style="font-size: 16px;">refresh</span>
+              </button>
+            </div>
+          </div>
           <button class="icon-btn" id="btnAddQuestion" aria-label="Adicionar card" title="Adicionar card">
             <span class="material-symbols-rounded">add</span>
           </button>
@@ -907,24 +921,6 @@
         </button>
       </div>
       <div class="tool-dock-body" id="toolDockBody"></div>
-    </div>
-
-    <div class="pomodoro-widget" id="pomodoroWidget" aria-live="polite">
-      <div class="pomodoro-inner">
-        <div class="pomodoro-mode" id="pomodoroLabel">Foco</div>
-        <div class="pomodoro-time" id="pomodoroTime">25:00</div>
-        <div class="pomodoro-controls">
-          <button class="icon-btn" id="pomodoroToggle" aria-label="Iniciar">
-            <span class="material-symbols-rounded">play_arrow</span>
-          </button>
-          <button class="icon-btn" id="pomodoroReset" aria-label="Resetar">
-            <span class="material-symbols-rounded">refresh</span>
-          </button>
-          <button class="icon-btn" id="pomodoroClose" aria-label="Fechar">
-            <span class="material-symbols-rounded">close</span>
-          </button>
-        </div>
-      </div>
     </div>
 
     <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
