@@ -1875,38 +1875,166 @@ export const PopupController = {
    * Called once after first-time setup. Wired entirely to DOM — no external deps.
    */
   _showToolkitTour() {
-    const overlay = document.getElementById('toolkit-tour-overlay');
-    if (!overlay) return;
+    const popover   = document.getElementById('tt-popover');
+    const backdrop  = document.getElementById('tt-backdrop');
+    const spotlight = document.getElementById('tt-spotlight');
+    if (!popover) return;
 
-    const TOTAL     = 5;
-    let   current   = 0;
-    const slides    = overlay.querySelectorAll('.tt-slide');
-    const dots      = overlay.querySelectorAll('.tt-dot');
+    // Tour steps — each targets a real UI element
+    const steps = [
+      {
+        target: '#searchBtn',
+        icon: 'travel_explore', iconClass: 'tt-popover__icon--blue',
+        title: 'Buscar Respostas 🔍',
+        desc: 'Com uma questão aberta no navegador, clique aqui para <strong>buscar gabaritos</strong> em múltiplas fontes automaticamente.',
+        placement: 'bottom',
+      },
+      {
+        target: '#extractBtn',
+        icon: 'description', iconClass: 'tt-popover__icon--orange',
+        title: 'Extrair Questão ✂️',
+        desc: 'Captura o <strong>texto da questão</strong> direto da página com IA — útil quando o copiar/colar não funciona.',
+        placement: 'bottom',
+      },
+      {
+        target: '.tab-btn[data-tab="binder"]',
+        icon: 'menu_book', iconClass: 'tt-popover__icon--orange',
+        title: 'Binder — Suas Questões 📚',
+        desc: 'Todas as questões salvas ficam aqui, <strong>organizadas por disciplina</strong>. Toque para abrir.',
+        placement: 'bottom',
+        beforeShow: () => {},
+      },
+      {
+        target: '.tab-btn[data-tab="disciplinas"]',
+        icon: 'school', iconClass: 'tt-popover__icon--purple',
+        title: 'Disciplinas 🏫',
+        desc: 'Crie matérias como <em>"Direito Civil"</em> ou <em>"Redes"</em> e organize suas questões por assunto.',
+        placement: 'bottom',
+      },
+      {
+        target: '#copyBtn',
+        icon: 'local_library', iconClass: 'tt-popover__icon--primary',
+        title: 'Study Hub 🧠',
+        desc: 'Abra o <strong>Study Hub</strong> para revisar com flashcards e revisão espaçada — ele organiza o que você precisa revisar hoje!',
+        placement: 'bottom',
+        isFinal: true,
+      },
+    ];
+
+    const TOTAL = steps.length;
+    let current = 0;
+    let prevHighlight = null;
+
+    // Build dots
+    const dotsContainer = document.getElementById('tt-dots');
+    dotsContainer.innerHTML = '';
+    steps.forEach((_, i) => {
+      const dot = document.createElement('button');
+      dot.className = 'tt-dot' + (i === 0 ? ' tt-dot--active' : '');
+      dot.addEventListener('click', () => goTo(i));
+      dotsContainer.appendChild(dot);
+    });
+
     const prevBtn   = document.getElementById('ttPrevBtn');
     const nextBtn   = document.getElementById('ttNextBtn');
     const finishBtn = document.getElementById('ttFinishBtn');
-    const closeBtn  = document.getElementById('ttCloseBtn');
-    const studyBtn  = document.getElementById('ttOpenStudyBtn');
+    const skipBtn   = document.getElementById('ttSkipBtn');
 
-    const goTo = (i) => {
-      slides[current].classList.remove('tt-slide--active');
-      dots[current].classList.remove('tt-dot--active');
-      current = Math.max(0, Math.min(i, TOTAL - 1));
-      slides[current].classList.add('tt-slide--active');
-      dots[current].classList.add('tt-dot--active');
-      prevBtn.disabled = current === 0;
-      const isLast = current === TOTAL - 1;
+    function positionPopover(step) {
+      const targetEl = document.querySelector(step.target);
+      if (!targetEl) { popover.classList.add('hidden'); return; }
+
+      // Remove previous highlight
+      if (prevHighlight) prevHighlight.classList.remove('tt-target-highlight');
+      targetEl.classList.add('tt-target-highlight');
+      prevHighlight = targetEl;
+
+      const rect = targetEl.getBoundingClientRect();
+      const popW = 280;
+
+      // Spotlight around target
+      spotlight.classList.remove('hidden');
+      spotlight.style.left   = `${rect.left - 4}px`;
+      spotlight.style.top    = `${rect.top - 4}px`;
+      spotlight.style.width  = `${rect.width + 8}px`;
+      spotlight.style.height = `${rect.height + 8}px`;
+
+      // Arrow + popover position
+      const arrow = document.getElementById('tt-arrow');
+      popover.setAttribute('data-placement', step.placement || 'bottom');
+
+      let left, top;
+      if (step.placement === 'top') {
+        top = rect.top - popover.offsetHeight - 12;
+        left = rect.left + rect.width / 2 - popW / 2;
+      } else {
+        top = rect.bottom + 12;
+        left = rect.left + rect.width / 2 - popW / 2;
+      }
+
+      // Clamp within popup window
+      left = Math.max(8, Math.min(left, window.innerWidth - popW - 8));
+      top  = Math.max(8, Math.min(top, window.innerHeight - 200));
+
+      popover.style.left = `${left}px`;
+      popover.style.top  = `${top}px`;
+
+      // Arrow position relative to target center
+      const arrowLeft = Math.max(20, Math.min(rect.left + rect.width / 2 - left, popW - 20));
+      arrow.style.left = `${arrowLeft}px`;
+      arrow.style.marginLeft = '0';
+    }
+
+    function renderStep(i) {
+      const step = steps[i];
+
+      // Optional tab switch before showing
+      if (step.beforeShow) step.beforeShow();
+
+      // Fill content
+      document.getElementById('tt-step-label').textContent = `Passo ${i + 1} de ${TOTAL}`;
+      const iconEl = document.getElementById('tt-icon');
+      iconEl.className = 'tt-popover__icon ' + step.iconClass;
+      iconEl.innerHTML = `<span class="material-symbols-rounded">${step.icon}</span>`;
+      document.getElementById('tt-title').textContent = step.title;
+      document.getElementById('tt-desc').innerHTML = step.desc;
+
+      // Update dots
+      dotsContainer.querySelectorAll('.tt-dot').forEach((d, di) => {
+        d.classList.toggle('tt-dot--active', di === i);
+      });
+
+      // Nav buttons
+      prevBtn.disabled = i === 0;
+      const isLast = i === TOTAL - 1;
       nextBtn.classList.toggle('hidden', isLast);
       finishBtn.classList.toggle('hidden', !isLast);
-    };
+      skipBtn.classList.toggle('hidden', isLast);
+
+      // Show & position
+      popover.classList.remove('hidden');
+      popover.style.animation = 'none';
+      popover.offsetHeight; // reflow
+      popover.style.animation = '';
+
+      requestAnimationFrame(() => positionPopover(step));
+    }
+
+    function goTo(i) {
+      current = Math.max(0, Math.min(i, TOTAL - 1));
+      renderStep(current);
+    }
 
     const close = async () => {
-      overlay.classList.add('hidden');
+      popover.classList.add('hidden');
+      backdrop.classList.add('hidden');
+      spotlight.classList.add('hidden');
+      if (prevHighlight) prevHighlight.classList.remove('tt-target-highlight');
       this.onboardingFlags.toolkitTourShown = true;
       await this.saveOnboardingFlags();
     };
 
-    // Bind nav (clone nodes to avoid duplicate listeners on re-open)
+    // Bind nav (clone to avoid duplicate listeners)
     const rebind = (id, fn) => {
       const el = document.getElementById(id);
       const fresh = el.cloneNode(true);
@@ -1915,36 +2043,20 @@ export const PopupController = {
       return fresh;
     };
 
-    rebind('ttPrevBtn',    () => goTo(current - 1));
-    rebind('ttNextBtn',    () => goTo(current + 1));
-    rebind('ttFinishBtn',  () => close());
-    rebind('ttCloseBtn',   () => close());
-    rebind('ttOpenStudyBtn', () => {
+    rebind('ttPrevBtn',   () => goTo(current - 1));
+    rebind('ttNextBtn',   () => goTo(current + 1));
+    rebind('ttFinishBtn', () => {
       chrome.tabs.create({ url: chrome.runtime.getURL('src/study/study.html') });
       close();
     });
+    rebind('ttSkipBtn',   () => close());
 
-    // Dot clicks
-    dots.forEach((d, i) => {
-      const fresh = d.cloneNode(true);
-      d.parentNode.replaceChild(fresh, d);
-      fresh.addEventListener('click', () => goTo(i));
-    });
+    // Click backdrop to close
+    backdrop.onclick = () => close();
 
-    // Re-query after clone
-    const newPrevBtn = document.getElementById('ttPrevBtn');
-    const newNextBtn = document.getElementById('ttNextBtn');
-    const newFinishBtn = document.getElementById('ttFinishBtn');
-
-    // Init to slide 0
-    slides.forEach((s, i) => s.classList.toggle('tt-slide--active', i === 0));
-    overlay.querySelectorAll('.tt-dot').forEach((d, i) => d.classList.toggle('tt-dot--active', i === 0));
-    current = 0;
-    if (newPrevBtn) newPrevBtn.disabled = true;
-    if (newNextBtn) newNextBtn.classList.remove('hidden');
-    if (newFinishBtn) newFinishBtn.classList.add('hidden');
-
-    overlay.classList.remove('hidden');
+    // Show tour
+    backdrop.classList.remove('hidden');
+    renderStep(0);
   },
 
   async handleExtract() {
