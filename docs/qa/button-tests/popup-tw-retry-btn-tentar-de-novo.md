@@ -3,7 +3,7 @@
 - Contexto: `popup`
 - Elemento: `#tw-retry-btn` em `src/popup/popup.html:1436`
 - Evento: `click`
-- Handler: `() => this._turboWizardGoTo('tw-step-2')` (src/controllers/PopupController.js:5008)
+- Handler: `() => this._turboWizardGoTo('tw-step-2')` (src/controllers/PopupController.js:5060)
 - Use-case/service: NativeFetchBridgeService
 - Side-effects: [Unverified] não foi possível validar
 
@@ -14,19 +14,19 @@
 - Traço UI -> handler -> serviço -> side-effect: mapeado parcialmente com evidência de chamada e heurística de serviço.
 
 Arquivo DOM: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\popup\popup.html:1436`
-Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\controllers\PopupController.js:5008`
+Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\controllers\PopupController.js:5060`
 
 Trecho mínimo do binding:
 ```js
-5006: 
-5007:       if (available) {
-5008:         banner.classList.remove('warn', 'err');
-5009:         dot.className = 'native-bridge-dot ok';
-5010:         label.textContent = 'NativeFetch Bridge: ativo ✓';
+5058:       });
+5059:       document.getElementById('tw-notfound-skip-btn')?.addEventListener('click', () => this._closeTurboWizard());
+5060:       document.getElementById('tw-retry-btn')?.addEventListener('click', () => this._turboWizardGoTo('tw-step-2'));
+5061: 
+5062:       // Close on backdrop click
 ```
 
 ## 2.2 Verificação dinâmica (rodando)
-- Execução dinâmica feita com Playwright CLI em navegador real (chrome), clicando o elemento em todos os cenários automatizados.
+- Execução dinâmica feita com Playwright CLI em navegador real, clicando o elemento em todos os cenários automatizados.
 
 ## 2.3 Cenários obrigatórios
 | Cenário | Resultado | Evidência |
@@ -42,3 +42,4 @@ Trecho mínimo do binding:
 - Status: ✅ ok
 - Causa raiz: não identificado crash específico para este botão nas execuções registradas.
 - Correção mínima proposta: endurecer validações de estado e mensagens de erro para cenários inválidos/permissões/offline.
+

@@ -9,51 +9,53 @@
  *  - Badge display data for UI
  */
 
+import { BADGE_ICONS } from './BadgeIcons.js';
+
 const BADGE_KEY = 'ah_badges';
 
 // ─── Badge Definitions ──────────────────────────────────────────────────────
 const BADGE_DEFS = [
   // ── Onboarding ──
-  { id: 'first_save', category: 'onboarding', icon: '<span class="material-symbols-rounded">park</span>', name: 'Primeiro Passo', desc: 'Salve sua primeira questão', condition: (s) => s.totalSaved >= 1 },
-  { id: 'first_review', category: 'onboarding', icon: '<span class="material-symbols-rounded">auto_stories</span>', name: 'Primeira Revisão', desc: 'Complete sua primeira revisão', condition: (s) => s.totalReviews >= 1 },
-  { id: 'first_disc', category: 'onboarding', icon: '<span class="material-symbols-rounded">folder_open</span>', name: 'Organizado', desc: 'Crie sua primeira disciplina', condition: (s) => s.totalDisciplines >= 1 },
+  { id: 'first_save', category: 'onboarding', icon: BADGE_ICONS.first_save, name: 'Primeiro Passo', desc: 'Salve sua primeira questão', condition: (s) => s.totalSaved >= 1 },
+  { id: 'first_review', category: 'onboarding', icon: BADGE_ICONS.first_review, name: 'Primeira Revisão', desc: 'Complete sua primeira revisão', condition: (s) => s.totalReviews >= 1 },
+  { id: 'first_disc', category: 'onboarding', icon: BADGE_ICONS.first_disc, name: 'Organizado', desc: 'Crie sua primeira disciplina', condition: (s) => s.totalDisciplines >= 1 },
 
   // ── Volume ──
-  { id: 'save_10', category: 'volume', icon: '<span class="material-symbols-rounded">edit_note</span>', name: 'Colecionador', desc: 'Salve 10 questões', condition: (s) => s.totalSaved >= 10 },
-  { id: 'save_50', category: 'volume', icon: '<span class="material-symbols-rounded">library_books</span>', name: 'Biblioteca', desc: 'Salve 50 questões', condition: (s) => s.totalSaved >= 50 },
-  { id: 'save_100', category: 'volume', icon: '<span class="material-symbols-rounded">account_balance</span>', name: 'Arquivo Vivo', desc: 'Salve 100 questões', condition: (s) => s.totalSaved >= 100 },
-  { id: 'save_500', category: 'volume', icon: '<span class="material-symbols-rounded">inventory_2</span>', name: 'Enciclopédia', desc: 'Salve 500 questões', condition: (s) => s.totalSaved >= 500 },
+  { id: 'save_10', category: 'volume', icon: BADGE_ICONS.save_10, name: 'Colecionador', desc: 'Salve 10 questões', condition: (s) => s.totalSaved >= 10 },
+  { id: 'save_50', category: 'volume', icon: BADGE_ICONS.save_50, name: 'Biblioteca', desc: 'Salve 50 questões', condition: (s) => s.totalSaved >= 50 },
+  { id: 'save_100', category: 'volume', icon: BADGE_ICONS.save_100, name: 'Arquivo Vivo', desc: 'Salve 100 questões', condition: (s) => s.totalSaved >= 100 },
+  { id: 'save_500', category: 'volume', icon: BADGE_ICONS.save_500, name: 'Enciclopédia', desc: 'Salve 500 questões', condition: (s) => s.totalSaved >= 500 },
 
   // ── Mastery ──
-  { id: 'master_1', category: 'mastery', icon: '<span class="material-symbols-rounded">star</span>', name: 'Primeira Estrela', desc: 'Domine seu primeiro card', condition: (s) => s.totalMastered >= 1 },
-  { id: 'master_10', category: 'mastery', icon: '<span class="material-symbols-rounded">stars</span>', name: 'Estudante Dedicado', desc: 'Domine 10 cards', condition: (s) => s.totalMastered >= 10 },
-  { id: 'master_50', category: 'mastery', icon: '<span class="material-symbols-rounded">auto_awesome</span>', name: 'Semi-Expert', desc: 'Domine 50 cards', condition: (s) => s.totalMastered >= 50 },
-  { id: 'master_100', category: 'mastery', icon: '<span class="material-symbols-rounded">emoji_events</span>', name: 'Expert', desc: 'Domine 100 cards', condition: (s) => s.totalMastered >= 100 },
+  { id: 'master_1', category: 'mastery', icon: BADGE_ICONS.master_1, name: 'Primeira Estrela', desc: 'Domine seu primeiro card', condition: (s) => s.totalMastered >= 1 },
+  { id: 'master_10', category: 'mastery', icon: BADGE_ICONS.master_10, name: 'Estudante Dedicado', desc: 'Domine 10 cards', condition: (s) => s.totalMastered >= 10 },
+  { id: 'master_50', category: 'mastery', icon: BADGE_ICONS.master_50, name: 'Semi-Expert', desc: 'Domine 50 cards', condition: (s) => s.totalMastered >= 50 },
+  { id: 'master_100', category: 'mastery', icon: BADGE_ICONS.master_100, name: 'Expert', desc: 'Domine 100 cards', condition: (s) => s.totalMastered >= 100 },
 
   // ── Streak ──
-  { id: 'streak_3', category: 'streak', icon: '<span class="material-symbols-rounded">local_fire_department</span>', name: 'Em Chamas', desc: '3 dias seguidos de estudo', condition: (s) => s.streak >= 3 },
-  { id: 'streak_7', category: 'streak', icon: '<span class="material-symbols-rounded">bolt</span>', name: 'Semana Perfeita', desc: '7 dias seguidos de estudo', condition: (s) => s.streak >= 7 },
-  { id: 'streak_14', category: 'streak', icon: '<span class="material-symbols-rounded">fitness_center</span>', name: 'Quinzena de Ferro', desc: '14 dias seguidos de estudo', condition: (s) => s.streak >= 14 },
-  { id: 'streak_30', category: 'streak', icon: '<span class="material-symbols-rounded">military_tech</span>', name: 'Mês Invicto', desc: '30 dias seguidos de estudo', condition: (s) => s.streak >= 30 },
-  { id: 'streak_100', category: 'streak', icon: '<span class="material-symbols-rounded">shield</span>', name: 'Centurião', desc: '100 dias seguidos de estudo', condition: (s) => s.streak >= 100 },
+  { id: 'streak_3', category: 'streak', icon: BADGE_ICONS.streak_3, name: 'Em Chamas', desc: '3 dias seguidos de estudo', condition: (s) => s.streak >= 3 },
+  { id: 'streak_7', category: 'streak', icon: BADGE_ICONS.streak_7, name: 'Semana Perfeita', desc: '7 dias seguidos de estudo', condition: (s) => s.streak >= 7 },
+  { id: 'streak_14', category: 'streak', icon: BADGE_ICONS.streak_14, name: 'Quinzena de Ferro', desc: '14 dias seguidos de estudo', condition: (s) => s.streak >= 14 },
+  { id: 'streak_30', category: 'streak', icon: BADGE_ICONS.streak_30, name: 'Mês Invicto', desc: '30 dias seguidos de estudo', condition: (s) => s.streak >= 30 },
+  { id: 'streak_100', category: 'streak', icon: BADGE_ICONS.streak_100, name: 'Centurião', desc: '100 dias seguidos de estudo', condition: (s) => s.streak >= 100 },
 
   // ── Disciplines ──
-  { id: 'disc_3', category: 'breadth', icon: '<span class="material-symbols-rounded">palette</span>', name: 'Multidisciplinar', desc: 'Estude 3 disciplinas diferentes', condition: (s) => s.totalDisciplines >= 3 },
-  { id: 'disc_5', category: 'breadth', icon: '<span class="material-symbols-rounded">extension</span>', name: 'Polímata', desc: 'Estude 5 disciplinas diferentes', condition: (s) => s.totalDisciplines >= 5 },
-  { id: 'disc_10', category: 'breadth', icon: '<span class="material-symbols-rounded">interests</span>', name: 'Renascentista', desc: 'Estude 10 disciplinas diferentes', condition: (s) => s.totalDisciplines >= 10 },
+  { id: 'disc_3', category: 'breadth', icon: BADGE_ICONS.disc_3, name: 'Multidisciplinar', desc: 'Estude 3 disciplinas diferentes', condition: (s) => s.totalDisciplines >= 3 },
+  { id: 'disc_5', category: 'breadth', icon: BADGE_ICONS.disc_5, name: 'Polímata', desc: 'Estude 5 disciplinas diferentes', condition: (s) => s.totalDisciplines >= 5 },
+  { id: 'disc_10', category: 'breadth', icon: BADGE_ICONS.disc_10, name: 'Renascentista', desc: 'Estude 10 disciplinas diferentes', condition: (s) => s.totalDisciplines >= 10 },
 
   // ── Perfect Score ──
-  { id: 'perfect_10', category: 'accuracy', icon: '<span class="material-symbols-rounded">target</span>', name: 'Mira Perfeita', desc: '10 revisões sem erros seguidas', condition: (s) => s.perfectStreak >= 10 },
-  { id: 'perfect_25', category: 'accuracy', icon: '<span class="material-symbols-rounded">diamond</span>', name: 'Diamante', desc: '25 revisões sem erros seguidas', condition: (s) => s.perfectStreak >= 25 },
+  { id: 'perfect_10', category: 'accuracy', icon: BADGE_ICONS.perfect_10, name: 'Mira Perfeita', desc: '10 revisões sem erros seguidas', condition: (s) => s.perfectStreak >= 10 },
+  { id: 'perfect_25', category: 'accuracy', icon: BADGE_ICONS.perfect_25, name: 'Diamante', desc: '25 revisões sem erros seguidas', condition: (s) => s.perfectStreak >= 25 },
 
   // ── XP ──
-  { id: 'xp_1k', category: 'xp', icon: '<span class="material-symbols-rounded">workspace_premium</span>', name: '1K Club', desc: 'Alcance 1.000 XP', condition: (s) => s.xp >= 1000 },
-  { id: 'xp_5k', category: 'xp', icon: '<span class="material-symbols-rounded">emoji_events</span>', name: '5K Club', desc: 'Alcance 5.000 XP', condition: (s) => s.xp >= 5000 },
-  { id: 'xp_10k', category: 'xp', icon: '<span class="material-symbols-rounded">diamond</span>', name: '10K Legend', desc: 'Alcance 10.000 XP', condition: (s) => s.xp >= 10000 },
+  { id: 'xp_1k', category: 'xp', icon: BADGE_ICONS.xp_1k, name: '1K Club', desc: 'Alcance 1.000 XP', condition: (s) => s.xp >= 1000 },
+  { id: 'xp_5k', category: 'xp', icon: BADGE_ICONS.xp_5k, name: '5K Club', desc: 'Alcance 5.000 XP', condition: (s) => s.xp >= 5000 },
+  { id: 'xp_10k', category: 'xp', icon: BADGE_ICONS.xp_10k, name: '10K Legend', desc: 'Alcance 10.000 XP', condition: (s) => s.xp >= 10000 },
 
   // ── Special ──
-  { id: 'night_owl', category: 'special', icon: '<span class="material-symbols-rounded">dark_mode</span>', name: 'Coruja Noturna', desc: 'Estude após meia-noite', condition: (s) => s.nightStudy },
-  { id: 'early_bird', category: 'special', icon: '<span class="material-symbols-rounded">wb_twilight</span>', name: 'Madrugador', desc: 'Estude antes das 6h', condition: (s) => s.earlyStudy },
+  { id: 'night_owl', category: 'special', icon: BADGE_ICONS.night_owl, name: 'Coruja Noturna', desc: 'Estude após meia-noite', condition: (s) => s.nightStudy },
+  { id: 'early_bird', category: 'special', icon: BADGE_ICONS.early_bird, name: 'Madrugador', desc: 'Estude antes das 6h', condition: (s) => s.earlyStudy },
 ];
 
 export const BadgeService = {

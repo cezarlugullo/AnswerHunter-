@@ -40,7 +40,7 @@ export const CopilotApiAdapter = {
             stream: false
         };
 
-        const timeoutMs = opts.timeoutMs ?? 20000;
+        const timeoutMs = opts.timeoutMs ?? 60000;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
 

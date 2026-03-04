@@ -3,7 +3,7 @@
 - Contexto: `popup`
 - Elemento: `#tw-skip-btn` em `src/popup/popup.html:1327`
 - Evento: `click`
-- Handler: `() => this._closeTurboWizard()` (src/controllers/PopupController.js:4999)
+- Handler: `() => this._closeTurboWizard()` (src/controllers/PopupController.js:5051)
 - Use-case/service: NativeFetchBridgeService
 - Side-effects: [Unverified] não foi possível validar
 
@@ -14,19 +14,19 @@
 - Traço UI -> handler -> serviço -> side-effect: mapeado parcialmente com evidência de chamada e heurística de serviço.
 
 Arquivo DOM: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\popup\popup.html:1327`
-Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\controllers\PopupController.js:4999`
+Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\controllers\PopupController.js:5051`
 
 Trecho mínimo do binding:
 ```js
-4997:     banner.classList.remove('hidden');
-4998:     dot.className = 'native-bridge-dot';
-4999:     label.textContent = 'NativeFetch Bridge: checking...';
-5000: 
-5001:     try {
+5049: 
+5050:       document.getElementById('tw-close-btn')?.addEventListener('click', () => this._closeTurboWizard());
+5051:       document.getElementById('tw-skip-btn')?.addEventListener('click', () => this._closeTurboWizard());
+5052:       document.getElementById('tw-start-btn')?.addEventListener('click', () => this._turboWizardBeginDownload());
+5053:       document.getElementById('tw-back-btn')?.addEventListener('click', () => this._turboWizardGoTo('tw-step-1'));
 ```
 
 ## 2.2 Verificação dinâmica (rodando)
-- Execução dinâmica feita com Playwright CLI em navegador real (chrome), clicando o elemento em todos os cenários automatizados.
+- Execução dinâmica feita com Playwright CLI em navegador real, clicando o elemento em todos os cenários automatizados.
 
 ## 2.3 Cenários obrigatórios
 | Cenário | Resultado | Evidência |
@@ -42,3 +42,4 @@ Trecho mínimo do binding:
 - Status: ✅ ok
 - Causa raiz: não identificado crash específico para este botão nas execuções registradas.
 - Correção mínima proposta: endurecer validações de estado e mensagens de erro para cenários inválidos/permissões/offline.
+

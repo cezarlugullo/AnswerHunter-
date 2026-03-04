@@ -49,6 +49,8 @@ const state = {
     index: 0,
     results: [],
     revealed: false,
+    type: 'study',       // study | quiz | simulado | ai-simulado | challenge
+    startedAt: null,
   },
 
   // Flashcards
@@ -175,13 +177,30 @@ async function loadTheme() {
 
 /* ─── View Router ──────────────────────────────────────────────────── */
 
+const VIEW_LABELS = {
+  home: 'Início',
+  library: 'Biblioteca',
+  study: 'Estudar',
+  review: 'Revisão',
+  practice: 'Prática',
+  history: 'Histórico',
+  planning: 'Planejamento',
+  insights: 'Insights',
+};
+
 function navigateTo(viewId) {
-  if (state.currentView === viewId) return;
+  const isSameView = state.currentView === viewId;
   state.currentView = viewId;
 
-  // Update nav items
+  // Update nav items & aria
   $$('.nav-item').forEach(item => {
-    item.classList.toggle('active', item.dataset.view === viewId);
+    const isActive = item.dataset.view === viewId;
+    item.classList.toggle('active', isActive);
+    if (isActive) {
+      item.setAttribute('aria-current', 'page');
+    } else {
+      item.removeAttribute('aria-current');
+    }
   });
 
   // Show/hide panels 
@@ -190,15 +209,21 @@ function navigateTo(viewId) {
     panel.classList.toggle('active', isTarget);
   });
 
-  // Close mobile sidebar
-  const sidebar = $('#sidebar');
-  if (sidebar && window.innerWidth < 768) {
-    sidebar.classList.remove('mobile-open');
-    $('#mobileOverlay')?.classList.remove('active');
+  // Update breadcrumb
+  const bc = $('#breadcrumb');
+  if (bc) {
+    const label = VIEW_LABELS[viewId] || capitalize(viewId);
+    if (viewId === 'home') {
+      bc.innerHTML = `<span class="breadcrumb-item active">${label}</span>`;
+    } else {
+      bc.innerHTML = `<a class="breadcrumb-item" data-view="home" href="#home">Início</a>
+        <span class="material-symbols-rounded breadcrumb-sep" style="font-size:16px;color:var(--color-text-tertiary)">chevron_right</span>
+        <span class="breadcrumb-item active">${label}</span>`;
+    }
   }
 
-  // Lazy-load view data
-  loadViewData(viewId);
+  // Lazy-load view data (skip if same view already loaded)
+  if (!isSameView) loadViewData(viewId);
 }
 
 function capitalize(str) {
@@ -209,7 +234,10 @@ async function loadViewData(viewId) {
   switch (viewId) {
     case 'home': return renderHome();
     case 'library': return renderLibrary();
+    case 'study': return; // study view renders on session start
     case 'review': return renderReview();
+    case 'practice': return; // practice view renders on mode select
+    case 'history': return renderHistory();
     case 'insights': return renderInsights();
     case 'planning': return renderPlanning();
   }
@@ -218,9 +246,34 @@ async function loadViewData(viewId) {
 /* ─── Sidebar ──────────────────────────────────────────────────────── */
 
 function initSidebar() {
-  // Nav item clicks
+  // Restore sidebar collapsed state from localStorage
+  try {
+    const saved = localStorage.getItem('ah_sidebar_collapsed');
+    if (saved === 'true') {
+      state.sidebarCollapsed = true;
+      const sidebar = $('#sidebar');
+      if (sidebar) {
+        sidebar.classList.add('collapsed');
+        $('#app')?.classList.add('sidebar-collapsed');
+        const chevron = $('#sidebarToggle .material-symbols-rounded');
+        if (chevron) chevron.textContent = 'chevron_right';
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Nav item clicks — prevent <a> default & navigate
   $$('.nav-item[data-view]').forEach(item => {
-    on(item, 'click', () => navigateTo(item.dataset.view));
+    on(item, 'click', e => {
+      e.preventDefault();
+      navigateTo(item.dataset.view);
+    });
+    // Keyboard: Enter/Space
+    on(item, 'keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        navigateTo(item.dataset.view);
+      }
+    });
   });
 
   // Handle ALL elements with data-view attribute (panel action links, buttons, etc.)
@@ -232,32 +285,16 @@ function initSidebar() {
     }
   });
 
-  // Toggle (sidebar collapse button)
+  // Toggle sidebar collapse
   on($('#sidebarToggle'), 'click', () => {
     const sidebar = $('#sidebar');
     if (!sidebar) return;
-    if (window.innerWidth < 768) {
-      sidebar.classList.toggle('mobile-open');
-      $('#mobileOverlay')?.classList.toggle('active');
-    } else {
-      sidebar.classList.toggle('collapsed');
-      state.sidebarCollapsed = !state.sidebarCollapsed;
-      $('#app')?.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
-    }
-  });
-
-  // Mobile sidebar toggle (topbar hamburger)
-  on($('#mobileSidebarToggle'), 'click', () => {
-    const sidebar = $('#sidebar');
-    if (!sidebar) return;
-    sidebar.classList.toggle('mobile-open');
-    $('#mobileOverlay')?.classList.toggle('active');
-  });
-
-  // Mobile overlay close
-  on($('#mobileOverlay'), 'click', () => {
-    $('#sidebar')?.classList.remove('mobile-open');
-    $('#mobileOverlay')?.classList.remove('active');
+    state.sidebarCollapsed = !state.sidebarCollapsed;
+    sidebar.classList.toggle('collapsed', state.sidebarCollapsed);
+    $('#app')?.classList.toggle('sidebar-collapsed', state.sidebarCollapsed);
+    const chevron = $('#sidebarToggle .material-symbols-rounded');
+    if (chevron) chevron.textContent = state.sidebarCollapsed ? 'chevron_right' : 'chevron_left';
+    try { localStorage.setItem('ah_sidebar_collapsed', state.sidebarCollapsed); } catch { /* ignore */ }
   });
 
   // Cross-navigation buttons
@@ -381,6 +418,7 @@ function initKeyboard() {
       'p': 'practice',
       'f': 'practice',
       'i': 'insights',
+      'y': 'history',
     };
     if (shortcuts[key]) {
       navigateTo(shortcuts[key]);
@@ -418,6 +456,7 @@ function initPomodoro() {
     state.pomodoro.seconds = 25 * 60;
     updatePomodoroDisplay();
   });
+  initPomodoroDrag();
 }
 
 function togglePomodoroTimer() {
@@ -432,6 +471,10 @@ function startPomodoro() {
   state.pomodoro.running = true;
   const icon = $('#pomodoroToggle .material-symbols-rounded');
   if (icon) icon.textContent = 'pause';
+
+  // Show drag-tip only once (first ever play)
+  showPomodoroDragTip();
+
   state.pomodoro.interval = setInterval(() => {
     state.pomodoro.seconds--;
     updatePomodoroDisplay();
@@ -490,6 +533,197 @@ function updatePomodoroDisplay() {
   }
 }
 
+/* ─── Draggable Pomodoro ───────────────────────────────────────────── */
+
+function initPomodoroDrag() {
+  const el = $('#topbarPomodoro');
+  if (!el) return;
+
+  let isDragging = false;
+  let hasMoved = false;
+  let startX = 0, startY = 0;
+  let offsetX = 0, offsetY = 0;
+  const DRAG_THRESHOLD = 6; // px before we consider it a drag
+
+  // ── Double-click to snap back ──
+  el.addEventListener('dblclick', (e) => {
+    if (el.classList.contains('is-detached')) {
+      e.preventDefault();
+      e.stopPropagation();
+      snapPomodoroBack();
+    }
+  });
+
+  // ── Pointer down: prepare to drag ──
+  el.addEventListener('pointerdown', (e) => {
+    // Only drag from pomodoro-info area or the container itself, not from buttons
+    if (e.target.closest('.pomodoro-btn') || e.target.closest('button')) return;
+
+    isDragging = true;
+    hasMoved = false;
+    startX = e.clientX;
+    startY = e.clientY;
+
+    const rect = el.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+
+    el.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  // ── Pointer move: detach + drag ──
+  el.addEventListener('pointermove', (e) => {
+    if (!isDragging) return;
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (!hasMoved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+
+    if (!hasMoved) {
+      hasMoved = true;
+      detachPomodoro(el);
+    }
+
+    // Clamp to viewport
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let x = e.clientX - offsetX;
+    let y = e.clientY - offsetY;
+    x = Math.max(0, Math.min(x, vw - el.offsetWidth));
+    y = Math.max(0, Math.min(y, vh - el.offsetHeight));
+
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+  });
+
+  // ── Pointer up: finish drag ──
+  el.addEventListener('pointerup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+
+    if (hasMoved) {
+      el.classList.remove('is-dragging');
+
+      // Check if dropped near the original slot → snap back
+      const ghost = $('#pomodoroGhost');
+      if (ghost) {
+        const ghostRect = ghost.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const cx = elRect.left + elRect.width / 2;
+        const cy = elRect.top + elRect.height / 2;
+        const inRange = cx > ghostRect.left - 40 && cx < ghostRect.right + 40 &&
+          cy > ghostRect.top - 40 && cy < ghostRect.bottom + 40;
+        if (inRange) {
+          snapPomodoroBack();
+        }
+      }
+    }
+  });
+
+  el.addEventListener('pointercancel', () => {
+    isDragging = false;
+    el.classList.remove('is-dragging');
+  });
+}
+
+function detachPomodoro(el) {
+  if (el.classList.contains('is-detached')) {
+    el.classList.add('is-dragging');
+    return;
+  }
+
+  // Capture original rect before detaching
+  const rect = el.getBoundingClientRect();
+
+  // Create ghost placeholder in the topbar
+  const ghost = document.createElement('div');
+  ghost.id = 'pomodoroGhost';
+  ghost.className = 'pomodoro-ghost';
+  ghost.title = 'Arraste o timer de volta aqui ou dê duplo-clique nele';
+  el.parentNode.insertBefore(ghost, el);
+
+  // Set fixed position at the same coordinates
+  el.classList.add('is-detached', 'is-dragging');
+  el.style.left = `${rect.left}px`;
+  el.style.top = `${rect.top}px`;
+
+  // Move to body so it's above everything
+  document.body.appendChild(el);
+}
+
+function snapPomodoroBack() {
+  const el = $('#topbarPomodoro');
+  const ghost = $('#pomodoroGhost');
+  if (!el || !ghost) return;
+
+  // Animate back to ghost position
+  const ghostRect = ghost.getBoundingClientRect();
+  el.style.transition = 'left 0.3s cubic-bezier(0.4,0,0.2,1), top 0.3s cubic-bezier(0.4,0,0.2,1), box-shadow 0.3s';
+  el.style.left = `${ghostRect.left}px`;
+  el.style.top = `${ghostRect.top}px`;
+
+  setTimeout(() => {
+    // Return to DOM position
+    ghost.replaceWith(el);
+    el.classList.remove('is-detached', 'is-dragging');
+    el.style.left = '';
+    el.style.top = '';
+    el.style.transition = '';
+  }, 320);
+}
+
+/**
+ * Show a one-time friendly tooltip near the Pomodoro widget,
+ * informing the user they can drag it anywhere on screen.
+ */
+function showPomodoroDragTip() {
+  const STORAGE_KEY = 'ah_pomodoro_drag_tip_shown';
+  if (localStorage.getItem(STORAGE_KEY)) return;
+  localStorage.setItem(STORAGE_KEY, '1');
+
+  const anchor = $('#topbarPomodoro');
+  if (!anchor) return;
+
+  const tip = document.createElement('div');
+  tip.className = 'pomodoro-drag-tip';
+  tip.innerHTML = `
+    <span class="pomodoro-drag-tip__icon material-symbols-rounded">open_with</span>
+    <span class="pomodoro-drag-tip__text">
+      <strong>Dica:</strong> Você pode arrastar o timer para qualquer lugar da tela!
+      <br><span class="pomodoro-drag-tip__sub">Duplo-clique para voltar ao lugar original.</span>
+    </span>
+    <button class="pomodoro-drag-tip__close" aria-label="Fechar dica">
+      <span class="material-symbols-rounded" style="font-size:16px">close</span>
+    </button>
+  `;
+
+  document.body.appendChild(tip);
+
+  // Position near the anchor
+  requestAnimationFrame(() => {
+    const rect = anchor.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
+    let left = rect.left + rect.width / 2 - tipW / 2;
+    left = Math.max(12, Math.min(left, window.innerWidth - tipW - 12));
+    tip.style.left = `${left}px`;
+    tip.style.top = `${rect.bottom + 10}px`;
+    tip.classList.add('show');
+  });
+
+  // Close handlers
+  const dismiss = () => {
+    tip.classList.add('exit');
+    setTimeout(() => tip.remove(), 350);
+  };
+
+  tip.querySelector('.pomodoro-drag-tip__close').addEventListener('click', dismiss);
+
+  // Auto-dismiss after 6s
+  setTimeout(dismiss, 6000);
+}
+
 /* ─── Data Loading ─────────────────────────────────────────────────── */
 
 async function loadData() {
@@ -505,17 +739,17 @@ async function loadData() {
     // Load hierarchy
     state.hierarchy = await ContentHierarchyService.load();
 
-    // Load analytics
-    state.analytics = await AnalyticsService.getOverview();
+    // Load analytics (enriched with today, streak, dailyActivity)
+    state.analytics = await loadAnalytics();
 
-    // Load XP
+    // Load XP (merge analytics XP into persistent store)
     try {
       const xpRaw = await new Promise(resolve => {
         chrome.storage.local.get('ah_xpData', r => resolve(r.ah_xpData));
       });
-      state.xpData = xpRaw || { totalXP: 0, level: 1 };
+      state.xpData = xpRaw || { totalXP: 0, level: 1, streak: 0 };
     } catch {
-      state.xpData = { totalXP: 0, level: 1 };
+      state.xpData = { totalXP: 0, level: 1, streak: 0 };
     }
 
     // Load badges
@@ -530,6 +764,13 @@ async function loadData() {
     toast('Erro ao carregar dados. Verifique o console.', 'error');
     return false;
   }
+}
+
+/* ─── Analytics Loader (enriched) ──────────────────────────────────── */
+
+async function loadAnalytics() {
+  // getOverview now returns enriched data: _today, currentStreak, _dailyActivity
+  return await AnalyticsService.getOverview();
 }
 
 /* ─── Utility: Get All Cards Flat ──────────────────────────────────── */
@@ -646,10 +887,11 @@ async function renderHome() {
     }
   });
 
-  // Stats
-  const reviewed = state.analytics?.todayReviews || 0;
-  const accuracy = state.analytics?.todayAccuracy != null
-    ? `${Math.round(state.analytics.todayAccuracy * 100)}%`
+  // Stats (read from enriched analytics)
+  const todayStats = state.analytics?._today || {};
+  const reviewed = todayStats.reviews || 0;
+  const accuracy = reviewed > 0
+    ? `${Math.round((todayStats.correct / reviewed) * 100)}%`
     : '—';
   const xp = state.xpData?.totalXP || 0;
 
@@ -698,7 +940,14 @@ function updateNavBadges(dueCount) {
   }
   const notifDot = $('#notifDot');
   if (notifDot) {
-    dueCount > 0 ? show(notifDot) : hide(notifDot);
+    // Count actual actionable notifications (exclude "all clear")
+    const notifs = _buildNotifications().filter(n => n.id !== 'all_clear');
+    if (notifs.length > 0) {
+      notifDot.textContent = notifs.length;
+      show(notifDot);
+    } else {
+      hide(notifDot);
+    }
   }
 }
 
@@ -795,7 +1044,7 @@ function renderHeatmap(selector, weeks = 20) {
   const container = $(selector);
   if (!container) return;
 
-  const activityData = state.analytics?.dailyActivity || {};
+  const activityData = state.analytics?._dailyActivity || {};
   const today = new Date();
   const days = weeks * 7;
 
@@ -875,7 +1124,7 @@ function renderHeatmap(selector, weeks = 20) {
     const dateFormatted = `${parseInt(d)} ${MONTH_NAMES[parseInt(mo) - 1]} ${y}`;
     const label = count === 0
       ? `${dateFormatted}: nenhuma revisão`
-      : `${dateFormatted}: ${count} revisão${count !== 1 ? 'ões' : ''}`;
+      : `${dateFormatted}: ${count} ${count === 1 ? 'revisão' : 'revisões'}`;
     return `<div class="heatmap__cell" data-level="${level}" data-tooltip="${label}" title="${label}" tabindex="-1" role="gridcell" aria-label="${label}"></div>`;
   }).join('');
 
@@ -930,7 +1179,7 @@ async function renderHomeRecommendations() {
   if (!container) return;
 
   try {
-    const recs = await RecommendationService.generateRecommendations();
+    const recs = await RecommendationService.generateRecommendations({ hierarchy: state.hierarchy || [], xpData: state.xpData || {} });
     if (!recs || recs.length === 0) {
       container.innerHTML = '<div style="color:var(--text-3);font-size:var(--text-sm);padding:var(--sp-4) 0">Estude mais para receber recomendações personalizadas.</div>';
       return;
@@ -955,13 +1204,13 @@ async function renderHomeBadges() {
   try {
     const badges = state.badges || [];
     if (badges.length === 0) {
-      container.innerHTML = '<div style="color:var(--text-3);font-size:var(--text-sm);padding:var(--sp-4) 0">Nenhuma conquista desbloqueada ainda. Continue estudando!</div>';
+      container.innerHTML = '<div class="badge-empty-msg">Nenhuma conquista desbloqueada ainda. Continue estudando!</div>';
       return;
     }
-    container.innerHTML = `<div style="display:flex;gap:var(--sp-3);flex-wrap:wrap">${badges.slice(0, 6).map(b => `
-        <div style="text-align:center;width:60px" title="${escHtml(b.description || b.name || '')}">
-          <div style="font-size:28px">${b.icon || '🏆'}</div>
-          <div style="font-size:10px;color:var(--text-3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(b.name || '—')}</div>
+    container.innerHTML = `<div class="badges-home-grid">${badges.slice(0, 6).map(b => `
+        <div class="badge-home-item" title="${escHtml(b.description || b.name || '')}">
+          <div class="badge-home-icon">${b.icon || '🏆'}</div>
+          <div class="badge-home-name">${escHtml(b.name || '—')}</div>
         </div>
       `).join('')
       }</div>`;
@@ -1176,20 +1425,32 @@ function showDisciplineDetail(discId) {
   }
 
   const body = cards.length === 0
-    ? '<div class="empty-state"><span class="empty-state__icon icon">description</span><div class="empty-state__title">Sem cards</div></div>'
-    : `<div style="max-height:400px;overflow-y:auto">${cards.map(c => `
-        <div style="padding:var(--sp-3) 0;border-bottom:1px solid var(--border)">
-          <div style="font-size:var(--text-xs);color:var(--text-3);margin-bottom:2px">${escHtml(c._topic)}</div>
-          <div style="font-size:var(--text-sm)">${escHtml(truncate(c.question || c.pergunta || '—', 120))}</div>
+    ? '<div class="empty-state"><span class="empty-state__icon material-symbols-rounded">description</span><div class="empty-state__title">Sem cards nesta disciplina</div><p class="empty-state__desc">Adicione questões para começar a estudar.</p></div>'
+    : `<div class="disc-detail-list">${cards.map((c, i) => `
+        <div class="disc-detail-card">
+          <div class="disc-detail-card__topic">${escHtml(c._topic)}</div>
+          <div class="disc-detail-card__question">${escHtml(truncate(c.question || c.pergunta || '—', 140))}</div>
         </div>
-      `).join('')}</div>`;
+      `).join('')}</div>
+      <div class="disc-detail-count">${cards.length} ${cards.length === 1 ? 'card' : 'cards'}</div>`;
 
+  const safeId = discId.replace(/'/g, "\\'");
   const footer = `
-    <button class="btn btn-primary btn-pill" onclick="document.querySelector('#modalOverlay').classList.remove('active');window.__startSessionForDisc?.('${discId}')">
-      <span class="icon">play_arrow</span> Estudar esta disciplina
+    <button class="btn btn-primary" id="btnStudyThisDisc">
+      <span class="material-symbols-rounded" style="font-size:18px">play_arrow</span>
+      Estudar esta disciplina
     </button>`;
 
   openModal(disc.name || 'Disciplina', body, footer);
+
+  // Bind click after DOM is ready
+  const btn = $('#btnStudyThisDisc');
+  if (btn) {
+    on(btn, 'click', () => {
+      closeModal();
+      window.__startSessionForDisc?.(discId);
+    });
+  }
 }
 
 /* ─── STUDY SESSION ────────────────────────────────────────────────── */
@@ -1206,11 +1467,15 @@ function initStudySession() {
     show($('#studySetup'));
   });
   on($('#summaryGoHome'), 'click', () => navigateTo('home'));
+  on($('#summaryGoHistory'), 'click', () => navigateTo('history'));
 
   // Hero CTA redirect
   window.__startSessionForDisc = (discId) => {
     const discSel = $('#sessionDisc');
     if (discSel) discSel.value = discId;
+    // Force "all cards" so user sees every card in this discipline, not just due ones
+    const sourceSel = $('#sessionSource');
+    if (sourceSel) sourceSel.value = 'all';
     navigateTo('study');
     setTimeout(startStudySession, 100);
   };
@@ -1335,7 +1600,10 @@ function startStudySession() {
     index: 0,
     results: [],
     revealed: false,
+    type: state._nextSessionType || 'study',
+    startedAt: Date.now(),
   };
+  state._nextSessionType = null;
 
   hide($('#studySetup'));
   hide($('#studySummary'));
@@ -1553,6 +1821,8 @@ function selectOption(idx) {
   });
 
   const wasCorrect = idx === correctIdx;
+  // Store actual correctness on session for accurate stats
+  state.session._lastWasCorrect = wasCorrect;
   revealAnswer(wasCorrect);
 
   // If wrong, show "Why Wrong" explanation panel
@@ -1704,6 +1974,9 @@ function formatMarkdown(text) {
   // ── 4. Bold text → accent-colored strong ──
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="ww-keyword">$1</strong>');
 
+  // ── 4.5. Italic text ──
+  html = html.replace(/(?<!\*)\*(.+?)\*(?!\*)/g, '<em>$1</em>');
+
   // ── 5. Backtick-wrapped text → highlighted code/concept pill ──
   html = html.replace(/```(?:[a-z]+)?\n([\s\S]*?)```/gi, '<div style="background:var(--surface); padding:var(--sp-3); border-radius:var(--radius-md); font-family:monospace; margin:8px 0; overflow-x:auto; font-size:0.9em;">$1</div>');
   html = html.replace(/`([^`]+)`/g, '<code class="ww-concept">$1</code>');
@@ -1719,24 +1992,24 @@ function formatMarkdown(text) {
 
   const tableRegex = /(^\|.+?\|$(?:\r?\n)?)+/gim;
   html = html.replace(tableRegex, (match) => {
-      let rowsHtml = '';
-      const rows = match.trim().split('\n');
-      let isHeader = true;
-      for (const row of rows) {
-          if (/^\|[-:| ]+\|$/.test(row)) { isHeader = false; continue; }
-          const cells = row.split('|').slice(1, -1);
-          let rowHtml = '<tr>';
-          for (const cell of cells) {
-              const tag = isHeader ? 'th' : 'td';
-              const style = isHeader 
-                  ? 'background:var(--surface-hover); font-weight:bold; padding:8px; border:1px solid var(--border); text-align:left;' 
-                  : 'padding:8px; border:1px solid var(--border);';
-              rowHtml += `<${tag} style="${style}">${cell.trim()}</${tag}>`;
-          }
-          rowHtml += '</tr>';
-          rowsHtml += rowHtml;
+    let rowsHtml = '';
+    const rows = match.trim().split('\n');
+    let isHeader = true;
+    for (const row of rows) {
+      if (/^\|[-:| ]+\|$/.test(row)) { isHeader = false; continue; }
+      const cells = row.split('|').slice(1, -1);
+      let rowHtml = '<tr>';
+      for (const cell of cells) {
+        const tag = isHeader ? 'th' : 'td';
+        const style = isHeader
+          ? 'background:var(--surface-hover); font-weight:bold; padding:8px; border:1px solid var(--border); text-align:left;'
+          : 'padding:8px; border:1px solid var(--border);';
+        rowHtml += `<${tag} style="${style}">${cell.trim()}</${tag}>`;
       }
-      return `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; margin:12px 0; font-size:0.9em;">\n${rowsHtml}\n</table></div>\n`;
+      rowHtml += '</tr>';
+      rowsHtml += rowHtml;
+    }
+    return `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; margin:12px 0; font-size:0.9em;">\n${rowsHtml}\n</table></div>\n`;
   });
 
   // ── 6. Individual alternative analysis lines: "- A) ✅/❌ explanation" ──
@@ -1746,12 +2019,12 @@ function formatMarkdown(text) {
     const isCorrect = type === 'correct';
     const cls = isCorrect ? 'ww-alt-card--correct' : 'ww-alt-card--wrong';
     const iconLabel = isCorrect ? '<span class="material-symbols-rounded">check_circle</span> Correta' : '<span class="material-symbols-rounded">cancel</span> Incorreta';
-    
+
     // Clean up explanation of trailing markup
     let cleanExp = explanation.replace(/<\/?(div|span|p)[^>]*>/g, '').trim();
     // Remove "**Por que?**" or similar prefixes if AI generated them
     cleanExp = cleanExp.replace(/^\*\*(Por que\??|Motivo|Justificativa)\*\*\s*/i, '');
-    
+
     return `</div><div class="ww-alt-card ${cls}">
       <div class="ww-alt-card__header">
         <span class="ww-alt-card__badge">${letter}</span>
@@ -1806,9 +2079,9 @@ function formatMarkdown(text) {
     // Regular content block
     let blockHtml = trimmed;
     if (!blockHtml.match(/^<h|^<div|^<hr|^<blockquote|^<table/)) {
-        blockHtml = blockHtml.replace(/\n/g, '<br>');
+      blockHtml = blockHtml.replace(/\n/g, '<br>');
     }
-    
+
     if (inSection) {
       output += `<p>${blockHtml}</p>`;
     } else {
@@ -1873,18 +2146,29 @@ async function rateCurrentCard(rating) {
     }
   }
 
-  // Record analytics
+  // Record analytics (include retrievability from FSRS)
+  // Use actual answer correctness (from option selection) when available;
+  // fall back to rating >= 3 for free-recall cards.
+  const wasCorrect = state.session._lastWasCorrect;
+  const isCorrect = wasCorrect !== undefined ? wasCorrect : (rating >= 3);
+  state.session._lastWasCorrect = undefined; // consume
   try {
-    AnalyticsService.recordReview?.({ cardId: card.id, disciplineId: card._discId, rating });
+    const retrievability = card.sm2?.retrievability ?? null;
+    AnalyticsService.recordReview?.({ cardId: card.id, disciplineId: card._discId, rating, retrievability, isCorrect });
   } catch { }
 
-  // Check badges
+  // Check badges (pass real stats)
   try {
-    await BadgeService.evaluate?.();
+    const stats = BadgeService.buildStats(state.hierarchy || [], state.xpData || {});
+    const newBadges = await BadgeService.evaluate?.(stats);
+    if (newBadges?.length) {
+      for (const b of newBadges) toast(`🏆 ${b.name} desbloqueada!`, 'success');
+      state.badges = await BadgeService.getUnlocked();
+    }
   } catch { }
 
   // Record result
-  state.session.results.push({ cardId: card.id, rating });
+  state.session.results.push({ cardId: card.id, rating, isCorrect });
 
   // Next card
   state.session.index++;
@@ -1904,13 +2188,65 @@ function endStudySession() {
 
   const results = state.session.results;
   const total = results.length;
-  const correct = results.filter(r => r.rating >= 3).length;
+  // Use actual answer correctness when available; fall back to rating >= 3 for free-recall
+  const correct = results.filter(r => r.isCorrect !== undefined ? r.isCorrect : r.rating >= 3).length;
   const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
   const xp = total * 10 + correct * 5;
 
-  // Add XP
+  // Determine discipline from cards
+  const discCounts = {};
+  state.session.cards.forEach(c => {
+    const d = c._disc || 'Geral';
+    discCounts[d] = (discCounts[d] || 0) + 1;
+  });
+  const mainDisc = Object.entries(discCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Geral';
+  const allDiscs = Object.keys(discCounts);
+
+  // Duration in seconds
+  const durationSec = state.session.startedAt
+    ? Math.round((Date.now() - state.session.startedAt) / 1000)
+    : 0;
+
+  // Save to history
+  saveSessionToHistory({
+    type: state.session.type || 'study',
+    discipline: mainDisc,
+    disciplines: allDiscs,
+    total,
+    correct,
+    errors: total - correct,
+    accuracy,
+    xp,
+    durationSec,
+    cards: state.session.cards.map((c, i) => {
+      const r = results[i] || {};
+      return {
+        question: truncate(c.question || c.pergunta || '', 200),
+        answer: truncate(c.answer || c.resposta || '', 200),
+        rating: r.rating || 0,
+        isCorrect: r.isCorrect,
+        disc: c._disc || '',
+        topic: c._topic || '',
+        isAI: !!c._aiGenerated,
+      };
+    }),
+  });
+
+  // Persist XP to ah_xpData + analytics
+  state.xpData = state.xpData || { totalXP: 0, level: 1, streak: 0 };
+  state.xpData.totalXP = (state.xpData.totalXP || 0) + xp;
+  state.xpData.level = Math.floor(state.xpData.totalXP / 100) + 1;
+  chrome.storage.local.set({ ah_xpData: state.xpData }).catch(() => { });
+
+  // Analytics: persist daily XP + end session
   AnalyticsService.addDailyXP?.(xp).catch(() => { });
-  AnalyticsService.endSession?.().catch(() => { });
+  AnalyticsService.endSession?.().then(async () => {
+    // Refresh analytics state for next navigation
+    try {
+      state.analytics = await loadAnalytics();
+      state.badges = await BadgeService.getUnlocked();
+    } catch { }
+  }).catch(() => { });
 
   const stats = $('#summaryStats');
   if (stats) {
@@ -1961,12 +2297,28 @@ async function aiAction(type) {
         result = await PedagogicalPromptsService.generateMnemonic(question, answer);
         break;
       case 'chat':
-        result = `Sobre: "${truncate(question, 80)}"\n\nPergunta aberta - use o chat para discutir.`;
-        break;
+        _openChatDock(question, answer);
+        return; // chat has its own rendering
     }
     const dock = $('#toolDockBody');
     if (dock) {
-      dock.innerHTML = `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7">${formatMarkdown(result || 'Sem resposta da IA.')}</div>`;
+      let html = '';
+      if (type === 'mnemonic' && result && typeof result === 'object') {
+        const em = escHtml(result.emoji || '🧠');
+        const mn = formatMarkdown(result.mnemonic || '');
+        const tp = escHtml(result.type || '');
+        const hu = escHtml(result.howToUse || '');
+        html = `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7">
+          <div style="font-size:1.6rem;margin-bottom:var(--sp-2)">${em}</div>
+          <div style="margin-bottom:var(--sp-3)">${mn}</div>
+          ${hu ? `<div style="color:var(--text-3);font-style:italic;margin-bottom:var(--sp-2)">💡 ${hu}</div>` : ''}
+          ${tp ? `<span style="display:inline-block;padding:2px 8px;border-radius:var(--radius-full);background:var(--surface-alt);color:var(--text-3);font-size:var(--text-xs)">${tp}</span>` : ''}
+        </div>`;
+      } else {
+        const text = (typeof result === 'object' && result !== null) ? (result.text || result.mnemonic || JSON.stringify(result)) : (result || 'Sem resposta da IA.');
+        html = `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7">${formatMarkdown(text)}</div>`;
+      }
+      dock.innerHTML = html;
     }
   } catch (err) {
     const dock = $('#toolDockBody');
@@ -1974,6 +2326,158 @@ async function aiAction(type) {
       dock.innerHTML = `<div style="padding:var(--sp-4);color:var(--danger)">Erro: ${escHtml(err.message || 'Falha na requisição.')}</div>`;
     }
   }
+}
+
+
+/* ─── Chat Dock (interactive multi-turn) ───────────────────────────── */
+
+function _openChatDock(question, answer) {
+  const dock = $('#toolDock');
+  if (!dock) return;
+  dock.classList.add('chat-mode');
+
+  const contextSnippet = escHtml(truncate(question, 120));
+  const chatHtml = `
+    <div class="chat-dock">
+      <div class="chat-dock__history" id="chatHistory">
+        <div class="chat-dock__context">
+          <span class="material-symbols-rounded" style="font-size:16px">menu_book</span>
+          ${contextSnippet}
+        </div>
+      </div>
+      <div class="chat-dock__input-area">
+        <input class="chat-dock__input" id="chatInput" type="text"
+               placeholder="Pergunte algo sobre este card…" autocomplete="off" />
+        <button class="chat-dock__send" id="chatSend" aria-label="Enviar">
+          <span class="material-symbols-rounded" style="font-size:18px">send</span>
+        </button>
+      </div>
+    </div>`;
+
+  openToolDock('Chat de Dúvida', chatHtml);
+
+  // Conversation history for multi-turn
+  const messages = [
+    {
+      role: 'system',
+      content: `Você é um tutor paciente e didático para estudantes brasileiros.
+O aluno está estudando um card de flashcard.
+
+QUESTÃO DO CARD:
+${question.slice(0, 600)}
+
+RESPOSTA DO CARD:
+${answer.slice(0, 600)}
+
+Regras:
+- Responda em português do Brasil, com linguagem acessível
+- Seja conciso (máximo 150 palavras por resposta)
+- Use Markdown leve (negrito, listas) quando útil
+- Se o aluno pedir a resposta diretamente, forneça explicação pedagógica
+- Relacione tudo ao contexto do card acima`
+    }
+  ];
+
+  const sendMessage = async () => {
+    const input = $('#chatInput');
+    const text = input?.value?.trim();
+    if (!text) return;
+    input.value = '';
+    input.focus();
+
+    // Render user message
+    _appendChatMsg('user', text);
+    messages.push({ role: 'user', content: text });
+
+    // Show loading
+    const loadingId = _appendChatMsg('ai', 'Pensando...', true);
+
+    // Disable input while loading
+    const sendBtn = $('#chatSend');
+    if (input) input.disabled = true;
+    if (sendBtn) sendBtn.disabled = true;
+
+    try {
+      const settings = await ApiService._getSettings();
+      const { result } = await ApiService._callWithProviderChain({
+        messages,
+        opts: { temperature: 0.5, max_tokens: 400 },
+        models: {
+          gemini: settings.geminiModel || 'gemini-2.5-flash',
+          groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
+          openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+          chatgpt: settings.chatgptModel || 'gpt-4o',
+          copilot: settings.copilotModel || 'gpt-4o',
+        },
+        label: 'chatDock',
+        fallbackValue: 'Desculpe, não consegui gerar uma resposta. Tente novamente.',
+      });
+
+      messages.push({ role: 'assistant', content: result });
+      _replaceChatMsg(loadingId, 'ai', result);
+    } catch (err) {
+      _replaceChatMsg(loadingId, 'error', err.message || 'Erro na requisição.');
+    } finally {
+      if (input) input.disabled = false;
+      if (sendBtn) sendBtn.disabled = false;
+      input?.focus();
+    }
+  };
+
+  // Bind events after render
+  setTimeout(() => {
+    on($('#chatSend'), 'click', sendMessage);
+    on($('#chatInput'), 'keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    $('#chatInput')?.focus();
+  }, 60);
+
+  // Clean up chat-mode when dock is closed
+  const origClose = closeToolDock;
+  closeToolDock = function () {
+    dock.classList.remove('chat-mode');
+    closeToolDock = origClose;
+    origClose();
+  };
+}
+
+let _chatMsgCounter = 0;
+
+function _appendChatMsg(type, text, isLoading = false) {
+  const history = $('#chatHistory');
+  if (!history) return null;
+  const id = `chatMsg_${++_chatMsgCounter}`;
+  const avatarIcon = type === 'user' ? 'person' : 'smart_toy';
+  const cssClass = type === 'error' ? 'chat-dock__msg--error' : `chat-dock__msg--${type === 'user' ? 'user' : 'ai'}`;
+  const bubbleExtra = isLoading ? ' chat-dock__bubble--loading' : '';
+
+  const content = isLoading ? escHtml(text) : formatMarkdown(text);
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = `chat-dock__msg ${cssClass}`;
+  div.innerHTML = `
+    <span class="chat-dock__avatar material-symbols-rounded">${avatarIcon}</span>
+    <div class="chat-dock__bubble${bubbleExtra}">${content}</div>`;
+  history.appendChild(div);
+  history.scrollTop = history.scrollHeight;
+  return id;
+}
+
+function _replaceChatMsg(msgId, type, text) {
+  const el = document.getElementById(msgId);
+  if (!el) return;
+  const cssClass = type === 'error' ? 'chat-dock__msg--error' : 'chat-dock__msg--ai';
+  const avatarIcon = 'smart_toy';
+  el.className = `chat-dock__msg ${cssClass}`;
+  el.innerHTML = `
+    <span class="chat-dock__avatar material-symbols-rounded">${avatarIcon}</span>
+    <div class="chat-dock__bubble">${type === 'error' ? escHtml(text) : formatMarkdown(text)}</div>`;
+  const history = $('#chatHistory');
+  if (history) history.scrollTop = history.scrollHeight;
 }
 
 function addNote() {
@@ -2068,20 +2572,125 @@ function flagCard() {
 /* ─── REVIEW VIEW ──────────────────────────────────────────────────── */
 
 function renderReview() {
+  const allCards = getAllCards();
   const due = getDueCards();
   const overdue = getOverdueCards();
   const newCards = getNewCards();
 
+  // Cards due this week (next 7 days)
+  const today = new Date();
+  const weekEnd = new Date(today);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  const todayStr = today.toISOString().slice(0, 10);
+  const weekEndStr = weekEnd.toISOString().slice(0, 10);
+  const weekCards = allCards.filter(c => {
+    if (!c.sm2 || !c.sm2.nextReview) return false;
+    return c.sm2.nextReview >= todayStr && c.sm2.nextReview <= weekEndStr;
+  });
+
+  // Update stat counters
   safeText('#reviewOverdue', overdue.length);
   safeText('#reviewDueToday', due.length);
   safeText('#reviewNew', newCards.length);
+  safeText('#reviewWeekCount', weekCards.length);
 
-  on($('#startReviewSession'), 'click', () => {
-    const sel = $('#sessionSource');
-    if (sel) sel.value = 'due';
-    navigateTo('study');
-    setTimeout(startStudySession, 100);
-  });
+  // Update subtitle
+  safeText('#reviewSubtitle', due.length > 0
+    ? `${due.length} ${due.length === 1 ? 'card precisa' : 'cards precisam'} de revisão`
+    : 'Tudo em dia! Nenhuma revisão pendente.');
+
+  // ── Render review queue ──
+  const queueEl = $('#reviewQueue');
+  if (queueEl) {
+    // Sort: overdue first, then due today, then new
+    const sorted = [...due].sort((a, b) => {
+      const aOverdue = a.sm2?.nextReview && a.sm2.nextReview < todayStr;
+      const bOverdue = b.sm2?.nextReview && b.sm2.nextReview < todayStr;
+      if (aOverdue && !bOverdue) return -1;
+      if (!aOverdue && bOverdue) return 1;
+      return 0;
+    });
+
+    if (sorted.length === 0) {
+      queueEl.innerHTML = `
+        <div class="empty-state" style="padding:var(--sp-8) 0">
+          <span class="material-symbols-rounded" style="font-size:48px;color:var(--color-accent);margin-bottom:var(--sp-3)">celebration</span>
+          <div class="empty-state__title">Tudo em dia!</div>
+          <div class="empty-state__desc">Nenhuma revisão pendente. Volte mais tarde ou adicione novos cards.</div>
+        </div>`;
+    } else {
+      queueEl.innerHTML = sorted.slice(0, 50).map(c => {
+        const raw = c.question || c.pergunta || '—';
+        const parsed = parseQuestionText(raw);
+        const preview = parsed.alternatives.length >= 2 ? parsed.stem : raw;
+        const isOverdue = c.sm2?.nextReview && c.sm2.nextReview < todayStr;
+        const statusClass = isOverdue ? 'overdue' : 'due';
+        return `
+        <div class="review-queue-item" data-card-id="${c.id || ''}" data-disc-id="${c._discId || ''}">
+          <div class="review-queue-item__status ${statusClass}"></div>
+          <div class="review-queue-item__disc">${escHtml(c._disc || '—')}</div>
+          <div class="review-queue-item__q">${escHtml(truncate(preview, 100))}</div>
+        </div>`;
+      }).join('');
+
+      // Click to start study with that discipline
+      queueEl.querySelectorAll('.review-queue-item').forEach(item => {
+        item.style.cursor = 'pointer';
+        on(item, 'click', () => {
+          const discId = item.dataset.discId;
+          if (discId) {
+            window.__startSessionForDisc?.(discId);
+          }
+        });
+      });
+    }
+  }
+
+  // ── Render 14-day forecast calendar ──
+  const calEl = $('#reviewCalendar');
+  if (calEl) {
+    const days = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const count = allCards.filter(c => c.sm2?.nextReview === dateStr).length;
+      days.push({ date: d, dateStr, count });
+    }
+
+    const maxCount = Math.max(...days.map(d => d.count), 1);
+    const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+    calEl.innerHTML = days.map((d, i) => {
+      const intensity = d.count / maxCount;
+      const opacity = d.count === 0 ? 0.08 : 0.15 + intensity * 0.85;
+      const isToday = i === 0;
+      return `
+        <div class="review-cal-day ${isToday ? 'today' : ''}" title="${d.date.toLocaleDateString('pt-BR')} — ${d.count} ${d.count === 1 ? 'revisão' : 'revisões'}">
+          <span class="review-cal-day__label">${dayNames[d.date.getDay()]}</span>
+          <span class="review-cal-day__num">${d.date.getDate()}</span>
+          <div class="review-cal-day__bar" style="opacity:${opacity};height:${d.count === 0 ? 4 : Math.max(8, intensity * 40)}px"></div>
+          <span class="review-cal-day__count">${d.count}</span>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Bind "Iniciar Revisão" button (once) ──
+  const startBtn = $('#startReviewSession');
+  if (startBtn && !startBtn._bound) {
+    startBtn._bound = true;
+    on(startBtn, 'click', () => {
+      const sel = $('#sessionSource');
+      if (sel) sel.value = 'due';
+      navigateTo('study');
+      setTimeout(startStudySession, 100);
+    });
+  }
+
+  // Disable button if no due cards
+  if (startBtn) {
+    startBtn.disabled = due.length === 0;
+  }
 }
 
 /* ─── FLASHCARD VIEW ───────────────────────────────────────────────── */
@@ -2093,6 +2702,32 @@ function initFlashcards() {
   on($('#flashcardPrev'), 'click', () => navFlashcard(-1));
   on($('#flashcardNext'), 'click', () => navFlashcard(1));
   on($('#shuffleFlashcards'), 'click', shuffleAndResetFlashcards);
+
+  // Global keyboard shortcuts for flashcard mode
+  document.addEventListener('keydown', e => {
+    const arena = $('#flashcardArena');
+    if (!arena || arena.hidden) return;
+    // Don't capture if user is typing in an input/select
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+    switch (e.key) {
+      case 'ArrowLeft':
+        e.preventDefault();
+        navFlashcard(-1);
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        navFlashcard(1);
+        break;
+      case '1': case '2': case '3': case '4':
+        if (state.flashcards.flipped) {
+          e.preventDefault();
+          const rateBtn = $(`#flashcardRating .rate-btn[data-rate="${e.key}"]`);
+          if (rateBtn) rateBtn.click();
+        }
+        break;
+    }
+  });
 
   // Start flashcard mode
   on($('#startFlashcardBtn'), 'click', () => {
@@ -2121,7 +2756,8 @@ function initFlashcards() {
         try {
           card.sm2 = FSRSService.calculate(card.sm2 || {}, rating);
           await ContentHierarchyService.save?.(state.hierarchy);
-          await AnalyticsService.recordReview?.(card._discId, rating);
+          const retrv = card.sm2?.retrievability ?? null;
+          await AnalyticsService.recordReview?.({ cardId: card.id, disciplineId: card._discId, rating, retrievability: retrv });
         } catch { }
       }
       hide($('#flashcardRating'));
@@ -2132,12 +2768,15 @@ function initFlashcards() {
 
 function loadFlashcards(discId = '') {
   let cards = getAllCards();
-  if (discId) {
+  if (discId && discId !== 'all') {
     cards = cards.filter(c => c._discId === discId || c._disc === discId);
   }
   state.flashcards.cards = shuffle(cards);
   state.flashcards.index = 0;
   state.flashcards.flipped = false;
+  const el = $('#flashcardEl');
+  if (el) el.classList.remove('flipped');
+  hide($('#flashcardRating'));
   renderFlashcard();
 }
 
@@ -2160,6 +2799,8 @@ function navFlashcard(dir) {
   if (total === 0) return;
   state.flashcards.index = (state.flashcards.index + dir + total) % total;
   state.flashcards.flipped = false;
+  const el = $('#flashcardEl');
+  if (el) el.classList.remove('flipped');
   hide($('#flashcardRating'));
   renderFlashcard();
 }
@@ -2173,6 +2814,51 @@ function shuffleAndResetFlashcards() {
   toast('Flashcards embaralhados!', 'info', 2000);
 }
 
+/**
+ * Resolve the full answer text for a flashcard.
+ * Handles multiple data shapes:
+ *   1. Cards with explicit `options`/`alternatives` array + `correctIndex`/`correct`
+ *   2. Cards with inline alternatives parsed from the question text + short answer letter
+ *   3. Plain text answer cards
+ *   4. FlashcardGeneratorService format with `front`/`back`
+ */
+function resolveFlashcardAnswer(card, parsed) {
+  // 1. FlashcardGeneratorService format
+  if (card.back) return card.back;
+
+  const rawAnswer = card.answer || card.resposta || '';
+  const explicitOpts = card.options || card.alternatives || [];
+
+  // 2. Explicit options array with correctIndex
+  if (explicitOpts.length > 0) {
+    const idx = card.correctIndex ?? card.correct;
+    if (idx != null && explicitOpts[idx] != null) {
+      const letters = 'ABCDEFGHIJ';
+      const optText = typeof explicitOpts[idx] === 'string'
+        ? explicitOpts[idx]
+        : (explicitOpts[idx].text || explicitOpts[idx].label || '');
+      return `${letters[idx]}) ${optText}`;
+    }
+  }
+
+  // 3. Inline alternatives parsed from question + answer is a letter (e.g. "C", "c)", "Letra C")
+  if (parsed && parsed.alternatives.length >= 2 && rawAnswer) {
+    const letterMatch = rawAnswer.trim().match(/^(?:letra\s*)?([A-Ea-e])\s*[)\.]?\s*$/i)
+      || rawAnswer.trim().match(/^([A-Ea-e])$/i);
+    if (letterMatch) {
+      const letter = letterMatch[1].toUpperCase();
+      const alt = parsed.alternatives.find(a => a.letter === letter);
+      if (alt) return `${alt.letter}) ${alt.text}`;
+    }
+    // Answer might already contain the full text with letter prefix
+    const fullMatch = rawAnswer.trim().match(/^([A-Ea-e])\s*[)\.]\s*(.+)$/i);
+    if (fullMatch) return `${fullMatch[1].toUpperCase()}) ${fullMatch[2].trim()}`;
+  }
+
+  // 4. Fallback: raw answer text
+  return rawAnswer || '—';
+}
+
 function renderFlashcard() {
   const { cards, index, flipped } = state.flashcards;
   const el = $('#flashcardEl');
@@ -2181,99 +2867,523 @@ function renderFlashcard() {
   const front = $('#flashcardFront');
   const back = $('#flashcardBack');
   const counter = $('#flashcardCounter');
+  const progressDots = $('#flashcardProgress');
 
   if (cards.length === 0) {
-    if (front) front.textContent = 'Nenhum flashcard disponível.';
-    if (back) back.textContent = '—';
-    if (counter) counter.textContent = '0/0';
+    if (front) front.innerHTML = `
+      <div class="fc-empty">
+        <span class="material-symbols-rounded" style="font-size:48px;opacity:0.3">style</span>
+        <p>Nenhum flashcard disponível.</p>
+        <p class="fc-empty-hint">Adicione questões à sua biblioteca primeiro.</p>
+      </div>`;
+    if (back) back.innerHTML = '';
+    if (counter) counter.textContent = '0 / 0';
+    if (progressDots) progressDots.style.display = 'none';
     return;
   }
 
   const card = cards[index];
-  if (front) front.textContent = card.question || card.pergunta || '—';
-  if (back) back.textContent = card.answer || card.resposta || '—';
-  if (counter) counter.textContent = `${index + 1}/${cards.length}`;
+
+  // Determine front/back content
+  // Priority: FlashcardGeneratorService format (front/back) > parsed question/answer
+  const hasFrontBack = card.front && card.back;
+  const rawQ = hasFrontBack ? card.front : (card.question || card.pergunta || '—');
+  const parsed = hasFrontBack ? { stem: rawQ, alternatives: [] } : parseQuestionText(rawQ);
+
+  // ── FRONT: question stem ONLY (no alternatives!) ──
+  if (front) {
+    const metaHtml = (card._disc || card._topic)
+      ? `<div class="fc-meta">${card._disc ? `<span class="fc-disc">${escHtml(card._disc)}</span>` : ''}${card._topic ? `<span class="fc-topic">${escHtml(card._topic)}</span>` : ''}</div>`
+      : '';
+    const stemText = parsed.stem || rawQ;
+    const typeLabel = card.type ? `<span class="fc-type-badge">${escHtml(card.type)}</span>` : '';
+    front.innerHTML = `${metaHtml}<p class="fc-stem">${escHtml(stemText).replace(/\n/g, '<br>')}</p>${typeLabel}`;
+  }
+
+  // ── BACK: full resolved answer ──
+  if (back) {
+    const answerText = resolveFlashcardAnswer(card, parsed);
+    const explanationHtml = card.explanation
+      ? `<div class="fc-explanation"><strong>Explicação:</strong> ${escHtml(card.explanation).replace(/\n/g, '<br>')}</div>`
+      : '';
+    back.innerHTML = `<p class="fc-answer-text">${escHtml(answerText).replace(/\n/g, '<br>')}</p>${explanationHtml}`;
+  }
+
+  // Counter
+  if (counter) counter.textContent = `${index + 1} / ${cards.length}`;
+
+  // Progress dots (small visual indicator)
+  if (progressDots) {
+    const total = cards.length;
+    const maxDots = Math.min(total, 20);
+    if (total <= 1) {
+      progressDots.style.display = 'none';
+    } else {
+      progressDots.style.display = 'flex';
+      const pct = index / (total - 1);
+      progressDots.innerHTML = '';
+      for (let i = 0; i < maxDots; i++) {
+        const dotPct = i / (maxDots - 1);
+        const mappedIdx = Math.round(dotPct * (total - 1));
+        const dot = document.createElement('span');
+        dot.className = 'fc-dot' + (mappedIdx === index ? ' active' : (mappedIdx < index ? ' done' : ''));
+        progressDots.appendChild(dot);
+      }
+    }
+  }
 }
 
 /* ─── PLANNING VIEW ────────────────────────────────────────────────── */
 
+let _planningBound = false;
+
 async function renderPlanning() {
-  // Study Plan
+  const today = new Date().toISOString().slice(0, 10);
+  const todayDisplay = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  // Show today's date
+  safeText('#planDate', todayDisplay);
+
+  // ── Compute global stats for the top overview ──
+  const allCards = getAllCards();
+  const dueCards = getDueCards();
+  const overdueCards = getOverdueCards();
+  const newCards = getNewCards();
+  const masteredCards = allCards.filter(c => c.sm2?.mastered);
+  const streak = state.xpData?.streak || state.analytics?.currentStreak || 0;
+
+  // Weekly summary
+  let weekly = { daysStudied: 0, itemsCompleted: 0, totalItems: 0, completionRate: 0, minutesEstimated: 0 };
+  try { weekly = await StudyPlanService.getWeeklySummary(); } catch {}
+
+  // ── Stats Overview Row ──
+  const statsEl = $('#planningStats');
+  if (statsEl) {
+    statsEl.innerHTML = `
+      <div class="pstat-card pstat-card--overdue">
+        <span class="material-symbols-rounded pstat-card__icon">warning</span>
+        <div class="pstat-card__body">
+          <div class="pstat-card__value">${overdueCards.length}</div>
+          <div class="pstat-card__label">Atrasados</div>
+        </div>
+      </div>
+      <div class="pstat-card pstat-card--due">
+        <span class="material-symbols-rounded pstat-card__icon">schedule</span>
+        <div class="pstat-card__body">
+          <div class="pstat-card__value">${dueCards.length}</div>
+          <div class="pstat-card__label">Para revisar</div>
+        </div>
+      </div>
+      <div class="pstat-card pstat-card--new">
+        <span class="material-symbols-rounded pstat-card__icon">fiber_new</span>
+        <div class="pstat-card__body">
+          <div class="pstat-card__value">${newCards.length}</div>
+          <div class="pstat-card__label">Novos</div>
+        </div>
+      </div>
+      <div class="pstat-card pstat-card--mastered">
+        <span class="material-symbols-rounded pstat-card__icon">verified</span>
+        <div class="pstat-card__body">
+          <div class="pstat-card__value">${masteredCards.length}</div>
+          <div class="pstat-card__label">Dominados</div>
+        </div>
+      </div>
+      <div class="pstat-card pstat-card--streak">
+        <span class="material-symbols-rounded pstat-card__icon">local_fire_department</span>
+        <div class="pstat-card__body">
+          <div class="pstat-card__value">${streak}</div>
+          <div class="pstat-card__label">Dias de streak</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Study Plan ──
   try {
     const plan = await StudyPlanService.getTodayPlan();
     const container = $('#planContent');
-    if (container && plan && plan.items && plan.items.length > 0) {
-      container.innerHTML = plan.items.map(item => `
-        <div style="display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) 0;border-bottom:1px solid var(--border)">
-          <input type="checkbox" ${item.completed ? 'checked' : ''} style="width:18px;height:18px;accent-color:var(--accent)">
-          <div style="flex:1">
-            <div style="font-size:var(--text-sm);font-weight:500">${escHtml(item.title || item.description || '—')}</div>
-            ${item.discipline ? `<div style="font-size:var(--text-xs);color:var(--text-3)">${escHtml(item.discipline)}</div>` : ''}
-          </div>
-          <div style="font-size:var(--text-xs);color:var(--text-3)">${item.duration || ''}</div>
-        </div>
-      `).join('');
-    }
-  } catch { }
+    if (container) {
+      if (plan && plan.items && plan.items.length > 0) {
+        const completedCount = plan.items.filter(i => i.completed).length;
+        const totalCount = plan.items.length;
+        const pct = Math.round((completedCount / totalCount) * 100);
+        const totalMin = plan.totalEstimatedMinutes || plan.items.reduce((s, i) => s + (i.estimatedMinutes || 2), 0);
+        const completedMin = plan.items.filter(i => i.completed).reduce((s, i) => s + (i.estimatedMinutes || 2), 0);
 
-  // Learning Paths
+        // Group items by type for visual clarity
+        const typeIcons = {
+          review_overdue: { icon: 'priority_high', cls: 'plan-type--overdue' },
+          review_due: { icon: 'refresh', cls: 'plan-type--due' },
+          focus_weak: { icon: 'center_focus_strong', cls: 'plan-type--focus' },
+          learn_new: { icon: 'lightbulb', cls: 'plan-type--new' }
+        };
+
+        container.innerHTML = `
+          <div class="plan-header-stats">
+            <div class="plan-progress">
+              <div class="plan-progress__ring">
+                <svg viewBox="0 0 36 36">
+                  <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none" stroke="var(--color-border)" stroke-width="3"/>
+                  <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none" stroke="${pct === 100 ? 'var(--color-success)' : 'var(--color-accent)'}" stroke-width="3"
+                    stroke-dasharray="${pct}, 100" stroke-linecap="round"/>
+                </svg>
+                <span class="plan-progress__ring-text">${pct}%</span>
+              </div>
+              <div class="plan-progress__info">
+                <span class="plan-progress__main">${completedCount} de ${totalCount} concluídos</span>
+                <span class="plan-progress__sub">${completedMin}/${totalMin} min estimados</span>
+              </div>
+            </div>
+            ${pct < 100 && dueCards.length > 0 ? `
+              <button class="btn btn-accent btn-sm plan-start-session" data-nav="session">
+                <span class="material-symbols-rounded">play_arrow</span>
+                Iniciar Sessão
+              </button>` : ''}
+          </div>
+          ${plan.items.map((item, idx) => {
+            const ti = typeIcons[item.type] || { icon: 'task_alt', cls: '' };
+            return `
+            <div class="plan-item${item.completed ? ' plan-item--done' : ''} ${ti.cls}" data-plan-idx="${idx}">
+              <input type="checkbox" class="plan-item__check plan-check" data-plan-date="${today}" data-plan-id="${escHtml(item.id)}" ${item.completed ? 'checked' : ''}>
+              <span class="material-symbols-rounded plan-item__type-icon">${ti.icon}</span>
+              <div class="plan-item__body">
+                <div class="plan-item__label">${escHtml(item.label || item.title || item.description || '—')}</div>
+                ${item.disciplineName ? `<div class="plan-item__disc">${escHtml(item.disciplineName)}</div>` : ''}
+              </div>
+              <span class="plan-item__time">${item.estimatedMinutes ? item.estimatedMinutes + 'min' : ''}</span>
+            </div>`;
+          }).join('')}
+          ${pct === 100 ? `
+            <div class="plan-complete-banner">
+              <span class="material-symbols-rounded">celebration</span>
+              Plano concluído! Parabéns! 🎉
+            </div>` : ''}
+        `;
+
+        // Checkbox handlers
+        container.querySelectorAll('.plan-check').forEach(cb => {
+          cb.addEventListener('change', async (e) => {
+            const planDate = e.target.dataset.planDate;
+            const planId = e.target.dataset.planId;
+            try {
+              if (e.target.checked) {
+                await StudyPlanService.completeItem(planDate, planId);
+                toast('Item concluído!', 'success');
+              }
+              renderPlanning();
+            } catch (err) {
+              toast('Erro ao atualizar item.', 'error');
+            }
+          });
+        });
+
+        // Start session button
+        const startBtn = container.querySelector('.plan-start-session');
+        if (startBtn) {
+          startBtn.addEventListener('click', () => navigateTo('session'));
+        }
+      } else {
+        // Empty state with smart suggestions
+        const suggestion = overdueCards.length > 0
+          ? `Você tem <strong>${overdueCards.length}</strong> card${overdueCards.length > 1 ? 's' : ''} atrasado${overdueCards.length > 1 ? 's' : ''}. Gere um plano para organizar!`
+          : dueCards.length > 0
+            ? `<strong>${dueCards.length}</strong> card${dueCards.length > 1 ? 's' : ''} aguardando revisão. Gere um plano para priorizá-los!`
+            : 'Nenhum card para revisar hoje. Que tal aprender algo novo?';
+
+        container.innerHTML = `
+          <div class="plan-empty-state">
+            <span class="material-symbols-rounded plan-empty-state__icon">auto_fix_high</span>
+            <p class="plan-empty-state__text">${suggestion}</p>
+            <button class="btn btn-primary btn-sm plan-empty-state__btn" id="emptyGenPlanBtn">
+              <span class="material-symbols-rounded">auto_fix_high</span>
+              Gerar Plano Inteligente
+            </button>
+          </div>`;
+
+        const emptyBtn = container.querySelector('#emptyGenPlanBtn');
+        if (emptyBtn) {
+          emptyBtn.addEventListener('click', () => $('#generatePlanBtn')?.click());
+        }
+      }
+    }
+  } catch (err) {
+    const container = $('#planContent');
+    if (container) {
+      container.innerHTML = `<div style="color:var(--color-danger);font-size:var(--text-sm);padding:var(--sp-3)">Erro ao carregar plano.</div>`;
+    }
+  }
+
+  // ── Weekly History ──
+  try {
+    const weekEl = $('#weeklyHistoryContent');
+    if (weekEl) {
+      const days = [];
+      const DOW = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      const data = await new Promise(r =>
+        chrome.storage.local.get(['ah_study_plans'], d => r(d.ah_study_plans || {}))
+      );
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const key = d.toISOString().slice(0, 10);
+        const plan = data[key];
+        const isToday = i === 0;
+        const completed = plan?.items?.filter(x => x.completed)?.length || 0;
+        const total = plan?.items?.length || 0;
+        const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+        days.push({ key, dow: DOW[d.getDay()], day: d.getDate(), plan, completed, total, pct, isToday });
+      }
+
+      weekEl.innerHTML = `
+        <div class="week-row">
+          ${days.map(d => `
+            <div class="week-day${d.isToday ? ' week-day--today' : ''}${d.pct === 100 ? ' week-day--done' : d.total > 0 ? ' week-day--partial' : ''}">
+              <span class="week-day__dow">${d.dow}</span>
+              <div class="week-day__circle">
+                ${d.total > 0 ? `
+                  <svg viewBox="0 0 36 36" class="week-day__ring">
+                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--color-border)" stroke-width="3"/>
+                    <circle cx="18" cy="18" r="15.9" fill="none" stroke="${d.pct === 100 ? 'var(--color-success)' : 'var(--color-accent)'}" stroke-width="3"
+                      stroke-dasharray="${d.pct} ${100 - d.pct}" stroke-dashoffset="25" stroke-linecap="round" transform="rotate(-90 18 18)"/>
+                  </svg>
+                  <span class="week-day__num">${d.day}</span>
+                ` : `<span class="week-day__num week-day__num--empty">${d.day}</span>`}
+              </div>
+              <span class="week-day__count">${d.total > 0 ? `${d.completed}/${d.total}` : '—'}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div class="week-summary-row">
+          <div class="week-summary-stat">
+            <span class="week-summary-stat__val">${weekly.daysStudied}</span>
+            <span class="week-summary-stat__lbl">dias ativos</span>
+          </div>
+          <div class="week-summary-stat">
+            <span class="week-summary-stat__val">${weekly.itemsCompleted}</span>
+            <span class="week-summary-stat__lbl">itens feitos</span>
+          </div>
+          <div class="week-summary-stat">
+            <span class="week-summary-stat__val">${weekly.completionRate}%</span>
+            <span class="week-summary-stat__lbl">taxa de conclusão</span>
+          </div>
+          <div class="week-summary-stat">
+            <span class="week-summary-stat__val">~${weekly.minutesEstimated}min</span>
+            <span class="week-summary-stat__lbl">tempo estimado</span>
+          </div>
+        </div>
+      `;
+    }
+  } catch {}
+
+  // ── Discipline Focus Breakdown ──
+  try {
+    const focusEl = $('#discFocusContent');
+    if (focusEl) {
+      const discs = (state.hierarchy || []).map((d, i) => {
+        const total = countCards(d);
+        const due = countDueCards(d);
+        const mastered = (() => {
+          let m = 0;
+          for (const mod of d.modules || []) for (const topic of mod.topics || []) for (const card of topic.cards || []) if (card.sm2?.mastered) m++;
+          return m;
+        })();
+        const pct = total > 0 ? Math.round((mastered / total) * 100) : 0;
+        const color = discColor(i);
+        return { name: d.name, id: d.id, total, due, mastered, pct, color };
+      }).filter(d => d.total > 0).sort((a, b) => a.pct - b.pct); // weakest first
+
+      if (discs.length === 0) {
+        focusEl.innerHTML = `
+          <div class="empty-state mini">
+            <span class="material-symbols-rounded">school</span>
+            <span>Nenhuma disciplina com cards ainda.</span>
+          </div>`;
+      } else {
+        focusEl.innerHTML = discs.map(d => `
+          <div class="disc-focus-row">
+            <div class="disc-focus-row__color" style="background:${d.color}"></div>
+            <div class="disc-focus-row__info">
+              <div class="disc-focus-row__name">${escHtml(d.name)}</div>
+              <div class="disc-focus-row__bar-wrap">
+                <div class="disc-focus-row__bar">
+                  <div class="disc-focus-row__bar-fill" style="width:${d.pct}%;background:${d.color}"></div>
+                </div>
+                <span class="disc-focus-row__pct">${d.pct}%</span>
+              </div>
+            </div>
+            <div class="disc-focus-row__stats">
+              ${d.due > 0 ? `<span class="disc-focus-row__due">${d.due} ⏳</span>` : '<span class="disc-focus-row__ok">✓</span>'}
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+  } catch {}
+
+  // ── Learning Paths ──
   try {
     const paths = await LearningPathService.getAll();
     const container = $('#pathsContent');
-    if (container && paths && paths.length > 0) {
-      container.innerHTML = paths.map(p => `
-        <div style="padding:var(--sp-3) 0;border-bottom:1px solid var(--border)">
-          <div class="fw-600" style="font-size:var(--text-sm)">${escHtml(p.name || '—')}</div>
-          <div style="font-size:var(--text-xs);color:var(--text-3);margin-top:2px">${p.steps?.length || 0} etapas</div>
-        </div>
-      `).join('');
+    if (container) {
+      if (paths && paths.length > 0) {
+        container.innerHTML = paths.map(p => {
+          const totalSteps = p.steps?.length || 0;
+          const completedSteps = p.steps?.filter(s => !s.locked)?.length || 0;
+          const pct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+          const created = p.createdAt ? new Date(p.createdAt).toLocaleDateString('pt-BR') : '';
+          return `
+            <div class="path-item" data-path-id="${escHtml(p.id)}">
+              <div class="path-item__header">
+                <div class="path-item__info">
+                  <div class="path-item__name">${escHtml(p.name || '—')}</div>
+                  ${p.description ? `<div class="path-item__desc">${escHtml(truncate(p.description, 60))}</div>` : ''}
+                </div>
+                <button class="icon-btn path-delete-btn" data-path-id="${escHtml(p.id)}" aria-label="Excluir trilha">
+                  <span class="material-symbols-rounded" style="font-size:18px">delete</span>
+                </button>
+              </div>
+              <div class="path-item__progress">
+                <div class="path-item__bar">
+                  <div class="path-item__bar-fill" style="width:${pct}%"></div>
+                </div>
+                <span class="path-item__steps">${completedSteps}/${totalSteps} etapas</span>
+              </div>
+              ${created ? `<div class="path-item__date">Criada em ${created}</div>` : ''}
+            </div>`;
+        }).join('');
+
+        // Delete handlers
+        container.querySelectorAll('.path-delete-btn').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const pathId = e.currentTarget.dataset.pathId;
+            if (!pathId) return;
+            try {
+              await LearningPathService.delete(pathId);
+              toast('Trilha excluída.', 'success');
+              renderPlanning();
+            } catch {
+              toast('Erro ao excluir trilha.', 'error');
+            }
+          });
+        });
+      } else {
+        container.innerHTML = `
+          <div class="empty-state mini">
+            <span class="material-symbols-rounded">route</span>
+            <span>Nenhuma trilha criada ainda.</span>
+          </div>`;
+      }
     }
-  } catch { }
-
-  // Generate Plan button
-  on($('#generatePlanBtn'), 'click', async () => {
-    toast('Gerando plano de estudo...', 'info');
-    try {
-      await StudyPlanService.generateDailyPlan();
-      toast('Plano gerado!', 'success');
-      renderPlanning();
-    } catch (err) {
-      toast('Erro ao gerar plano: ' + (err.message || ''), 'error');
+  } catch (err) {
+    const container = $('#pathsContent');
+    if (container) {
+      container.innerHTML = `<div style="color:var(--color-danger);font-size:var(--text-sm);padding:var(--sp-3)">Erro ao carregar trilhas.</div>`;
     }
-  });
+  }
 
-  // Create Path button
-  on($('#createPathBtn'), 'click', () => {
-    openModal('Nova Trilha de Aprendizado', `
-      <label style="display:block;margin-bottom:var(--sp-4)">
-        <span class="fw-600" style="display:block;margin-bottom:var(--sp-2);font-size:var(--text-sm)">Nome da trilha</span>
-        <input type="text" id="pathName" class="topbar__search-input" style="border-radius:var(--radius-md);padding-left:var(--sp-4)" placeholder="Ex: Cálculo I">
-      </label>
-    `, `<button class="btn btn-primary btn-pill" id="savePathBtn">Criar</button>`);
+  // ── Header Buttons (bind once) ──
+  if (!_planningBound) {
+    _planningBound = true;
 
-    setTimeout(() => {
-      on($('#savePathBtn'), 'click', async () => {
-        const name = $('#pathName')?.value?.trim();
-        if (!name) return;
-        try {
-          await LearningPathService.create({ name, steps: [] });
-          toast('Trilha criada!', 'success');
-          closeModal();
-          renderPlanning();
-        } catch (err) {
-          toast('Erro ao criar trilha.', 'error');
-        }
-      });
-    }, 50);
-  });
+    on($('#generatePlanBtn'), 'click', async () => {
+      const btn = $('#generatePlanBtn');
+      if (btn) btn.disabled = true;
+      toast('Gerando plano de estudo...', 'info');
+      try {
+        const dueCards = getDueCards();
+        const disciplines = state.hierarchy || [];
+        // Force regeneration by marking existing plan
+        const existingPlan = await StudyPlanService.getTodayPlan();
+        if (existingPlan) existingPlan.regenerated = true;
+        await StudyPlanService.generateDailyPlan({ dueCards, disciplines });
+        toast('Plano gerado!', 'success');
+        renderPlanning();
+      } catch (err) {
+        toast('Erro ao gerar plano: ' + (err.message || ''), 'error');
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    });
+
+    on($('#createPathBtn'), 'click', () => {
+      // Build discipline options
+      const discOptions = (state.hierarchy || []).map(d =>
+        `<option value="${escHtml(d.id)}">${escHtml(d.name)}</option>`
+      ).join('');
+
+      openModal('Nova Trilha de Aprendizado', `
+        <label style="display:block;margin-bottom:var(--sp-4)">
+          <span class="fw-600" style="display:block;margin-bottom:var(--sp-2);font-size:var(--text-sm)">Nome da trilha</span>
+          <input type="text" id="pathName" class="topbar__search-input" style="border-radius:var(--radius-md);padding-left:var(--sp-4)" placeholder="Ex: Cálculo I">
+        </label>
+        <label style="display:block;margin-bottom:var(--sp-4)">
+          <span class="fw-600" style="display:block;margin-bottom:var(--sp-2);font-size:var(--text-sm)">Descrição (opcional)</span>
+          <input type="text" id="pathDesc" class="topbar__search-input" style="border-radius:var(--radius-md);padding-left:var(--sp-4)" placeholder="Breve descrição da trilha">
+        </label>
+        ${discOptions ? `
+        <label style="display:block;margin-bottom:var(--sp-4)">
+          <span class="fw-600" style="display:block;margin-bottom:var(--sp-2);font-size:var(--text-sm)">Disciplina (opcional)</span>
+          <select id="pathDiscSelect" class="topbar__search-input" style="border-radius:var(--radius-md);padding-left:var(--sp-4)">
+            <option value="">— Nenhuma —</option>
+            ${discOptions}
+          </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-4);cursor:pointer">
+          <input type="checkbox" id="pathAutoGen" style="accent-color:var(--color-accent)">
+          <span style="font-size:var(--text-sm)">Auto-gerar etapas a partir da disciplina</span>
+        </label>` : ''}
+      `, `<button class="btn btn-primary btn-pill" id="savePathBtn">Criar</button>`);
+
+      setTimeout(() => {
+        on($('#savePathBtn'), 'click', async () => {
+          const name = $('#pathName')?.value?.trim();
+          if (!name) { toast('Digite um nome para a trilha.', 'error'); return; }
+          const desc = $('#pathDesc')?.value?.trim() || '';
+          const discId = $('#pathDiscSelect')?.value || '';
+          const autoGen = $('#pathAutoGen')?.checked;
+
+          try {
+            if (autoGen && discId) {
+              const disc = (state.hierarchy || []).find(d => d.id === discId);
+              if (disc) {
+                await LearningPathService.autoGenerate(disc);
+                toast('Trilha gerada automaticamente!', 'success');
+              } else {
+                await LearningPathService.create({ name, description: desc, disciplineId: discId, steps: [] });
+                toast('Trilha criada!', 'success');
+              }
+            } else {
+              await LearningPathService.create({ name, description: desc, disciplineId: discId || undefined, steps: [] });
+              toast('Trilha criada!', 'success');
+            }
+            closeModal();
+            renderPlanning();
+          } catch (err) {
+            toast('Erro ao criar trilha.', 'error');
+          }
+        });
+        $('#pathName')?.focus();
+      }, 50);
+    });
+  }
 }
 
 /* ─── INSIGHTS VIEW ────────────────────────────────────────────────── */
 
 async function renderInsights() {
-  // Reload analytics
+  // Reload analytics (enriched)
   try {
-    state.analytics = await AnalyticsService.getOverview();
+    state.analytics = await loadAnalytics();
+  } catch { }
+
+  // Reload XP from storage
+  try {
+    const xpRaw = await new Promise(r => chrome.storage.local.get('ah_xpData', d => r(d.ah_xpData)));
+    if (xpRaw) state.xpData = xpRaw;
   } catch { }
 
   // XP / Level
@@ -2286,14 +3396,15 @@ async function renderInsights() {
   const xpBar = $('#insightXpBar');
   if (xpBar) xpBar.style.width = `${xpInLevel}%`;
 
-  // Stats row
+  // Stats row — use correct property names from enriched analytics
   const statsEl = $('#insightStats');
   if (statsEl && state.analytics) {
     const a = state.analytics;
+    const totalCards = getAllCards().length;
     statsEl.innerHTML = `
-      <div class="stat-card"><div class="stat-card__icon copper"><span class="icon">style</span></div><div><div class="stat-card__value">${a.totalCards || 0}</div><div class="stat-card__label">Cards totais</div></div></div>
-      <div class="stat-card"><div class="stat-card__icon green"><span class="icon">check_circle</span></div><div><div class="stat-card__value">${a.totalReviews || 0}</div><div class="stat-card__label">Revisões totais</div></div></div>
-      <div class="stat-card"><div class="stat-card__icon blue"><span class="icon">calendar_today</span></div><div><div class="stat-card__value">${a.daysActive || 0}</div><div class="stat-card__label">Dias ativos</div></div></div>
+      <div class="stat-card"><div class="stat-card__icon copper"><span class="icon">style</span></div><div><div class="stat-card__value">${totalCards}</div><div class="stat-card__label">Cards totais</div></div></div>
+      <div class="stat-card"><div class="stat-card__icon green"><span class="icon">check_circle</span></div><div><div class="stat-card__value">${a.totalReviews || 0}</div><div class="stat-card__label">Revisões (30d)</div></div></div>
+      <div class="stat-card"><div class="stat-card__icon blue"><span class="icon">calendar_today</span></div><div><div class="stat-card__value">${a.activeDays || 0}</div><div class="stat-card__label">Dias ativos</div></div></div>
       <div class="stat-card"><div class="stat-card__icon gold"><span class="icon">local_fire_department</span></div><div><div class="stat-card__value">${a.currentStreak || 0}</div><div class="stat-card__label">Sequência atual</div></div></div>
     `;
   }
@@ -2377,9 +3488,10 @@ async function renderInsightBadges() {
       <div class="insights-badges-grid">${visibleBadges.map(b => {
       const isUnlocked = unlocked.has(b.id || b.name);
       return `
-            <div class="insights-badge-item${isUnlocked ? ' is-unlocked' : ' is-locked'}" title="${escHtml(b.description || b.name || '')}">
-              <div class="insights-badge-icon">${b.icon || '<span class="material-symbols-rounded">emoji_events</span>'}</div>
+            <div class="insights-badge-item${isUnlocked ? ' is-unlocked' : ' is-locked'}" title="${escHtml(b.desc || b.description || b.name || '')}">
+              <div class="insights-badge-icon">${b.icon || '🏆'}</div>
               <div class="insights-badge-name">${escHtml(b.name || '—')}</div>
+              <div class="insights-badge-desc">${escHtml(b.desc || b.description || '')}</div>
             </div>`;
     }).join('')
       }</div>`;
@@ -2650,6 +3762,7 @@ function initPractice() {
   on($('#practiceQuiz'), 'click', () => {
     const selectedFilter = $('#quizDisc')?.value || 'all';
     state.practiceFilter = selectedFilter;
+    state._nextSessionType = 'quiz';
 
     // Sync visual selector in study setup when discipline filter is chosen
     const sessionDisc = $('#sessionDisc');
@@ -2686,6 +3799,7 @@ function initPractice() {
       on($('#startSimuladoBtn'), 'click', () => {
         const count = parseInt($('#simuladoCount')?.value || '30', 10);
         state.practiceFilter = selectedFilter;
+        state._nextSessionType = 'simulado';
 
         const sessionCountEl = $('#sessionCount');
         if (sessionCountEl) sessionCountEl.value = count;
@@ -2713,6 +3827,7 @@ function initPractice() {
     if (sel) sel.value = 'all';
     const countEl = $('#sessionCount');
     if (countEl) countEl.value = '10';
+    state._nextSessionType = 'challenge';
     navigateTo('study');
     toast('Desafio aleatório: 10 cards de disciplinas variadas!', 'info');
     setTimeout(startStudySession, 100);
@@ -2865,13 +3980,9 @@ async function startAISimulado(filter, count, difficulty) {
     const correctLetter = (q.answerLetter || 'A').toUpperCase();
     const correctIdx = letters.indexOf(correctLetter);
 
-    // Build question text with inline alternatives (the parser will handle separation)
-    const optionsText = letters.map(l => `${l}) ${optionsMap[l]}`).join('\n');
-    const fullQuestion = `${q.questionText}\n\n${optionsText}`;
-
     return {
       id: `ai_sim_${Date.now()}_${i}`,
-      question: fullQuestion,
+      question: q.questionText,
       answer: `${correctLetter}) ${optionsMap[correctLetter] || ''}\n\n${q.explanation || ''}`,
       explanation: q.explanation || '',
       options: letters.map(l => optionsMap[l]),
@@ -2891,6 +4002,8 @@ async function startAISimulado(filter, count, difficulty) {
     index: 0,
     results: [],
     revealed: false,
+    type: 'ai-simulado',
+    startedAt: Date.now(),
   };
 
   // Small delay for the user to see "100% done"
@@ -2901,16 +4014,188 @@ async function startAISimulado(filter, count, difficulty) {
   try { AnalyticsService.startSession?.(); } catch (_) { }
 }
 
-/* ─── Notifications Button ─────────────────────────────────────────── */
+/* ─── Notifications System ──────────────────────────────────────────── */
+
+function _buildNotifications() {
+  const notifs = [];
+  const now = Date.now();
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1. Due cards
+  const dueCards = getDueCards();
+  const overdueCards = getOverdueCards();
+  const newCards = getNewCards();
+
+  if (overdueCards.length > 0) {
+    notifs.push({
+      id: 'overdue',
+      icon: 'warning',
+      color: 'danger',
+      title: `${overdueCards.length} card${overdueCards.length !== 1 ? 's' : ''} atrasado${overdueCards.length !== 1 ? 's' : ''}`,
+      desc: 'Revise agora para manter a retenção.',
+      action: () => navigateTo('review'),
+      priority: 1,
+    });
+  } else if (dueCards.length > 0) {
+    notifs.push({
+      id: 'due',
+      icon: 'schedule',
+      color: 'accent',
+      title: `${dueCards.length} revisão${dueCards.length !== 1 ? 'ões' : ''} pendente${dueCards.length !== 1 ? 's' : ''}`,
+      desc: 'Faça suas revisões do dia.',
+      action: () => navigateTo('review'),
+      priority: 2,
+    });
+  }
+
+  // 2. Streak
+  const streak = state.analytics?.currentStreak || 0;
+  if (streak >= 3) {
+    notifs.push({
+      id: 'streak',
+      icon: 'local_fire_department',
+      color: 'warning',
+      title: `Sequência de ${streak} dias!`,
+      desc: 'Continue estudando para não perder.',
+      priority: 5,
+    });
+  } else if (streak === 0) {
+    const todayStats = state.analytics?._today || {};
+    if (!todayStats.reviews) {
+      notifs.push({
+        id: 'streak_risk',
+        icon: 'local_fire_department',
+        color: 'danger',
+        title: 'Sequência em risco!',
+        desc: 'Estude hoje para manter sua sequência.',
+        action: () => navigateTo('study'),
+        priority: 3,
+      });
+    }
+  }
+
+  // 3. New cards never studied
+  if (newCards.length > 5) {
+    notifs.push({
+      id: 'new_cards',
+      icon: 'auto_awesome',
+      color: 'success',
+      title: `${newCards.length} cards novos`,
+      desc: 'Comece a estudar cards ainda não revisados.',
+      action: () => navigateTo('study'),
+      priority: 4,
+    });
+  }
+
+  // 4. Weak disciplines
+  const discs = state.hierarchy || [];
+  for (const d of discs) {
+    const total = countCards(d);
+    const due = countDueCards(d);
+    if (total > 0 && due / total > 0.7 && due > 3) {
+      notifs.push({
+        id: `weak_${d.id}`,
+        icon: 'trending_down',
+        color: 'warning',
+        title: `${escHtml(d.name)} precisa de atenção`,
+        desc: `${due} de ${total} cards pendentes (${Math.round(due / total * 100)}%).`,
+        action: () => { showDisciplineDetail(d.id); },
+        priority: 6,
+      });
+      break; // only show worst one
+    }
+  }
+
+  // 5. All clear!
+  if (notifs.length === 0) {
+    notifs.push({
+      id: 'all_clear',
+      icon: 'check_circle',
+      color: 'success',
+      title: 'Tudo em dia!',
+      desc: 'Nenhuma pendência no momento.',
+      priority: 99,
+    });
+  }
+
+  return notifs.sort((a, b) => a.priority - b.priority);
+}
 
 function initNotifications() {
-  on($('#btnNotifications'), 'click', () => {
-    const due = getDueCards().length;
-    if (due > 0) {
-      navigateTo('review');
-    } else {
-      toast('Nenhuma revisão pendente!', 'info', 2000);
+  const btn = $('#btnNotifications');
+  if (!btn) return;
+
+  let panelOpen = false;
+
+  const closePanel = () => {
+    const existing = $('#notifPanel');
+    if (existing) existing.remove();
+    panelOpen = false;
+  };
+
+  on(btn, 'click', (e) => {
+    e.stopPropagation();
+
+    if (panelOpen) {
+      closePanel();
+      return;
     }
+
+    const notifs = _buildNotifications();
+    const panel = document.createElement('div');
+    panel.id = 'notifPanel';
+    panel.className = 'notif-panel';
+    panel.innerHTML = `
+      <div class="notif-panel__header">
+        <span class="notif-panel__title">Notificações</span>
+        <span class="notif-panel__count">${notifs.length}</span>
+      </div>
+      <div class="notif-panel__list">
+        ${notifs.map((n, i) => `
+          <div class="notif-panel__item${n.action ? ' notif-panel__item--actionable' : ''}" data-notif-idx="${i}">
+            <span class="notif-panel__icon notif-panel__icon--${n.color} material-symbols-rounded">${n.icon}</span>
+            <div class="notif-panel__body">
+              <div class="notif-panel__item-title">${n.title}</div>
+              <div class="notif-panel__item-desc">${n.desc}</div>
+            </div>
+            ${n.action ? '<span class="notif-panel__arrow material-symbols-rounded">chevron_right</span>' : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    btn.appendChild(panel);
+    panelOpen = true;
+
+    // Bind click actions
+    panel.querySelectorAll('.notif-panel__item--actionable').forEach(item => {
+      item.addEventListener('click', () => {
+        const idx = parseInt(item.dataset.notifIdx);
+        const n = notifs[idx];
+        if (n?.action) {
+          closePanel();
+          n.action();
+        }
+      });
+    });
+
+    // Close on outside click
+    const onOutside = (ev) => {
+      if (!panel.contains(ev.target) && ev.target !== btn && !btn.contains(ev.target)) {
+        closePanel();
+        document.removeEventListener('click', onOutside);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', onOutside), 10);
+
+    // Close on Escape
+    const onEsc = (ev) => {
+      if (ev.key === 'Escape') {
+        closePanel();
+        document.removeEventListener('keydown', onEsc);
+      }
+    };
+    document.addEventListener('keydown', onEsc);
   });
 }
 
@@ -2990,6 +4275,368 @@ function initAddQuestion() {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   HISTORY — Simulado & Session History
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const HISTORY_STORAGE_KEY = 'ah_simuladoHistory';
+const HISTORY_MAX_ENTRIES = 200;
+
+const SESSION_TYPE_META = {
+  'study':        { label: 'Sessão de Estudo', icon: 'school',         color: 'blue' },
+  'quiz':         { label: 'Quiz Rápido',      icon: 'quiz',           color: 'green' },
+  'simulado':     { label: 'Simulado',         icon: 'assignment',     color: 'copper' },
+  'ai-simulado':  { label: 'Simulado IA',      icon: 'auto_awesome',   color: 'purple' },
+  'challenge':    { label: 'Desafio Aleatório', icon: 'casino',        color: 'gold' },
+};
+
+/**
+ * Load history array from chrome.storage.local
+ */
+async function loadHistory() {
+  try {
+    const data = await chrome.storage.local.get(HISTORY_STORAGE_KEY);
+    return data[HISTORY_STORAGE_KEY] || [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Save a completed session to history
+ */
+async function saveSessionToHistory(entry) {
+  try {
+    const history = await loadHistory();
+    history.unshift({
+      id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      date: new Date().toISOString(),
+      ...entry,
+    });
+    // Cap history size
+    if (history.length > HISTORY_MAX_ENTRIES) {
+      history.length = HISTORY_MAX_ENTRIES;
+    }
+    await chrome.storage.local.set({ [HISTORY_STORAGE_KEY]: history });
+  } catch (err) {
+    console.warn('[History] Save error:', err);
+  }
+}
+
+/**
+ * Delete a single history entry by id
+ */
+async function deleteHistoryEntry(id) {
+  try {
+    const history = await loadHistory();
+    const filtered = history.filter(h => h.id !== id);
+    await chrome.storage.local.set({ [HISTORY_STORAGE_KEY]: filtered });
+    return filtered;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Clear all history
+ */
+async function clearAllHistory() {
+  try {
+    await chrome.storage.local.set({ [HISTORY_STORAGE_KEY]: [] });
+  } catch { }
+}
+
+/**
+ * Format seconds into human-readable duration "Xm Ys"
+ */
+function formatDuration(sec) {
+  if (!sec || sec <= 0) return '—';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s}s`;
+}
+
+/**
+ * Format ISO date into relative/readable string
+ */
+function formatHistoryDate(isoStr) {
+  const d = new Date(isoStr);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffH = Math.floor(diffMs / 3600000);
+  const diffD = Math.floor(diffMs / 86400000);
+
+  if (diffMin < 1) return 'Agora mesmo';
+  if (diffMin < 60) return `Há ${diffMin}min`;
+  if (diffH < 24) return `Há ${diffH}h`;
+  if (diffD === 1) return 'Ontem';
+  if (diffD < 7) return `Há ${diffD} dias`;
+
+  return d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+}
+
+function formatFullDate(isoStr) {
+  const d = new Date(isoStr);
+  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    + ' às '
+    + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+/**
+ * Init history view: bind filters, clear button, empty-state CTA
+ */
+function initHistory() {
+  on($('#historyFilterType'), 'change', renderHistory);
+  on($('#historyFilterDisc'), 'change', renderHistory);
+
+  on($('#historyClearAllBtn'), 'click', () => {
+    openModal('Limpar Histórico', `
+      <p style="line-height:1.6;font-size:var(--text-sm)">Tem certeza? Isso vai apagar <strong>todo</strong> o histórico de simulados e sessões. Essa ação não pode ser desfeita.</p>
+    `, `
+      <button class="btn btn-secondary btn-pill" id="historyCancelClear">Cancelar</button>
+      <button class="btn btn-danger btn-pill" id="historyConfirmClear">
+        <span class="material-symbols-rounded" style="font-size:16px">delete_forever</span>
+        Limpar tudo
+      </button>
+    `);
+    setTimeout(() => {
+      on($('#historyCancelClear'), 'click', closeModal);
+      on($('#historyConfirmClear'), 'click', async () => {
+        await clearAllHistory();
+        closeModal();
+        toast('Histórico limpo.', 'info');
+        renderHistory();
+      });
+    }, 50);
+  });
+
+  on($('#historyGoToPractice'), 'click', () => navigateTo('practice'));
+}
+
+/**
+ * Render the history view with current filters
+ */
+async function renderHistory() {
+  const allHistory = await loadHistory();
+  const filterType = $('#historyFilterType')?.value || 'all';
+  const filterDisc = $('#historyFilterDisc')?.value || 'all';
+
+  // Populate discipline filter from history data
+  const discFilter = $('#historyFilterDisc');
+  if (discFilter) {
+    const prevVal = discFilter.value;
+    const allDiscs = new Set();
+    allHistory.forEach(h => {
+      if (h.discipline) allDiscs.add(h.discipline);
+      (h.disciplines || []).forEach(d => allDiscs.add(d));
+    });
+    discFilter.innerHTML = '<option value="all">Todas disciplinas</option>';
+    [...allDiscs].sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      discFilter.appendChild(opt);
+    });
+    const exists = [...discFilter.options].some(o => o.value === prevVal);
+    discFilter.value = exists ? prevVal : 'all';
+  }
+
+  // Filter
+  let filtered = allHistory;
+  if (filterType !== 'all') {
+    filtered = filtered.filter(h => h.type === filterType);
+  }
+  if (filterDisc !== 'all') {
+    filtered = filtered.filter(h =>
+      h.discipline === filterDisc || (h.disciplines || []).includes(filterDisc)
+    );
+  }
+
+  // Overview stats
+  const totalSessions = allHistory.length;
+  const totalQuestions = allHistory.reduce((s, h) => s + (h.total || 0), 0);
+  const accuracies = allHistory.filter(h => h.total > 0).map(h => h.accuracy);
+  const bestAcc = accuracies.length > 0 ? Math.max(...accuracies) : null;
+  const avgAcc = accuracies.length > 0 ? Math.round(accuracies.reduce((s, a) => s + a, 0) / accuracies.length) : null;
+
+  safeText('#histStatTotal', String(totalSessions));
+  safeText('#histStatQuestions', String(totalQuestions));
+  safeText('#histStatBestAcc', bestAcc != null ? `${bestAcc}%` : '—');
+  safeText('#histStatAvgAcc', avgAcc != null ? `${avgAcc}%` : '—');
+
+  // Update badge in sidebar
+  const badge = $('#navHistoryBadge');
+  if (badge) badge.textContent = totalSessions > 0 ? String(totalSessions) : '';
+
+  // Empty state
+  const emptyEl = $('#historyEmpty');
+  const listEl = $('#historyList');
+  const overviewEl = $('#historyOverview');
+
+  if (filtered.length === 0) {
+    hide(listEl);
+    if (allHistory.length === 0) {
+      hide(overviewEl);
+      show(emptyEl);
+    } else {
+      show(overviewEl);
+      show(emptyEl);
+    }
+    return;
+  }
+
+  show(overviewEl);
+  hide(emptyEl);
+  show(listEl);
+
+  // Group by date with relative labels
+  const groups = {};
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterday = today - 86400000;
+  const weekAgo = today - 6 * 86400000;
+
+  filtered.forEach(h => {
+    const d = new Date(h.date);
+    const dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    let key;
+    if (dDay === today) key = 'Hoje';
+    else if (dDay === yesterday) key = 'Ontem';
+    else if (dDay > weekAgo) key = d.toLocaleDateString('pt-BR', { weekday: 'long' });
+    else key = d.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+    (groups[key] = groups[key] || []).push(h);
+  });
+
+  let html = '';
+
+  for (const [dateLabel, entries] of Object.entries(groups)) {
+    html += `<div class="hist-date-group">
+      <div class="hist-date-label">${escHtml(dateLabel)}</div>
+      <div class="hist-entries">`;
+
+    for (const h of entries) {
+      const meta = SESSION_TYPE_META[h.type] || SESSION_TYPE_META['study'];
+      const acc = h.accuracy || 0;
+      const accColor = (acc >= 80) ? 'var(--color-success)' :
+                        (acc >= 50) ? 'var(--color-warning)' :
+                        'var(--color-error)';
+      // SVG donut ring parameters
+      const r = 19;
+      const circ = 2 * Math.PI * r;
+      const offset = circ - (acc / 100) * circ;
+
+      html += `
+        <div class="hist-entry" data-history-id="${escHtml(h.id)}" data-type="${escHtml(h.type || 'study')}">
+          <div class="hist-entry-main" data-expand-id="${escHtml(h.id)}">
+            <div class="hist-entry-icon ${meta.color}">
+              <span class="material-symbols-rounded">${meta.icon}</span>
+            </div>
+            <div class="hist-entry-info">
+              <div class="hist-entry-title">
+                ${escHtml(meta.label)}
+                ${h.type === 'ai-simulado' ? '<span class="badge badge-ai" style="font-size:10px;padding:1px 6px">IA</span>' : ''}
+              </div>
+              <div class="hist-entry-meta">
+                <span>${escHtml(h.discipline || 'Geral')}</span>
+                <span class="hist-entry-sep">·</span>
+                <span>${h.total} questões</span>
+                <span class="hist-entry-sep">·</span>
+                <span>${formatDuration(h.durationSec)}</span>
+              </div>
+            </div>
+            <div class="hist-acc-ring">
+              <svg viewBox="0 0 42 42">
+                <circle class="ring-bg" cx="21" cy="21" r="${r}" />
+                <circle class="ring-fg" cx="21" cy="21" r="${r}"
+                  stroke="${accColor}"
+                  stroke-dasharray="${circ}"
+                  stroke-dashoffset="${offset}" />
+              </svg>
+              <span class="hist-acc-pct">${acc}%</span>
+            </div>
+            <div class="hist-entry-ratio">${h.correct}/${h.total}</div>
+            <div class="hist-entry-time">${formatHistoryDate(h.date)}</div>
+            <button class="hist-entry-expand" aria-label="Expandir detalhes" data-expand-id="${escHtml(h.id)}">
+              <span class="material-symbols-rounded">expand_more</span>
+            </button>
+          </div>
+          <div class="hist-entry-details" id="histDetail_${escHtml(h.id)}" hidden>
+            <div class="hist-detail-header">
+              <span class="hist-detail-date">${formatFullDate(h.date)}</span>
+              <span class="hist-detail-xp">+${h.xp || 0} XP</span>
+              <button class="hist-delete-btn" data-delete-id="${escHtml(h.id)}" aria-label="Excluir sessão">
+                <span class="material-symbols-rounded" style="font-size:16px">delete</span>
+              </button>
+            </div>
+            ${renderHistoryCardsList(h.cards || [])}
+          </div>
+        </div>`;
+    }
+
+    html += `</div></div>`;
+  }
+
+  listEl.innerHTML = html;
+
+  // Bind expand/collapse
+  $$('[data-expand-id]', listEl).forEach(btn => {
+    on(btn, 'click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.expandId;
+      const detail = $(`#histDetail_${id}`);
+      if (!detail) return;
+      const isHidden = detail.hidden;
+      // Collapse all first
+      $$('.hist-entry-details', listEl).forEach(d => d.hidden = true);
+      $$('.hist-entry', listEl).forEach(e => e.classList.remove('expanded'));
+      if (isHidden) {
+        detail.hidden = false;
+        btn.closest('.hist-entry')?.classList.add('expanded');
+      }
+    });
+  });
+
+  // Bind delete buttons
+  $$('[data-delete-id]', listEl).forEach(btn => {
+    on(btn, 'click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.deleteId;
+      await deleteHistoryEntry(id);
+      toast('Sessão removida do histórico.', 'info', 2000);
+      renderHistory();
+    });
+  });
+}
+
+/**
+ * Render the cards detail list for a history entry
+ */
+function renderHistoryCardsList(cards) {
+  if (!cards || cards.length === 0) {
+    return '<div class="hist-no-cards">Sem detalhes de questões disponíveis.</div>';
+  }
+
+  let html = '<div class="hist-cards-list">';
+  cards.forEach((c, i) => {
+    const isCorrectKnown = c.isCorrect !== undefined;
+    const correct = isCorrectKnown ? c.isCorrect : (c.rating >= 3);
+    const statusIcon = correct ? 'check_circle' : 'cancel';
+    const statusClass = correct ? 'correct' : 'wrong';
+
+    html += `
+      <div class="hist-card-item ${statusClass}">
+        <span class="hist-card-num">${i + 1}</span>
+        <div class="hist-card-q">${escHtml(truncate(c.question, 150))}</div>
+        <div class="hist-card-answer">${escHtml(truncate(c.answer, 100))}</div>
+        <span class="material-symbols-rounded hist-card-status ${statusClass}">${statusIcon}</span>
+      </div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
 /* ─── Utility Functions ────────────────────────────────────────────── */
 
 function escHtml(str) {
@@ -3030,6 +4677,7 @@ async function init() {
   initNotifications();
   initAddQuestion();
   initPractice();
+  initHistory();
 
   // Close modal/dock listeners
   on($('#closeModal'), 'click', closeModal);

@@ -307,55 +307,53 @@ FORMATO JSON OBRIGATÓRIO:
         const settings = await ApiService._getSettings();
 
         const typeGuides = {
-            acronym: 'Priorize acrônimos ou acrósticos (primeira letra de cada palavra forma outra palavra).',
-            story: 'Crie uma micro-história absurda e vivida que incorpore todos os elementos do conceito.',
-            rhyme: 'Crie uma rima ou ritmo musical simples que encode o conceito (estilo jingle).',
-            visual: 'Descreva uma imagem mental vívida e inusitada que represente o conceito.',
-            any: 'Escolha o tipo mais eficaz para este conceito específico.'
+            acronym: 'Use acrônimo ou acróstico: primeira letra de cada elemento-chave forma uma palavra ou frase fácil.',
+            story: 'Crie uma frase curta (máx 2 linhas) ligando os elementos-chave em sequência lógica.',
+            rhyme: 'Crie uma rima curta de 2-4 versos que encode os elementos-chave.',
+            visual: 'Descreva UMA imagem mental simples e marcante que represente o conceito.',
+            any: 'Escolha entre acrônimo, frase-chave, rima curta ou imagem mental — o que funcionar melhor.'
         };
 
-        const systemMsg = `Você é especialista em técnicas mnemônicas criativas para estudantes brasileiros.
+        const systemMsg = `Você cria mnemônicos ÚTEIS e SIMPLES para estudantes brasileiros.
 
-Seu arsenal mnemônico:
-1. ACRÔNIMO/ACRÓSTICO: ex: "HOMES" para os Grandes Lagos
-2. HISTÓRIA ABSURDA: narrativa bizarra que força encoding elaborativo
-3. RIMA/JINGLE: ritmo que o cérebro retém automaticamente
-4. IMAGEM VISUAL: cena vívida e inusitada (quanto mais absurda, melhor)
-5. ASSOCIAÇÃO CULTURAL: referência a memes, músicas, personagens conhecidos no Brasil
+REGRAS OBRIGATÓRIAS:
+- O mnemônico deve codificar os ELEMENTOS-CHAVE do conceito (nomes, termos, ordem, relações)
+- Máximo 2-3 frases. Quanto mais curto, melhor.
+- NÃO invente histórias longas, personagens fictícios ou narrativas complexas
+- NÃO use referências a celebridades, memes ou cultura pop
+- PRIORIZE: acrônimos, frases-chave, rimas curtas, associações diretas
+- O aluno deve conseguir RECONSTRUIR a resposta a partir do mnemônico
 
-Princípio da estranheza: mnemônicos BIZARROS são 2x mais eficazes (Von Restorff effect).
-Princípio cultural: referências à cultura brasileira aumentam retenção e identificação.`;
+EXEMPLOS de bons mnemônicos:
+- "MaRiA VaI CoM aS OuTrAs" → ordem dos planetas (Mercúrio, Vênus, Terra...)
+- "SeCaPiCoFiReGe" → camadas OSI (Sessão, Apresentação, Aplicação...)
+- "Lei, Medida Provisória, Decreto" → hierarquia: "LeMeDe" 
+- Para SQL ALTER TABLE: "ALTER = ALTERAR estrutura, ADD = adicionar coluna, DROP = remover"
 
-        const prompt = `CONCEITO A MEMORIZAR:
+Responda APENAS em JSON válido, sem texto extra.`;
+
+        const prompt = `CONCEITO:
 ${concept.slice(0, 400)}
 
-${questionContext ? `CONTEXTO DA QUESTÃO:\n${questionContext.slice(0, 400)}\n` : ''}
-TIPO PREFERIDO: ${preferredType}
-DIRETIVA: ${typeGuides[preferredType] || typeGuides.any}
+${questionContext ? `CONTEXTO:\n${questionContext.slice(0, 300)}\n` : ''}
+TIPO: ${typeGuides[preferredType] || typeGuides.any}
 
-Crie UM mnemônico que seja:
-✅ CRIATIVO e inusitado (não clichê)
-✅ ESPECÍFICO para este conceito
-✅ APLICÁVEL na prova
-✅ Preferencialmente com referência à cultura brasileira
+Identifique os 2-4 elementos-chave do conceito e crie UM mnemônico curto e prático.
 
-FORMATO JSON OBRIGATÓRIO:
-{
-  "mnemonic": "o texto criativo do mnemônico",
-  "type": "acronym|story|rhyme|visual|association",
-  "howToUse": "instrução de 1 frase de como aplicar na prova",
-  "emoji": "emoji representativo"
-}
-
-Responda APENAS com o JSON.`;
+JSON:
+{"mnemonic": "texto curto do mnemônico", "type": "acronym|phrase|rhyme|visual", "howToUse": "como usar na prova (1 frase)", "emoji": "1 emoji"}`;
 
         const parseResponse = (content) => {
             if (!content) return null;
             try {
-                const cleaned = content
+                // Extract JSON from possible markdown/text wrapping
+                let cleaned = content
                     .replace(/^```(?:json)?\s*/i, '')
                     .replace(/\s*```$/, '')
                     .trim();
+                // Try to find JSON object in the response
+                const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+                if (jsonMatch) cleaned = jsonMatch[0];
                 return JSON.parse(cleaned);
             } catch (_) {
                 if (content.trim().length > 5) {
@@ -370,7 +368,7 @@ Responda APENAS com o JSON.`;
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: prompt }
             ],
-            opts: { temperature: 0.7, max_tokens: 250 },
+            opts: { temperature: 0.5, max_tokens: 200 },
             models: {
                 gemini: settings.geminiModel || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
@@ -379,7 +377,7 @@ Responda APENAS com o JSON.`;
                 copilot: settings.copilotModel || 'gpt-4o',
             },
             postProcess: parseResponse,
-            isValid: (v) => v && typeof v.mnemonic === 'string' && v.mnemonic.length > 3,
+            isValid: (v) => v && typeof v.mnemonic === 'string' && v.mnemonic.length > 3 && v.mnemonic.length < 500,
             label: 'generateMnemonic',
             fallbackValue: {
                 mnemonic: `Para lembrar: "${concept.slice(0, 50)}"`,

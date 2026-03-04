@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 const DEFAULT_PROJECT = 'C:/Users/cezar/OneDrive/Área de Trabalho/AnswerHunter';
 const PROJECT_PATH = process.env.PROJECT_PATH || DEFAULT_PROJECT;
@@ -22,6 +23,7 @@ const SCENARIOS = (() => {
 const PAGE_FILTER = process.env.QA_PAGE_FILTER ? process.env.QA_PAGE_FILTER.toLowerCase() : null;
 const DEBUG = process.env.QA_DEBUG === '1';
 const SKIP_DYNAMIC = process.env.QA_SKIP_DYNAMIC === '1';
+const RUN_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -34,6 +36,16 @@ function readText(filePath) {
 function writeText(filePath, text) {
   ensureDir(path.dirname(filePath));
   fs.writeFileSync(filePath, text, 'utf8');
+}
+
+function cleanButtonTestsDir() {
+  if (!fs.existsSync(BUTTON_TESTS_DIR)) return;
+  const entries = fs.readdirSync(BUTTON_TESTS_DIR, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    if (!entry.name.toLowerCase().endsWith('.md')) continue;
+    fs.unlinkSync(path.join(BUTTON_TESTS_DIR, entry.name));
+  }
 }
 
 function toPosix(p) {
@@ -449,13 +461,18 @@ function buildScenarioCode(scenario) {
   return `async (page)=>{const s=${JSON.stringify(scenario)};if(s==='offline'){try{await page.context().setOffline(true)}catch{}};const out=await page.evaluate((s)=>{window.__qe=[];window.addEventListener('error',e=>window.__qe.push(String(e.message||e.error||e)));window.addEventListener('unhandledrejection',e=>window.__qe.push(String(e.reason||e)));try{window.alert=()=>{};window.confirm=()=>true;window.prompt=()=>'';window.open=()=>null}catch{};const snap=()=>{let ls=-1,ss=-1;try{ls=localStorage.length}catch{};try{ss=sessionStorage.length}catch{};const st=(document.querySelector('#status,#status-groq,#status-serper,#status-gemini,#status-openrouter')?.textContent||'').trim().replace(/\\s+/g,' ').slice(0,140);return{ls,ss,status:st,url:location.href}};if(s==='empty'){try{localStorage.clear()}catch{};try{sessionStorage.clear()}catch{};try{chrome?.storage?.local?.clear?.()}catch{};try{chrome?.storage?.sync?.clear?.()}catch{}};if(s==='invalid'){try{localStorage.setItem('__qa_invalid__','{bad')}catch{};try{sessionStorage.setItem('__qa_invalid__','%%%')}catch{}};if(s==='missing_permissions'){try{window.__qb=window.chrome;if(window.chrome){window.chrome.storage=undefined;window.chrome.tabs=undefined;window.chrome.scripting=undefined;window.chrome.downloads=undefined;window.chrome.identity=undefined}}catch{}};const els=[...document.querySelectorAll('button,[role=\"button\"],input[type=\"button\"],input[type=\"submit\"]')];const rows=[];for(let i=0;i<els.length;i++){const e=els[i],b=snap();let err=null;try{const t=s==='repeat'?2:1;for(let k=0;k<t;k++){e.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,composed:true}))}}catch(x){err=String(x?.message||x)};const a=snap();rows.push({domIndex:i,id:e.id||null,text:(e.innerText||e.value||e.getAttribute('aria-label')||'').trim().replace(/\\s+/g,' ').slice(0,120),tag:e.tagName.toLowerCase(),disabled:!!e.disabled,hidden:!!(e.offsetParent===null),clicked:!err,clickError:err,stateChanged:b.ls!==a.ls||b.ss!==a.ss||b.status!==a.status||b.url!==a.url,before:b,after:a})};if(s==='missing_permissions'){try{if(window.__qb)window.chrome=window.__qb}catch{}};return{scenario:s,rows,pageErrors:(window.__qe||[]).slice(-40)}} ,s);if(s==='offline'){try{await page.context().setOffline(false)}catch{}};return out}`;
 }
 
+function buildSessionId(fileRel, scenario) {
+  const hash = createHash('sha1').update(`${RUN_ID}|${fileRel}|${scenario}`).digest('hex').slice(0, 12);
+  return `qa_${hash}`;
+}
+
 function collectDynamicForPage(fileRel) {
   const url = `http://${HOST}:${PORT}/${toPosix(fileRel)}`;
-  const session = `qa_${slugify(fileRel).slice(-45)}`;
   const out = { url, fileRel, scenarios: {}, errors: [] };
+  const session = buildSessionId(fileRel, 'page');
+
   try {
-    runPwCli([`-s=${session}`, 'open', url, '--browser', 'chrome']);
-    runPwCli(['list']);
+    runPwCli([`-s=${session}`, 'open', url]);
   } catch (err) {
     out.errors.push(String(err.message || err));
     return out;
@@ -468,7 +485,7 @@ function collectDynamicForPage(fileRel) {
       } catch (gotoErr) {
         const msg = String(gotoErr?.message || gotoErr || '');
         if (msg.includes('is not open')) {
-          runPwCli([`-s=${session}`, 'open', url, '--browser', 'chrome']);
+          runPwCli([`-s=${session}`, 'open', url]);
           runPwCli([`-s=${session}`, 'goto', url]);
         } else {
           throw gotoErr;
@@ -506,6 +523,7 @@ function main() {
   ensureDir(DOCS_QA_DIR);
   ensureDir(BUTTON_TESTS_DIR);
   ensureDir(SCRIPTS_DIR);
+  cleanButtonTestsDir();
 
   // Defensive cleanup to avoid stale pipe/session collisions between runs.
   if (!SKIP_DYNAMIC) {
@@ -672,7 +690,7 @@ function main() {
       '```',
       '',
       '## 2.2 Verificação dinâmica (rodando)',
-      '- Execução dinâmica feita com Playwright CLI em navegador real (chrome), clicando o elemento em todos os cenários automatizados.',
+      '- Execução dinâmica feita com Playwright CLI em navegador real, clicando o elemento em todos os cenários automatizados.',
       '',
       '## 2.3 Cenários obrigatórios',
       ...scenRows,

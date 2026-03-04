@@ -25,7 +25,10 @@
   ═══════════════════════════════════════════════════════════════════════════ -->
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
-        <div class="brand-mark">AH</div>
+        <div class="brand-mark" aria-hidden="true">
+          <img src="../../icons/icon.svg" alt="AnswerHunter Icon"
+            style="width: 100%; height: 100%; object-fit: contain; display: block;">
+        </div>
         <span class="brand-name">AnswerHunter</span>
         <button class="sidebar-collapse-btn" id="sidebarToggle" aria-label="Recolher menu">
           <span class="material-symbols-rounded">chevron_left</span>
@@ -41,20 +44,20 @@
       <nav class="sidebar-nav" aria-label="Navegação principal">
         <div class="nav-group">
           <span class="nav-group-label">Principal</span>
-          <a class="nav-item active" data-view="home" href="#home" aria-current="page">
+          <a class="nav-item active" data-view="home" data-tooltip="Início" href="#home" aria-current="page">
             <span class="material-symbols-rounded nav-icon">home</span>
             <span class="nav-label">Início</span>
           </a>
-          <a class="nav-item" data-view="library" href="#library">
+          <a class="nav-item" data-view="library" data-tooltip="Biblioteca" href="#library">
             <span class="material-symbols-rounded nav-icon">menu_book</span>
             <span class="nav-label">Biblioteca</span>
             <span class="nav-badge" id="navLibBadge" aria-label="disciplinas"></span>
           </a>
-          <a class="nav-item" data-view="study" href="#study">
+          <a class="nav-item" data-view="study" data-tooltip="Estudar" href="#study">
             <span class="material-symbols-rounded nav-icon">school</span>
             <span class="nav-label">Estudar</span>
           </a>
-          <a class="nav-item" data-view="review" href="#review">
+          <a class="nav-item" data-view="review" data-tooltip="Revisão" href="#review">
             <span class="material-symbols-rounded nav-icon">refresh</span>
             <span class="nav-label">Revisão</span>
             <span class="nav-badge urgent" id="navReviewBadge" aria-label="revisões pendentes"></span>
@@ -63,15 +66,20 @@
 
         <div class="nav-group">
           <span class="nav-group-label">Ferramentas</span>
-          <a class="nav-item" data-view="practice" href="#practice">
+          <a class="nav-item" data-view="practice" data-tooltip="Prática" href="#practice">
             <span class="material-symbols-rounded nav-icon">exercise</span>
             <span class="nav-label">Prática</span>
           </a>
-          <a class="nav-item" data-view="planning" href="#planning">
+          <a class="nav-item" data-view="history" data-tooltip="Histórico" href="#history">
+            <span class="material-symbols-rounded nav-icon">history</span>
+            <span class="nav-label">Histórico</span>
+            <span class="nav-badge" id="navHistoryBadge" aria-label="sessões registradas"></span>
+          </a>
+          <a class="nav-item" data-view="planning" data-tooltip="Planejamento" href="#planning">
             <span class="material-symbols-rounded nav-icon">calendar_month</span>
             <span class="nav-label">Planejamento</span>
           </a>
-          <a class="nav-item" data-view="insights" href="#insights">
+          <a class="nav-item" data-view="insights" data-tooltip="Insights" href="#insights">
             <span class="material-symbols-rounded nav-icon">insights</span>
             <span class="nav-label">Insights</span>
           </a>
@@ -106,10 +114,6 @@
       <!-- TOPBAR -->
       <header class="topbar" role="banner">
         <div class="topbar-left">
-          <button class="icon-btn sidebar-mobile-toggle" id="mobileSidebarToggle" aria-label="Menu"
-            aria-expanded="false">
-            <span class="material-symbols-rounded">menu</span>
-          </button>
           <nav class="breadcrumb" id="breadcrumb" aria-label="Localização">
             <span class="breadcrumb-item active">Início</span>
           </nav>
@@ -531,6 +535,10 @@
                   <span class="material-symbols-rounded">refresh</span>
                   Estudar novamente
                 </button>
+                <button class="btn btn-secondary" id="summaryGoHistory" data-view="history">
+                  <span class="material-symbols-rounded">history</span>
+                  Ver Histórico
+                </button>
                 <button class="btn btn-secondary" id="summaryGoHome" data-view="home">
                   <span class="material-symbols-rounded">home</span>
                   Ir para início
@@ -693,38 +701,58 @@
             <div id="flashcardArena" hidden>
               <div class="session-header">
                 <span id="flashcardCounter" class="session-counter">1 / 20</span>
-                <button class="btn btn-ghost btn-sm" id="shuffleFlashcards" aria-label="Embaralhar">
-                  <span class="material-symbols-rounded">shuffle</span>
-                </button>
-                <button class="btn btn-ghost btn-sm" id="exitFlashcardBtn">
-                  <span class="material-symbols-rounded">close</span>
-                  Sair
-                </button>
+                <div class="session-header-actions">
+                  <button class="btn btn-ghost btn-sm" id="shuffleFlashcards" aria-label="Embaralhar">
+                    <span class="material-symbols-rounded">shuffle</span>
+                  </button>
+                  <button class="btn btn-ghost btn-sm" id="exitFlashcardBtn">
+                    <span class="material-symbols-rounded">close</span>
+                    Sair
+                  </button>
+                </div>
               </div>
               <div class="flashcard-container">
-                <div class="flashcard" id="flashcardEl" tabindex="0" aria-label="Card (clique para virar)">
+                <div class="flashcard" id="flashcardEl" tabindex="0" role="button" aria-label="Flashcard — clique ou pressione Espaço para virar">
                   <div class="flashcard-face front">
+                    <span class="flashcard-face-label">PERGUNTA</span>
                     <div class="flashcard-content" id="flashcardFront"></div>
-                    <span class="flashcard-hint">Clique para ver a resposta</span>
+                    <span class="flashcard-hint">
+                      <span class="material-symbols-rounded" style="font-size:14px;vertical-align:middle">touch_app</span>
+                      Clique para ver a resposta
+                    </span>
                   </div>
                   <div class="flashcard-face back">
+                    <span class="flashcard-face-label">RESPOSTA</span>
                     <div class="flashcard-content" id="flashcardBack"></div>
                   </div>
                 </div>
               </div>
+              <div id="flashcardProgress" class="flashcard-progress"></div>
               <div class="flashcard-nav">
                 <button class="btn btn-secondary" id="flashcardPrev" aria-label="Card anterior">
                   <span class="material-symbols-rounded">arrow_back</span>
                 </button>
-                <div class="flashcard-rating" id="flashcardRating">
-                  <button class="rate-btn again" data-rate="1">Errei</button>
-                  <button class="rate-btn hard" data-rate="2">Difícil</button>
-                  <button class="rate-btn good" data-rate="3">Bom</button>
-                  <button class="rate-btn easy" data-rate="4">Fácil</button>
+                <div class="flashcard-rating" id="flashcardRating" hidden>
+                  <span class="rating-label">Como foi?</span>
+                  <button class="rate-btn again" data-rate="1">
+                    <span class="material-symbols-rounded" style="font-size:16px">close</span> Errei
+                  </button>
+                  <button class="rate-btn hard" data-rate="2">
+                    <span class="material-symbols-rounded" style="font-size:16px">trending_down</span> Difícil
+                  </button>
+                  <button class="rate-btn good" data-rate="3">
+                    <span class="material-symbols-rounded" style="font-size:16px">check</span> Bom
+                  </button>
+                  <button class="rate-btn easy" data-rate="4">
+                    <span class="material-symbols-rounded" style="font-size:16px">bolt</span> Fácil
+                  </button>
                 </div>
                 <button class="btn btn-secondary" id="flashcardNext" aria-label="Próximo card">
                   <span class="material-symbols-rounded">arrow_forward</span>
                 </button>
+              </div>
+              <div class="flashcard-shortcuts-hint">
+                <kbd>←</kbd> Anterior &nbsp; <kbd>Espaço</kbd> Virar &nbsp; <kbd>→</kbd> Próximo &nbsp; <kbd>1-4</kbd> Avaliar
               </div>
             </div>
           </div>
@@ -750,34 +778,65 @@
               </div>
             </div>
 
+            <!-- Stats overview row -->
+            <div class="planning-stats" id="planningStats"></div>
+
             <div class="planning-grid">
-              <div class="panel">
-                <div class="panel-header">
-                  <h2 class="panel-title">
-                    <span class="material-symbols-rounded">today</span>
-                    Plano de Hoje
-                  </h2>
-                  <span class="panel-meta" id="planDate"></span>
-                </div>
-                <div id="planContent" class="plan-list">
-                  <div class="empty-state mini">
-                    <span class="material-symbols-rounded">auto_fix_high</span>
-                    <span>Nenhum plano gerado. Clique em "Gerar Plano".</span>
+              <!-- Column 1: Today's plan -->
+              <div class="planning-col planning-col--main">
+                <div class="panel">
+                  <div class="panel-header">
+                    <h2 class="panel-title">
+                      <span class="material-symbols-rounded">today</span>
+                      Plano de Hoje
+                    </h2>
+                    <span class="panel-meta" id="planDate"></span>
                   </div>
+                  <div id="planContent" class="plan-list">
+                    <div class="empty-state mini">
+                      <span class="material-symbols-rounded">auto_fix_high</span>
+                      <span>Nenhum plano gerado. Clique em "Gerar Plano".</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Weekly History -->
+                <div class="panel">
+                  <div class="panel-header">
+                    <h2 class="panel-title">
+                      <span class="material-symbols-rounded">date_range</span>
+                      Semana
+                    </h2>
+                  </div>
+                  <div id="weeklyHistoryContent" class="panel-body"></div>
                 </div>
               </div>
 
-              <div class="panel">
-                <div class="panel-header">
-                  <h2 class="panel-title">
-                    <span class="material-symbols-rounded">route</span>
-                    Trilhas de Aprendizado
-                  </h2>
+              <!-- Column 2: Paths + Focus -->
+              <div class="planning-col planning-col--side">
+                <!-- Discipline Focus -->
+                <div class="panel">
+                  <div class="panel-header">
+                    <h2 class="panel-title">
+                      <span class="material-symbols-rounded">center_focus_strong</span>
+                      Foco por Disciplina
+                    </h2>
+                  </div>
+                  <div id="discFocusContent" class="panel-body"></div>
                 </div>
-                <div id="pathsContent" class="paths-list">
-                  <div class="empty-state mini">
-                    <span class="material-symbols-rounded">route</span>
-                    <span>Nenhuma trilha criada ainda.</span>
+
+                <div class="panel">
+                  <div class="panel-header">
+                    <h2 class="panel-title">
+                      <span class="material-symbols-rounded">route</span>
+                      Trilhas de Aprendizado
+                    </h2>
+                  </div>
+                  <div id="pathsContent" class="paths-list">
+                    <div class="empty-state mini">
+                      <span class="material-symbols-rounded">route</span>
+                      <span>Nenhuma trilha criada ainda.</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -879,6 +938,106 @@
           </div>
         </section>
 
+        <!-- VIEW: HISTORY -->
+        <section class="view view-panel" id="viewHistory" aria-label="Histórico de Simulados">
+          <div class="view-inner">
+
+            <!-- Hero header -->
+            <div class="hist-hero">
+              <div class="hist-hero-text">
+                <h1 class="hist-hero-title">Histórico</h1>
+                <p class="hist-hero-sub">Sua jornada de estudo, sessão a sessão</p>
+              </div>
+              <div class="hist-hero-actions">
+                <div class="hist-filter-bar">
+                  <div class="hist-filter-pill">
+                    <span class="material-symbols-rounded hist-filter-icon">filter_list</span>
+                    <select class="hist-filter-select" id="historyFilterType">
+                      <option value="all">Todos os tipos</option>
+                      <option value="quiz">Quiz Rápido</option>
+                      <option value="simulado">Simulado</option>
+                      <option value="ai-simulado">Simulado IA</option>
+                      <option value="challenge">Desafio</option>
+                      <option value="study">Sessão de Estudo</option>
+                    </select>
+                  </div>
+                  <div class="hist-filter-pill">
+                    <span class="material-symbols-rounded hist-filter-icon">school</span>
+                    <select class="hist-filter-select" id="historyFilterDisc">
+                      <option value="all">Todas disciplinas</option>
+                    </select>
+                  </div>
+                </div>
+                <button class="hist-clear-btn" id="historyClearAllBtn" aria-label="Limpar histórico">
+                  <span class="material-symbols-rounded">delete_sweep</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Overview stats -->
+            <div class="hist-stats-grid" id="historyOverview">
+              <div class="hist-stat sessions">
+                <div class="hist-stat-ring">
+                  <span class="material-symbols-rounded">assignment</span>
+                </div>
+                <div class="hist-stat-body">
+                  <span class="hist-stat-num" id="histStatTotal">0</span>
+                  <span class="hist-stat-lbl">Sessões</span>
+                </div>
+              </div>
+              <div class="hist-stat questions">
+                <div class="hist-stat-ring">
+                  <span class="material-symbols-rounded">quiz</span>
+                </div>
+                <div class="hist-stat-body">
+                  <span class="hist-stat-num" id="histStatQuestions">0</span>
+                  <span class="hist-stat-lbl">Questões</span>
+                </div>
+              </div>
+              <div class="hist-stat best">
+                <div class="hist-stat-ring">
+                  <span class="material-symbols-rounded">emoji_events</span>
+                </div>
+                <div class="hist-stat-body">
+                  <span class="hist-stat-num" id="histStatBestAcc">—</span>
+                  <span class="hist-stat-lbl">Melhor nota</span>
+                </div>
+              </div>
+              <div class="hist-stat average">
+                <div class="hist-stat-ring">
+                  <span class="material-symbols-rounded">trending_up</span>
+                </div>
+                <div class="hist-stat-body">
+                  <span class="hist-stat-num" id="histStatAvgAcc">—</span>
+                  <span class="hist-stat-lbl">Média geral</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Timeline list -->
+            <div class="hist-timeline" id="historyList">
+              <!-- Rendered dynamically -->
+            </div>
+
+            <!-- Empty state -->
+            <div class="hist-empty-wrap" id="historyEmpty" hidden>
+              <div class="hist-empty-illustration">
+                <div class="hist-empty-circle">
+                  <span class="material-symbols-rounded">auto_stories</span>
+                </div>
+                <div class="hist-empty-orbit hist-empty-orbit--1"></div>
+                <div class="hist-empty-orbit hist-empty-orbit--2"></div>
+              </div>
+              <h3 class="hist-empty-title">Nenhuma sessão registrada</h3>
+              <p class="hist-empty-desc">Complete um simulado ou sessão de estudo e ela aparecerá aqui automaticamente.</p>
+              <button class="btn btn-primary btn-pill" id="historyGoToPractice">
+                <span class="material-symbols-rounded">exercise</span>
+                Ir para Prática
+              </button>
+            </div>
+          </div>
+        </section>
+
       </main>
     </div>
 
@@ -924,8 +1083,6 @@
     </div>
 
     <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
-
-    <div id="mobileOverlay" class="mobile-overlay"></div>
 
   </div>
 

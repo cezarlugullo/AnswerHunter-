@@ -26,7 +26,7 @@ Trecho mínimo do binding:
 ```
 
 ## 2.2 Verificação dinâmica (rodando)
-- Execução dinâmica feita com Playwright CLI em navegador real (chrome), clicando o elemento em todos os cenários automatizados.
+- Execução dinâmica feita com Playwright CLI em navegador real, clicando o elemento em todos os cenários automatizados.
 
 ## 2.3 Cenários obrigatórios
 | Cenário | Resultado | Evidência |
@@ -36,9 +36,10 @@ Trecho mínimo do binding:
 | invalid | ⚠️ clique executado sem mudança observável | clicked=true; hidden=true; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
 | repeat | ⚠️ clique executado sem mudança observável | clicked=true; hidden=true; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=2 |
 | offline | ⚠️ clique executado sem mudança observável | clicked=true; hidden=true; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
-| missing_permissions | [Unverified] não foi possível validar | sem evidência dinâmica |
+| missing_permissions | ⚠️ clique executado sem mudança observável | clicked=true; hidden=true; disabled=false; before={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; after={"ls":1,"ss":1,"status":"","url":"http://127.0.0.1:4174/src/dashboard/dashboard-v2.html"}; pageErrors=1 |
 
 ## 2.4 Resultado e correções
-- Status: [Unverified] não foi possível validar
+- Status: ⚠️ parcial
 - Causa raiz: não identificado crash específico para este botão nas execuções registradas.
 - Correção mínima proposta: endurecer validações de estado e mensagens de erro para cenários inválidos/permissões/offline.
+

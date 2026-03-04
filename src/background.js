@@ -83,7 +83,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                 chrome.notifications?.create(`ah_badge_${badge.id}`, {
                     type: 'basic',
                     iconUrl: 'icons/icon128.png',
-                    title: `${badge.icon} Badge Desbloqueado!`,
+                    title: `🏆 Badge Desbloqueado!`,
                     message: `${badge.name} — ${badge.desc}`,
                     priority: 2
                 });

@@ -22,7 +22,7 @@ Trecho mínimo do binding:
 ```
 
 ## 2.2 Verificação dinâmica (rodando)
-- Execução dinâmica feita com Playwright CLI em navegador real (chrome), clicando o elemento em todos os cenários automatizados.
+- Execução dinâmica feita com Playwright CLI em navegador real, clicando o elemento em todos os cenários automatizados.
 
 ## 2.3 Cenários obrigatórios
 | Cenário | Resultado | Evidência |
@@ -38,3 +38,4 @@ Trecho mínimo do binding:
 - Status: ✅ ok
 - Causa raiz: não identificado crash específico para este botão nas execuções registradas.
 - Correção mínima proposta: endurecer validações de estado e mensagens de erro para cenários inválidos/permissões/offline.
+

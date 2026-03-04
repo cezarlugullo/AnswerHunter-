@@ -65,15 +65,24 @@ export const AnalyticsService = {
 
   /**
    * Record a single review within the active session.
+   * @param {Object} opts
+   * @param {string} opts.cardId
+   * @param {string} opts.disciplineId
+   * @param {number} opts.rating - Self-rating (1-4) for FSRS scheduling
+   * @param {number|null} opts.retrievability
+   * @param {boolean} [opts.isCorrect] - Actual answer correctness (from option selection).
+   *   When undefined, falls back to rating >= 3.
    */
-  recordReview({ cardId, disciplineId, rating, retrievability }) {
+  recordReview({ cardId, disciplineId, rating, retrievability, isCorrect }) {
     if (!this._activeSession) this.startSession();
     const s = this._activeSession;
     s.cardsReviewed++;
-    if (rating >= 3) s.correct++;
+    // Use explicit correctness when available (multiple-choice); otherwise infer from rating
+    const correct = isCorrect !== undefined ? isCorrect : (rating >= 3);
+    if (correct) s.correct++;
     else s.incorrect++;
     if (disciplineId) s.disciplineIds.add(disciplineId);
-    s.ratings.push({ cardId, rating, retrievability, at: Date.now() });
+    s.ratings.push({ cardId, rating, retrievability, isCorrect: correct, at: Date.now() });
   },
 
   /**
@@ -202,6 +211,18 @@ export const AnalyticsService = {
     const activeDays = last30.filter(d => d.reviews > 0).length;
     const avgAccuracy = totalReviews ? Math.round((totalCorrect / totalReviews) * 100) : 0;
 
+    // Today's stats
+    const today = data.dailyStats[this._dateKey()] || { reviews: 0, correct: 0, xpGained: 0, minutesStudied: 0 };
+
+    // Streak calculation
+    const currentStreak = this._computeStreak(data.dailyStats);
+
+    // Daily activity map for heatmap (YYYY-MM-DD → count)
+    const dailyActivity = {};
+    for (const [date, stats] of Object.entries(data.dailyStats)) {
+      dailyActivity[date] = stats.reviews || 0;
+    }
+
     return {
       totalReviews,
       totalMinutes,
@@ -210,8 +231,46 @@ export const AnalyticsService = {
       totalSessions: sessions.length,
       avgSessionMinutes: sessions.length
         ? Math.round(sessions.reduce((s, se) => s + (se.durationMs || 0), 0) / sessions.length / 60000)
-        : 0
+        : 0,
+      // Enrichment fields used by Study Hub
+      currentStreak,
+      _today: today,
+      _dailyActivity: dailyActivity
     };
+  },
+
+  /**
+   * Compute current streak (consecutive days with reviews, including today).
+   * @param {Object} dailyStats
+   * @returns {number}
+   */
+  _computeStreak(dailyStats) {
+    let streak = 0;
+    const d = new Date();
+
+    // Check today first
+    const todayKey = this._dateKey(d.getTime());
+    if (!dailyStats[todayKey] || dailyStats[todayKey].reviews === 0) {
+      // Today has no activity yet — check if yesterday does (grace: streak not broken until end of today)
+      d.setDate(d.getDate() - 1);
+      const yestKey = this._dateKey(d.getTime());
+      if (!dailyStats[yestKey] || dailyStats[yestKey].reviews === 0) return 0;
+      // Count from yesterday backwards
+    }
+
+    // Walk backwards from current day
+    for (let i = 0; i < 365; i++) {
+      const key = this._dateKey(d.getTime());
+      if (dailyStats[key] && dailyStats[key].reviews > 0) {
+        streak++;
+      } else if (i > 0) {
+        // First gap after at least one counted day → stop
+        break;
+      }
+      d.setDate(d.getDate() - 1);
+    }
+
+    return streak;
   },
 
   /**

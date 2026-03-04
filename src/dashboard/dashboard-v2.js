@@ -842,7 +842,7 @@ async function renderBadgesPage() {
             cursor: 'default'
           }
         }, [
-          el('div', { textContent: def.icon, style: { fontSize: '36px', marginBottom: 'var(--ah-space-2)' } }),
+          el('div', { innerHTML: def.icon, style: { width: '72px', height: '72px', margin: '0 auto var(--ah-space-2)', filter: isUnlocked ? 'drop-shadow(0 2px 6px rgba(0,0,0,0.18))' : 'grayscale(1) brightness(0.7)', opacity: isUnlocked ? '1' : '0.4' } }),
           el('div', {
             textContent: def.name,
             style: { fontWeight: '700', fontFamily: 'var(--ah-font-display)', fontSize: 'var(--ah-text-sm)' }
