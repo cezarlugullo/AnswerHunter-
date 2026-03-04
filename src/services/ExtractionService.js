@@ -217,19 +217,7 @@ export const ExtractionService = {
             if (!questionContainer && headerNodes.length > 0) {
                 questionContainer = headerNodes[headerNodes.length - 1];
             }
-            let questionText = '';
-
-            if (questionContainer) {
-                const parts = Array.from(questionContainer.querySelectorAll('p'))
-                    .map(p => p.innerText)
-                    .filter(Boolean);
-                questionText = sanitizeQuestionText(parts.join(''));
-            } else {
-                const questionEl = sectionEl.querySelector('[data-testid="openResponseQuestionHeader"] p p') ||
-                    sectionEl.querySelector('[data-testid="openResponseQuestionHeader"] p');
-                questionText = questionEl ? sanitizeQuestionText(questionEl.innerText) : '';
-            }
-
+            // Walk up to find option scope FIRST — needed for comprehensive text collection
             let optionScope = questionContainer || sectionEl;
             while (optionScope && optionScope !== sectionEl) {
                 if (optionScope.querySelectorAll('button[type="submit"]').length >= 2) break;
@@ -237,12 +225,35 @@ export const ExtractionService = {
             }
             if (!optionScope) optionScope = sectionEl;
 
+            // ── Collect full question text: ALL <p> in optionScope NOT inside option buttons ──
+            // Captures preamble + Roman numeral items (I, II, III, IV) + closing question.
+            // Previous approach only grabbed <p> inside the header, missing items outside it.
+            let questionText = '';
+
+            const fullParas = Array.from(optionScope.querySelectorAll('p'))
+                .filter(p => !p.closest('button[type="submit"]'))
+                .map(p => cleanText(p.innerText))
+                .filter(t => t.length > 0);
+
+            if (fullParas.length > 0) {
+                questionText = sanitizeQuestionText(fullParas.join('\n'));
+            }
+
+            // Fallback: header-only paragraphs (preserving \n between paragraphs)
+            if (!questionText && questionContainer) {
+                const parts = Array.from(questionContainer.querySelectorAll('p'))
+                    .map(p => p.innerText)
+                    .filter(Boolean);
+                questionText = sanitizeQuestionText(parts.join('\n'));
+            }
+
+            // Fallback: all non-button paragraphs in optionScope (no limit)
             if (!questionText) {
                 const looseParts = Array.from(optionScope.querySelectorAll('p'))
                     .filter(p => !p.closest('button'))
                     .map(p => p.innerText)
                     .filter(Boolean);
-                questionText = sanitizeQuestionText(looseParts.slice(0, 3).join(''));
+                questionText = sanitizeQuestionText(looseParts.join('\n'));
             }
 
             const optionButtons = optionScope.querySelectorAll('button[type="submit"]');
@@ -288,6 +299,277 @@ export const ExtractionService = {
                 questionLength: questionText.length,
                 anchorRect: anchorEl.getBoundingClientRect()
             };
+        }
+
+        // Generic, CSS-agnostic extractor:
+        // 1) find option anchors (A-E) anywhere in DOM
+        // 2) group by nearest container with >=3 distinct letters
+        // 3) pick the visible group closest to viewport focus
+        // 4) rebuild as "stem + A..E"
+        const GENERIC_OPTION_SELECTORS =
+            'button[data-testid^="alternative-"], ' +
+            'button[data-element*="resposta"], ' +
+            'button[class*="alternative"], ' +
+            'button[class*="alternativa"], ' +
+            'label[for^="option"], .radio-option, ' +
+            '[role="radio"], [role="option"], ' +
+            '[data-testid^="alternative-"], [data-option]';
+
+        function extractByGenericOptionAnchors() {
+            const optionNodes = Array.from(document.querySelectorAll(GENERIC_OPTION_SELECTORS));
+            if (optionNodes.length < 2) return null;
+
+            const optionCache = new WeakMap();
+            const cleanInline = (t) => cleanText(String(t || '').replace(/\s+/g, ' '));
+            const isNoiseChunk = (t) => /^(?:marcar para revis[aã]o|respondidas|em branco|finalizar exerc[ií]cio|sair|menu)$/i.test(String(t || '').trim());
+            const overlapX = (a, b) => {
+                const left = Math.max(a.left, b.left);
+                const right = Math.min(a.right, b.right);
+                return Math.max(0, right - left);
+            };
+
+            const parseOptionNode = (el) => {
+                if (!el) return null;
+                if (optionCache.has(el)) return optionCache.get(el);
+
+                const fullText = cleanInline(el.innerText || el.textContent || '');
+                if (!fullText || fullText.length < 2) {
+                    optionCache.set(el, null);
+                    return null;
+                }
+
+                let letter = '';
+                const letterNodes = Array.from(el.querySelectorAll('[data-testid*="letter"], [class*="letter"], small, strong, span, p, div'));
+                for (const node of letterNodes) {
+                    const tx = cleanInline(node.innerText || node.textContent || '');
+                    if (/^[A-E]$/i.test(tx)) {
+                        letter = tx.toUpperCase();
+                        break;
+                    }
+                }
+                if (!letter) {
+                    const m = fullText.match(/^([A-E])(?:\s*[\)\.\-:]\s*|\s+)/i);
+                    if (m) letter = (m[1] || '').toUpperCase();
+                }
+                if (!/^[A-E]$/.test(letter)) {
+                    optionCache.set(el, null);
+                    return null;
+                }
+
+                let body = '';
+                const bodyCandidates = Array.from(el.querySelectorAll('[data-testid*="question-typography"], [class*="question-typography"], p, div, span'))
+                    .map((node) => cleanInline(node.textContent || node.innerText || ''))
+                    .filter((txt) => txt && txt.length >= 2 && !/^[A-E]$/i.test(txt));
+                if (bodyCandidates.length > 0) {
+                    bodyCandidates.sort((a, b) => b.length - a.length);
+                    body = bodyCandidates[0];
+                }
+                if (!body) body = fullText;
+
+                body = cleanInline(body
+                    .replace(new RegExp('^' + letter + '\\s*[\\)\\.\\-:]\\s*', 'i'), '')
+                    .replace(new RegExp('^' + letter + '\\s+', 'i'), ''));
+
+                const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
+                const noiseIdx = body.search(noise);
+                if (noiseIdx > 1) body = body.slice(0, noiseIdx).trim();
+                body = body.replace(/[;:,\-.\s]+$/, '').trim();
+
+                if (!body || isNoiseChunk(body) || /^[A-Z]{2,}\s|^UX\s|^UI\s|^TI\s/i.test(body)) {
+                    optionCache.set(el, null);
+                    return null;
+                }
+
+                const parsed = {
+                    el,
+                    letter,
+                    body,
+                    rect: el.getBoundingClientRect()
+                };
+                optionCache.set(el, parsed);
+                return parsed;
+            };
+
+            const parsedOptions = optionNodes
+                .map(parseOptionNode)
+                .filter(Boolean);
+
+            if (parsedOptions.length < 2) return null;
+
+            const resolveContainer = (opt) => {
+                let current = opt.el;
+                let best = null;
+                let bestTextLen = Infinity;
+
+                for (let depth = 0; current && depth < 10; depth++) {
+                    const textLen = cleanText(current.textContent || '').length;
+                    if (textLen > 50000) break;
+
+                    const inside = parsedOptions.filter((o) => current.contains(o.el));
+                    const letters = new Set(inside.map((o) => o.letter));
+
+                    if (letters.size >= 3 && textLen < bestTextLen) {
+                        best = current;
+                        bestTextLen = textLen;
+                        if (textLen <= 15000) break;
+                    }
+                    current = current.parentElement;
+                }
+                return best;
+            };
+
+            const byContainer = new Map();
+            for (const opt of parsedOptions) {
+                const container = resolveContainer(opt);
+                if (!container) continue;
+                if (!byContainer.has(container)) byContainer.set(container, []);
+                byContainer.get(container).push(opt);
+            }
+            if (byContainer.size === 0) return null;
+
+            const candidates = [];
+            const viewportFocusY = window.innerHeight * 0.35;
+
+            const buildStemFromGroup = (container, group) => {
+                const sorted = [...group].sort((a, b) => a.rect.top - b.rect.top);
+                const optionEls = sorted.map((o) => o.el);
+                const firstOpt = sorted[0];
+                if (!firstOpt) return '';
+
+                const isOptionRelated = (node) =>
+                    optionEls.some((optEl) => optEl === node || optEl.contains(node) || node.contains(optEl));
+
+                const chunks = [];
+                const seenChunk = new Set();
+                const pushChunk = (rawText, prepend = false) => {
+                    const txt = cleanInline(rawText);
+                    if (!txt || txt.length < 18 || txt.length > 2200) return;
+                    if (isNoiseChunk(txt)) return;
+                    if (/^([A-E])\s*(?:[\)\.\-:]|$)/i.test(txt)) return;
+                    const key = txt.toLowerCase();
+                    if (seenChunk.has(key)) return;
+                    seenChunk.add(key);
+                    if (prepend) chunks.unshift(txt);
+                    else chunks.push(txt);
+                };
+
+                // Prefer nearby siblings before the first option (most robust across frameworks)
+                let cursor = firstOpt.el;
+                for (let level = 0; cursor && level < 5; level++) {
+                    const parent = cursor.parentElement;
+                    if (!parent) break;
+
+                    let sib = cursor.previousElementSibling;
+                    let scanned = 0;
+                    while (sib && scanned < 12) {
+                        scanned += 1;
+                        if (!isOptionRelated(sib)) {
+                            pushChunk(sib.innerText || sib.textContent || '', true);
+                        }
+                        sib = sib.previousElementSibling;
+                    }
+
+                    if (parent === container) break;
+                    cursor = parent;
+                }
+
+                // Geometric fallback: text blocks above the first option and aligned on X axis.
+                if (chunks.length === 0) {
+                    const optionBand = {
+                        left: Math.min(...sorted.map((o) => o.rect.left)),
+                        right: Math.max(...sorted.map((o) => o.rect.right))
+                    };
+                    const firstTop = firstOpt.rect.top;
+                    const textNodes = Array.from(container.querySelectorAll('p, div, span, li, h1, h2, h3, h4'));
+                    const geoChunks = [];
+                    for (const node of textNodes) {
+                        if (isOptionRelated(node)) continue;
+                        const txt = cleanInline(node.innerText || node.textContent || '');
+                        if (!txt || txt.length < 18 || txt.length > 2200 || isNoiseChunk(txt)) continue;
+                        const rect = node.getBoundingClientRect();
+                        if (rect.bottom > firstTop + 28) continue;
+                        if (rect.top < firstTop - 1600) continue;
+                        if (overlapX(rect, optionBand) < Math.min(80, (rect.width || 0) * 0.2)) continue;
+                        geoChunks.push({ txt, top: rect.top, left: rect.left });
+                    }
+                    geoChunks.sort((a, b) => a.top - b.top || a.left - b.left);
+                    geoChunks.forEach((g) => pushChunk(g.txt));
+                }
+
+                let stem = sanitizeQuestionText(chunks.join('\n'));
+                stem = stem
+                    .replace(/(?:^|\n)\s*(?:enunciado|pergunta)\s*(?=\n|$)/gi, '\n')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+                return stem;
+            };
+
+            for (const [container, containerOpts] of byContainer.entries()) {
+                const sorted = [...containerOpts].sort((a, b) => a.rect.top - b.rect.top);
+                if (sorted.length < 2) continue;
+
+                // Split by vertical gap to avoid merging multiple questions within the same wrapper.
+                const groups = [];
+                let currentGroup = [];
+                for (let i = 0; i < sorted.length; i++) {
+                    const opt = sorted[i];
+                    if (currentGroup.length === 0) {
+                        currentGroup.push(opt);
+                        continue;
+                    }
+                    const prev = currentGroup[currentGroup.length - 1];
+                    const gap = opt.rect.top - prev.rect.top;
+                    if (gap > Math.max(72, (prev.rect.height || 20) * 2.4)) {
+                        groups.push(currentGroup);
+                        currentGroup = [opt];
+                    } else {
+                        currentGroup.push(opt);
+                    }
+                }
+                if (currentGroup.length > 0) groups.push(currentGroup);
+
+                for (const group of groups) {
+                    const letterMap = new Map();
+                    for (const opt of group) {
+                        if (!letterMap.has(opt.letter) || opt.body.length > letterMap.get(opt.letter).body.length) {
+                            letterMap.set(opt.letter, opt);
+                        }
+                    }
+                    if (letterMap.size < 3) continue;
+
+                    const ordered = ['A', 'B', 'C', 'D', 'E']
+                        .filter((letter) => letterMap.has(letter))
+                        .map((letter) => `${letter}) ${letterMap.get(letter).body}`);
+
+                    if (ordered.length < 2) continue;
+                    const stem = buildStemFromGroup(container, group);
+                    if (!stem || stem.length < 25) continue;
+
+                    const top = Math.min(...group.map((o) => o.rect.top));
+                    const bottom = Math.max(...group.map((o) => o.rect.bottom));
+                    const centerY = (top + bottom) / 2;
+                    const visibleTop = Math.max(0, top);
+                    const visibleBottom = Math.min(window.innerHeight, bottom);
+                    const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+                    const score =
+                        (letterMap.size * 130) +
+                        (visibleHeight * 0.8) -
+                        (Math.abs(centerY - viewportFocusY) * 1.15) +
+                        (/[?]/.test(stem) ? 20 : 0) +
+                        (stem.length >= 120 ? 18 : 0);
+
+                    candidates.push({
+                        score,
+                        optionCount: ordered.length,
+                        questionLength: stem.length,
+                        text: `${stem}\n${ordered.join('\n')}`.trim().substring(0, 3500)
+                    });
+                }
+            }
+
+            if (candidates.length === 0) return null;
+            candidates.sort((a, b) => b.score - a.score);
+            return candidates[0];
         }
 
         // 1) Specific site structure (data-section)
@@ -407,6 +689,13 @@ export const ExtractionService = {
             }
         }
 
+        // 2.5) Generic option-anchored extraction (framework-agnostic)
+        const genericAnchored = extractByGenericOptionAnchors();
+        if (genericAnchored?.text) {
+            console.log(`AnswerHunter: Encontrado via option-anchor generico (opts=${genericAnchored.optionCount}, score=${genericAnchored.score.toFixed(1)}).`);
+            return genericAnchored.text;
+        }
+
         // 3) Manual selection (if any)
         const selection = window.getSelection ? window.getSelection().toString() : '';
         if (selection && selection.trim().length > 5) {
@@ -430,6 +719,10 @@ export const ExtractionService = {
             if (/[A-E]\)\s+|[A-E]\.\s+/i.test(text)) score += 4;
             if (el.querySelectorAll('button[type="submit"]').length >= 2) score += 4;
             if (rect.top >= 0 && rect.top < 350) score += 2;
+            // Bonus for structured questions with Roman numeral assertion items (I., II., III.)
+            if (/\bI\.\s+\S/.test(text) && /\bII\.\s+\S/.test(text)) score += 5;
+            // Bonus for common conclusion patterns
+            if (/Quais\s+afirmativas|Assinale|Est[aá]\s+corret/i.test(text)) score += 3;
 
             // Penalize containers that are too large (likely contain multiple questions)
             if (text.length > 3000) score -= 3;
@@ -560,6 +853,9 @@ export const ExtractionService = {
             score += hasQ ? 20 : 0;                                      // question mark
             score += isMainContent ? 40 : 0;                             // in main content area
             score += /[A-E]\)\s+|button\[type="submit"\]/i.test(text) ? 15 : 0;
+            // Bonus for structured questions with Roman numeral assertion items
+            const hasRomanItems = /\bI\.\s+\S/.test(text) && /\bII\.\s+\S/.test(text);
+            score += hasRomanItems ? 35 : 0;
             score -= text.length > 4000 ? 30 : 0;                       // too large = multi-question risk
             score += text.length >= 100 && text.length <= 2500 ? 20 : 0; // ideal question length
 

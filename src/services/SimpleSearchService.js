@@ -475,7 +475,7 @@ export const SimpleSearchService = {
         // PARALELIZADO: rodamos a validação sem await para não bloquear o fetch inicial.
         const validationPromise = (async () => {
             try {
-                const stemForValidation = questionText.slice(0, 600);
+                const stemForValidation = questionText.slice(0, 2000);
                 const optsText = Object.entries(originalOptionsMap).map(([l, t]) => `${l}) ${t}`).join('\n');
                 const validation = await ApiService.validateOptionsCoherence(stemForValidation, optsText);
                 if (!validation.coherent) {

@@ -30,6 +30,24 @@ export const QuestionParser = {
         return /INSERT\s+INTO|SELECT\s|UPDATE\s|DELETE\s|VALUES\s*\(|CREATE\s|\{.*:.*\}|=>|->|jsonb?|\bdb\.\w|\.(?:find|findOne|aggregate|insert|pretty|update|remove)\s*\(/i.test(body);
     },
 
+    cleanExtraneousUI(text) {
+        if (!text) return '';
+        let cleaned = String(text);
+        // Anti-Mistura: Rejeitar vazamento de interface da própria extensão (AnswerHunter UI vazando no clipboard/DOM)
+        const uiPatterns = [
+            /info\s*A IA pode cometer erros — confirme em fontes confiáveis antes de usar\./gi,
+            /warning\s*As alternativas A-[E] referem-se.*/gi,
+            /check_circle\s*Resposta verificada/gi,
+            /\d+\s*Sem evidência explícita forte\. Melhor estimativa aplicada\./gi,
+            /[\r\n]+(info|warning|check_circle)[\r\n]+/gi,
+            /(?:^|\n)\s*(?:enunciado|alternativas?|pergunta)\s*(?=\n|$)/gim
+        ];
+        for (const pt of uiPatterns) {
+            cleaned = cleaned.replace(pt, '\n');
+        }
+        return cleaned.replace(/\n{3,}/g, '\n\n').trim();
+    },
+
     normalizeCodeAwareOption(text) {
         return (text || '')
             .toLowerCase()
@@ -65,13 +83,31 @@ export const QuestionParser = {
     // ── Question structure ─────────────────────────────────────────────────────
 
     extractQuestionStem(questionWithOptions) {
-        const text = (questionWithOptions || '').replace(/\r\n/g, '\n');
+        let text = (questionWithOptions || '').replace(/\r\n/g, '\n');
+        text = this.cleanExtraneousUI(text);
+
+        // Anti-Mistura: Detectar se o texto cru tem alternativas misturadas e quebradas (ex: A, B, Enunciado Vazado no C, D)
+        // Isso impede que o stem engula partes estranhas se houver descompasso estrutural severo
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const optionRe = /^([A-E])\s*(?:[\)\-:]|(?:\.\s))/i;
+        const soloLetterRe = /^["'""\u2018\u2019\(\[]?\s*([A-E])\s*$/i;
+        const bareLetterBodyRe = /^["'""\u2018\u2019\(\[]?\s*([A-E])\s+(.+)$/i;
+        const hintLetters = new Set();
+        lines.forEach((line) => {
+            const m = line.match(optionRe) || line.match(soloLetterRe);
+            if (m?.[1]) hintLetters.add(String(m[1]).toUpperCase());
+        });
+        const hasStrongOptionHints = hintLetters.size >= 2;
         const stemLines = [];
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
-            if (optionRe.test(line)) {
+            const optionMatch = line.match(optionRe);
+            const soloMatch = line.match(soloLetterRe);
+            const bareMatch = hasStrongOptionHints ? line.match(bareLetterBodyRe) : null;
+            const looksLikeOptionStart = !!optionMatch
+                || (!!soloMatch && i + 1 < lines.length)
+                || !!bareMatch;
+            if (looksLikeOptionStart) {
                 // Guard: dot-space format "X. text" at line start might be a sentence
                 // continuation, e.g. "linguagem\nC. O programa..." where "C." refers
                 // to the programming language, not option C.
@@ -104,6 +140,17 @@ export const QuestionParser = {
             }
             stem = stem.slice(0, inlineOpt.index).trim();
             break;
+        }
+        // Bare inline option marker after question punctuation: "? A body"
+        // Apply only when there are strong option hints elsewhere (B/C... markers).
+        if (hasStrongOptionHints) {
+            const inlineBareRe = /[?;:]\s*([A-E])\s+(?=\S)/gi;
+            let inlineBare;
+            while ((inlineBare = inlineBareRe.exec(stem)) !== null) {
+                if (inlineBare.index <= 30) continue;
+                stem = stem.slice(0, inlineBare.index + 1).trim();
+                break;
+            }
         }
 
         // Hard cut on explicit section labels that often prepend options.
@@ -139,13 +186,46 @@ export const QuestionParser = {
 
     extractOptionsFromQuestion(questionText) {
         if (!questionText) return [];
-        const text = String(questionText || '').replace(/\r\n/g, '\n');
+        let text = String(questionText || '').replace(/\r\n/g, '\n');
+        text = this.cleanExtraneousUI(text);
+
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const options = [];
         const seen = new Set();
         const seenBodies = new Set();
         const _codeDedupKey = (body) => this.normalizeCodeAwareOption(body).replace(/\s+/g, '');
         const optionRe = /^["'""\u2018\u2019\(\[]?\s*([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i;
+        const soloLetterRe = /^["'""\u2018\u2019\(\[]?\s*([A-E])\s*$/i;
+        const bareLetterBodyRe = /^["'""\u2018\u2019\(\[]?\s*([A-E])\s+(.+)$/i;
+        const sectionLabelRe = /^(?:enunciado|alternativas?|pergunta|op[cç][oõ]es?)$/i;
+        const stopNoiseLineRe = /^(?:info|warning|check_circle|resposta\s+verificada)$/i;
+        const nextQuestionLineRe = /^\d{1,2}\s*[\.\)]?\s+(?=[A-ZÀ-ÖÙ-Ý])/;
+
+        const optionHintLetters = new Set();
+        for (const line of lines) {
+            const m = line.match(optionRe) || line.match(soloLetterRe);
+            if (m?.[1]) optionHintLetters.add(String(m[1]).toUpperCase());
+        }
+        const hasStrongOptionHints = optionHintLetters.size >= 2;
+
+        const registerOption = (letterRaw, bodyRaw) => {
+            const letter = String(letterRaw || '').toUpperCase();
+            let cleanedBody = this.stripOptionTailNoise(bodyRaw);
+            const nextQuestionInlineIdx = cleanedBody.search(/\s+\d{1,2}\s*[\.\)]?\s+(?:um|uma|voce|você|considere|qual|quais|em|no|na)\b/i);
+            if (nextQuestionInlineIdx > 25) {
+                cleanedBody = cleanedBody.slice(0, nextQuestionInlineIdx).trim();
+            }
+            const normalizedBody = this.normalizeOption(cleanedBody);
+            const isCodeLike = this.looksLikeCodeOption(cleanedBody);
+            const dedupKey = isCodeLike ? _codeDedupKey(cleanedBody) : normalizedBody;
+            const duplicateBody = seenBodies.has(dedupKey);
+            if (!/^[A-E]$/.test(letter)) return false;
+            if (!this.isUsableOptionBody(cleanedBody) || !normalizedBody || seen.has(letter) || (!isCodeLike && duplicateBody)) return false;
+            options.push(`${letter}) ${cleanedBody}`);
+            seen.add(letter);
+            if (!isCodeLike) seenBodies.add(dedupKey);
+            return true;
+        };
 
         const matchedOptionLines = new Set();
         for (let i = 0; i < lines.length; i++) {
@@ -166,17 +246,7 @@ export const QuestionParser = {
                     continue;
                 }
             }
-            const letter = (m[1] || '').toUpperCase();
-            const cleanedBody = this.stripOptionTailNoise(m[2]);
-            const normalizedBody = this.normalizeOption(cleanedBody);
-            const isCodeLike = this.looksLikeCodeOption(cleanedBody);
-            const dedupKey = isCodeLike ? _codeDedupKey(cleanedBody) : normalizedBody;
-            const duplicateBody = seenBodies.has(dedupKey);
-            if (!this.isUsableOptionBody(cleanedBody) || !normalizedBody || seen.has(letter) || (!isCodeLike && duplicateBody)) continue;
-            options.push(`${letter}) ${cleanedBody}`);
-            seen.add(letter);
-            if (!isCodeLike) seenBodies.add(dedupKey);
-            matchedOptionLines.add(i);
+            if (registerOption(m[1], m[2])) matchedOptionLines.add(i);
         }
 
         // Secondary pass: recover missing letters from inline/quoted patterns
@@ -184,18 +254,34 @@ export const QuestionParser = {
         const inlineRe = /(?:^|[\n\r\t ;"'""''])([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*([^]*?)(?=(?:[\n\r\t ;"'""''][A-E]\s*(?:[\)\-:]|(?:\.\s)))|$)/gi;
         let m;
         while ((m = inlineRe.exec(text)) !== null) {
+            // Guard against sentence continuations like "linguagem C. O programa"
+            const matchStr = m[0]; // the full match starting with the separator
+            const isDotSpaceFmt = /\.\s/.test(matchStr.substring(0, 10)) && !/[\)\-:]/.test(matchStr.substring(0, 10));
+            if (isDotSpaceFmt) {
+                let scanIdx = m.index;
+                if (m.index > 0 && /[\n\r\t ;"'""'']/.test(text[m.index])) {
+                    // m[0] starts with the separator. We want the char BEFORE the separator.
+                    scanIdx = m.index - 1;
+                }
+                while (scanIdx >= 0 && /\s/.test(text[scanIdx])) scanIdx--;
+                if (scanIdx >= 0 && /[a-zA-Z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF0-9]/.test(text[scanIdx])) {
+                    continue; // Character before ' X. ' is alphanumeric, so it's a sentence continuation.
+                }
+            }
+
             const letter = (m[1] || '').toUpperCase();
             if (!letter || seen.has(letter)) continue;
-            const cleanedBody = this.stripOptionTailNoise(m[2]);
-            const normalizedBody = this.normalizeOption(cleanedBody);
-            const isCodeLike = this.looksLikeCodeOption(cleanedBody);
-            const inlineDedupKey = isCodeLike ? _codeDedupKey(cleanedBody) : normalizedBody;
-            const duplicateBody = seenBodies.has(inlineDedupKey);
-            if (!this.isUsableOptionBody(cleanedBody) || !normalizedBody || (!isCodeLike && duplicateBody)) continue;
-            options.push(`${letter}) ${cleanedBody}`);
-            seen.add(letter);
-            if (!isCodeLike) seenBodies.add(inlineDedupKey);
+            registerOption(letter, m[2]);
             if (seen.size >= 5) break;
+        }
+
+        // Secondary.1 pass: recover "A body" directly after question punctuation
+        // when B/C/D/E markers are present in separate lines.
+        if (hasStrongOptionHints && !seen.has('A')) {
+            const inlineABare = text.match(/\?\s*A\s+(.+?)(?=(?:\n\s*(?:alternativas?|B(?:\s*(?:[\)\-:]|(?:\.\s)|\s)|$))|$))/i);
+            if (inlineABare?.[1]) {
+                registerOption('A', inlineABare[1]);
+            }
         }
 
         // Tertiary pass: recover last missing option with no delimiter.
@@ -224,6 +310,43 @@ export const QuestionParser = {
                             seen.add(expectedNextLetter);
                         }
                     }
+                }
+            }
+        }
+
+        // Quaternary pass: support split-line alternatives:
+        // A
+        // option body
+        // and bare "A body" lines (without punctuation).
+        if (hasStrongOptionHints && seen.size < 5) {
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (!line || sectionLabelRe.test(line) || stopNoiseLineRe.test(line)) continue;
+
+                const bareInline = line.match(bareLetterBodyRe);
+                if (bareInline && !line.match(optionRe)) {
+                    registerOption(bareInline[1], bareInline[2]);
+                    continue;
+                }
+
+                const solo = line.match(soloLetterRe);
+                if (!solo) continue;
+                const letter = String(solo[1] || '').toUpperCase();
+                if (seen.has(letter)) continue;
+
+                const bodyParts = [];
+                for (let j = i + 1; j < lines.length; j++) {
+                    const nextLine = lines[j];
+                    if (!nextLine) continue;
+                    if (nextQuestionLineRe.test(nextLine)) break;
+                    if (sectionLabelRe.test(nextLine) || stopNoiseLineRe.test(nextLine)) break;
+                    if (optionRe.test(nextLine) || soloLetterRe.test(nextLine) || bareLetterBodyRe.test(nextLine)) break;
+                    bodyParts.push(nextLine);
+                    if (bodyParts.join(' ').length > 420) break;
+                }
+
+                if (bodyParts.length > 0) {
+                    registerOption(letter, bodyParts.join(' '));
                 }
             }
         }
@@ -262,6 +385,32 @@ export const QuestionParser = {
             if (hasAssertions && !expectsCodeOptions && codeEntries.length >= 3 && assertionLikeEntries.length === 0) {
                 console.log(`AnswerHunter: QuestionParser dropped ${codeEntries.length} code-like options (likely contamination) because stem contains assertions (I/II/III).`);
                 return []; // Return empty so fallback logic can look for the REAL text options
+            }
+
+            // [ANTI-MISTURA] Scenario 3: Length disparity anomaly (Stem leaked into an Option)
+            const lengths = parsed.map(o => o.body.length).sort((a, b) => a - b);
+            const medianLen = lengths[Math.floor(lengths.length / 2)];
+            if (medianLen > 0) {
+                const leakMarkers = /\b(?:considere|assinale|marque|associe|associa[cç][aã]o|sobre a|sobre o|s[aã]o corretas|est[aã]o corretas|analise|verifique[ \-]|programa\s+precisa|para\s+responder|qual(?:is)?\b|quest[aã]o|pergunta)\b/i;
+                const cleanedOptions = [];
+                let rejectedAny = false;
+                
+                for (const o of parsed) {
+                    const hardLeakPattern = /\b(?:\d{1,2}\s+(?:marcar|revis[aã]o|quest[aã]o|um|uma|voce|você)|marcar\s+para\s+revis[aã]o)\b/i;
+                    const likelyHardLeak = o.body.length > 45 && hardLeakPattern.test(o.body);
+                    // If an option is disproportionately massive and has question markers,
+                    // or contains a hard leak signature (next-question/UI spill), suppress it.
+                    if ((o.body.length > medianLen * 4 && o.body.length > 80 && leakMarkers.test(o.body)) || likelyHardLeak) {
+                        console.warn(`[Anti-Mistura] Option ${o.letter} suppressed (length ${o.body.length} vs median ${medianLen}). Suspected stem leak.`);
+                        rejectedAny = true;
+                        continue;
+                    }
+                    cleanedOptions.push(`${o.letter}) ${o.body}`);
+                }
+                
+                if (rejectedAny && cleanedOptions.length >= 2) {
+                    return cleanedOptions;
+                }
             }
         }
 

@@ -126,7 +126,20 @@ export function formatQuestionText(text) {
     const inlineAltBreakRe = /(?:^|\s)([A-E])\s*(?:(?:[\)\:])|(?:\.\s)|->>|->|=>)(?=\s*\S)/gi;
     const inlineAltMatches = normalized.match(inlineAltBreakRe) || [];
     if (inlineAltMatches.length >= 2) {
-        normalized = normalized.replace(inlineAltBreakRe, (_m, letter) => `\n${letter.toUpperCase()})`);
+        const _altNormSrc = normalized; // capture pre-replace string for offset checks
+        normalized = normalized.replace(inlineAltBreakRe, (match, letter, offset) => {
+            // Guard: dot-space format "X. " preceded by a word char → sentence continuation
+            // e.g. "linguagem C. O programa..." — the C refers to the language, not option C.
+            const isDotSpace = /\.\s/.test(match) && !/[\)\-:\>]/.test(match);
+            if (isDotSpace && offset > 0) {
+                let scanIdx = offset - 1;
+                while (scanIdx >= 0 && /\s/.test(_altNormSrc[scanIdx])) scanIdx--;
+                if (scanIdx >= 0 && /[a-zA-Z\u00C0-\u00FF0-9]/.test(_altNormSrc[scanIdx])) {
+                    return match; // keep original — sentence continuation
+                }
+            }
+            return `\n${letter.toUpperCase()})`;
+        });
     }
 
     const limitedText = limitToFirstQuestion(normalized);

@@ -2154,6 +2154,23 @@ export const PopupController = {
         if (optionLines.length < 2) return true;
 
         const optBodies = optionLines.map(l => l.replace(/^([A-E])\s*[\)\.\-:]\s*/i, '').trim());
+        const optLengths = optBodies.map((b) => String(b || '').length).sort((a, b) => a - b);
+        const optMedianLen = optLengths.length > 0 ? optLengths[Math.floor(optLengths.length / 2)] : 0;
+        const questionLeakRe = /\b(?:marque|assinale|considere|analise|associe|associa[cç][aã]o|qual(?:is)?\b|quest[aã]o|pergunta|afirmativas?|itens?)\b/i;
+        const hardLeakRe = /\b(?:\d{1,2}\s+(?:marcar|revis[aã]o|quest[aã]o|um|uma|voce|você)|marcar\s+para\s+revis[aã]o)\b/i;
+        const hasOutlierLeak = optBodies.some((body) => {
+          const len = String(body || '').length;
+          return len > Math.max(80, optMedianLen * 4) && questionLeakRe.test(String(body || ''));
+        });
+        const hasHardLeak = optBodies.some((body) => String(body || '').length > 45 && hardLeakRe.test(String(body || '')));
+        const compactCount = optBodies.filter((body) => isCompactOptionBody(body)).length;
+        const longCount = optBodies.filter((body) => String(body || '').length >= 50).length;
+        const hasCompactVsLongSplit = optionLines.length >= 4 && compactCount >= 3 && longCount >= 1;
+        if (hasOutlierLeak || hasCompactVsLongSplit || hasHardLeak) {
+          console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (structural leak detected; median=${optMedianLen}, compact=${compactCount}, long=${longCount}). Options: "${optionLines.slice(0, 3).join(' |')}"`);
+          return false;
+        }
+
         const allOptTokens = normalizeTokens(optBodies.join('')).filter(t => !stopWords.has(t));
         const stemContextTokens = normalizeTokens(stemLines.join(''));
         const acronymContextHints = new Set(['formato', 'arquivo', 'arquivos', 'extensao', 'documento', 'documentos', 'json', 'xml', 'bson', 'yaml', 'csv']);
@@ -2496,10 +2513,27 @@ export const PopupController = {
       // Compute stem length (non-option text) to detect truncated enunciados
       const _stemOnlyLines = String(bestQuestion || '').split('\n')
         .filter(line => !line.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
-      const _stemLength = _stemOnlyLines.join('').replace(/\s+/g, '').trim().length;
-      // If the stem is suspiciously short (< 150 chars) but we have options,
-      // the OCR/extraction likely missed the full question context (headers, code, etc.)
-      const stemLooksIncomplete = _stemLength > 0 && _stemLength < 150 && preCtxOptionCount >= 2;
+      const _stemText = _stemOnlyLines.join(' ');
+      const _stemLength = _stemText.replace(/\s+/g, '').trim().length;
+
+      // Roman numeral cross-check: if options reference I/II/III/IV but items
+      // don't appear in the stem, the enunciado is truncated (items were missed).
+      const _optionLines = String(bestQuestion || '').split('\n')
+        .filter(line => line.trim().match(/^([A-E])\s*[\)\.\-:]\s*/i));
+      const _optionsJoined = _optionLines.join(' ');
+      const _optionsReferenceRomanNumerals = /\b(?:I\s*[,eE]\s*II|apenas\s+I\b|apenas\s+II\b|I\s*,\s*II\s*,\s*III|II\s*[,eE]\s*(?:e\s+)?III|III\s*[,eE]\s*(?:e\s+)?IV|I\s*,\s*II\s*,\s*III\s*,?\s*(?:e\s+)?IV)/i.test(_optionsJoined);
+      const _stemHasRomanItems = /\bI\.\s+\S/.test(_stemText) && /\bII\.\s+\S/.test(_stemText);
+      const _romanNumeralMissing = _optionsReferenceRomanNumerals && !_stemHasRomanItems && preCtxOptionCount >= 2;
+
+      // Trigger incomplete if:
+      //   - stem is suspiciously short (< 200 chars) with 2+ options, OR
+      //   - options reference Roman numerals that aren't present in the stem
+      const stemLooksIncomplete = (_stemLength > 0 && _stemLength < 200 && preCtxOptionCount >= 2)
+        || _romanNumeralMissing;
+
+      if (_romanNumeralMissing) {
+        console.log(`AnswerHunter: TRUNCATION_DETECT roman numeral mismatch — options reference I/II/III/IV but stem lacks items. stemLen=${_stemLength}`);
+      }
 
       const shouldTryContextRecovery =
         !!bestQuestion &&
@@ -2554,7 +2588,7 @@ export const PopupController = {
               return clean(bestCtx.textContent).substring(0, 3000);
             },
             // When stem looks incomplete, use the stem text as search anchor (not options)
-            args: [stemLooksIncomplete ? _stemOnlyLines.join('').trim().substring(0, 120) : bestQuestion.substring(0, 120)]
+            args: [stemLooksIncomplete ? _stemOnlyLines.join(' ').trim().substring(0, 160) : bestQuestion.substring(0, 120)]
           });
           const normalizeCtx = (s) => String(s || '')
             .toLowerCase()
@@ -3737,6 +3771,118 @@ export const PopupController = {
       console.log(`AnswerHunter: CONFIDENCE score=${extractionConfidence.score} level=${extractionConfidence.level} signals=[${extractionConfidence.signals.join(',')}]`);
       // Store on instance for _decorateWithSavedMeta to inject into results
       this._lastExtractionConfidence = extractionConfidence;
+
+      let _needsOptionRecovery = false;
+      let _optionRecoveryStem = '';
+
+      // ── Post-extraction validation checklist (truncation detector) ──
+      {
+        const _valStem = QuestionParser.extractQuestionStem(displayQuestion || '') || '';
+        const _valOpts = QuestionParser.extractOptionsFromQuestion(displayQuestion || '') || [];
+        const _valOptLetters = new Set(_valOpts.map(o => (o.match(/^([A-E])/i) || [])[1]?.toUpperCase()).filter(Boolean));
+        const _valOptsText = _valOpts.join(' ');
+        _optionRecoveryStem = _valStem;
+        const checks = [];
+
+        // 1. Has at least 3 alternatives?
+        checks.push({
+          name: 'MIN_3_OPTIONS',
+          pass: _valOptLetters.size >= 3,
+          detail: `found ${_valOptLetters.size} options: ${[..._valOptLetters].join(',')}`
+        });
+
+        // 2. Letters A-E are unique (no duplicates)? — already guaranteed by parser
+        const _sortedLetters = [..._valOptLetters].sort();
+        const _expectedLetters = ['A', 'B', 'C', 'D', 'E'].slice(0, _sortedLetters.length);
+        const _lettersContiguous = _sortedLetters.length > 0 && _sortedLetters.join('') === _expectedLetters.join('');
+        checks.push({
+          name: 'LETTERS_CONTIGUOUS',
+          pass: _lettersContiguous,
+          detail: _lettersContiguous
+            ? `contiguous sequence ${_sortedLetters.join(',')}`
+            : `non-contiguous letters ${_sortedLetters.join(',')} (expected ${_expectedLetters.join(',')})`
+        });
+
+        // 3. If options reference I/II/III/IV, stem must contain those items
+        const _vRefersRoman = /\b(?:I\s*[,eE]\s*II|apenas\s+I\b|I\s*,\s*II\s*,\s*III|III\s*,?\s*(?:e\s+)?IV)/i.test(_valOptsText);
+        const _vStemHasItems = /\bI\.\s+\S/.test(_valStem) && /\bII\.\s+\S/.test(_valStem);
+        checks.push({
+          name: 'ROMAN_ITEMS_PRESENT',
+          pass: !_vRefersRoman || _vStemHasItems,
+          detail: _vRefersRoman
+            ? (_vStemHasItems ? 'options reference I/II/III/IV and stem has items' : 'FAIL_TRUNCATED — options reference I/II/III/IV but items missing from stem')
+            : 'options do not reference Roman numerals'
+        });
+
+        // 4. Has a closing question pattern?
+        const _vHasClosingQuestion = /[?]/.test(_valStem) || /Quais|Assinale|Est[aá]\s+corret|Marque|Indique|Identifique/i.test(_valStem);
+        checks.push({
+          name: 'CLOSING_QUESTION',
+          pass: _vHasClosingQuestion,
+          detail: _vHasClosingQuestion ? 'closing question detected' : 'no closing question found (may be truncated)'
+        });
+
+        // 5. Stem completeness (sentence ends naturally)
+        const _vStemEndsBroken = /[a-záéíóúãõâêô]\s*$/i.test(_valStem.trim()) && !/[?.!:]\s*$/.test(_valStem.trim());
+        checks.push({
+          name: 'STEM_ENDS_NATURALLY',
+          pass: !_vStemEndsBroken,
+          detail: _vStemEndsBroken ? 'stem ends mid-word/sentence (likely truncated)' : 'stem ends naturally'
+        });
+
+        // 6. Options should be contextually related to stem (cross-question contamination guard)
+        const _vOptionsRelated = optionsAreContextuallyRelated(_valStem, _valOpts.join('\n'));
+        checks.push({
+          name: 'OPTIONS_CONTEXT_RELATED',
+          pass: _vOptionsRelated,
+          detail: _vOptionsRelated
+            ? 'options are contextually related to stem'
+            : 'options appear unrelated to stem (possible cross-question contamination)'
+        });
+
+        const failedChecks = checks.filter(c => !c.pass);
+        if (failedChecks.length > 0) {
+          console.warn(`AnswerHunter: VALIDATION_CHECKLIST ${failedChecks.length}/${checks.length} FAILED:`,
+            failedChecks.map(c => `${c.name}: ${c.detail}`).join(' | '));
+        } else {
+          console.log(`AnswerHunter: VALIDATION_CHECKLIST all ${checks.length} checks PASSED`);
+        }
+
+        const _criticalOptionFails = new Set(['MIN_3_OPTIONS', 'LETTERS_CONTIGUOUS', 'OPTIONS_CONTEXT_RELATED']);
+        _needsOptionRecovery = failedChecks.some((c) => _criticalOptionFails.has(c.name));
+      }
+
+      if (_needsOptionRecovery) {
+        try {
+          const [optRecoveryExec] = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            function: ExtractionService.extractOptionsOnlyScript
+          });
+          const optRecoveryRaw = String(optRecoveryExec?.result || '').trim();
+          if (optRecoveryRaw) {
+            const recoveredOptions = QuestionParser.extractOptionsFromQuestion(optRecoveryRaw) || [];
+            const recoveredLetters = new Set(recoveredOptions
+              .map((o) => (String(o).match(/^([A-E])/i) || [])[1]?.toUpperCase())
+              .filter(Boolean));
+            const recoveredSorted = [...recoveredLetters].sort();
+            const recoveredExpected = ['A', 'B', 'C', 'D', 'E'].slice(0, recoveredSorted.length);
+            const recoveredContiguous = recoveredSorted.length > 0 && recoveredSorted.join('') === recoveredExpected.join('');
+            const recoveryStem = _optionRecoveryStem || QuestionParser.extractQuestionStem(displayQuestion || bestQuestion || '') || '';
+            const recoveredRelated = optionsAreContextuallyRelated(recoveryStem, recoveredOptions.join('\n'));
+
+            if (recoveredOptions.length >= 3 && recoveredContiguous && recoveredRelated) {
+              displayQuestion = [recoveryStem, ...recoveredOptions].filter(Boolean).join('\n').trim();
+              console.log(`AnswerHunter: OPTIONS_RECOVERY applied (${recoveredOptions.length} options, letters=${recoveredSorted.join(',')})`);
+            } else {
+              console.log(`AnswerHunter: OPTIONS_RECOVERY rejected (count=${recoveredOptions.length}, contiguous=${recoveredContiguous}, related=${recoveredRelated})`);
+            }
+          } else {
+            console.log('AnswerHunter: OPTIONS_RECOVERY skipped (no options returned by extractor)');
+          }
+        } catch (optRecoveryErr) {
+          console.warn('AnswerHunter: OPTIONS_RECOVERY failed:', optRecoveryErr?.message || optRecoveryErr);
+        }
+      }
 
       // Final canonicalization: rebuild stable "stem + options" before cache/search.
       displayQuestion = this._canonicalizeDisplayQuestion(displayQuestion, bestQuestion);

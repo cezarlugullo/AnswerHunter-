@@ -730,7 +730,7 @@
             <span class="material-symbols-rounded u-fs-16">open_in_new</span>
             github.com/login/device
           </a>
-          <div class="u-copilot-code-row" style="margin-top:10px;margin-bottom:4px;">
+          <div class="u-copilot-code-row">
             <p id="copilot-user-code" class="u-copilot-user-code">--------</p>
             <button id="copilot-copy-code-btn" title="Copiar código" class="u-copilot-copy-btn">
               <span class="material-symbols-rounded u-fs-20">content_copy</span>
@@ -772,7 +772,7 @@
 
         <div id="copilot-test-result" class="u-copilot-test-result"></div>
 
-        <div class="u-auth-row-tight">
+        <div class="u-copilot-controls">
 <!-- Hidden select preserved for JS compatibility (PopupController reads/writes .value) -->
           <select id="select-copilot-model" class="u-display-none-inline" aria-hidden="true">
             <option value="claude-sonnet-4.6" selected>Claude Sonnet 4.6</option>
@@ -794,7 +794,7 @@
           </select>
 
           <!-- Custom model picker -->
-          <div class="ah-mpicker u-flex-1" id="copilot-model-picker">
+          <div class="ah-mpicker" id="copilot-model-picker">
             <button class="ah-mpicker-trigger" type="button" id="copilot-model-trigger" aria-haspopup="listbox" aria-expanded="false">
               <span class="ah-mpicker-trigger-icon material-symbols-rounded">auto_awesome</span>
               <div class="ah-mpicker-trigger-info">
@@ -996,7 +996,7 @@
 
             </div><!-- /ah-mpicker-panel -->
           </div><!-- /ah-mpicker -->
-          <button id="copilot-logout-btn" class="ob-btn ob-btn-secondary u-nowrap-gap-4">
+          <button id="copilot-logout-btn" class="ob-btn ob-btn-secondary u-copilot-logout-btn">
             <span class="material-symbols-rounded u-fs-16">logout</span>
             <span>Sair</span>
           </button>

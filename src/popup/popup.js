@@ -100,9 +100,16 @@ function initCopilotModelPicker() {
 
   // --- Toggle open/close ---
   function openPicker() {
-    // Detect if we should open upward
+    // Detect if we should open upward — check space below relative to
+    // both the viewport AND the parent card (whichever is smaller)
     const rect = picker.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom;
+    const card = picker.closest('.chatgpt-auth-card');
+    let spaceBelow = window.innerHeight - rect.bottom;
+    if (card) {
+      const cardRect = card.getBoundingClientRect();
+      const spaceInCard = cardRect.bottom - rect.bottom;
+      spaceBelow = Math.min(spaceBelow, spaceInCard);
+    }
     picker.classList.toggle('ah-mpicker--up', spaceBelow < 200);
     picker.classList.add('ah-mpicker--open');
     trigger.setAttribute('aria-expanded', 'true');

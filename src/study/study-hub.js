@@ -435,20 +435,6 @@ function initKeyboard() {
     }
 
     // Study session shortcuts
-    if (state.session.active && state.session._isReview) {
-      // Review mode: arrow keys navigate
-      if (key === 'arrowleft' || key === 'arrowright') {
-        e.preventDefault();
-        if (key === 'arrowleft' && state.session.index > 0) {
-          state.session.index--;
-          renderReviewCard();
-        } else if (key === 'arrowright' && state.session.index < state.session.cards.length - 1) {
-          state.session.index++;
-          renderReviewCard();
-        }
-      }
-      return; // skip normal study shortcuts in review mode
-    }
     if (state.session.active && state.session.revealed) {
       const rateMap = { '1': 1, '2': 2, '3': 3, '4': 4 };
       if (rateMap[key]) rateCurrentCard(rateMap[key]);
@@ -740,127 +726,6 @@ function showPomodoroDragTip() {
 
 /* ─── Data Loading ─────────────────────────────────────────────────── */
 
-const HIER_ROOT_NAMES = new Set(['raiz', 'root', 'my study', 'binder', 'meu estudo']);
-
-/** Ensure all binder top-level folders & ah_disciplines exist in ah_hierarchy */
-async function reconcileHierarchy() {
-  try {
-    const raw = await new Promise(resolve => {
-      chrome.storage.local.get(['ah_hierarchy', 'binderStructure', 'ah_disciplines'], r => resolve(r));
-    });
-    const h = raw.ah_hierarchy || [];
-    const existingIds = new Set(h.map(d => d.id));
-    const existingNames = new Set(h.map(d => d.name.toLowerCase()));
-    let changed = false;
-
-    // Sync top-level binder folders (with their questions)
-    const binder = raw.binderStructure;
-    if (Array.isArray(binder) && binder[0]?.children) {
-      for (const child of binder[0].children) {
-        if (child.type !== 'folder') continue;
-        if (HIER_ROOT_NAMES.has((child.title || '').toLowerCase())) continue;
-
-        // Find existing discipline by id or name
-        let disc = h.find(d => d.id === child.id) || h.find(d => d.name.toLowerCase() === child.title.toLowerCase());
-
-        if (!disc) {
-          disc = { id: child.id, name: child.title, icon: '', color: '#FF6B6B', modules: [], createdAt: child.createdAt || Date.now(), updatedAt: Date.now() };
-          h.push(disc);
-          existingIds.add(disc.id);
-          existingNames.add(disc.name.toLowerCase());
-          changed = true;
-        }
-
-        // Sync binder questions into hierarchy cards
-        const binderCards = _collectBinderQuestions(child);
-        if (binderCards.length > 0) {
-          const merged = _mergeBinderCards(disc, binderCards);
-          if (merged) changed = true;
-        }
-      }
-    }
-
-    // Sync ah_disciplines entries (no questions to migrate, just the discipline)
-    for (const d of (raw.ah_disciplines || [])) {
-      if (existingIds.has(d.id) || existingNames.has(d.name.toLowerCase())) continue;
-      h.push({ id: d.id, name: d.name, icon: '', color: d.color || '#FF6B6B', modules: [], createdAt: d.createdAt || Date.now(), updatedAt: Date.now() });
-      existingIds.add(d.id);
-      existingNames.add(d.name.toLowerCase());
-      changed = true;
-    }
-
-    if (changed) {
-      await new Promise(resolve => chrome.storage.local.set({ ah_hierarchy: h }, resolve));
-      ContentHierarchyService.invalidate();
-      console.log('[StudyHub] Reconciled hierarchy, total disciplines:', h.length);
-    }
-  } catch (e) {
-    console.warn('[StudyHub] Hierarchy reconciliation failed:', e);
-  }
-}
-
-/** Recursively collect all question nodes from a binder folder */
-function _collectBinderQuestions(folder) {
-  const questions = [];
-  for (const child of (folder.children || [])) {
-    if (child.type === 'question' && child.content) {
-      questions.push(child);
-    } else if (child.type === 'folder') {
-      questions.push(..._collectBinderQuestions(child));
-    }
-  }
-  return questions;
-}
-
-/** Merge binder questions into a discipline's hierarchy (Geral module/topic). Returns true if any were added. */
-function _mergeBinderCards(disc, binderQuestions) {
-  if (!disc.modules) disc.modules = [];
-
-  // Find or create "Geral" module
-  let mod = disc.modules.find(m => m.name === 'Geral');
-  if (!mod) {
-    mod = { id: 'm_gen_' + disc.id, name: 'Geral', order: 0, topics: [], createdAt: Date.now(), updatedAt: Date.now() };
-    disc.modules.push(mod);
-  }
-  if (!mod.topics) mod.topics = [];
-
-  // Find or create "Geral" topic
-  let topic = mod.topics.find(t => t.name === 'Geral');
-  if (!topic) {
-    topic = { id: 't_gen_' + disc.id, name: 'Geral', order: 0, cards: [], createdAt: Date.now(), updatedAt: Date.now() };
-    mod.topics.push(topic);
-  }
-  if (!topic.cards) topic.cards = [];
-
-  // Build set of existing card IDs to avoid duplicates
-  const existingCardIds = new Set(topic.cards.map(c => c.id));
-
-  let added = false;
-  for (const q of binderQuestions) {
-    // Skip if already present (by id or by question text)
-    if (existingCardIds.has(q.id)) continue;
-    const qText = (q.content.question || '').trim().toLowerCase();
-    if (qText && topic.cards.some(c => (c.question || '').trim().toLowerCase() === qText)) continue;
-
-    topic.cards.push({
-      id: q.id || ('c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
-      question: q.content.question || '',
-      answer: q.content.answer || '',
-      source: q.content.source || '',
-      sm2: q.content.sm2 || { interval: 0, repetition: 0, ef: 2.5, nextReview: '', lastRated: '', attempts: 0, correct: 0, errors: 0, mastered: false, tags: [], hintUsedLast: false },
-      tags: q.content.tags || [],
-      notes: q.content.notes || '',
-      createdAt: q.createdAt || Date.now(),
-      updatedAt: q.updatedAt || Date.now()
-    });
-    existingCardIds.add(q.id);
-    added = true;
-  }
-
-  if (added) disc.updatedAt = Date.now();
-  return added;
-}
-
 async function loadData() {
   try {
     // Check migration
@@ -871,11 +736,8 @@ async function loadData() {
       toast('Migração concluída!', 'success');
     }
 
-    // Reconcile binder folders & ah_disciplines into ah_hierarchy
-    await reconcileHierarchy();
-
     // Load hierarchy
-    state.hierarchy = await ContentHierarchyService.load(true);
+    state.hierarchy = await ContentHierarchyService.load();
 
     // Load analytics (enriched with today, streak, dailyActivity)
     state.analytics = await loadAnalytics();
@@ -1854,11 +1716,6 @@ function parseQuestionText(raw) {
 }
 
 function renderCurrentCard() {
-  // Dispatch to review renderer if in review mode
-  if (state.session._isReview) {
-    renderReviewCard();
-    return;
-  }
   const { cards, index } = state.session;
   const container = $('#currentCard');
   if (!container || index >= cards.length) return;
@@ -2340,15 +2197,6 @@ async function rateCurrentCard(rating) {
 }
 
 function endStudySession() {
-  // If in review mode, just go back to history
-  if (state.session._isReview) {
-    state.session = { active: false, cards: [], index: 0, results: [], revealed: false };
-    hide($('#studyActive'));
-    closeToolDock();
-    navigateTo('history');
-    return;
-  }
-
   state.session.active = false;
 
   hide($('#studyActive'));
@@ -2733,7 +2581,7 @@ async function readAloud() {
   }
 }
 
-async function flagCard() {
+function flagCard() {
   const card = state.session.cards[state.session.index];
   if (!card) return;
   card._flagged = !card._flagged;
@@ -2741,77 +2589,12 @@ async function flagCard() {
   if (btn) {
     btn.classList.toggle('flagged', card._flagged);
   }
-
-  // Persist to storage immediately
-  if (card._flagged) {
-    await addFlaggedCard(card);
-    toast('Card salvo em Questões Marcadas.', 'success', 2500);
-  } else {
-    // Build a key to find & remove
-    const q = (card.question || card.pergunta || '').trim();
-    await removeFlaggedCardByQuestion(q);
-    toast('Marcação removida.', 'info', 2000);
-  }
-}
-
-/* ─── Flagged Cards Storage ────────────────────────────────────────── */
-
-async function loadFlaggedCards() {
-  try {
-    const data = await chrome.storage.local.get(FLAGGED_STORAGE_KEY);
-    return data[FLAGGED_STORAGE_KEY] || [];
-  } catch {
-    return [];
-  }
-}
-
-async function addFlaggedCard(card) {
-  try {
-    const list = await loadFlaggedCards();
-    const question = (card.question || card.pergunta || '').trim();
-    // Avoid duplicates (same question text)
-    if (list.some(f => f.question === question)) return;
-    list.unshift({
-      id: `flag_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      question,
-      answer: card.answer || card.resposta || '',
-      options: (card.options || card.alternatives || []).map(o =>
-        typeof o === 'string' ? o : (o.text || o.label || '')
-      ),
-      disc: card._disc || '',
-      topic: card._topic || '',
-      isAI: !!card._aiGenerated,
-      date: new Date().toISOString(),
-    });
-    if (list.length > FLAGGED_MAX) list.length = FLAGGED_MAX;
-    await chrome.storage.local.set({ [FLAGGED_STORAGE_KEY]: list });
-  } catch (err) {
-    console.warn('[Flagged] Save error:', err);
-  }
-}
-
-async function removeFlaggedCard(id) {
-  try {
-    const list = await loadFlaggedCards();
-    const filtered = list.filter(f => f.id !== id);
-    await chrome.storage.local.set({ [FLAGGED_STORAGE_KEY]: filtered });
-    return filtered;
-  } catch {
-    return [];
-  }
-}
-
-async function removeFlaggedCardByQuestion(question) {
-  try {
-    const list = await loadFlaggedCards();
-    const filtered = list.filter(f => f.question !== question);
-    await chrome.storage.local.set({ [FLAGGED_STORAGE_KEY]: filtered });
-  } catch { /* ignore */ }
+  toast(card._flagged ? 'Card marcado para revisão posterior.' : 'Marcação removida.', 'info', 2000);
 }
 
 /* ─── REVIEW VIEW ──────────────────────────────────────────────────── */
 
-async function renderReview() {
+function renderReview() {
   const allCards = getAllCards();
   const due = getDueCards();
   const overdue = getOverdueCards();
@@ -2936,107 +2719,6 @@ async function renderReview() {
   if (startBtn) {
     startBtn.disabled = due.length === 0;
   }
-
-  // ── Render flagged cards section ──
-  await renderFlaggedSection();
-}
-
-async function renderFlaggedSection() {
-  const flaggedEl = $('#flaggedPanel');
-  if (!flaggedEl) return;
-
-  const flagged = await loadFlaggedCards();
-  safeText('#flaggedCount', flagged.length);
-
-  const listEl = $('#flaggedList');
-  const emptyEl = $('#flaggedEmpty');
-  const reviewBtn = $('#startFlaggedReview');
-
-  if (flagged.length === 0) {
-    if (listEl) listEl.innerHTML = '';
-    if (emptyEl) emptyEl.hidden = false;
-    if (reviewBtn) reviewBtn.disabled = true;
-    return;
-  }
-
-  if (emptyEl) emptyEl.hidden = true;
-  if (reviewBtn) reviewBtn.disabled = false;
-
-  if (listEl) {
-    listEl.innerHTML = flagged.slice(0, 50).map(f => {
-      const parsed = parseQuestionText(f.question);
-      const preview = parsed.alternatives.length >= 2 ? parsed.stem : f.question;
-      return `
-      <div class="flagged-item" data-flag-id="${escHtml(f.id)}">
-        <div class="flagged-item__icon">
-          <span class="material-symbols-rounded">${f.isAI ? 'auto_awesome' : 'flag'}</span>
-        </div>
-        <div class="flagged-item__body">
-          <span class="flagged-item__disc">${escHtml(f.disc || 'Geral')}</span>
-          <span class="flagged-item__q">${escHtml(truncate(preview, 100))}</span>
-        </div>
-        <button class="flagged-item__remove" data-unflag-id="${escHtml(f.id)}" aria-label="Remover marcação" title="Remover">
-          <span class="material-symbols-rounded" style="font-size:18px">close</span>
-        </button>
-      </div>`;
-    }).join('');
-
-    // Bind remove buttons
-    $$('[data-unflag-id]', listEl).forEach(btn => {
-      on(btn, 'click', async (e) => {
-        e.stopPropagation();
-        const id = btn.dataset.unflagId;
-        await removeFlaggedCard(id);
-        toast('Marcação removida.', 'info', 2000);
-        renderFlaggedSection();
-      });
-    });
-
-    // Click item to start review at that card
-    $$('.flagged-item', listEl).forEach((item, i) => {
-      item.style.cursor = 'pointer';
-      on(item, 'click', () => startFlaggedReview(flagged, i));
-    });
-  }
-
-  // Bind review all button (once)
-  if (reviewBtn && !reviewBtn._bound) {
-    reviewBtn._bound = true;
-    on(reviewBtn, 'click', () => startFlaggedReview(flagged, 0));
-  }
-}
-
-function startFlaggedReview(flaggedCards, startIndex = 0) {
-  const reviewCards = flaggedCards.map(f => ({
-    question: f.question || '',
-    answer: f.answer || '',
-    options: f.options || [],
-    _disc: f.disc || '',
-    _topic: f.topic || '',
-    _aiGenerated: f.isAI || false,
-    _flagId: f.id,
-  }));
-
-  state.session = {
-    active: true,
-    cards: reviewCards,
-    index: startIndex,
-    results: [],
-    revealed: false,
-    type: 'review',
-    startedAt: null,
-    _isReview: true,
-    _reviewEntry: { discipline: 'Questões Marcadas', cards: flaggedCards },
-  };
-
-  navigateTo('study');
-  hide($('#studySetup'));
-  hide($('#studySummary'));
-  show($('#studyActive'));
-  show($('#cardActionsBar'));
-  safeText('#sessionDiscBadge', '🚩 Questões Marcadas');
-
-  renderReviewCard();
 }
 
 /* ─── FLASHCARD VIEW ───────────────────────────────────────────────── */
@@ -4627,8 +4309,6 @@ function initAddQuestion() {
 
 const HISTORY_STORAGE_KEY = 'ah_simuladoHistory';
 const HISTORY_MAX_ENTRIES = 200;
-const FLAGGED_STORAGE_KEY = 'ah_flaggedCards';
-const FLAGGED_MAX = 500;
 
 const SESSION_TYPE_META = {
   'study':        { label: 'Sessão de Estudo', icon: 'school',         color: 'blue' },
@@ -4916,10 +4596,6 @@ async function renderHistory() {
             <div class="hist-detail-header">
               <span class="hist-detail-date">${formatFullDate(h.date)}</span>
               <span class="hist-detail-xp">+${h.xp || 0} XP</span>
-              <button class="hist-review-btn" data-review-id="${escHtml(h.id)}" aria-label="Revisar questões">
-                <span class="material-symbols-rounded" style="font-size:16px">play_circle</span>
-                Revisar
-              </button>
               <button class="hist-delete-btn" data-delete-id="${escHtml(h.id)}" aria-label="Excluir sessão">
                 <span class="material-symbols-rounded" style="font-size:16px">delete</span>
               </button>
@@ -4975,174 +4651,6 @@ async function renderHistory() {
       const item = header.closest('.hist-card-item');
       if (item) item.classList.toggle('hist-card-expanded', !isHidden);
     });
-  });
-
-  // Bind review buttons
-  $$('[data-review-id]', listEl).forEach(btn => {
-    on(btn, 'click', async (e) => {
-      e.stopPropagation();
-      const id = btn.dataset.reviewId;
-      const history = await loadHistory();
-      const entry = history.find(h => h.id === id);
-      if (entry && entry.cards && entry.cards.length > 0) {
-        startHistoryReview(entry);
-      } else {
-        toast('Sem questões para revisar nesta sessão.', 'warning');
-      }
-    });
-  });
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   HISTORY REVIEW MODE — replays history cards in full study-card UI
-═══════════════════════════════════════════════════════════════════════ */
-
-function startHistoryReview(entry) {
-  // Build pseudo-cards compatible with the study card renderer
-  const reviewCards = (entry.cards || []).map(c => ({
-    question: c.question || '',
-    answer: c.answer || '',
-    options: c.options || [],
-    _disc: c.disc || entry.discipline || '',
-    _topic: c.topic || '',
-    _aiGenerated: c.isAI || false,
-    _reviewIsCorrect: c.isCorrect,
-  }));
-
-  // Set up a review pseudo-session
-  state.session = {
-    active: true,
-    cards: reviewCards,
-    index: 0,
-    results: [],
-    revealed: false,
-    type: 'review',
-    startedAt: null,
-    _isReview: true,
-    _reviewEntry: entry,
-  };
-
-  // Navigate to study view
-  navigateTo('study');
-  hide($('#studySetup'));
-  hide($('#studySummary'));
-  show($('#studyActive'));
-
-  // Show actions bar (for tools)
-  show($('#cardActionsBar'));
-
-  // Replace "Encerrar" button behavior
-  safeText('#sessionDiscBadge', `📖 Revisão — ${escHtml(entry.discipline || 'Geral')}`);
-
-  renderReviewCard();
-}
-
-function renderReviewCard() {
-  const { cards, index } = state.session;
-  const container = $('#currentCard');
-  if (!container || index >= cards.length) return;
-
-  const card = cards[index];
-  const progress = ((index) / cards.length) * 100;
-  const fill = $('#sessionProgressFill');
-  if (fill) fill.style.width = `${progress}%`;
-  safeText('#sessionProgressCount', `${index + 1}/${cards.length}`);
-
-  const question = card.question || card.answer || '—';
-  const answer = card.answer || '';
-  const options = card.options || [];
-  const parsed = parseQuestionText(question);
-  const hasExplicitOptions = options.length > 0;
-  const hasInlineAlts = parsed.alternatives.length >= 2;
-  const isCorrect = card._reviewIsCorrect;
-  const resultBadge = isCorrect === true
-    ? '<span class="review-result-badge review-result-badge--correct"><span class="material-symbols-rounded">check_circle</span> Você acertou</span>'
-    : isCorrect === false
-      ? '<span class="review-result-badge review-result-badge--wrong"><span class="material-symbols-rounded">cancel</span> Você errou</span>'
-      : '';
-
-  const letters = 'ABCDEFGHIJ';
-
-  let html = `
-    <div class="study-card review-card${card._aiGenerated ? ' ai-card' : ''}">
-      <div class="study-card__header">
-        <span class="study-card__disc-tag">${escHtml(card._disc || '—')}</span>
-        ${resultBadge}
-        <span class="study-card__num">${card._topic ? escHtml(card._topic) : ''}</span>
-      </div>`;
-
-  // Question stem
-  if (hasInlineAlts && !hasExplicitOptions) {
-    html += `<div class="study-card__question">${escHtml(parsed.stem).replace(/\n/g, '<br>')}</div>`;
-    html += `<div class="study-card__options study-card__options--parsed review-options">
-      ${parsed.alternatives.map((alt) => {
-      const isAnswer = answer && (
-        answer.trim().toLowerCase() === alt.text.trim().toLowerCase() ||
-        answer.trim().toLowerCase() === alt.letter.toLowerCase() ||
-        answer.trim().toLowerCase().startsWith(alt.letter.toLowerCase() + ')')
-      );
-      return `<div class="option-item option-item--parsed${isAnswer ? ' option-item--correct' : ''}" tabindex="-1">
-          <span class="option-item__letter">${escHtml(alt.letter)}</span>
-          <span class="option-item__text">${escHtml(alt.text)}</span>
-          ${isAnswer ? '<span class="material-symbols-rounded option-item__check">check_circle</span>' : ''}
-        </div>`;
-    }).join('')}
-    </div>`;
-  } else {
-    html += `<div class="study-card__question">${escHtml(question).replace(/\n/g, '<br>')}</div>`;
-  }
-
-  if (hasExplicitOptions) {
-    html += `<div class="study-card__options review-options">
-      ${options.map((opt, i) => {
-      const text = typeof opt === 'string' ? opt : (opt.text || opt.label || '');
-      const isAnswer = answer && text && (
-        answer.trim().toLowerCase() === text.trim().toLowerCase() ||
-        answer.trim().toLowerCase() === (letters[i] || '').toLowerCase() ||
-        answer.trim().toLowerCase().startsWith(letters[i].toLowerCase() + ')')
-      );
-      return `<div class="option-item${isAnswer ? ' option-item--correct' : ''}" tabindex="-1">
-          <span class="option-item__letter">${letters[i] || i + 1}</span>
-          <span>${escHtml(text)}</span>
-          ${isAnswer ? '<span class="material-symbols-rounded option-item__check">check_circle</span>' : ''}
-        </div>`;
-    }).join('')}
-    </div>`;
-  }
-
-  // Answer always revealed in review mode
-  html += `<div class="review-answer-section">
-      <div class="review-answer-label"><span class="material-symbols-rounded">school</span> Gabarito</div>
-      <div class="review-answer-text">${escHtml(answer) || 'Sem resposta registrada.'}</div>
-    </div>`;
-
-  // Navigation
-  html += `<div class="review-nav">
-      <button class="btn btn-secondary review-nav-btn" id="reviewPrevBtn" ${index === 0 ? 'disabled' : ''}>
-        <span class="material-symbols-rounded">arrow_back</span> Anterior
-      </button>
-      <span class="review-nav-counter">${index + 1} de ${cards.length}</span>
-      <button class="btn btn-secondary review-nav-btn" id="reviewNextBtn" ${index >= cards.length - 1 ? 'disabled' : ''}>
-        Próxima <span class="material-symbols-rounded">arrow_forward</span>
-      </button>
-    </div>`;
-
-  html += '</div>';
-
-  container.innerHTML = html;
-
-  // Nav bindings
-  on($('#reviewPrevBtn', container), 'click', () => {
-    if (state.session.index > 0) {
-      state.session.index--;
-      renderReviewCard();
-    }
-  });
-  on($('#reviewNextBtn', container), 'click', () => {
-    if (state.session.index < state.session.cards.length - 1) {
-      state.session.index++;
-      renderReviewCard();
-    }
   });
 }
 
@@ -5291,16 +4799,6 @@ async function init() {
 
   // Render home
   await renderHome();
-
-  // Listen for external storage changes (e.g. popup creating/deleting disciplines)
-  chrome.storage.onChanged.addListener(async (changes, area) => {
-    if (area === 'local' && changes.ah_hierarchy) {
-      console.log('[StudyHub] ah_hierarchy changed externally, reloading...');
-      ContentHierarchyService.invalidate();
-      state.hierarchy = await ContentHierarchyService.load(true);
-      await renderHome();
-    }
-  });
 
   // Handle URL parameters (e.g., ?discipline=X&mode=simulado)
   handleUrlParams();
