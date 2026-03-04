@@ -1,0 +1,39 @@
+# school
+
+- Contexto: `popup`
+- Elemento: `#btnDisciplinas` em `src/popup/popup.html:1131`
+- Evento: `click`
+- Handler: `() => BinderController.openDisciplinaManager()` (src/controllers/PopupController.js:210)
+- Use-case/service: BinderController, DisciplinasController
+- Side-effects: chrome.tabs
+
+## 2.1 Verificação estática (código)
+- Elemento renderizado no DOM estático: confirmado pelo HTML da tela.
+- Binding do evento: encontrado via addEventListener/onclick.
+- Handler com variáveis/estados nulos, try/catch e await: revisão parcial por inspeção da região do handler.
+- Traço UI -> handler -> serviço -> side-effect: mapeado parcialmente com evidência de chamada e heurística de serviço.
+
+Arquivo DOM: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\popup\popup.html:1131`
+Arquivo handler: `C:\Users\cezar\OneDrive\Área de Trabalho\AnswerHunter\src\controllers\PopupController.js:210`
+
+Trecho mínimo do binding:
+```js
+208:     this.view.elements.clearBinderBtn?.addEventListener('click', () => BinderController.handleClearAll());
+209:     document.getElementById('addQuestionBtn')?.addEventListener('click', () => BinderController.handleAddManual());
+210:     document.getElementById('btnDisciplinas')?.addEventListener('click', () => BinderController.openDisciplinaManager());
+211: 
+212:     DisciplinasController.init();
+```
+
+## 2.2 Verificação dinâmica (rodando)
+- Execução dinâmica feita com Playwright CLI em navegador real (chrome), clicando o elemento em todos os cenários automatizados.
+
+## 2.3 Cenários obrigatórios
+| Cenário | Resultado | Evidência |
+| --- | --- | --- |
+| happy | [Unverified] não foi possível validar | sem evidência dinâmica |
+
+## 2.4 Resultado e correções
+- Status: [Unverified] não foi possível validar
+- Causa raiz: não identificado crash específico para este botão nas execuções registradas.
+- Correção mínima proposta: endurecer validações de estado e mensagens de erro para cenários inválidos/permissões/offline.
