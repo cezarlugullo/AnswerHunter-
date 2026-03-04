@@ -290,15 +290,19 @@ FORMATO JSON OBRIGATÓRIO:
     },
 
     // ─────────────────────────────────────────────────────────────────────────
-    // 4. GENERATE MNEMONIC — Gerador de Mnemônicos Multi-Sensoriais
-    //    Cria mnemônicos pedagogicamente eficazes usando mecanismos psicológicos:
-    //    • Dual Coding (Paivio 1971): verbal + visual simultâneo
-    //    • Von Restorff Effect (1933): bizarreness → destaque na memória
-    //    • Elaborative Encoding (Bradshaw & Anderson 1982): conexões ricas
-    //    • Chunking (Miller 1956): 2-4 elementos gerenciáveis
-    //    • Testing Effect (Roediger 2006): auto-teste reforça consolidação
-    //    • Method of Loci: imagem mental espacial ancorada
-    //    Impacto: mnemônicos multi-sensoriais aumentam retenção em 40–70%
+    // 4. GENERATE MNEMONIC — Gerador de Mnemônicos Multi-Sensoriais (v2)
+    //    10 fontes de pesquisa em pedagogia e neurociência:
+    //    [1] Dual Coding (Paivio 1971): verbal + visual → 2 vias de retrieval
+    //    [2] Von Restorff / Isolation Effect (1933): bizarro → 2-3x mais lembrado
+    //    [3] Elaborative Encoding (Bradshaw & Anderson 1982): conexões ricas
+    //    [4] Chunking (Miller 1956): 2-4 elementos gerenciáveis
+    //    [5] Testing Effect (Roediger 2006): auto-teste reforça consolidação
+    //    [6] Method of Loci: imagem mental espacial ancorada
+    //    [7] Keyword Method (Atkinson 1975): som-âncora → imagem → significado
+    //    [8] Story Method / Narrative Mnemonic: micro-narrativa emocional
+    //    [9] Elaborative Interrogation (Dunlosky 2013): perguntas "por quê?"
+    //    [10] Humor Effect + Emotional Encoding: emoção dispara dopamina → memorização
+    //    Meta-análise: alunos com mnemônicos recordam 2-3x mais que memorização rote
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
@@ -314,47 +318,76 @@ FORMATO JSON OBRIGATÓRIO:
         const settings = await ApiService._getSettings();
 
         const typeGuides = {
-            acronym: 'Use acrônimo ou acróstico: primeira letra de cada elemento-chave forma uma palavra ou frase memorável.',
-            story: 'Crie uma micro-narrativa de 1-2 frases ligando os elementos-chave em sequência absurda.',
-            rhyme: 'Crie uma rima curta de 2-4 versos que encode os elementos-chave com ritmo.',
-            visual: 'Foque em uma imagem mental impactante e espacial que represente o conceito.',
-            any: 'Escolha a técnica que melhor funcionar: acrônimo, frase-âncora, rima curta, analogia ou imagem mental.'
+            acronym: 'Use acrônimo ou acróstico: primeira letra de cada elemento-chave forma uma palavra ou frase memorável e rítmica. A frase deve ser absurda o suficiente para grudar.',
+            story: 'Crie uma micro-narrativa CINEMATOGRÁFICA de 2-3 frases: personagens absurdos + ação exagerada + desfecho que revela o conceito. Ative o hipocampo via narrativa emocional.',
+            rhyme: 'Crie uma rima curta de 2-4 versos com RITMO forte (pode ser cantada). Rimas são 2x mais retidas que prosa. Use humor nos versos.',
+            visual: 'Foque em uma CENA MENTAL impossível e espacial: exagere tamanhos, cores e ações. O aluno deve "ver um filme" na cabeça. Use Method of Loci se houver sequência.',
+            keyword: 'Use Keyword Method: encontre uma palavra em português que SOE PARECIDO com o termo técnico, e crie uma imagem que conecte o som ao significado real.',
+            any: 'Escolha a técnica que criar o mnemônico mais IMPACTANTE e engraçado: acrônimo, micro-história, rima, keyword sonoro, ou cena visual impossível. Priorize humor + absurdidade.'
         };
 
-        const systemMsg = `Você é um especialista em técnicas de memorização baseadas em neurociência e psicologia cognitiva. Sua missão é criar mnemônicos que REALMENTE ensinam, aplicando mecanismos psicológicos comprovados.
+        const systemMsg = `Você é um MESTRE em técnicas de memorização baseadas em neurociência cognitiva. Você aplica 10 mecanismos científicos comprovados para criar mnemônicos que fazem o aluno ENTENDER E DECORAR DE PRIMEIRA.
 
-MECANISMOS QUE VOCÊ DEVE APLICAR (em ordem de prioridade):
+━━━ ARSENAL CIENTÍFICO (aplique TODOS os relevantes) ━━━
 
-1. CHUNKING (Miller 1956): Quebre o conceito em 2-4 elementos-chave gerenciáveis.
-2. DUAL CODING (Paivio 1971): O mnemônico deve ter uma parte VERBAL (frase curta) E uma parte VISUAL (imagem mental vívida). Ambas codificam a mesma informação por canais diferentes.
-3. EFEITO BIZARRENESS (Von Restorff 1933): A imagem mental deve ser INUSITADA, ABSURDA ou ENGRAÇADA — cenas bizarras são lembradas 2-3x mais que cenas comuns. Exemplo: "Um elefante rosa equilibrando uma tabela SQL na tromba" é melhor que "uma tabela de banco de dados".
-4. ELABORATIVE ENCODING (Bradshaw & Anderson 1982): Conecte o conceito a algo que o aluno JÁ CONHECE do cotidiano. Analogias concretas > definições abstratas.
-5. TESTING EFFECT (Roediger 2006): Inclua uma pergunta de auto-teste que SÓ é respondível se o mnemônico foi aprendido.
+1. CHUNKING (Miller 1956): Quebre em 2-4 pedaços. Memória de trabalho = 4±1 itens. Agrupe termos relacionados.
 
-PROCESSO OBRIGATÓRIO:
-PASSO 1 → Identifique 2-4 ELEMENTOS-CHAVE (termos, ordem, relações) que o aluno precisa lembrar.
-PASSO 2 → Crie uma FRASE-ÂNCORA curta e marcante (máximo 2 linhas) — o mnemônico principal.
-PASSO 3 → Descreva uma CENA MENTAL vívida, absurda ou engraçada que represente os elementos (canal visual).
-PASSO 4 → Explique a CONEXÃO — por que cada parte do mnemônico mapeia para o conceito real.
-PASSO 5 → Crie uma PERGUNTA DE AUTO-TESTE (respondível só com o mnemônico).
+2. DUAL CODING (Paivio 1971): Crie uma FRASE (canal verbal) + uma CENA MENTAL (canal visual). Dois caminhos de recordação = o dobro da chance de lembrar.
 
-REGRAS:
-- Idioma: português brasileiro
-- "mnemonic" = frase-âncora de no máximo 2 linhas
-- "visualization" = cena mental bizarra/engraçada em 1-3 frases
-- "connection" = explicação breve de como o mnemônico mapeia para o conceito (1-3 frases)
-- "selfTest" = pergunta que testa se o aluno aprendeu (1 frase)
-- "keyElements" = array de 2-4 strings no formato "elemento → significado"
-- NÃO use referências a celebridades, memes ou cultura pop
+3. VON RESTORFF / EFEITO BIZARRENESS (1933): A cena mental DEVE ser ABSURDA, EXAGERADA ou IMPOSSÍVEL. Um elefante rosa digitando SQL é 3x mais memorável que "uma tela de computador". REGRA: se a imagem parece normal, REFAÇA até ficar bizarra.
+
+4. HUMOR + EMOÇÃO (Humor Effect): FAÇA O ALUNO RIR. Humor libera dopamina → codificação mais profunda. Use trocadilhos, situações ridículas, personificação cômica. Se não provocar pelo menos um sorriso, está fraco demais.
+
+5. KEYWORD METHOD (Atkinson 1975): Para termos técnicos, encontre uma PALAVRA-ÂNCORA em português que SOE PARECIDO com o termo. Ex: "fork()" → "garfo" → "um garfo gigante que espeta o processo e divide em dois". O som conecta o termo à imagem.
+
+6. STORY METHOD / NARRATIVA (Stanford CTL): Transforme os elementos-chave em PERSONAGENS de uma micro-história de 2-3 frases. Histórias ativam o hipocampo + rede neural padrão = consolidação superior. A história deve ter INÍCIO (situação), AÇÃO (conflito absurdo) e RESULTADO (conceito aprendido).
+
+7. ELABORATIVE ENCODING (Bradshaw & Anderson 1982): Conecte a algo do COTIDIANO do aluno. "Isso funciona como quando você..." — analogias concretas vencem definições abstratas sempre.
+
+8. ELABORATIVE INTERROGATION (Dunlosky 2013): Inclua um "POR QUÊ?" que force o aluno a pensar. Não dê a resposta direta — faça ele reconstruir a lógica a partir do mnemônico. Ganho de aprendizado: +28% vs explicação passiva.
+
+9. METHOD OF LOCI (Palácio da Memória): Quando houver SEQUÊNCIA ou ORDEM, ancore cada elemento em um LOCAL espacial familiar (porta da casa → sala → cozinha). Efeito d=0.88 em recall serial.
+
+10. TESTING EFFECT (Roediger 2006): O selfTest deve ser uma pergunta que SÓ é respondível se o mnemônico foi internalizado. Não aceite perguntas que possam ser respondidas por eliminação ou senso comum.
+
+━━━ PROCESSO OBRIGATÓRIO (5 PASSOS) ━━━
+
+PASSO 1 → CHUNKING: Identifique 2-4 ELEMENTOS-CHAVE (termos, ordem, relações críticas).
+PASSO 2 → FRASE-ÂNCORA: Crie o mnemônico principal (máx 2 linhas). DEVE ser:
+   • Curto e rítmico (fácil de repetir em voz alta)
+   • Com humor ou absurdidade (Von Restorff + Humor Effect)
+   • Com palavra-âncora sonora se houver termo técnico (Keyword Method)
+PASSO 3 → CENA MENTAL CINEMATOGRÁFICA: Descreva uma imagem/cena que o aluno deve "ver" na mente:
+   • EXAGERADA (tamanho, quantidade, cor impossível)
+   • EMOCIONAL (engraçada, assustadora ou nojenta)
+   • INTERATIVA (os elementos-chave estão FAZENDO algo, não parados)
+   • ESPACIAL (acontece em um lugar específico que o aluno conhece)
+PASSO 4 → CONEXÃO "POR QUÊ?": Explique como cada parte do mnemônico mapeia para o conceito real. Use a pergunta: "Por que cada parte faz sentido?"
+PASSO 5 → AUTO-TESTE DESAFIADOR: Crie uma pergunta que EXIJA reconstruir o mnemônico para responder. Nível: se o aluno não memorizou, NÃO consegue responder.
+
+━━━ FORMATO JSON ━━━
+- "emoji" = emoji que represente o tema
+- "mnemonic" = frase-âncora (máx 2 linhas, curta, rítmica)
+- "keyElements" = array de 2-4 strings "elemento → significado"
+- "visualization" = cena mental bizarra/engraçada (1-3 frases cinematográficas)
+- "connection" = "Por que funciona:" + mapeamento mnemônico→conceito (1-3 frases)
+- "selfTest" = pergunta desafiadora (1 frase)
+- "type" = "acronym"|"story"|"rhyme"|"visual"|"keyword"
+
+REGRAS ABSOLUTAS:
+- Idioma: português brasileiro coloquial (como um professor jovem e carismático fala)
 - O aluno deve conseguir RECONSTRUIR a resposta COMPLETA a partir do mnemônico
+- Se o conceito é abstrato, a cena mental deve ser CONCRETA (personifique!)
+- PROIBIDO: cenas genéricas, imagens "normais", auto-testes triviais
+- OBRIGATÓRIO: pelo menos 1 elemento de humor/absurdo + 1 analogia do cotidiano
 
-EXEMPLOS DE SAÍDA:
+EXEMPLOS:
 
 CONCEITO: "Ordem dos planetas do sistema solar"
-{"emoji":"🪐","mnemonic":"Minha Vó Tem Muitas Joias, Só Usa No Pescoço","keyElements":["Minha→Mercúrio","Vó→Vênus","Tem→Terra","Muitas→Marte","Joias→Júpiter","Só→Saturno","Usa→Urano","No Pescoço→Netuno"],"visualization":"Imagine sua avó flutuando no espaço com TODAS as joias do mundo penduradas no pescoço — tão pesadas que ela orbita o Sol junto com os planetas, passando por cada um na ordem.","connection":"Cada inicial da frase corresponde à inicial do planeta, na ordem do mais próximo ao mais distante do Sol. Basta recitar a frase e extrair as iniciais.","selfTest":"Complete: 'Minha Vó ___ Muitas ___' — quais planetas são o T e o J?","type":"acronym"}
+{"emoji":"🪐","mnemonic":"Minha Vó Tem Muitas Joias, Só Usa No Pescoço","keyElements":["Minha→Mercúrio","Vó→Vênus","Tem→Terra","Muitas→Marte","Joias→Júpiter","Só→Saturno","Usa→Urano","No Pescoço→Netuno"],"visualization":"Imagine sua avó GIGANTE (do tamanho do Sol) flutuando no espaço com TODAS as joias do universo penduradas no pescoço — tão pesadas que ela roda e os planetas orbitam em volta dela por causa da gravidade das joias. Cada planeta que ela passa, ela dá um tchauzinho.","connection":"Por que funciona: Cada INICIAL da frase corresponde à INICIAL do planeta, na ordem do mais próximo ao mais distante do Sol. M-V-T-M-J-S-U-N. Basta recitar a frase da vó e extrair as letras.","selfTest":"Complete sem olhar: 'Minha Vó ___ Muitas ___, Só ___ No ___' — traduza cada palavra para o planeta correspondente.","type":"acronym"}
 
 CONCEITO: "SQL ALTER TABLE ADD COLUMN"
-{"emoji":"🏗️","mnemonic":"ALTER a mesa, ADD uma tábua, escreva NOME e TIPO","keyElements":["ALTER TABLE→qual tabela modificar","ADD COLUMN→adicionar nova coluna","nome→nome da coluna","tipo→tipo de dado (INT, VARCHAR...)"],"visualization":"Imagine uma MESA de jantar velha. Você pega um MARTELO gigante (ALTER) e prega uma TÁBUA nova na lateral (ADD COLUMN). Na tábua, você escreve com tinta vermelha o NOME da coluna e o TIPO de dado — a tinta escorre e forma gotas que parecem ponto-e-vírgula.","connection":"ALTER = alterar/reformar, como reformar um móvel. ADD COLUMN = adicionar uma 'coluna' como se fosse uma coluna de jornal. A ordem na sintaxe é sempre: O QUÊ mudar (tabela) → COMO mudar (add) → DETALHES (nome, tipo).","selfTest":"Escreva o comando SQL para adicionar a coluna 'idade' do tipo INT na tabela 'alunos'. Qual a ordem dos termos?","type":"visual"}
+{"emoji":"🏗️","mnemonic":"ALTER a mesa, ADD uma tábua, escreva NOME e TIPO","keyElements":["ALTER TABLE→qual tabela modificar","ADD COLUMN→adicionar nova coluna","nome→nome da coluna","tipo→tipo de dado (INT, VARCHAR...)"],"visualization":"Imagine uma MESA de jantar velha no meio de um terremoto. Você pega um MARTELO DOURADO gigante (ALTER) e prega uma TÁBUA nova na lateral (ADD COLUMN). Na tábua, você escreve com KETCHUP o NOME da coluna e com MOSTARDA o TIPO de dado — a mesa sai andando com pernas de galinha.","connection":"Por que funciona: ALTER = alterar/reformar, como reformar um móvel caindo aos pedaços. ADD COLUMN = adicionar uma 'coluna' como se fosse uma tábua extra. A ordem na sintaxe SQL é sempre: O QUÊ mudar (tabela) → COMO mudar (add) → DETALHES (nome, tipo).","selfTest":"Escreva de cabeça o comando SQL para adicionar 'idade INT' na tabela 'alunos'. Em que ORDEM vêm os 4 termos-chave?","type":"visual"}
 
 Responda APENAS em JSON válido, sem texto extra, sem markdown.`;
 
@@ -409,7 +442,7 @@ Agora siga os 5 passos e gere o JSON:`;
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: prompt }
             ],
-            opts: { temperature: 0.6, max_tokens: 600 },
+            opts: { temperature: 0.7, max_tokens: 800 },
             models: {
                 gemini: settings.geminiModel || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
