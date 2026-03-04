@@ -4757,6 +4757,107 @@ function shuffle(arr) {
   return a;
 }
 
+/* ─── Word Lookup (select-to-define) ──────────────────────────────── */
+
+function initWordLookup() {
+  let popup = null;
+  let hideTimer = null;
+
+  function createPopup() {
+    if (popup) return popup;
+    popup = document.createElement('div');
+    popup.className = 'word-lookup-popup';
+    popup.hidden = true;
+    popup.innerHTML = `
+      <div class="word-lookup-header">
+        <span class="word-lookup-term"></span>
+        <button class="word-lookup-close" aria-label="Fechar">&times;</button>
+      </div>
+      <div class="word-lookup-body">
+        <div class="word-lookup-loading">Buscando definição...</div>
+      </div>`;
+    document.body.appendChild(popup);
+    on(popup.querySelector('.word-lookup-close'), 'click', dismissPopup);
+    on(popup, 'mouseenter', () => clearTimeout(hideTimer));
+    on(popup, 'mouseleave', () => { hideTimer = setTimeout(dismissPopup, 400); });
+    return popup;
+  }
+
+  function dismissPopup() {
+    if (popup) { popup.hidden = true; }
+  }
+
+  function positionPopup(rect) {
+    const p = createPopup();
+    const margin = 8;
+    let top = rect.bottom + window.scrollY + margin;
+    let left = rect.left + window.scrollX + (rect.width / 2);
+
+    p.hidden = false;
+    p.style.left = '0px';
+    p.style.top = '0px';
+
+    requestAnimationFrame(() => {
+      const pw = p.offsetWidth;
+      const ph = p.offsetHeight;
+      left = Math.max(margin, Math.min(left - pw / 2, window.innerWidth - pw - margin));
+      if (top + ph > window.innerHeight + window.scrollY - margin) {
+        top = rect.top + window.scrollY - ph - margin;
+      }
+      p.style.left = `${left}px`;
+      p.style.top = `${top}px`;
+    });
+  }
+
+  async function lookupWord(word, rect) {
+    const p = createPopup();
+    p.querySelector('.word-lookup-term').textContent = word;
+    p.querySelector('.word-lookup-body').innerHTML = '<div class="word-lookup-loading"><span class="word-lookup-spinner"></span> Buscando definição...</div>';
+    positionPopup(rect);
+
+    try {
+      const card = state.session?.cards?.[state.session?.index];
+      const questionCtx = card ? (card.question || card.pergunta || '').slice(0, 300) : '';
+      const subject = card?._disc || '';
+
+      const explanation = await PedagogicalPromptsService.generateWordDefinition(word, questionCtx, subject);
+      if (popup && !popup.hidden) {
+        p.querySelector('.word-lookup-body').innerHTML = `<div class="word-lookup-content">${formatMarkdown(explanation)}</div>`;
+      }
+    } catch (err) {
+      console.warn('[WordLookup] Error:', err);
+      if (popup && !popup.hidden) {
+        p.querySelector('.word-lookup-body').innerHTML = '<div class="word-lookup-error">Não foi possível buscar a definição.</div>';
+      }
+    }
+  }
+
+  document.addEventListener('mouseup', (e) => {
+    if (popup && popup.contains(e.target)) return;
+
+    const sel = window.getSelection();
+    const text = sel?.toString().trim();
+    if (!text || text.length < 2 || text.length > 80 || text.includes('\n')) {
+      return;
+    }
+
+    const anchor = sel.anchorNode?.parentElement;
+    if (!anchor) return;
+    const isInStudyCard = anchor.closest('.study-card, .study-card__question, .study-card__options, .fc-stem, .card-question, .fc-front');
+    if (!isInStudyCard) return;
+
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    lookupWord(text, rect);
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (popup && !popup.contains(e.target)) {
+      dismissPopup();
+    }
+  });
+}
+
 /* ─── Init ─────────────────────────────────────────────────────────── */
 
 async function init() {
@@ -4776,6 +4877,7 @@ async function init() {
   initAddQuestion();
   initPractice();
   initHistory();
+  initWordLookup();
 
   // Close modal/dock listeners
   on($('#closeModal'), 'click', closeModal);

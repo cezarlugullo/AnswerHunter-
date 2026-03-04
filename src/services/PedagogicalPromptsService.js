@@ -708,7 +708,55 @@ Siga o método de 5 etapas. Máximo 300 palavras. Linguagem acessível mas rigor
     },
 
     // ─────────────────────────────────────────────────────────────────────────
-    // UTILITY: Extrair conceito central de uma questão
+    // 8. GENERATE WORD DEFINITION — Definição rápida de palavra/termo
+    //    Para o recurso "selecionar palavra → tooltip com explicação"
+    //    Rápido, conciso, contextual — pensado para não interromper o fluxo
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Gera definição rápida de uma palavra/termo selecionado pelo aluno.
+     * @param {string} word - Palavra ou termo selecionado
+     * @param {string} [questionContext] - Trecho da questão onde aparece
+     * @param {string} [subject] - Disciplina
+     * @returns {Promise<string>} Definição curta em texto simples
+     */
+    async generateWordDefinition(word, questionContext = '', subject = '') {
+        const settings = await ApiService._getSettings();
+
+        const systemMsg = `Você é um dicionário acadêmico inteligente. Explique termos de forma ULTRA-CONCISA, contextual e didática.
+
+FORMATO OBRIGATÓRIO:
+📖 **[termo]**: definição em 1-2 frases simples, sem jargão desnecessário.
+${questionContext ? '🔗 **No contexto**: como esse termo se aplica especificamente nesta questão (1 frase).' : ''}
+💡 **Macete**: dica curta para lembrar (analogia, etimologia ou associação).
+
+REGRAS:
+- Máximo 80 palavras
+- Se for sigla, expanda e explique
+- Se for termo técnico, use analogia do cotidiano
+- Linguagem acessível para estudante brasileiro
+- NÃO repita a pergunta, NÃO diga "claro" ou "com certeza"`;
+
+        const prompt = `Defina: "${word.slice(0, 80)}"${subject ? `\nDisciplina: ${subject}` : ''}${questionContext ? `\nContexto da questão: "${questionContext.slice(0, 300)}"` : ''}`;
+
+        const { result } = await ApiService._callWithProviderChain({
+            messages: [
+                { role: 'system', content: systemMsg },
+                { role: 'user', content: prompt }
+            ],
+            opts: { temperature: 0.2, max_tokens: 200 },
+            models: {
+                gemini: settings.geminiModel || 'gemini-2.5-flash',
+                groq: settings.groqModelFast || 'llama-3.1-8b-instant',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                chatgpt: settings.chatgptModel || 'gpt-4o',
+                copilot: settings.copilotModel || 'gpt-4o',
+            },
+            label: 'generateWordDefinition',
+            fallbackValue: `Não foi possível definir "${word}".`,
+        });
+        return result;
+    },
     //          Útil para alimentar generateMnemonic e generateSimilarQuestionV2
     // ─────────────────────────────────────────────────────────────────────────
 
