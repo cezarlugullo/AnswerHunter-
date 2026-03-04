@@ -586,13 +586,17 @@ function bindEvents() {
       showToast('Migração não disponível em modo demo', { type: 'warning' });
       return;
     }
-    showToast('Iniciando migração v1→v2...', { type: 'info' });
-    const result = await MigrationService.migrate();
-    if (result.success) {
-      showToast(`Migração completa! ${result.stats.totalQuestions || 0} cards.`, { type: 'success' });
-      location.reload();
-    } else {
-      showToast('Erro: ' + result.error, { type: 'danger' });
+    try {
+      showToast('Iniciando migração v1→v2...', { type: 'info' });
+      const result = await MigrationService.migrate();
+      if (result.success) {
+        showToast(`Migração completa! ${result.stats.totalQuestions || 0} cards.`, { type: 'success' });
+        location.reload();
+      } else {
+        showToast('Erro: ' + result.error, { type: 'danger' });
+      }
+    } catch (err) {
+      showToast('Erro na migração: ' + err.message, { type: 'danger' });
     }
   });
 
@@ -609,6 +613,7 @@ function bindEvents() {
 
   // Import
   document.getElementById('btnImportData')?.addEventListener('click', () => {
+    if (DEMO) { showToast('Importação não disponível em modo demo', { type: 'warning' }); return; }
     document.getElementById('importFileInput')?.click();
   });
   document.getElementById('importFileInput')?.addEventListener('change', async (e) => {
@@ -641,8 +646,12 @@ function bindEvents() {
   });
   document.getElementById('btnExportJSON')?.addEventListener('click', async () => {
     if (DEMO) return;
-    await ExportService.downloadBackup();
-    showToast('Backup JSON exportado!', { type: 'success' });
+    try {
+      await ExportService.downloadBackup();
+      showToast('Backup JSON exportado!', { type: 'success' });
+    } catch (err) {
+      showToast('Erro ao exportar JSON: ' + err.message, { type: 'danger' });
+    }
   });
 
   // Search bar on overview

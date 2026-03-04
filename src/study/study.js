@@ -13,10 +13,40 @@ const escH = s => String(s || '')
 
 const parseMarkdown = text => {
   let html = escH(text);
-  // Bold
+  
+  // Convert basic newlines
+  html = html.replace(/\n/g, '<br/>');
+
+  // Progressive disclosure support
+  html = html.replace(/&lt;details&gt;/g, '<details class="adhd-details">')
+    .replace(/&lt;\/details&gt;/g, '</details>')
+    .replace(/&lt;summary&gt;([\s\S]*?)&lt;\/summary&gt;/g, '<summary class="adhd-summary"><span class="icon">chevron_right</span> $1</summary>');
+
+  // Format Why Wrong / Semantic elements
+  html = html.replace(/(🎯)\s*\*\*(.*?)\*\*[:]*/g, '<div class="ww-chunk ww-empathy"><strong>$1 $2:</strong></div>');
+  html = html.replace(/(🔑)\s*\*\*(.*?)\*\*[:]*/g, '<div class="ww-chunk ww-key"><strong>$1 $2:</strong></div>');
+  html = html.replace(/(🧠)\s*\*\*(.*?)\*\*[:]*/g, '<div class="ww-chunk ww-challenge"><strong>$1 $2:</strong></div>');
+
+  // Highlights
+  html = html.replace(/✅/g, '<span class="ww-mark correct">✅</span>');
+  html = html.replace(/❌/g, '<span class="ww-mark wrong">❌</span>');
+
+  // Card alternatives
+  const altRegex = /(?:^|<br\/>|\s|[-*]\s*)\*?\*?([A-E])\)\*?\*?\s*(?:.*?)?(<span class="ww-mark (correct|wrong)">[^<]+<\/span>)\s*(.*?)(?=(?:<br\/>|\s|[-*]\s*)\*?\*?[A-E]\)|\n|<details|<\/details|$)/g;
+  html = html.replace(altRegex, (_, letter, mark, type, explanation) => {
+    let cleanExp = explanation.replace(/<\/?(div|span|p)[^>]*>/g, '').trim();
+    cleanExp = cleanExp.replace(/^\*\*(Por que\??|Motivo|Justificativa)\*\*\s*/i, '');
+    return `<div class="opt-card ${type}">
+      <div class="opt-card-header"><span class="opt-letter">${letter}</span>${mark}</div>
+      <div class="opt-card-body">${cleanExp}</div>
+    </div>`;
+  });
+
+  // Remaining Bold
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   // Italic
   html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+
   return html;
 };
 
@@ -4624,29 +4654,29 @@ async function renderMindMap() {
   `;
 }
 
-document.getElementById('btnMindMap').addEventListener('click', openMindMap);
-mindMapCloseBtn.addEventListener('click', closeMindMap);
-mindMapOverlay.addEventListener('click', e => { if (e.target === mindMapOverlay) closeMindMap(); });
+document.getElementById('btnMindMap')?.addEventListener('click', openMindMap);
+mindMapCloseBtn?.addEventListener('click', closeMindMap);
+mindMapOverlay?.addEventListener('click', e => { if (e.target === mindMapOverlay) closeMindMap(); });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && mindMapOverlay.classList.contains('open')) closeMindMap();
+  if (e.key === 'Escape' && mindMapOverlay?.classList.contains('open')) closeMindMap();
 });
 
-document.getElementById('btnPomodoro').addEventListener('click', () => {
+document.getElementById('btnPomodoro')?.addEventListener('click', () => {
   const widget = document.getElementById('pomodoroWidget');
-  widget.classList.toggle('visible');
+  widget?.classList.toggle('visible');
   updatePomDisplay();
 });
 
-document.getElementById('pomPlayPause').addEventListener('click', () => {
+document.getElementById('pomPlayPause')?.addEventListener('click', () => {
   if (_pom.running) pausePomodoro();
   else startPomodoro();
 });
 
-document.getElementById('pomReset').addEventListener('click', resetPomodoro);
+document.getElementById('pomReset')?.addEventListener('click', resetPomodoro);
 
-document.getElementById('pomClose').addEventListener('click', () => {
+document.getElementById('pomClose')?.addEventListener('click', () => {
   pausePomodoro();
-  document.getElementById('pomodoroWidget').classList.remove('visible');
+  document.getElementById('pomodoroWidget')?.classList.remove('visible');
 });
 
 setupPomodoroDrag();
