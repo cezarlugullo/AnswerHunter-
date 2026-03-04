@@ -516,7 +516,7 @@ const Note = {
 │                                                                      │
 │  ┌─ SIDEBAR ──┐  ┌─────────────────────────────────────────────┐    │
 │  │            │  │                                              │    │
-│  │ 📊 Overview│  │  Bom dia, Cezar!                            │    │
+│  │ 📊 Overview│  │  Bom dia, Estudante!                         │    │
 │  │ 📚 Discipl.│  │  Nível: Estudioso (Lv.5) ████████░░ 2.340XP│    │
 │  │ 🛤 Trilhas │  │  🔥 Streak: 12 dias                         │    │
 │  │ 📅 Planner │  │                                              │    │

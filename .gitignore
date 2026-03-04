@@ -1,6 +1,9 @@
 # Non-project files
 _non_project/
 
+# Personal study content
+QUESTOES_SM2_BANCO_DADOS.md
+
 # Operating system files
 .DS_Store
 Thumbs.db
