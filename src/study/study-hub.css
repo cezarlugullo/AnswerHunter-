@@ -2599,7 +2599,9 @@ input[type="text"]::placeholder {
   line-height: var(--reading-line-height);
   letter-spacing: var(--reading-letter-spacing);
   word-spacing: var(--reading-word-spacing);
-  max-width: var(--reading-max-width);
+  text-align: justify;
+  text-align-last: left;
+  hyphens: auto;
   margin-bottom: var(--sp-4);
   padding-bottom: var(--sp-3);
   border-bottom: 1px solid var(--color-border);
@@ -2773,12 +2775,12 @@ input[type="text"]::placeholder {
 }
 
 .card-question {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   flex: 1;
   min-height: 120px;
-  text-align: center;
+  text-align: justify;
+  text-align-last: left;
+  hyphens: auto;
   font-family: var(--font-reading);
   font-size: var(--text-2xl);
   font-weight: 500;
@@ -2786,6 +2788,15 @@ input[type="text"]::placeholder {
   letter-spacing: var(--reading-letter-spacing);
   word-spacing: var(--reading-word-spacing);
   color: var(--color-text-primary);
+}
+
+/* Garante justificação em qualquer filho (p, span, div) inserido via innerHTML */
+.card-question p,
+.card-question div,
+.card-question span {
+  text-align: justify;
+  text-align-last: left;
+  hyphens: auto;
 }
 
 .card-options {
@@ -4663,6 +4674,9 @@ input[type="text"]::placeholder {
   font-weight: 500;
   line-height: 1.7;
   color: var(--color-text-primary);
+  text-align: justify;
+  text-align-last: left;
+  hyphens: auto;
   margin: 0;
 }
 

@@ -20,7 +20,7 @@ import { QuestionFingerprint } from '../utils/QuestionFingerprint.js';
 export const PopupController = {
   view: null,
   currentSetupStep: 1,
-  onboardingFlags: { welcomed: false, setupDone: false },
+  onboardingFlags: { welcomed: false, setupDone: false, toolkitTourShown: false },
   _isReopenMode: false,
   _settingsCache: null,
   _chatgptModelValidationRunning: false,
@@ -1735,6 +1735,11 @@ export const PopupController = {
       this.view.setSetupVisible(false);
       this.view.showToast(this.t('setup.toast.saved'), 'success');
       this.view.showConfetti();
+
+      // Show the toolkit tour once after first-time setup
+      if (!this.onboardingFlags.toolkitTourShown) {
+        setTimeout(() => this._showToolkitTour(), 900);
+      }
     } catch (error) {
       console.error('Save setup error:', error);
       this.view.showToast(`Save error: ${error.message}`, 'error');
@@ -1863,6 +1868,83 @@ export const PopupController = {
     } catch (error) {
       console.warn('Could not save onboarding flags:', error);
     }
+  },
+
+  /**
+   * Shows the post-onboarding toolkit tour (bottom sheet with 5 feature slides).
+   * Called once after first-time setup. Wired entirely to DOM — no external deps.
+   */
+  _showToolkitTour() {
+    const overlay = document.getElementById('toolkit-tour-overlay');
+    if (!overlay) return;
+
+    const TOTAL     = 5;
+    let   current   = 0;
+    const slides    = overlay.querySelectorAll('.tt-slide');
+    const dots      = overlay.querySelectorAll('.tt-dot');
+    const prevBtn   = document.getElementById('ttPrevBtn');
+    const nextBtn   = document.getElementById('ttNextBtn');
+    const finishBtn = document.getElementById('ttFinishBtn');
+    const closeBtn  = document.getElementById('ttCloseBtn');
+    const studyBtn  = document.getElementById('ttOpenStudyBtn');
+
+    const goTo = (i) => {
+      slides[current].classList.remove('tt-slide--active');
+      dots[current].classList.remove('tt-dot--active');
+      current = Math.max(0, Math.min(i, TOTAL - 1));
+      slides[current].classList.add('tt-slide--active');
+      dots[current].classList.add('tt-dot--active');
+      prevBtn.disabled = current === 0;
+      const isLast = current === TOTAL - 1;
+      nextBtn.classList.toggle('hidden', isLast);
+      finishBtn.classList.toggle('hidden', !isLast);
+    };
+
+    const close = async () => {
+      overlay.classList.add('hidden');
+      this.onboardingFlags.toolkitTourShown = true;
+      await this.saveOnboardingFlags();
+    };
+
+    // Bind nav (clone nodes to avoid duplicate listeners on re-open)
+    const rebind = (id, fn) => {
+      const el = document.getElementById(id);
+      const fresh = el.cloneNode(true);
+      el.parentNode.replaceChild(fresh, el);
+      fresh.addEventListener('click', fn);
+      return fresh;
+    };
+
+    rebind('ttPrevBtn',    () => goTo(current - 1));
+    rebind('ttNextBtn',    () => goTo(current + 1));
+    rebind('ttFinishBtn',  () => close());
+    rebind('ttCloseBtn',   () => close());
+    rebind('ttOpenStudyBtn', () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL('src/study/study.html') });
+      close();
+    });
+
+    // Dot clicks
+    dots.forEach((d, i) => {
+      const fresh = d.cloneNode(true);
+      d.parentNode.replaceChild(fresh, d);
+      fresh.addEventListener('click', () => goTo(i));
+    });
+
+    // Re-query after clone
+    const newPrevBtn = document.getElementById('ttPrevBtn');
+    const newNextBtn = document.getElementById('ttNextBtn');
+    const newFinishBtn = document.getElementById('ttFinishBtn');
+
+    // Init to slide 0
+    slides.forEach((s, i) => s.classList.toggle('tt-slide--active', i === 0));
+    overlay.querySelectorAll('.tt-dot').forEach((d, i) => d.classList.toggle('tt-dot--active', i === 0));
+    current = 0;
+    if (newPrevBtn) newPrevBtn.disabled = true;
+    if (newNextBtn) newNextBtn.classList.remove('hidden');
+    if (newFinishBtn) newFinishBtn.classList.add('hidden');
+
+    overlay.classList.remove('hidden');
   },
 
   async handleExtract() {

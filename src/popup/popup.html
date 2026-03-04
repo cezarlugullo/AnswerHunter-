@@ -1485,6 +1485,109 @@
     </div>
   </div>
 
+  <!-- ===== TOOLKIT TOUR — shown once after first-time setup ===== -->
+  <div id="toolkit-tour-overlay" class="tt-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="tt-title">
+    <div class="tt-backdrop"></div>
+    <div class="tt-card">
+      <button class="tt-close" id="ttCloseBtn" aria-label="Fechar tour">
+        <span class="material-symbols-rounded">close</span>
+      </button>
+
+      <div class="tt-slides" id="ttSlides">
+
+        <!-- Slide 0: Tudo pronto -->
+        <div class="tt-slide tt-slide--active" data-slide="0">
+          <div class="tt-icon-wrap tt-icon--green">
+            <span class="material-symbols-rounded">check_circle</span>
+          </div>
+          <h2 class="tt-title" id="tt-title">Configuração concluída! 🎉</h2>
+          <p class="tt-desc">Você está pronto para usar o <strong>AnswerHunter</strong>. Explore rapidamente o que pode fazer.</p>
+          <div class="tt-pills">
+            <span class="tt-pill"><span class="material-symbols-rounded">travel_explore</span>Busca</span>
+            <span class="tt-pill"><span class="material-symbols-rounded">menu_book</span>Binder</span>
+            <span class="tt-pill"><span class="material-symbols-rounded">local_library</span>Study Hub</span>
+          </div>
+        </div>
+
+        <!-- Slide 1: Busca -->
+        <div class="tt-slide" data-slide="1">
+          <div class="tt-icon-wrap tt-icon--blue">
+            <span class="material-symbols-rounded">travel_explore</span>
+          </div>
+          <h2 class="tt-title">Busca Inteligente</h2>
+          <p class="tt-desc">Com uma questão aberta no navegador, clique em <strong>Buscar</strong> para encontrar respostas em múltiplas fontes — ou em <strong>Extrair</strong> para capturar o texto da página com IA.</p>
+          <div class="tt-callout">
+            <span class="material-symbols-rounded">touch_app</span>
+            <span>Botões <em>Buscar</em> e <em>Extrair</em> na aba Search</span>
+          </div>
+        </div>
+
+        <!-- Slide 2: Binder -->
+        <div class="tt-slide" data-slide="2">
+          <div class="tt-icon-wrap tt-icon--orange">
+            <span class="material-symbols-rounded">menu_book</span>
+          </div>
+          <h2 class="tt-title">Binder</h2>
+          <p class="tt-desc">Salve questões e respostas para revisar depois. Tudo fica organizado na aba <strong>Binder</strong>, separado por pastas e disciplinas.</p>
+          <div class="tt-callout">
+            <span class="material-symbols-rounded">bookmark_add</span>
+            <span>Toque no ícone de salvar em qualquer resultado</span>
+          </div>
+        </div>
+
+        <!-- Slide 3: Disciplinas -->
+        <div class="tt-slide" data-slide="3">
+          <div class="tt-icon-wrap tt-icon--purple">
+            <span class="material-symbols-rounded">school</span>
+          </div>
+          <h2 class="tt-title">Disciplinas</h2>
+          <p class="tt-desc">Crie matérias como <em>"Direito Civil"</em> ou <em>"Redes"</em> e organize suas questões por assunto para estudar com foco total.</p>
+          <div class="tt-callout">
+            <span class="material-symbols-rounded">tab</span>
+            <span>Aba <strong>Disciplinas</strong> no menu superior</span>
+          </div>
+        </div>
+
+        <!-- Slide 4: Study Hub (CTA) -->
+        <div class="tt-slide" data-slide="4">
+          <div class="tt-icon-wrap tt-icon--primary">
+            <span class="material-symbols-rounded">local_library</span>
+          </div>
+          <h2 class="tt-title">Study Hub</h2>
+          <p class="tt-desc">Revise com <strong>flashcards e revisão espaçada</strong>. O Study Hub organiza automaticamente o que você precisa revisar hoje.</p>
+          <button class="tt-open-study-btn" id="ttOpenStudyBtn">
+            <span class="material-symbols-rounded">open_in_new</span>
+            Abrir Study Hub
+          </button>
+        </div>
+
+      </div><!-- /tt-slides -->
+
+      <!-- Footer nav -->
+      <div class="tt-footer">
+        <div class="tt-dots" id="ttDots">
+          <button class="tt-dot tt-dot--active" data-slide="0"></button>
+          <button class="tt-dot" data-slide="1"></button>
+          <button class="tt-dot" data-slide="2"></button>
+          <button class="tt-dot" data-slide="3"></button>
+          <button class="tt-dot" data-slide="4"></button>
+        </div>
+        <div class="tt-nav-btns">
+          <button class="tt-btn tt-btn--ghost" id="ttPrevBtn" disabled>
+            <span class="material-symbols-rounded">arrow_back</span>
+          </button>
+          <button class="tt-btn tt-btn--primary" id="ttNextBtn">
+            Próximo <span class="material-symbols-rounded">arrow_forward</span>
+          </button>
+          <button class="tt-btn tt-btn--finish hidden" id="ttFinishBtn">
+            Começar! <span class="material-symbols-rounded">done_all</span>
+          </button>
+        </div>
+      </div>
+
+    </div><!-- /tt-card -->
+  </div>
+
   <!-- Dev-mode Chrome API mock — auto-skipped when running as a real extension -->
   <script src="chrome-mock.js"></script>
   <script type="module" src="popup.js"></script>
