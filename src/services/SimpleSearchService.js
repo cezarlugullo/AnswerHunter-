@@ -32,7 +32,7 @@
  *    → SearchService.refineFromResults()   → SimpleSearchService.refineFromResults()
  *
  *  refineFromResults():
- *    Para cada URL (até MAX_CANDIDATES = 10, para em MAX_SOURCES = 5 válidas):
+ *    Para cada URL (até MAX_CANDIDATES = 12, para em MAX_SOURCES = 6 válidas):
  *      A. ApiService.fetchViaJina(url)
  *            → GET https://r.jina.ai/{url}  (free proxy, retorna texto/markdown limpo)
  *            → funciona na maioria dos sites (PasseiDireto, Brainly, blogs, Medium, etc.)
@@ -111,10 +111,10 @@ import { OptionsMatchService } from './search/OptionsMatchService.js';
 import { QuestionParser } from './search/QuestionParser.js';
 
 // Quantas URLs do Serper considerar no máximo (as primeiras são as mais relevantes)
-const MAX_CANDIDATES = 6;
+const MAX_CANDIDATES = 12;
 
 // Parar ao atingir este número de fontes que geraram resposta válida.
-const MAX_SOURCES = 3;
+const MAX_SOURCES = 6;
 
 // Tamanho mínimo de texto para enviar à IA.
 // Textos abaixo disso são páginas de erro, CAPTCHA ou redirecionamentos.
@@ -879,7 +879,7 @@ export const SimpleSearchService = {
             : Promise.resolve([]);
 
         const fase1Promise = _collectFirstNSources(
-            topResults, questionForInference, originalOptionsMap, 3, 5, onStatus, false
+            topResults, questionForInference, originalOptionsMap, 5, 8, onStatus, true
         );
 
         // Lançar Fase 0 (snippets) em paralelo
@@ -1017,14 +1017,17 @@ export const SimpleSearchService = {
             }
         }
 
-        // ── Fase 2: BackgroundTab — só se Fase 1 não encontrou nada ─────────────
+        // ── Fase 2: BackgroundTab — complementa quando Fase 1 não atingiu MAX_SOURCES ──
         // Filtra apenas os candidatos que são SPAs JS-pesadas e ainda não tiveram sucesso
-        if (sources.length === 0) {
-            const spaResults = topResults.filter(r => r.link && BackgroundTabExtractorService.isJsHeavySpa(r.link));
+        if (sources.length < MAX_SOURCES) {
+            const alreadyProcessed = new Set(allAttempts.map(a => a.link));
+            const spaResults = topResults
+                .filter(r => r.link && BackgroundTabExtractorService.isJsHeavySpa(r.link) && !alreadyProcessed.has(r.link));
             if (spaResults.length > 0) {
-                if (typeof onStatus === 'function') onStatus(' Tentando método alternativo de extração…');
+                if (typeof onStatus === 'function') onStatus(' Expandindo busca com mais fontes…');
+                const remaining = MAX_SOURCES - sources.length;
                 const bgResult = await _collectFirstNSources(
-                    spaResults, questionForInference, originalOptionsMap, 3, 5, onStatus, true
+                    spaResults, questionForInference, originalOptionsMap, remaining, remaining + 2, onStatus, true
                 );
                 sources.push(...bgResult.sources);
                 allAttempts.push(...bgResult.allAttempts);
@@ -1197,7 +1200,7 @@ export const SimpleSearchService = {
         for (const src of sources) preVotes[src.letter] = (preVotes[src.letter] || 0) + (src.confidence || 0);
         const preTotal = Object.values(preVotes).reduce((a, b) => a + b, 0);
         const preBest = Math.max(...Object.values(preVotes), 0);
-        const skipPhase3 = sources.length >= 2 && preTotal > 0 && (preBest / preTotal) >= 0.80;
+        const skipPhase3 = sources.length >= 4 && preTotal > 0 && (preBest / preTotal) >= 0.85;
 
         if (skipPhase3) {
             console.log(`[SimpleSearch] [FAST] Pulando Fase 3 de confirmação (consenso atual ≥ 80%)`);
