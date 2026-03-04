@@ -15,13 +15,6 @@ export function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
-export function cleanText(text) {
-    return (text || '')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
 export function isLikelyQuestion(text) {
     if (!text) return false;
     const clean = text.replace(/\s+/g, ' ').trim();
@@ -31,18 +24,6 @@ export function isLikelyQuestion(text) {
     const hasOptions = /(?:^|\s)[A-E]\s*[\)\.\-:]/i.test(clean);
     const looksLikeMenu = /menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|voltar|avançar|finalizar|marcar para revis[aã]o/i.test(clean);
     return (hasQuestionMark || hasKeywords || hasOptions) && !looksLikeMenu;
-}
-
-export function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
 }
 
 // Function to format question separating statement from alternatives

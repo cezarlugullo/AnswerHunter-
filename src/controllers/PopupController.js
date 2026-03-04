@@ -717,7 +717,7 @@ export const PopupController = {
     const PROVIDER_LABEL = {
       groq: '🔶 Groq',
       gemini: '💎 Gemini',
-      openrouter: '🔗 OpenRouter',
+ openrouter:' OpenRouter',
       chatgpt: '💬 ChatGPT',
       copilot: '🐙 Copilot',
     };
@@ -725,16 +725,16 @@ export const PopupController = {
     const activeLabel = PROVIDER_LABEL[primaryProvider] ?? primaryProvider;
 
     console.group(
-      '%c AnswerHunter  %c🤖 Provedor de IA atualizado',
+'%c AnswerHunter %c Provedor de IA atualizado',
       'background:#7c3aed;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;',
       'color:#7c3aed;font-weight:bold;font-size:13px;'
     );
-    console.log(`%c⚡ Ativo agora: ${activeLabel}  ›  ${activeModel}`, 'color:#16a34a;font-weight:bold;font-size:12px;');
+ console.log(`%c[FAST] Ativo agora: ${activeLabel} › ${activeModel}`,'color:#16a34a;font-weight:bold;font-size:12px;');
     console.table(
       Object.entries(providerModelMap).map(([provider, model]) => ({
         'Provider': (PROVIDER_LABEL[provider] ?? provider),
         'Modelo': model,
-        'Status': provider === primaryProvider ? '✅ ATIVO' : '○',
+'Status': provider === primaryProvider ?' ATIVO' :'○',
       }))
     );
     console.groupEnd();
@@ -1093,7 +1093,7 @@ export const PopupController = {
     try {
       const token = await CopilotAuthService.getValidToken();
       if (!token) {
-        if (resultEl) resultEl.innerHTML = '<span style="color:#ff7b72;">❌ Sem token válido. Faça login novamente.</span>';
+ if (resultEl) resultEl.innerHTML ='<span style="color:#ff7b72;"> Sem token válido. Faça login novamente.</span>';
         return;
       }
 
@@ -1117,17 +1117,17 @@ export const PopupController = {
 
       if (response.ok) {
         const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content?.trim() || '✅';
-        if (resultEl) resultEl.innerHTML = `<span style="color:#3fb950;">✅ Conectado! Modelo respondeu: "${reply.slice(0, 40)}"</span>`;
+ const reply = data.choices?.[0]?.message?.content?.trim() ||'';
+ if (resultEl) resultEl.innerHTML =`<span style="color:#3fb950;"> Conectado! Modelo respondeu:"${reply.slice(0, 40)}"</span>`;
         // Refresh token info since it may have been refreshed
         await this.refreshCopilotAuthUI();
       } else {
         const errText = await response.text().catch(() => '');
         const snippet = errText.slice(0, 120);
-        if (resultEl) resultEl.innerHTML = `<span style="color:#ff7b72;">❌ HTTP ${response.status}: ${snippet}</span>`;
+ if (resultEl) resultEl.innerHTML =`<span style="color:#ff7b72;"> HTTP ${response.status}: ${snippet}</span>`;
       }
     } catch (err) {
-      if (resultEl) resultEl.innerHTML = `<span style="color:#ff7b72;">❌ ${err.message || String(err)}</span>`;
+ if (resultEl) resultEl.innerHTML =`<span style="color:#ff7b72;"> ${err.message || String(err)}</span>`;
     } finally {
       if (btn) {
         btn.disabled = false;
@@ -1363,12 +1363,6 @@ export const PopupController = {
     if (normalizedStep === 4) {
       this.view.enableNextButton('openrouter');
     }
-
-    // this.updateStepperState(); // Not needed in new design or handled by view logic
-  },
-
-  async updateStepperState() {
-    // No-op for new design
   },
 
   resetProviderValidation(provider) {
@@ -1421,8 +1415,6 @@ export const PopupController = {
           : provider.charAt(0).toUpperCase() + provider.slice(1);
         this.view.showToast(this.t('setup.toast.connectionOk', { provider: providerLabel }), 'success');
         input.classList.add('input-valid');
-        await this.updateStepperState();
-
         // Auto-advance to next step after successful test
         // Auto-advance
         if (this.currentSetupStep < 4) {
@@ -1737,7 +1729,6 @@ export const PopupController = {
       this.view.setSetupVisible(false);
       this.view.showToast(this.t('setup.toast.saved'), 'success');
       this.view.showConfetti();
-      await this.updateStepperState();
     } catch (error) {
       console.error('Save setup error:', error);
       this.view.showToast(`Save error: ${error.message}`, 'error');
@@ -1933,7 +1924,7 @@ export const PopupController = {
     this.view.clearResults();
 
     // AH-PERF: End-to-end handleSearch timer
-    const _pcTimer = PerformanceTimer.create('🧩 handleSearch() — End-to-End');
+ const _pcTimer = PerformanceTimer.create(' handleSearch() — End-to-End');
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -4391,9 +4382,9 @@ export const PopupController = {
     html = html.replace(/^&gt; (.*$)/gim, '<blockquote style="border-left: 4px solid var(--primary); margin: 12px 0; color:var(--text-2); background:var(--surface-hover); padding:8px 12px; border-radius: 0 4px 4px 0;">$1</blockquote>');
 
     // AI Emojis markers
-    html = html.replace(/^\u2705(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">✅$1</div>');
-    html = html.replace(/^\u{1F4A1}(.*)$/gimu, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">💡$1</div>');
-    html = html.replace(/^\u274C(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">❌$1</div>');
+ html = html.replace(/^\u2705(.*)$/gim,'<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">$1</div>');
+ html = html.replace(/^\u{1F4A1}(.*)$/gimu,'<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">$1</div>');
+ html = html.replace(/^\u274C(.*)$/gim,'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">$1</div>');
     
     // Numbered lists
     html = html.replace(/^(\d+)\.\s+(.*)/gim, '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;padding:8px 12px;background:rgba(255,255,255,0.7);border-radius:8px;border-left:3px solid var(--primary);"><span style="background:var(--primary);color:#fff;font-weight:700;font-size:0.78rem;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$1</span><span>$2</span></div>');
@@ -4465,10 +4456,10 @@ export const PopupController = {
   /** Logs a user-friendly DevTools table showing extraction source, success, and answer. */
   _logExtractionTable(results) {
     const SOURCE_ICON = {
-      cache: '💾',
-      page: '📄',
-      'page-cache': '📄',
-      ai: '🤖',
+ cache:'',
+ page:'',
+'page-cache':'',
+ ai:'',
     };
     const getDomain = (url) => {
       try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return null; }
@@ -4484,12 +4475,12 @@ export const PopupController = {
         : '—';
       if (srcList.length > 0) {
         srcList.forEach((s, j) => {
-          const icon = SOURCE_ICON[s.type] ?? '🌐';
+ const icon = SOURCE_ICON[s.type] ??'';
           const label = s.link || getDomain(s.link) || String(s.title || '?').slice(0, 80);
           rows.push({
             '#': j === 0 ? i + 1 : '  └',
             'Fonte': `${icon} ${label}`,
-            'Extraiu?': ok ? '✅' : '❌',
+'Extraiu?': ok ?'' :'',
             'Gabarito': gabarito,
             'Confiança': j === 0 ? confidence : '',
           });
@@ -4497,8 +4488,8 @@ export const PopupController = {
       } else {
         rows.push({
           '#': i + 1,
-          'Fonte': r.aiFallback ? '🤖 IA (fallback)' : '—',
-          'Extraiu?': ok ? '✅' : '❌',
+'Fonte': r.aiFallback ?' IA (fallback)' :'—',
+'Extraiu?': ok ?'' :'',
           'Gabarito': gabarito,
           'Confiança': confidence,
         });
@@ -4506,13 +4497,13 @@ export const PopupController = {
     });
 
     const found = (results || []).filter(r => /^[A-E]$/.test(String(r.answerLetter || r.bestLetter || '').toUpperCase())).length;
-    const badge = found > 0 ? `%c ✅ ${found} gabarito(s) encontrado(s) ` : `%c ❌ Sem gabarito `;
+ const badge = found > 0 ?`%c [OK] ${found} gabarito(s) encontrado(s)` :`%c [FAIL] Sem gabarito`;
     const badgeStyle = found > 0
       ? 'background:#16a34a;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;'
       : 'background:#dc2626;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;';
 
     console.group(
-      '%c AnswerHunter  %c🎯 Resultado da Extração  ' + badge,
+'%c AnswerHunter %c Resultado da Extração' + badge,
       'background:#0ea5e9;color:#fff;font-weight:bold;padding:2px 6px;border-radius:3px;',
       'color:#0ea5e9;font-weight:bold;font-size:13px;',
       badgeStyle
@@ -5014,7 +5005,7 @@ export const PopupController = {
         if (entryBtn) {
           entryBtn.classList.add('turbo-entry-btn--active');
           const sub = entryBtn.querySelector('.turbo-entry-sub');
-          if (sub) sub.textContent = 'Ativo · buscando em Turbo Mode ⚡';
+ if (sub) sub.textContent ='Ativo · buscando em Turbo Mode';
         }
       } else {
         // Bridge not installed — hide the banner entirely.
@@ -5107,7 +5098,7 @@ export const PopupController = {
     try {
       setProgress(10, 'Buscando os arquivos…');
       await this._downloadBridgeInstaller();
-      setProgress(100, 'Tudo pronto! 🎉');
+ setProgress(100,'Tudo pronto!');
       await new Promise(r => setTimeout(r, 600));
       this._turboWizardGoTo('tw-step-2');
       this._turboUpdateDots(2);

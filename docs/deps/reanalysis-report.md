@@ -7,20 +7,20 @@
 
 ## 1. Graveyard Validation — Did We Discard Anything Functional?
 
-### Verdict: ✅ NO — All 10 graveyarded files are confirmed 100% dead
+### Verdict: [OK] NO — All 10 graveyarded files are confirmed 100% dead
 
 | File | Evidence | Status |
 |------|----------|--------|
-| `src/study/study.js` | `study.html:932` loads `study-hub.js`, NOT `study.js`. 0 imports in codebase. | ✅ DEAD |
-| `src/services/search/index.js` | 0 barrel imports. All consumers import specific submodules directly. | ✅ DEAD |
-| `src/dashboard/dashboard.html` | `background.js:226` opens `dashboard-v2.html`. 0 getURL refs. | ✅ DEAD |
-| `src/dashboard/dashboard.js` | Only loaded by dead `dashboard.html`. 0 imports. | ✅ DEAD |
-| `src/popup/new_popup.html` | 1 byte (empty). `manifest.json:46` uses `popup.html`. 0 refs. | ✅ DEAD |
-| `src/background.js.bak` | Backup artifact, untracked. | ✅ DEAD |
-| `src/controllers/PopupController.js.bak` | Backup artifact, untracked. | ✅ DEAD |
-| `src/services/SearchService.js.bak` | Backup artifact, untracked. | ✅ DEAD |
-| `src/dashboard/dashboard.html.bak` | Backup artifact, untracked. | ✅ DEAD |
-| `src/study/study.html.bak` | Backup artifact, untracked. | ✅ DEAD |
+|`src/study/study.js` |`study.html:932` loads`study-hub.js`, NOT`study.js`. 0 imports in codebase. | [OK] DEAD |
+|`src/services/search/index.js` | 0 barrel imports. All consumers import specific submodules directly. | [OK] DEAD |
+|`src/dashboard/dashboard.html` |`background.js:226` opens`dashboard-v2.html`. 0 getURL refs. | [OK] DEAD |
+|`src/dashboard/dashboard.js` | Only loaded by dead`dashboard.html`. 0 imports. | [OK] DEAD |
+|`src/popup/new_popup.html` | 1 byte (empty).`manifest.json:46` uses`popup.html`. 0 refs. | [OK] DEAD |
+|`src/background.js.bak` | Backup artifact, untracked. | [OK] DEAD |
+|`src/controllers/PopupController.js.bak` | Backup artifact, untracked. | [OK] DEAD |
+|`src/services/SearchService.js.bak` | Backup artifact, untracked. | [OK] DEAD |
+|`src/dashboard/dashboard.html.bak` | Backup artifact, untracked. | [OK] DEAD |
+|`src/study/study.html.bak` | Backup artifact, untracked. | [OK] DEAD |
 
 ### False positives caught (NOT dead, verified alive):
 
@@ -90,8 +90,8 @@
 
 | Category | Count | Severity |
 |----------|-------|----------|
-| Files graveyarded (confirmed dead) | 10 | ✅ Done |
-| Functional files incorrectly flagged | 0 | ✅ Nothing lost |
+| Files graveyarded (confirmed dead) | 10 | [OK] Done |
+| Functional files incorrectly flagged | 0 | [OK] Nothing lost |
 | Dead message handlers | 4 | S3 |
 | Dead JS exports | 2 | S3 |
 | Dead no-op methods | 1 + 2 calls | S3 |

@@ -70,7 +70,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
                 chrome.notifications?.create('ah_study_reminder', {
                     type: 'basic',
                     iconUrl: 'icons/icon128.png',
-                    title: 'AnswerHunter — Hora de estudar! 📚',
+ title:'AnswerHunter — Hora de estudar!',
                     message: `Você tem ${stats.due} card${stats.due > 1 ? 's' : ''} para revisar hoje.`,
                     priority: 1
                 });
@@ -219,54 +219,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         _runPhase2Search(msg.requestId, msg.question, msg.displayQuestion).catch(console.error);
         sendResponse({ ack: true });
         return false;
-    }
-
-    // ─── Dashboard v2 actions ──────────────────────────────────────
-    if (msg.type === 'AH_OPEN_DASHBOARD_V2') {
-        chrome.tabs.create({ url: chrome.runtime.getURL('src/dashboard/dashboard-v2.html') });
-        sendResponse({ ack: true });
-        return false;
-    }
-
-    if (msg.type === 'AH_EVALUATE_BADGES') {
-        (async () => {
-            try {
-                const hierarchy = await ContentHierarchyService.getDisciplines();
-                const xpData = await new Promise(r =>
-                    chrome.storage.local.get(['ah_xpData'], d => r(d.ah_xpData || {}))
-                );
-                const stats = BadgeService.buildStats(hierarchy, xpData);
-                const newBadges = await BadgeService.evaluate(stats);
-                sendResponse({ newBadges });
-            } catch (err) {
-                sendResponse({ error: err.message });
-            }
-        })();
-        return true; // Will respond async
-    }
-
-    if (msg.type === 'AH_RECORD_REVIEW') {
-        (async () => {
-            try {
-                await AnalyticsService.recordReview(msg.data || {});
-            } catch (err) {
-                console.warn('AnswerHunter BG: recordReview failed:', err?.message);
-            }
-            sendResponse({ ack: true });
-        })();
-        return true; // Will respond async
-    }
-
-    if (msg.type === 'AH_END_SESSION') {
-        (async () => {
-            try {
-                const summary = await AnalyticsService.endSession();
-                sendResponse({ summary });
-            } catch (err) {
-                sendResponse({ error: err.message });
-            }
-        })();
-        return true;
     }
 
     return false;
