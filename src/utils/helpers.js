@@ -321,6 +321,15 @@ export function formatQuestionText(text) {
             const line = lines[i];
             const m = line.match(altStartRe);
             if (m) {
+                // Guard: dot-space format "X. text" may be sentence continuation
+                const isDotSpaceFmt = /^[A-E]\s*\.\s/i.test(line);
+                if (isDotSpaceFmt && !currentAlt && alternatives.length === 0) {
+                    const lastStemLine = enunciadoParts.length > 0 ? enunciadoParts[enunciadoParts.length - 1] : '';
+                    if (lastStemLine && /[a-zA-Z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF]\s*$/.test(lastStemLine)) {
+                        enunciadoParts.push(line);
+                        continue;
+                    }
+                }
                 const letter = m[1].toUpperCase();
                 const body = trimNoise(clean(m[2]));
                 if (allowLoose && isLikelyFalseLooseAlt(letter, body, i, alternatives.length > 0)) {

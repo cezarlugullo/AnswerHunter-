@@ -1,4 +1,4 @@
-import { ExtractionService } from '../services/ExtractionService.js';
+﻿import { ExtractionService } from '../services/ExtractionService.js';
 import { SearchService } from '../services/SearchService.js';
 import { ApiService } from '../services/ApiService.js';
 import { BinderController } from './BinderController.js';
@@ -1995,7 +1995,7 @@ export const PopupController = {
       const isValidOptionLine = (line) => {
         const m = String(line || '').trim().match(/^([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i);
         if (!m) return false;
-        let body = String(m[2] || '').replace(/\s+/g, '').trim();
+        let body = String(m[2] || '').replace(/\s+/g, ' ').trim();
         const noise = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parab[eé]ns|voc[eê]\s+acertou|confira\s+o|explica[cç][aã]o)\b/i;
         const idx = body.search(noise);
         if (idx > 1) body = body.slice(0, idx).trim();
@@ -2024,7 +2024,7 @@ export const PopupController = {
         .toLowerCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/^[a-e]\s*(?:[\)\-:]|(?:\.\s))\s*/i, '')
-        .replace(/[^a-z0-9]+/g, '')
+        .replace(/[^a-z0-9\s]+/g, ' ')
         .trim();
       const optionTokens = (body) => normalizeOptionBody(body)
         .split(/\s+/)
@@ -2039,7 +2039,7 @@ export const PopupController = {
           const m = line.match(re);
           if (!m) continue;
           const letter = (m[1] || '').toUpperCase();
-          const body = String(m[2] || '').replace(/\s+/g, '').trim();
+          const body = String(m[2] || '').replace(/\s+/g, ' ').trim();
           if (!isValidOptionLine(`${letter}) ${body}`)) continue;
           entries.push({ letter, body, codeLike: looksLikeCodeOptionBody(body) });
           letters.add(letter);
@@ -2058,7 +2058,7 @@ export const PopupController = {
           const m = line.match(re);
           if (!m) continue;
           const letter = (m[1] || '').toUpperCase();
-          const body = String(m[2] || '').replace(/\s+/g, '').trim();
+          const body = String(m[2] || '').replace(/\s+/g, ' ').trim();
           if (!isValidOptionLine(`${letter}) ${body}`)) continue;
           if (!map.has(letter) || body.length > String(map.get(letter) || '').length) {
             map.set(letter, body);
@@ -2116,7 +2116,7 @@ export const PopupController = {
         const normalizeTokens = (s) => String(s || '')
           .toLowerCase()
           .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-z0-9]+/g, '')
+          .replace(/[^a-z0-9\s]+/g, ' ')
           .trim()
           .split(/\s+/)
           .filter(t => t.length >= 4);
@@ -2427,9 +2427,9 @@ export const PopupController = {
                     const _normStem = (s) => String(s || '')
                       .toLowerCase()
                       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                      .replace(/[^a-z0-9]+/g, '').trim();
-                    const ocrTokens = _normStem(ocrStemText).split('').filter(t => t.length >= 4);
-                    const domTokenSet = new Set(_normStem(domStemText).split('').filter(t => t.length >= 4));
+                      .replace(/[^a-z0-9]+/g, ' ').trim();
+                    const ocrTokens = _normStem(ocrStemText).split(/\s+/).filter(t => t.length >= 4);
+                    const domTokenSet = new Set(_normStem(domStemText).split(/\s+/).filter(t => t.length >= 4));
                     let stemOverlap = 0;
                     for (const t of ocrTokens) { if (domTokenSet.has(t)) stemOverlap++; }
                     const stemOverlapRatio = ocrTokens.length > 0 ? (stemOverlap / ocrTokens.length) : 0;
@@ -2559,12 +2559,11 @@ export const PopupController = {
           const normalizeCtx = (s) => String(s || '')
             .toLowerCase()
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9 ]+/g, '')
-            .replace(/\s+/g, '')
+            .replace(/[^a-z0-9]+/g, ' ')
             .trim();
           const overlapScore = (a, b) => {
-            const ta = new Set(normalizeCtx(a).split('').filter((t) => t.length >= 4).slice(0, 24));
-            const tb = new Set(normalizeCtx(b).split('').filter((t) => t.length >= 4).slice(0, 64));
+            const ta = new Set(normalizeCtx(a).split(/\s+/).filter((t) => t.length >= 4).slice(0, 24));
+            const tb = new Set(normalizeCtx(b).split(/\s+/).filter((t) => t.length >= 4).slice(0, 64));
             if (ta.size === 0 || tb.size === 0) return 0;
             let hit = 0;
             ta.forEach((t) => { if (tb.has(t)) hit += 1; });
@@ -2600,7 +2599,7 @@ export const PopupController = {
             const _origStemNorm = normalizeCtx(
               stemLooksIncomplete ? _stemOnlyLines.join('').trim() : bestQuestion
             );
-            const _origTokens = _origStemNorm.split('').filter(t => t.length >= 4).slice(0, 12);
+            const _origTokens = _origStemNorm.split(/\s+/).filter(t => t.length >= 4).slice(0, 12);
             let _ctxHits = 0;
             for (const t of _origTokens) { if (_ctxNorm.includes(t)) _ctxHits++; }
             const _ctxContainsStem = _origTokens.length === 0 || (_ctxHits / _origTokens.length) >= 0.5;
@@ -2938,11 +2937,16 @@ export const PopupController = {
                   'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos'
                 ]);
 
-                const anchorTokens = normalize(anchorText)
-                  .split('')
-                  .filter((t) => t.length >= 4 && !stop.has(t))
-                  .slice(0, 16);
-                if (anchorTokens.length < 4) return '';
+                const tokenize = (s) => String(s || '')
+                  .toLowerCase()
+                  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                  .replace(/[^a-z0-9]+/g, ' ').trim()
+                  .split(/\s+/)
+                  .filter((t) => t.length >= 4 && !stop.has(t));
+                const anchorNorm = normalize(anchorText);
+                const anchorSubstr = anchorNorm.slice(0, 200);
+                const anchorTokens = tokenize(anchorText).slice(0, 16);
+                if (anchorSubstr.length < 30 && anchorTokens.length < 4) return '';
 
                 const containers = Array.from(document.querySelectorAll('section, article, main, form, div, [data-section], [data-testid]'));
                 let best = { score: -1, options: [] };
@@ -2953,9 +2957,14 @@ export const PopupController = {
                   const norm = normalize(raw);
                   if (!norm) continue;
 
+                  // Primary: full-stem substring match (most accurate)
+                  const fullMatch = anchorSubstr.length >= 40 && norm.includes(anchorSubstr);
+                  // Fallback: token overlap
                   let hits = 0;
-                  for (const tk of anchorTokens) if (norm.includes(tk)) hits += 1;
-                  if (hits < 4) continue;
+                  if (!fullMatch) {
+                    for (const tk of anchorTokens) if (norm.includes(tk)) hits += 1;
+                  }
+                  if (!fullMatch && hits < 4) continue;
 
                   // Find the line where the question stem starts to avoid extracting options from previous questions
                   const rawLines = raw.split(/\n/);
@@ -2988,7 +2997,7 @@ export const PopupController = {
                   }).length;
                   const codeBonus = preferCode ? (codeCount >= Math.max(2, extracted.length - 1) ? 60 : -50) : 0;
 
-                  const score = (hits * 16) + (extracted.length * 38) + codeBonus - Math.min(30, Math.abs(raw.length - 7000) / 300);
+                  const score = (fullMatch ? 500 : hits * 16) + (extracted.length * 38) + codeBonus - Math.min(30, Math.abs(raw.length - 7000) / 300);
                   if (score > best.score) best = { score, options: extracted };
                 }
 
@@ -3041,11 +3050,16 @@ export const PopupController = {
                   'os', 'as', 'no', 'na', 'em', 'por', 'ou', 'ao', 'aos'
                 ]);
 
-                const anchorTokens = normalize(anchorText)
-                  .split('')
-                  .filter((t) => t.length >= 4 && !stop.has(t))
-                  .slice(0, 18);
-                if (anchorTokens.length < 4) return '';
+                const tokenize = (s) => String(s || '')
+                  .toLowerCase()
+                  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                  .replace(/[^a-z0-9]+/g, ' ').trim()
+                  .split(/\s+/)
+                  .filter((t) => t.length >= 4 && !stop.has(t));
+                const anchorNorm = normalize(anchorText);
+                const anchorSubstr = anchorNorm.slice(0, 200);
+                const anchorTokens = tokenize(anchorText).slice(0, 18);
+                if (anchorSubstr.length < 30 && anchorTokens.length < 4) return '';
 
                 const cleanBody = (s) => {
                   let b = String(s || '').replace(/\s+/g, ' ').trim();
@@ -3103,18 +3117,25 @@ export const PopupController = {
                     'section, article, main, form, [data-question], [data-questao], [data-testid], div'
                   ));
 
-                  // Find best-matching container via textContent token hits
+                  // Find best-matching container via full-stem or token hits
                   let bestContainer = null;
-                  let bestHits = 3; // require at least 4 hits
+                  let bestScore = -1;
                   for (const el of containers) {
                     const tc = String(el?.textContent || '');
                     if (tc.length < 100 || tc.length > 200000) continue;
                     const norm = normalize(tc);
+                    // Primary: full-stem substring match
+                    const fullMatch = anchorSubstr.length >= 40 && norm.includes(anchorSubstr);
+                    // Fallback: token overlap
                     let hits = 0;
-                    for (const tk of anchorTokens) if (norm.includes(tk)) hits++;
-                    // Prefer smaller containers (more specific) when hits are equal
-                    if (hits > bestHits || (hits === bestHits && bestContainer && tc.length < String(bestContainer.textContent || '').length)) {
-                      bestHits = hits;
+                    if (!fullMatch) {
+                      for (const tk of anchorTokens) if (norm.includes(tk)) hits++;
+                    }
+                    const score = fullMatch ? 1000 : hits;
+                    if (score < 4 && !fullMatch) continue;
+                    // Prefer smaller containers (more specific) when score is equal
+                    if (score > bestScore || (score === bestScore && bestContainer && tc.length < String(bestContainer.textContent || '').length)) {
+                      bestScore = score;
                       bestContainer = el;
                     }
                   }
@@ -3213,9 +3234,14 @@ export const PopupController = {
                     const raw = String(el?.textContent || '').replace(/\r/g, '\n').trim();
                     if (!raw || raw.length < 140 || raw.length > 160000) continue;
                     const norm = normalize(raw);
+                    // Primary: full-stem substring match
+                    const fullMatch = anchorSubstr.length >= 40 && norm.includes(anchorSubstr);
+                    // Fallback: token overlap
                     let hits = 0;
-                    for (const tk of anchorTokens) if (norm.includes(tk)) hits++;
-                    if (hits < 4) continue;
+                    if (!fullMatch) {
+                      for (const tk of anchorTokens) if (norm.includes(tk)) hits++;
+                    }
+                    if (!fullMatch && hits < 4) continue;
                     const extracted = extractOptionLines(raw);
                     if (extracted.length < 2) continue;
                     const codeCount = extracted.filter((line) => {
@@ -3223,7 +3249,7 @@ export const PopupController = {
                       return m ? isCodeLike(m[2]) : false;
                     }).length;
                     const codeBonus = preferCode ? (codeCount >= Math.max(2, extracted.length - 1) ? 60 : -50) : 0;
-                    const score = (hits * 16) + (extracted.length * 38) + codeBonus - Math.min(40, Math.abs(raw.length - 7000) / 300);
+                    const score = (fullMatch ? 500 : hits * 16) + (extracted.length * 38) + codeBonus - Math.min(40, Math.abs(raw.length - 7000) / 300);
                     if (score > best.score) best = { score, options: extracted };
                   }
                   return best.options;
@@ -3310,8 +3336,15 @@ export const PopupController = {
                   .replace(/[^a-z0-9]+/g, '').replace(/\s+/g, '').trim();
 
                 const stemNorm = normalize(isolatedStem);
-                const stemTokens = stemNorm.split('').filter(t => t.length >= 4).slice(0, 15);
-                if (stemTokens.length < 3) return '';
+                const stemSubstr = stemNorm.slice(0, 200);
+                const _tokenize = (s) => String(s || '')
+                  .toLowerCase()
+                  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                  .replace(/[^a-z0-9]+/g, ' ').trim()
+                  .split(/\s+/)
+                  .filter(t => t.length >= 4);
+                const stemTokens = _tokenize(isolatedStem).slice(0, 15);
+                if (stemSubstr.length < 30 && stemTokens.length < 3) return '';
 
                 const OPTION_SEL =
                   'button[data-testid^="alternative-"], [data-testid^="alternative-"], ' +
@@ -3361,6 +3394,9 @@ export const PopupController = {
                 const scoreContainer = (el) => {
                   const tc = normalize(el.textContent || '');
                   if (tc.length < 30) return -1;
+                  // Primary: full-stem substring match
+                  if (stemSubstr.length >= 40 && tc.includes(stemSubstr)) return 100;
+                  // Fallback: token overlap
                   let hits = 0;
                   for (const tk of stemTokens) if (tc.includes(tk)) hits++;
                   const len = tc.length;
@@ -3403,12 +3439,19 @@ export const PopupController = {
                 const fullText = (document.body?.innerText || document.body?.textContent || '').replace(/\r/g, '\n');
                 const fullNorm = normalize(fullText);
                 let stemStart = -1;
-                const winSize = stemNorm.length + 100;
-                for (let i = 0; i < fullNorm.length - 50; i += 15) {
-                  const w = fullNorm.substring(i, i + winSize);
-                  let hits = 0;
-                  for (const tk of stemTokens) if (w.includes(tk)) hits++;
-                  if (hits >= stemTokens.length * 0.7) { stemStart = i; break; }
+                // Primary: find the stem as substring in the full page text
+                if (stemSubstr.length >= 40) {
+                  stemStart = fullNorm.indexOf(stemSubstr);
+                }
+                // Fallback: sliding window with token overlap
+                if (stemStart < 0 && stemTokens.length >= 3) {
+                  const winSize = stemNorm.length + 100;
+                  for (let i = 0; i < fullNorm.length - 50; i += 15) {
+                    const w = fullNorm.substring(i, i + winSize);
+                    let hits = 0;
+                    for (const tk of stemTokens) if (w.includes(tk)) hits++;
+                    if (hits >= stemTokens.length * 0.7) { stemStart = i; break; }
+                  }
                 }
                 if (stemStart >= 0) {
                   const afterStem = fullText.substring(stemStart);
@@ -3515,6 +3558,7 @@ export const PopupController = {
                 const domProfile = buildOptionsProfile(domOptionsText);
                 const ocrCompactSet = ocrProfile.entries.length >= 3 && ocrProfile.entries.every((entry) => isCompactOptionBody(entry.body));
                 const domVerboseSet = domProfile.entries.length >= 3 && domProfile.entries.some((entry) => entry.body.length >= 22 || entry.body.split(/\s+/).length >= 4);
+
                 if (ocrCompactSet && domVerboseSet) {
                   console.log('AnswerHunter: OCR_DOM_SHAPE_GUARD rejected DOM replacement (compact OCR options vs verbose DOM options)');
                 } else if (shouldEnforceAlignment && !alignment.consistent) {
@@ -3584,20 +3628,20 @@ export const PopupController = {
       if (usedVisionOcr && domQuestion && ocrVisionText) {
         const _normCross = (s) => String(s || '')
           .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^a-z0-9]+/g, '').trim();
+          .replace(/[^a-z0-9]+/g, ' ').trim();
         const displayStemLines = displayQuestion.split('\n')
           .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
-        const displayStemNorm = _normCross(displayStemLines.join(''));
+        const displayStemNorm = _normCross(displayStemLines.join(' '));
         const ocrStemLines = ocrVisionText.split('\n')
           .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
-        const ocrStemNorm = _normCross(ocrStemLines.join(''));
+        const ocrStemNorm = _normCross(ocrStemLines.join(' '));
         const domStemLines = domQuestion.split('\n')
           .filter(l => !l.trim().match(/^\s*["']?\s*[A-E]\s*[\)\.\-:]\s/i));
-        const domStemNorm = _normCross(domStemLines.join(''));
+        const domStemNorm = _normCross(domStemLines.join(' '));
 
         // Check if display has drifted from OCR (contaminated by DOM)
-        const displayTokens = displayStemNorm.split('').filter(t => t.length >= 4);
-        const ocrTokenSet = new Set(ocrStemNorm.split('').filter(t => t.length >= 4));
+        const displayTokens = displayStemNorm.split(/\s+/).filter(t => t.length >= 4);
+        const ocrTokenSet = new Set(ocrStemNorm.split(/\s+/).filter(t => t.length >= 4));
         let ocrOverlap = 0;
         for (const t of displayTokens) { if (ocrTokenSet.has(t)) ocrOverlap++; }
         const ocrOverlapRatio = displayTokens.length > 0 ? ocrOverlap / displayTokens.length : 1;
@@ -4147,12 +4191,29 @@ export const PopupController = {
     };
     const lines = String(text || '').split('\n');
     const re = /^\s*["'“”‘’]?\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i;
-    for (const line of lines) {
+    const matchedLines = new Set();
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
       const m = line.match(re);
       if (m) {
+        // Guard: dot-space format "X. text" may be sentence continuation
+        const isDotSpaceFmt = /^\s*["'“”‘’]?\s*[A-E]\s*\.\s/i.test(line);
+        if (isDotSpaceFmt) {
+          let prevNonOptLine = null;
+          for (let j = i - 1; j >= 0; j--) {
+            if (!matchedLines.has(j) && lines[j].trim()) {
+              prevNonOptLine = lines[j].trim();
+              break;
+            }
+          }
+          if (prevNonOptLine && /[a-zA-Z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF]\s*$/.test(prevNonOptLine)) {
+            continue;
+          }
+        }
         const cleaned = cleanOptionBody(m[2]);
         if (!isUsableBody(cleaned)) continue;
         map[m[1].toUpperCase()] = cleaned;
+        matchedLines.add(i);
       }
     }
     return map;

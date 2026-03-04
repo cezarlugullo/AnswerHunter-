@@ -671,8 +671,14 @@ export const ExtractionService = {
             const qNorm = normalizeText(questionText);
             if (bNorm.length >= 40 && qNorm.length >= 40) {
                 if (qNorm.includes(bNorm)) return true;
-                const bTokens = bNorm.split('').filter(t => t.length >= 3);
-                const qTokens = new Set(qNorm.split('').filter(t => t.length >= 3));
+                const _tokenize = (s) => (s || '')
+                    .toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9]+/g, ' ').trim()
+                    .split(/\s+/)
+                    .filter(t => t.length >= 3);
+                const bTokens = _tokenize(body);
+                const qTokens = new Set(_tokenize(questionText));
                 if (bTokens.length >= 6) {
                     let hit = 0;
                     for (const t of bTokens) {

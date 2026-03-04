@@ -69,15 +69,41 @@ export const QuestionParser = {
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const optionRe = /^([A-E])\s*(?:[\)\-:]|(?:\.\s))/i;
         const stemLines = [];
-        for (const line of lines) {
-            if (optionRe.test(line)) break;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (optionRe.test(line)) {
+                // Guard: dot-space format "X. text" at line start might be a sentence
+                // continuation, e.g. "linguagem\nC. O programa..." where "C." refers
+                // to the programming language, not option C.
+                const isDotSpaceFmt = /^[A-E]\s*\.\s/i.test(line);
+                if (isDotSpaceFmt && stemLines.length > 0) {
+                    const prevLine = stemLines[stemLines.length - 1];
+                    if (/[a-zA-Z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF]\s*$/.test(prevLine)) {
+                        stemLines.push(line);
+                        continue;
+                    }
+                }
+                break;
+            }
             stemLines.push(line);
         }
         let stem = (stemLines.join(' ').trim() || text.trim());
-        // Detect first inline option: handles both "A) text" and "A .csv" formats
-        const inlineOpt = stem.match(/[\s:;]([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*/i);
-        if (inlineOpt && Number.isFinite(inlineOpt.index) && inlineOpt.index > 30) {
+        // Detect first inline option: handles both "A) text" and "A .csv" formats.
+        // Use exec loop to skip false positives like "linguagem C. O programa"
+        // where the letter is a sentence-level reference, not an option label.
+        const inlineOptRe = /[\s:;]([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*/gi;
+        let inlineOpt;
+        while ((inlineOpt = inlineOptRe.exec(stem)) !== null) {
+            if (inlineOpt.index <= 30) continue;
+            // Guard: for dot-space format ("X. "), reject when the char right
+            // before the separator is a word char — signals "word X." (e.g.
+            // "linguagem C.", "vitamina B.", "hepatite C.") not an option label.
+            const isDotFmt = /\.\s/.test(inlineOpt[0]) && !/[\)\-:]/.test(inlineOpt[0]);
+            if (isDotFmt && inlineOpt.index > 0 && /\w/.test(stem[inlineOpt.index - 1])) {
+                continue;
+            }
             stem = stem.slice(0, inlineOpt.index).trim();
+            break;
         }
 
         // Hard cut on explicit section labels that often prepend options.
@@ -121,9 +147,25 @@ export const QuestionParser = {
         const _codeDedupKey = (body) => this.normalizeCodeAwareOption(body).replace(/\s+/g, '');
         const optionRe = /^["'""\u2018\u2019\(\[]?\s*([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i;
 
-        for (const line of lines) {
+        const matchedOptionLines = new Set();
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             const m = line.match(optionRe);
             if (!m) continue;
+            // Guard: dot-space format "X. text" may be sentence continuation
+            const isDotSpaceFmt = /^["'\u201C\u2018\u2019\(\[]?\s*[A-E]\s*\.\s/i.test(line);
+            if (isDotSpaceFmt) {
+                let prevNonOptLine = null;
+                for (let j = i - 1; j >= 0; j--) {
+                    if (!matchedOptionLines.has(j) && lines[j].trim()) {
+                        prevNonOptLine = lines[j].trim();
+                        break;
+                    }
+                }
+                if (prevNonOptLine && /[a-zA-Z\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u00FF]\s*$/.test(prevNonOptLine)) {
+                    continue;
+                }
+            }
             const letter = (m[1] || '').toUpperCase();
             const cleanedBody = this.stripOptionTailNoise(m[2]);
             const normalizedBody = this.normalizeOption(cleanedBody);
@@ -134,6 +176,7 @@ export const QuestionParser = {
             options.push(`${letter}) ${cleanedBody}`);
             seen.add(letter);
             if (!isCodeLike) seenBodies.add(dedupKey);
+            matchedOptionLines.add(i);
         }
 
         // Secondary pass: recover missing letters from inline/quoted patterns
@@ -167,13 +210,15 @@ export const QuestionParser = {
                 const lastMatch = lastOpt.match(/^([A-E])\)\s*(.+)$/i);
                 if (lastMatch) {
                     const lastBody = lastMatch[2];
-                    const trailRe = new RegExp('\\s+' + expectedNextLetter + '\\s+(.+)$', 'i');
+                    const trailRe = new RegExp('\\s+' + expectedNextLetter + '\\s+(.+)$');
                     const trailMatch = lastBody.match(trailRe);
                     if (trailMatch) {
                         const fixedBody = lastBody.slice(0, trailMatch.index).trim();
                         const newBody = this.stripOptionTailNoise(trailMatch[1]);
                         const newNorm = this.normalizeOption(newBody);
-                        if (fixedBody && newBody && newNorm && this.isUsableOptionBody(newBody)) {
+                        const looksLikeAssertionContinuation = /^(?:I{1,3}|IV|V)\b/i.test(newBody)
+                            && /\b(?:apenas|somente|todas?)\b/i.test(fixedBody);
+                        if (!looksLikeAssertionContinuation && fixedBody && newBody && newNorm && this.isUsableOptionBody(newBody)) {
                             options[options.length - 1] = `${lastMatch[1].toUpperCase()}) ${fixedBody}`;
                             options.push(`${expectedNextLetter}) ${newBody}`);
                             seen.add(expectedNextLetter);
@@ -335,7 +380,12 @@ export const QuestionParser = {
             'que', 'qual', 'quais', 'como', 'para', 'por', 'com', 'sem', 'uma', 'um', 'de', 'da', 'do',
             'das', 'dos', 'na', 'no', 'nas', 'nos', 'ao', 'aos', 'as', 'os', 'e', 'ou', 'em'
         ]);
-        const tokens = this.normalizeOption(stem).split('').filter(Boolean);
+        const tokens = (stem || '')
+            .toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, ' ').trim()
+            .split(/\s+/)
+            .filter(Boolean);
         return tokens.filter(t => t.length >= 5 && !stop.has(t)).slice(0, 10);
     },
 
