@@ -607,7 +607,7 @@ export const ApiService = {
     /* ─────────────────────────────────────────────────────────────────
      * _callWithProviderChain — centralised multi-provider fallback
      *
-     * Replaces the repeated  try*/chain pattern found across many
+     * Replaces the repeated  try/chain pattern found across many
      * methods with ONE reusable mechanism.
      *
      * ALL five providers already share the same contract:
