@@ -216,7 +216,7 @@ SearchCacheService.loadAiResultCache().catch(() => {});
 // in the service worker so the search survives popup closure.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'SEARCH_PHASE2') {
-        _runPhase2Search(msg.requestId, msg.question, msg.displayQuestion).catch(console.error);
+        _runPhase2Search(msg.requestId, msg.question, msg.displayQuestion, msg.visionGuidedParsed || null).catch(console.error);
         sendResponse({ ack: true });
         return false;
     }
@@ -224,7 +224,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
 });
 
-async function _runPhase2Search(requestId, question, displayQuestion) {
+async function _runPhase2Search(requestId, question, displayQuestion, visionGuidedParsed = null) {
     const key = `ah_bg_search_${requestId}`;
     // AH-PERF: Background search pipeline timer
     const _bgTimer = PerformanceTimer.create(' BG Phase2 Search Pipeline');
@@ -264,7 +264,9 @@ async function _runPhase2Search(requestId, question, displayQuestion) {
             displayQuestion,
             async (message) => {
                 try { await chrome.storage.local.set({ [`${key}_status`]: message }); } catch (_) {}
-            }
+            },
+            null,
+            visionGuidedParsed
         );
         _bgTimer.mark(`refineFromResults (${(finalResults||[]).length} items)`);
 

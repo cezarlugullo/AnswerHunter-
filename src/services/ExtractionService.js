@@ -1572,5 +1572,137 @@ extractGabaritoFromPageScript: function (questionText = '') {
     // Alias for getSelectionScript if needed, or use extractQuestionOnlyScript directly which already has manual Fallback
     getSelectionScript: function () {
         return window.getSelection().toString().trim();
+    },
+
+    // ╔══════════════════════════════════════════════════════════════════════╗
+    // ║  ⛔ extractViewportHtmlScript — EXTRAÇÃO DE HTML DO VIEWPORT        ║
+    // ║  NÃO REMOVA. Retorna o HTML bruto da área de viewport onde a        ║
+    // ║  questão está. Usado pela extração inteligente (vision-guided)      ║
+    // ║  para enviar HTML + screenshot à LLM, que encontra a questão        ║
+    // ║  COMPLETA no HTML mesmo quando recortada/incompleta na tela.        ║
+    // ║  Última calibração: 2026-03-04                                      ║
+    // ╚══════════════════════════════════════════════════════════════════════╝
+    extractViewportHtmlScript: function () {
+        try {
+            const W = window.innerWidth;
+            const H = window.innerHeight;
+
+            // ── Probe grid: find DOM container holding the question ──
+            const probes = [];
+            for (const xp of [0.25, 0.4, 0.5, 0.6, 0.75]) {
+                for (const yp of [0.15, 0.25, 0.35, 0.45, 0.55, 0.65]) {
+                    probes.push({ x: Math.floor(W * xp), y: Math.floor(H * yp) });
+                }
+            }
+
+            const hitMap = new Map();
+            const centerX = W / 2;
+            const centerY = H * 0.35;
+
+            for (const p of probes) {
+                let el = document.elementFromPoint(p.x, p.y);
+                if (!el || el === document.body || el === document.documentElement) continue;
+
+                for (let i = 0; i < 10; i++) {
+                    if (!el || el === document.body || el === document.documentElement) break;
+                    const text = (el.innerText || '').trim();
+                    const rect = el.getBoundingClientRect();
+
+                    if (text.length < 40 || rect.width < W * 0.3) {
+                        el = el.parentElement;
+                        continue;
+                    }
+                    if (text.length > 10000) break;
+
+                    const dist = Math.sqrt(
+                        Math.pow(rect.left + rect.width / 2 - centerX, 2) +
+                        Math.pow(rect.top + rect.height / 2 - centerY, 2)
+                    );
+
+                    const key = el;
+                    const existing = hitMap.get(key);
+                    if (existing) {
+                        existing.hits++;
+                        existing.minDist = Math.min(existing.minDist, dist);
+                    } else {
+                        hitMap.set(key, { el, hits: 1, minDist: dist, textLen: text.length });
+                    }
+                    break;
+                }
+            }
+
+            if (hitMap.size === 0) return null;
+
+            // ── Score candidates ──
+            let bestCandidate = null;
+            let bestScore = -Infinity;
+            for (const [, entry] of hitMap) {
+                const text = (entry.el.innerText || '').trim();
+                if (text.length < 40) continue;
+                const isMenu = /menu|disciplina|progresso|conteudos|concluidos|simulados|acessar|voltar|avançar/i.test(text);
+                if (isMenu) continue;
+
+                const optMatches = text.match(/(?:^|\n)\s*[A-E]\s*[\)\.\-:]\s*\S/gi) || [];
+                const optCount = new Set(optMatches.map(x => x.trim().charAt(0).toUpperCase())).size;
+                const rect = entry.el.getBoundingClientRect();
+                const isMainContent = rect.width >= W * 0.35;
+
+                let score = entry.hits * 25 - entry.minDist * 0.15 + optCount * 80;
+                score += isMainContent ? 40 : 0;
+                score += text.includes('?') ? 20 : 0;
+                score -= text.length > 4000 ? 30 : 0;
+                score += text.length >= 100 && text.length <= 2500 ? 20 : 0;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCandidate = entry;
+                }
+            }
+
+            if (!bestCandidate) return null;
+
+            // ── Sanitize HTML: strip scripts, styles, svgs, data attrs ──
+            function sanitizeHtml(html) {
+                let h = html;
+                // Remove <script>, <style>, <svg>, <noscript>, <link>, <meta> and contents
+                h = h.replace(/<(script|style|svg|noscript|link|meta)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+                h = h.replace(/<(script|style|svg|noscript|link|meta)\b[^>]*\/?\s*>/gi, '');
+                // Remove data-* attributes and style="" to reduce size
+                h = h.replace(/\s+data-[\w-]+="[^"]*"/gi, '');
+                h = h.replace(/\s+data-[\w-]+='[^']*'/gi, '');
+                h = h.replace(/\s+style="[^"]*"/gi, '');
+                h = h.replace(/\s+style='[^']*'/gi, '');
+                // Remove event handlers
+                h = h.replace(/\s+on\w+="[^"]*"/gi, '');
+                // Collapse whitespace
+                h = h.replace(/\s{2,}/g, ' ');
+                return h.trim();
+            }
+
+            // ── Get outerHTML: walk up to parent for broader context ──
+            let htmlEl = bestCandidate.el;
+            // Walk up 1-2 levels if parent is not too large
+            for (let up = 0; up < 2; up++) {
+                if (!htmlEl.parentElement || htmlEl.parentElement === document.body || htmlEl.parentElement === document.documentElement) break;
+                const parentText = (htmlEl.parentElement.innerText || '').trim();
+                if (parentText.length > 15000) break;
+                htmlEl = htmlEl.parentElement;
+            }
+
+            let rawHtml = sanitizeHtml(htmlEl.outerHTML || '');
+            // Hard limit: 15K chars (to fit in LLM context with screenshot)
+            if (rawHtml.length > 15000) {
+                rawHtml = rawHtml.substring(0, 15000) + '<!-- ...truncated -->';
+            }
+
+            return {
+                html: rawHtml,
+                textPreview: (bestCandidate.el.innerText || '').substring(0, 300),
+                containerTag: bestCandidate.el.tagName?.toLowerCase() || 'unknown',
+                htmlLength: rawHtml.length
+            };
+        } catch (_) {
+            return null;
+        }
     }
 };

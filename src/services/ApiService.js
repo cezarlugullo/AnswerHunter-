@@ -2706,6 +2706,342 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
         }
     },
 
+    // ╔══════════════════════════════════════════════════════════════════════╗
+    // ║  ⛔ llmExtractStructuredQuestion — EXTRAÇÃO INTELIGENTE VIA LLM     ║
+    // ║  NÃO REMOVA. Fallback universal para questões que o parser regex    ║
+    // ║  não consegue resolver (associação, matching, formato incomum).     ║
+    // ║                                                                     ║
+    // ║  Usa Groq fast (llama-3.1-8b-instant) para extrair stem + opções   ║
+    // ║  de qualquer formato de questão em ~150ms. Só é chamado quando:     ║
+    // ║    1. PRE_SEARCH_GATE falha após todas as tentativas de rescue      ║
+    // ║    2. Contamination guard rejeita as opções extraídas               ║
+    // ║                                                                     ║
+    // ║  Retorna { stem, options: { A: "body", B: "body", ... } }           ║
+    // ║  ou null se a LLM não conseguir extrair.                            ║
+    // ║  Última calibração: 2026-03-04                                      ║
+    // ╚══════════════════════════════════════════════════════════════════════╝
+    async llmExtractStructuredQuestion(rawText) {
+        if (!rawText || rawText.length < 30) return null;
+        const settings = await this._getSettings();
+
+        const truncated = rawText.slice(0, 3000);
+        const prompt = `Analise o texto de uma questão de prova e extraia o ENUNCIADO e as ALTERNATIVAS DE RESPOSTA.
+
+REGRAS IMPORTANTES:
+- O enunciado pode conter listas numeradas (1. char, 2. int) ou rotuladas (A. %d, B. %s) que NÃO são alternativas de resposta — são itens do próprio enunciado.
+- As ALTERNATIVAS DE RESPOSTA são as escolhas finais rotuladas A) até E) que o aluno deve marcar.
+- Em questões de ASSOCIAÇÃO, o enunciado tem dois grupos de itens e as alternativas combinam esses grupos (ex: "A3, B4, C1, D2").
+- Em questões de AFIRMATIVAS, o enunciado tem itens I, II, III e as alternativas dizem quais são corretas (ex: "Apenas a I e III").
+
+FORMATO DE SAÍDA (exatamente assim, sem explicações):
+ENUNCIADO: <texto completo do enunciado, incluindo listas internas>
+A) <texto da alternativa A>
+B) <texto da alternativa B>
+C) <texto da alternativa C>
+D) <texto da alternativa D>
+E) <texto da alternativa E>
+
+Se houver menos de 5 alternativas, omita as que não existem.
+NÃO invente alternativas. Extraia APENAS o que está no texto.
+
+TEXTO:
+${truncated}`;
+
+        const systemMsg = 'Você é um extrator de questões de prova. Responda APENAS no formato solicitado, sem explicações.';
+
+        try {
+            const content = await this._callAnyProvider(
+                [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
+                { temperature: 0.05, max_tokens: 800, purpose: 'llmExtractQuestion' }
+            );
+
+            if (!content) return null;
+
+            // Parse the response
+            const stemMatch = content.match(/ENUNCIADO:\s*(.+?)(?=\n\s*[A-E]\s*\))/is);
+            const stem = stemMatch ? stemMatch[1].trim() : '';
+
+            const optionsMap = {};
+            const optRe = /([A-E])\)\s*(.+?)(?=\n\s*[A-E]\s*\)|$)/gis;
+            let m;
+            while ((m = optRe.exec(content)) !== null) {
+                const letter = m[1].toUpperCase();
+                const body = m[2].trim().replace(/\n+/g, ' ').trim();
+                if (body && body.length >= 1) {
+                    optionsMap[letter] = body;
+                }
+            }
+
+            if (!stem || Object.keys(optionsMap).length < 2) {
+                console.log(`[llmExtractQuestion] Failed to parse LLM response (stem=${stem.length}, opts=${Object.keys(optionsMap).length})`);
+                return null;
+            }
+
+            console.log(`[llmExtractQuestion] SUCCESS — stem=${stem.length} chars, opts=${Object.keys(optionsMap).length} (${Object.keys(optionsMap).join(',')})`);
+            return { stem, options: optionsMap };
+        } catch (e) {
+            console.warn('[llmExtractQuestion] Error:', e?.message || e);
+            return null;
+        }
+    },
+
+    // ╔══════════════════════════════════════════════════════════════════════╗
+    // ║  ⛔ visionGuidedExtraction — EXTRAÇÃO INTELIGENTE: SCREENSHOT + HTML║
+    // ║  NÃO REMOVA. Método de extração mais poderoso da extensão.          ║
+    // ║                                                                     ║
+    // ║  Envia a captura de tela (screenshot) + HTML bruto da página para   ║
+    // ║  uma LLM com visão (Gemini/Groq). A LLM:                           ║
+    // ║    1. VÊ o que o aluno está vendo (screenshot)                      ║
+    // ║    2. BUSCA a questão COMPLETA no HTML da página                    ║
+    // ║    3. Retorna stem + alternativas EXATAS do HTML                    ║
+    // ║                                                                     ║
+    // ║  Resolve todos os problemas de extração: texto cortado, opções      ║
+    // ║  faltando, questões de associação, afirmativas, formato incomum.    ║
+    // ║  Última calibração: 2026-03-04                                      ║
+    // ╚══════════════════════════════════════════════════════════════════════╝
+    async visionGuidedExtraction(base64Image, viewportHtml, ocrHint) {
+        if (!base64Image && !viewportHtml) return null;
+        const settings = await this._getSettings();
+
+        const htmlTruncated = (viewportHtml || '').substring(0, 14000);
+        const hintSection = ocrHint
+            ? `\nDICA DO OCR (pode estar incompleto/cortado):\n${(ocrHint || '').substring(0, 600)}\n`
+            : '';
+
+        const prompt = [
+            'Você é um sistema extrator de dados estruturados com altíssima precisão, focado em plataformas de ensino.',
+            '',
+            'OBJETIVO PRINCIPAL:',
+            '1. Use a CAPTURA DE TELA para reconhecer visualmente o texto da questão com os dados originais e contar o número de alternativas.',
+            '2. Em seguida, localize minuciosamente essa mesma questão dentro do CÓDIGO HTML fornecido abaixo.',
+            '3. Extraia o texto do enunciado COMPLETAMENTE ATÉ as alternativas e extraia todas as alternativas SEPARADAS.',
+            '',
+            'REGRAS INQUEBRÁVEIS:',
+            '1. IDENTIFICAR MINUCIOSAMENTE A QUESTÃO: Encontre no HTML exatamente a questão que está visível e focada na imagem.',
+            '2. DEFINIÇÃO DO ENUNCIADO: Começa na primeira palavra da questão e vai até EXATAMENTE ANTES da primeira alternativa clicável. Você DEVE extrair o enunciado COMPLETO (isso inclui textos de apoio, cabeçalhos, tabelas, código, variáveis e qualquer lista descritiva como (A. \%d, B. \%s), (I. item, II. item), (1, 2, 3), que devem ficar dentro do enunciado).',
+            '3. DEFINIÇÃO DE ALTERNATIVAS: São EXCLUSIVAMENTE as opções finais de resposta que o aluno visualiza e pode selecionar para resolver a questão (ex: A, B, C, D, E).',
+            '4. INTEGRIDADE (VERIFICAÇÃO OBRIGATÓRIA): Verifique minuciosamente na imagem e no HTML quantas alternativas existem. Você é OBRIGADO a extrair todas elas separadamente. Se a questão possui 5 alternativas, liste exatamente as 5 associadas à suas letras corretas.',
+            '5. FIDELIDADE: Nunca junte, misture ou modifique o texto do HTML/imagem.',
+            '',
+            hintSection,
+            'HTML DA PÁGINA:',
+            htmlTruncated,
+            '',
+            'FORMATO DE SAÍDA OBRIGATÓRIO (retorne EXATAMENTE este formato, sem blocos markdown ou conversa extra):',
+            'ENUNCIADO: <Cole aqui TODO o texto do enunciado, incluindo códigos e itens de associação/afirmação>',
+            'A) <texto íntegro da alternativa A>',
+            'B) <texto íntegro da alternativa B>',
+            'C) <texto íntegro da alternativa C>',
+            'D) <texto íntegro da alternativa D>',
+            'E) <texto íntegro da alternativa E (se houver)>',
+            'F) <continue se houver mais>'
+        ].join('\n');
+
+        // Build vision messages — if we have image, use multimodal; otherwise text-only
+        const userContent = base64Image
+            ? [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+              ]
+            : prompt; // plain text fallback when no screenshot
+
+        const messages = [{ role: 'user', content: userContent }];
+
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                const model = settings.geminiModel || 'gemini-2.5-flash';
+                console.log(`AnswerHunter: VisionGuided — sending screenshot+HTML to Gemini (${model})...`);
+                const content = await this._callGemini(messages, {
+                    temperature: 0.05,
+                    max_tokens: 1500,
+                    model
+                });
+                if (!content || content.length < 30) return null;
+                console.log(`AnswerHunter: VisionGuided Gemini → ${content.length} chars`);
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: VisionGuided Gemini failed:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryGroq = async () => {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            const model = settings.groqModelVision || 'meta-llama/llama-3.2-90b-vision-preview';
+            try {
+                console.log(`AnswerHunter: VisionGuided — sending screenshot+HTML to Groq (${model})...`);
+                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${settings.groqApiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model,
+                        messages,
+                        temperature: 0.05,
+                        max_tokens: 1500
+                    })
+                }));
+                const content = (data.choices?.[0]?.message?.content || '').trim();
+                if (content.length < 30) return null;
+                console.log(`AnswerHunter: VisionGuided Groq → ${content.length} chars`);
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: VisionGuided Groq failed:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = settings.openrouterModelVision || 'google/gemini-2.5-flash';
+                console.log(`AnswerHunter: VisionGuided — sending screenshot+HTML to OpenRouter (${model})...`);
+                const content = await this._callOpenRouter(messages, {
+                    temperature: 0.05,
+                    max_tokens: 1500,
+                    model
+                });
+                if (!content || content.length < 30) return null;
+                console.log(`AnswerHunter: VisionGuided OpenRouter → ${content.length} chars`);
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: VisionGuided OpenRouter failed:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryChatGPT = async () => {
+            if (!settings.chatgptApiKey || this._chatgptQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = settings.chatgptModelVision || 'gpt-4o-mini';
+                console.log(`AnswerHunter: VisionGuided — sending screenshot+HTML to ChatGPT (${model})...`);
+                const content = await this._callChatGPT(messages, {
+                    temperature: 0.05,
+                    max_tokens: 1500,
+                    model
+                });
+                if (!content || content.length < 30) return null;
+                console.log(`AnswerHunter: VisionGuided ChatGPT → ${content.length} chars`);
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: VisionGuided ChatGPT failed:', e?.message || e);
+                return null;
+            }
+        };
+
+        // Text-only fallback — uses ANY available provider (Copilot, Groq, Gemini, etc.)
+        // ALWAYS tried when vision providers fail, even if screenshot exists.
+        // This is the user's requested "simple HTML + fragment → LLM" path.
+        const tryTextOnly = async () => {
+            if (htmlTruncated.length < 50) return null;
+            try {
+                console.log('AnswerHunter: VisionGuided — trying text-only extraction via _callAnyProvider (HTML + hint)...');
+                const { content: textContent } = await this._callAnyProvider(
+                    [{ role: 'user', content: prompt }],
+                    { temperature: 0.05, max_tokens: 1500, purpose: 'visionGuidedTextOnly' },
+                    '[visionGuided-textOnly]'
+                );
+                if (textContent && textContent.length >= 30) {
+                    console.log(`AnswerHunter: VisionGuided text-only → ${textContent.length} chars`);
+                    return textContent;
+                }
+                console.log(`AnswerHunter: VisionGuided text-only returned empty/short (${(textContent || '').length} chars)`);
+            } catch (e) {
+                console.warn('AnswerHunter: VisionGuided text-only failed:', e?.message || e);
+            }
+            return null;
+        };
+
+        try {
+            const primary = settings.primaryProvider || 'groq';
+            let result = null;
+
+            if (base64Image) {
+                if (primary === 'openrouter') {
+                    result = await tryOpenRouter();
+                    if (!result) result = await tryChatGPT();
+                    if (!result) result = await tryGemini();
+                    if (!result) result = await tryGroq();
+                } else if (primary === 'chatgpt') {
+                    result = await tryChatGPT();
+                    if (!result) result = await tryOpenRouter();
+                    if (!result) result = await tryGemini();
+                    if (!result) result = await tryGroq();
+                } else if (primary === 'gemini') {
+                    result = await tryGemini();
+                    if (!result) result = await tryChatGPT();
+                    if (!result) result = await tryOpenRouter();
+                    if (!result) result = await tryGroq();
+                } else {
+                    result = await tryGroq();
+                    if (!result) result = await tryGemini();
+                    if (!result) result = await tryChatGPT();
+                    if (!result) result = await tryOpenRouter();
+                }
+            }
+
+            // Text-only fallback if vision failed or no screenshot
+            if (!result) result = await tryTextOnly();
+            if (!result) return null;
+
+            // ── Parse the LLM response ──
+            const stemMatch = result.match(/ENUNCIADO:\s*(.+?)(?=\n\s*[A-H]\s*\))/is);
+            const stem = stemMatch ? stemMatch[1].trim() : '';
+
+            const optionsMap = {};
+            const optRe = /([A-H])\)\s*(.+?)(?=\n\s*[A-H]\s*\)|$)/gis;
+            let m;
+            while ((m = optRe.exec(result)) !== null) {
+                const letter = m[1].toUpperCase();
+                const body = m[2].trim().replace(/\n+/g, ' ').trim();
+                if (body && body.length >= 1) {
+                    optionsMap[letter] = body;
+                }
+            }
+
+            if (!stem || Object.keys(optionsMap).length < 2) {
+                // Fallback: try to parse without ENUNCIADO: prefix (LLM might return raw text)
+                const lines = result.split('\n');
+                const optLines = [];
+                const stemLines = [];
+                for (const line of lines) {
+                    const optMatch = line.match(/^\s*([A-H])\)\s*(.+)/i);
+                    if (optMatch) {
+                        optLines.push({ letter: optMatch[1].toUpperCase(), body: optMatch[2].trim() });
+                    } else if (optLines.length === 0) {
+                        stemLines.push(line);
+                    }
+                }
+                if (stemLines.length > 0 && optLines.length >= 2) {
+                    const fallbackStem = stemLines.join('\n').replace(/^ENUNCIADO:\s*/i, '').trim();
+                    const fallbackOptLines = optLines.map(o => `${o.letter}) ${o.body}`);
+                    const assembled = `${fallbackStem}\n${fallbackOptLines.join('\n')}`;
+                    console.log(`[visionGuided] Fallback parse: stem=${fallbackStem.length}, opts=${optLines.length}`);
+                    return assembled;
+                }
+
+                console.log(`[visionGuided] Failed to parse (stem=${stem.length}, opts=${Object.keys(optionsMap).length})`);
+                return null;
+            }
+
+            // Assemble clean question text
+            const optLines = Object.entries(optionsMap)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([letter, body]) => `${letter}) ${body}`);
+
+            const assembled = `${stem}\n${optLines.join('\n')}`;
+            console.log(`[visionGuided] SUCCESS — stem=${stem.length}, opts=${Object.keys(optionsMap).length} (${Object.keys(optionsMap).join(',')}), total=${assembled.length}`);
+            console.log(`[visionGuided] ENUNCIADO COMPLETO EXTRAÍDO:\n--------------------------------------------------\n${stem}\n--------------------------------------------------`);
+            return assembled;
+        } catch (e) {
+            console.warn('[visionGuided] Error:', e?.message || e);
+            return null;
+        }
+    },
+
     /**
      * Validates if the text is a valid question using Groq
      */
@@ -2870,7 +3206,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
 
         const tryGroq = async () => {
             if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            const model = groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct';
+            const model = groqModelVision || 'meta-llama/llama-3.2-90b-vision-preview';
             try {
                 console.log(`AnswerHunter: Vision OCR — sending screenshot to Groq (${model})...`);
                 const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
@@ -2900,16 +3236,69 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             }
         };
 
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = settings.openrouterModelVision || 'google/gemini-2.5-flash';
+                console.log(`AnswerHunter: Vision OCR — sending screenshot to OpenRouter (${model})...`);
+                const content = await this._callOpenRouter(visionMessages, {
+                    temperature: 0.1,
+                    max_tokens: 700,
+                    model
+                });
+                if (!content || content.length < 20) return null;
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter Vision OCR failed:', e?.message || e);
+                return null;
+            }
+        };
+        
+        const tryChatGPT = async () => {
+            if (!settings.chatgptApiKey || this._chatgptQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = settings.chatgptModelVision || 'gpt-4o-mini';
+                console.log(`AnswerHunter: Vision OCR — sending screenshot to ChatGPT (${model})...`);
+                const content = await this._callChatGPT(visionMessages, {
+                    temperature: 0.1,
+                    max_tokens: 700,
+                    model
+                });
+                if (!content || content.length < 20) return null;
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: ChatGPT Vision OCR failed:', e?.message || e);
+                return null;
+            }
+        };        
+
         try {
-            const geminiPrimary = await this._isGeminiPrimary();
+            const primary = settings.primaryProvider || 'groq';
             let result = null;
-            if (geminiPrimary) {
+
+            if (primary === 'openrouter') {
+                result = await tryOpenRouter();
+                if (!result) result = await tryChatGPT();
+                if (!result) result = await tryGemini();
+                if (!result) result = await tryGroq();
+            } else if (primary === 'chatgpt') {
+                result = await tryChatGPT();
+                if (!result) result = await tryOpenRouter();
+                if (!result) result = await tryGemini();
+                if (!result) result = await tryGroq();
+            } else if (primary === 'gemini') {
                 result = await tryGemini();
+                if (!result) result = await tryChatGPT();
+                if (!result) result = await tryOpenRouter();
                 if (!result) result = await tryGroq();
             } else {
+                // Groq or default
                 result = await tryGroq();
                 if (!result) result = await tryGemini();
+                if (!result) result = await tryChatGPT();
+                if (!result) result = await tryOpenRouter();
             }
+
             return result || '';
         } catch (error) {
             console.error('AnswerHunter: Vision OCR failed:', error);
@@ -2975,7 +3364,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
 
             const tryGroq = async () => {
                 if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-                const model = settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct';
+                const model = settings.groqModelVision || 'meta-llama/llama-3.2-90b-vision-preview';
                 try {
                     const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
                         method: 'POST',
@@ -2987,13 +3376,48 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                 } catch { return null; }
             };
 
-            if (geminiPrimary) {
+            const tryOpenRouter = async () => {
+                if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+                try {
+                    const model = settings.openrouterModelVision || 'google/gemini-2.5-flash';
+                    const content = await this._callOpenRouter(messages, { temperature: 0.05, max_tokens: 800, model });
+                    return content && content.length >= 20 ? content : null;
+                } catch { return null; }
+            };
+
+            const tryChatGPT = async () => {
+                if (!settings.chatgptApiKey || this._chatgptQuotaExhaustedUntil > Date.now()) return null;
+                try {
+                    const model = settings.chatgptModelVision || 'gpt-4o-mini';
+                    const content = await this._callChatGPT(messages, { temperature: 0.05, max_tokens: 800, model });
+                    return content && content.length >= 20 ? content : null;
+                } catch { return null; }
+            };
+
+            const primary = settings.primaryProvider || 'groq';
+
+            if (primary === 'openrouter') {
+                result = await tryOpenRouter();
+                if (!result) result = await tryChatGPT();
+                if (!result) result = await tryGemini();
+                if (!result) result = await tryGroq();
+            } else if (primary === 'chatgpt') {
+                result = await tryChatGPT();
+                if (!result) result = await tryOpenRouter();
+                if (!result) result = await tryGemini();
+                if (!result) result = await tryGroq();
+            } else if (primary === 'gemini') {
                 result = await tryGemini();
+                if (!result) result = await tryChatGPT();
+                if (!result) result = await tryOpenRouter();
                 if (!result) result = await tryGroq();
             } else {
                 result = await tryGroq();
                 if (!result) result = await tryGemini();
+                if (!result) result = await tryChatGPT();
+                if (!result) result = await tryOpenRouter();
             }
+            
             console.log(`AnswerHunter: Focused OCR (2nd pass) → ${(result || '').length} chars`);
             return result || '';
         } catch (e) {

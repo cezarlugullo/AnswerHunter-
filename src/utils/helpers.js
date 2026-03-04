@@ -37,8 +37,34 @@ export function isLikelyQuestion(text) {
 }
 
 // Function to format question separating statement from alternatives
-export function formatQuestionText(text) {
+export function formatQuestionText(text, visionGuidedParsed) {
     if (!text) return '';
+
+    // ── FAST PATH: if structured data from visionGuidedExtraction is available,
+    //    use it directly. This avoids ALL re-parsing that would destroy stem-embedded
+    //    items like "A. %d", "B. %s" by mistaking them for alternatives. ──
+    if (visionGuidedParsed && visionGuidedParsed.stem && Array.isArray(visionGuidedParsed.alternatives) && visionGuidedParsed.alternatives.length >= 2) {
+        const _t = (key, fallback) => {
+            try { if (typeof window !== 'undefined' && typeof window.__answerHunterTranslate === 'function') return window.__answerHunterTranslate(key); } catch (_) {}
+            return fallback;
+        };
+        const _esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const altsHtml = visionGuidedParsed.alternatives.map(a => `
+                    <div class="alternative">
+                        <span class="alt-letter">${_esc(a.letter)}</span>
+                        <span class="alt-text">${_esc(a.body)}</span>
+                    </div>`).join('');
+        return `
+                <div class="question-section">
+                    <div class="question-section-title">${_esc(_t('result.statement', 'Statement'))}</div>
+                    <div class="question-enunciado">${_esc(visionGuidedParsed.stem)}</div>
+                </div>
+                <div class="question-section">
+                    <div class="question-section-title">${_esc(_t('result.options', 'Options'))}</div>
+                    <div class="question-alternatives">${altsHtml}</div>
+                </div>`;
+    }
+
     const translate = (key, fallback) => {
         try {
             if (typeof window !== 'undefined' && typeof window.__answerHunterTranslate === 'function') {
@@ -390,6 +416,48 @@ export function formatQuestionText(text) {
     // Canonical parser first (shared with search pipeline) to avoid UI-specific
     // heuristics mixing enunciado + alternativas in SQL/code questions.
     try {
+        // ── Priority check: when TWO option blocks exist (e.g. "A. %d" in stem AND
+        //    "A) A3, B4, C1, D2" as real alternatives), always prefer the X) block.
+        //    This prevents stem-embedded labels from being mistaken as alternatives.
+        const parenOptRe = /(?:^|\n)\s*["'""\u2018\u2019\(\[]?\s*([A-H])\s*\)\s*(.+)/gim;
+        const dotOptRe = /(?:^|\n)\s*["'""\u2018\u2019\(\[]?\s*([A-H])\s*\.\s+(.+)/gim;
+        const parenOpts = new Map();
+        const dotOpts = new Map();
+        let pm;
+        while ((pm = parenOptRe.exec(normalizedForParsing)) !== null) {
+            const letter = pm[1].toUpperCase();
+            const body = trimNoise(clean(pm[2]));
+            if (body && (!parenOpts.has(letter) || body.length > parenOpts.get(letter).length)) {
+                parenOpts.set(letter, body);
+            }
+        }
+        while ((pm = dotOptRe.exec(normalizedForParsing)) !== null) {
+            const letter = pm[1].toUpperCase();
+            const body = trimNoise(clean(pm[2]));
+            if (body && (!dotOpts.has(letter) || body.length > dotOpts.get(letter).length)) {
+                dotOpts.set(letter, body);
+            }
+        }
+
+        // If BOTH blocks exist with overlapping letters, the X) block wins as real alternatives
+        // and the X. items stay in the stem.
+        const overlappingLetters = [...parenOpts.keys()].filter(l => dotOpts.has(l));
+        if (overlappingLetters.length >= 2 && parenOpts.size >= 2) {
+            const altLetters = [...parenOpts.keys()].sort();
+            const alts = altLetters.map(letter => ({ letter, body: parenOpts.get(letter) }));
+
+            // Build stem: everything that is NOT a X) option line
+            const stemLines = normalizedForParsing.split('\n').filter(line => {
+                const isParenOpt = /^\s*["'""\u2018\u2019\(\[]?\s*[A-H]\s*\)\s*.+/i.test(line);
+                return !isParenOpt;
+            });
+            const stem = clean(stemLines.join(' '));
+
+            if (stem && alts.length >= 2) {
+                return render(stem, alts);
+            }
+        }
+
         const canonStem = clean(QuestionParser.extractQuestionStem(normalizedForParsing) || '');
         const canonOptionsRaw = QuestionParser.extractOptionsFromQuestion(normalizedForParsing) || [];
         const canonMap = new Map();

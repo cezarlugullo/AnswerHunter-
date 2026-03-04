@@ -1016,7 +1016,7 @@ export const SearchService = {
     return refinedData;
   },
   // Flow 2: Google search + evidence-based refine (Search button)
-  async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null, pageGabarito = null) {
+  async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null, pageGabarito = null, visionGuidedParsed = null) {
     // ── NOVO PIPELINE ─────────────────────────────────────────────────────────
     // Delega COMPLETAMENTE para SimpleSearchService e retorna.
     // Nada do código abaixo executa mais.
@@ -1026,7 +1026,7 @@ export const SearchService = {
     //
     // Ver SimpleSearchService.js para documentação completa do fluxo,
     // incluindo o bug de remapeamento de letra que motivou esta reescrita.
-    return SimpleSearchService.refineFromResults(questionText, results, originalQuestionWithOptions, onStatus);
+    return SimpleSearchService.refineFromResults(questionText, results, originalQuestionWithOptions, onStatus, visionGuidedParsed);
 
     // ─── PIPELINE LEGADO ─────────────────────────────────────────────────────
     // DEAD CODE — não executa mais (return acima interrompe antes de chegar aqui)

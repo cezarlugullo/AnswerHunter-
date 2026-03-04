@@ -95,3 +95,8 @@ non_project/
 *.zip
 *.rar
 *.7z
+
+# AH Backups
+ah_local/backups/
+*.bak
+*.bak_*

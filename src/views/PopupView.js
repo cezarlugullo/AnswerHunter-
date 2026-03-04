@@ -782,7 +782,7 @@ export const PopupView = {
             </button>
           </div>
 
-          <div class="qa-card-question">${formatQuestionText(item.question)}</div>
+          <div class="qa-card-question">${formatQuestionText(item.question, item.visionGuidedParsed)}</div>
 
           ${item.positionShiftNote ? `<div class="qa-card-ai-warning" style="background:rgba(230,126,34,0.08);border-color:rgba(230,126,34,0.35);color:#d35400;margin-top:4px;">
             <span class="material-symbols-rounded">swap_horiz</span>
@@ -1199,7 +1199,7 @@ export const PopupView = {
                   <span class="qa-card-title">${escapeHtml(this.t('binder.savedQuestion'))}</span>
                 </div>
 
-                <div class="qa-card-question">${formatQuestionText(questionText)}</div>
+                <div class="qa-card-question">${formatQuestionText(questionText, item.visionGuidedParsed)}</div>
 
                 ${isStudyMode ?`
                 <button class="study-reveal-btn" type="button">

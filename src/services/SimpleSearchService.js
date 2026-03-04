@@ -452,7 +452,7 @@ export const SimpleSearchService = {
     // ║  nem os thresholds de confiança. Cada um corrige um bug real.     ║
     // ║  Última calibração: 2026-03-04                                    ║
     // ╚═══════════════════════════════════════════════════════════════════╝
-    async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null) {
+    async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null, visionGuidedParsed = null) {
         if (!results || results.length === 0) return [];
 
         // Prefere a versão completa (com alternativas) para enviar à IA
@@ -461,13 +461,26 @@ export const SimpleSearchService = {
         // ── Construção do mapa de opções do usuário ──────────────────────────────
         // Ex: { A: 'Chave de partição', B: 'Chave primária', C: 'Chave composta', ... }
         // Este mapa é a referência para remapear o texto retornado pela IA → letra correta.
-        // QuestionParser.extractOptionsFromQuestion() suporta variações de formato:
-        //   "A) texto", "a) texto", "A. texto", "(A) texto", etc.
-        const options = QuestionParser.extractOptionsFromQuestion(questionForInference);
+        //
+        // FAST PATH: se visionGuidedParsed estiver disponível, usa as alternativas já
+        // corretamente separadas pela LLM — evita que QuestionParser pegue itens do
+        // enunciado (ex: "A. %d") em vez das alternativas reais de múltipla escolha.
         let originalOptionsMap = {};
-        for (const opt of options) {
-            const m = opt.match(/^([A-E])\)\s*(.+)$/is);
-            if (m) originalOptionsMap[m[1].toUpperCase()] = m[2].trim();
+        if (visionGuidedParsed && Array.isArray(visionGuidedParsed.alternatives) && visionGuidedParsed.alternatives.length >= 2) {
+            for (const alt of visionGuidedParsed.alternatives) {
+                if (alt.letter && alt.body) {
+                    originalOptionsMap[alt.letter.toUpperCase()] = alt.body.trim();
+                }
+            }
+            console.log('[SimpleSearch] [visionGuided] Usando mapa de opções da extração LLM:', originalOptionsMap);
+        } else {
+            // QuestionParser.extractOptionsFromQuestion() suporta variações de formato:
+            //   "A) texto", "a) texto", "A. texto", "(A) texto", etc.
+            const options = QuestionParser.extractOptionsFromQuestion(questionForInference);
+            for (const opt of options) {
+                const m = opt.match(/^([A-E])\)\s*(.+)$/is);
+                if (m) originalOptionsMap[m[1].toUpperCase()] = m[2].trim();
+            }
         }
 
         const sanitizeOptionsMap = (stemText, rawMap) => {
