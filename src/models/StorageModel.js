@@ -159,6 +159,15 @@ export const StorageModel = {
                 updatedAt: Date.now()
             });
             await this.save();
+            // Sync question to ah_hierarchy if inside a top-level discipline folder
+            const topFolder = this._findTopLevelAncestor(this.currentFolderId);
+            if (topFolder) {
+                await this._syncAddCardToHierarchy(topFolder, {
+                    id: 'q' + uid, question: normQ, answer, source,
+                    sm2: mergedSm2, tags: mergedExtra.tags || [], notes: mergedExtra.notes || '',
+                    createdAt: Date.now(), updatedAt: Date.now()
+                });
+            }
             return true;
         } else {
             console.error('StorageModel: Pasta atual inválida:', this.currentFolderId);
@@ -707,7 +716,7 @@ export const StorageModel = {
 
     // ─── Hierarchy sync helpers (ah_disciplines ↔ ah_hierarchy) ──────
 
-    /** Ensure all top-level binder folders and ah_disciplines exist in ah_hierarchy */
+    /** Ensure all top-level binder folders and ah_disciplines exist in ah_hierarchy (with questions) */
     async _reconcileHierarchy() {
         try {
             const h = await this._getHierarchy();
@@ -715,26 +724,26 @@ export const StorageModel = {
             const existingNames = new Set(h.map(d => d.name.toLowerCase()));
             let changed = false;
 
-            // Sync top-level binder folders
-            const root = this.data?.[0];
             const ROOT_NAMES = new Set(['raiz', 'root', 'my study', 'binder', 'meu estudo']);
+            const root = this.data?.[0];
             if (root && root.children) {
                 for (const child of root.children) {
                     if (child.type !== 'folder') continue;
                     if (ROOT_NAMES.has((child.title || '').toLowerCase())) continue;
-                    if (existingIds.has(child.id) || existingNames.has(child.title.toLowerCase())) continue;
-                    h.push({
-                        id: child.id,
-                        name: child.title,
-                        icon: '',
-                        color: '#FF6B6B',
-                        modules: [],
-                        createdAt: child.createdAt || Date.now(),
-                        updatedAt: Date.now()
-                    });
-                    existingIds.add(child.id);
-                    existingNames.add(child.title.toLowerCase());
-                    changed = true;
+
+                    let disc = h.find(d => d.id === child.id) || h.find(d => d.name.toLowerCase() === child.title.toLowerCase());
+                    if (!disc) {
+                        disc = { id: child.id, name: child.title, icon: '', color: '#FF6B6B', modules: [], createdAt: child.createdAt || Date.now(), updatedAt: Date.now() };
+                        h.push(disc);
+                        existingIds.add(disc.id);
+                        existingNames.add(disc.name.toLowerCase());
+                        changed = true;
+                    }
+
+                    // Sync binder questions into hierarchy cards
+                    if (this._mergeBinderCards(disc, this._collectBinderQuestions(child))) {
+                        changed = true;
+                    }
                 }
             }
 
@@ -742,19 +751,11 @@ export const StorageModel = {
             const legacyList = await new Promise(resolve => {
                 chrome.storage.local.get(['ah_disciplines'], d => resolve(d?.ah_disciplines || []));
             });
-            for (const disc of legacyList) {
-                if (existingIds.has(disc.id) || existingNames.has(disc.name.toLowerCase())) continue;
-                h.push({
-                    id: disc.id,
-                    name: disc.name,
-                    icon: '',
-                    color: disc.color || '#FF6B6B',
-                    modules: [],
-                    createdAt: disc.createdAt || Date.now(),
-                    updatedAt: Date.now()
-                });
-                existingIds.add(disc.id);
-                existingNames.add(disc.name.toLowerCase());
+            for (const d of legacyList) {
+                if (existingIds.has(d.id) || existingNames.has(d.name.toLowerCase())) continue;
+                h.push({ id: d.id, name: d.name, icon: '', color: d.color || '#FF6B6B', modules: [], createdAt: d.createdAt || Date.now(), updatedAt: Date.now() });
+                existingIds.add(d.id);
+                existingNames.add(d.name.toLowerCase());
                 changed = true;
             }
 
@@ -767,6 +768,50 @@ export const StorageModel = {
         }
     },
 
+    _collectBinderQuestions(folder) {
+        const questions = [];
+        for (const child of (folder.children || [])) {
+            if (child.type === 'question' && child.content) questions.push(child);
+            else if (child.type === 'folder') questions.push(...this._collectBinderQuestions(child));
+        }
+        return questions;
+    },
+
+    _mergeBinderCards(disc, binderQuestions) {
+        if (!binderQuestions.length) return false;
+        if (!disc.modules) disc.modules = [];
+        let mod = disc.modules.find(m => m.name === 'Geral');
+        if (!mod) {
+            mod = { id: 'm_gen_' + disc.id, name: 'Geral', order: 0, topics: [], createdAt: Date.now(), updatedAt: Date.now() };
+            disc.modules.push(mod);
+        }
+        if (!mod.topics) mod.topics = [];
+        let topic = mod.topics.find(t => t.name === 'Geral');
+        if (!topic) {
+            topic = { id: 't_gen_' + disc.id, name: 'Geral', order: 0, cards: [], createdAt: Date.now(), updatedAt: Date.now() };
+            mod.topics.push(topic);
+        }
+        if (!topic.cards) topic.cards = [];
+        const cardIds = new Set(topic.cards.map(c => c.id));
+        let added = false;
+        for (const q of binderQuestions) {
+            if (cardIds.has(q.id)) continue;
+            const qText = (q.content.question || '').trim().toLowerCase();
+            if (qText && topic.cards.some(c => (c.question || '').trim().toLowerCase() === qText)) continue;
+            topic.cards.push({
+                id: q.id || ('c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
+                question: q.content.question || '', answer: q.content.answer || '', source: q.content.source || '',
+                sm2: q.content.sm2 || { interval: 0, repetition: 0, ef: 2.5, nextReview: '', lastRated: '', attempts: 0, correct: 0, errors: 0, mastered: false, tags: [], hintUsedLast: false },
+                tags: q.content.tags || [], notes: q.content.notes || '',
+                createdAt: q.createdAt || Date.now(), updatedAt: q.updatedAt || Date.now()
+            });
+            cardIds.add(q.id);
+            added = true;
+        }
+        if (added) disc.updatedAt = Date.now();
+        return added;
+    },
+
     /** Check if a node is the root folder */
     _isRootFolder(node) {
         return node && (node.id === 'root' || this.data.indexOf(node) !== -1);
@@ -777,6 +822,39 @@ export const StorageModel = {
         const root = this.data?.[0];
         if (!root || !root.children) return false;
         return root.children.some(c => c.id === folderId && c.type === 'folder');
+    },
+
+    /** Find the top-level folder ancestor for a given node id (or return the node itself if top-level) */
+    _findTopLevelAncestor(nodeId) {
+        const root = this.data?.[0];
+        if (!root || !root.children) return null;
+        for (const child of root.children) {
+            if (child.type !== 'folder') continue;
+            if (child.id === nodeId) return child;
+            if (this._isDescendant(child, nodeId)) return child;
+        }
+        return null;
+    },
+
+    _isDescendant(folder, targetId) {
+        for (const child of (folder.children || [])) {
+            if (child.id === targetId) return true;
+            if (child.type === 'folder' && this._isDescendant(child, targetId)) return true;
+        }
+        return false;
+    },
+
+    /** Add a single card to a discipline in ah_hierarchy */
+    async _syncAddCardToHierarchy(topFolder, cardData) {
+        try {
+            const h = await this._getHierarchy();
+            let disc = h.find(d => d.id === topFolder.id) || h.find(d => d.name.toLowerCase() === topFolder.title.toLowerCase());
+            if (!disc) return;
+            this._mergeBinderCards(disc, [{ id: cardData.id, content: cardData }]);
+            await this._saveHierarchy(h);
+        } catch (e) {
+            console.warn('[StorageModel] _syncAddCardToHierarchy failed:', e);
+        }
     },
 
     async _getHierarchy() {

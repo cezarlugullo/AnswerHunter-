@@ -753,26 +753,39 @@ async function reconcileHierarchy() {
     const existingNames = new Set(h.map(d => d.name.toLowerCase()));
     let changed = false;
 
-    // Sync top-level binder folders
+    // Sync top-level binder folders (with their questions)
     const binder = raw.binderStructure;
     if (Array.isArray(binder) && binder[0]?.children) {
       for (const child of binder[0].children) {
         if (child.type !== 'folder') continue;
         if (HIER_ROOT_NAMES.has((child.title || '').toLowerCase())) continue;
-        if (existingIds.has(child.id) || existingNames.has(child.title.toLowerCase())) continue;
-        h.push({ id: child.id, name: child.title, icon: '', color: '#FF6B6B', modules: [], createdAt: child.createdAt || Date.now(), updatedAt: Date.now() });
-        existingIds.add(child.id);
-        existingNames.add(child.title.toLowerCase());
-        changed = true;
+
+        // Find existing discipline by id or name
+        let disc = h.find(d => d.id === child.id) || h.find(d => d.name.toLowerCase() === child.title.toLowerCase());
+
+        if (!disc) {
+          disc = { id: child.id, name: child.title, icon: '', color: '#FF6B6B', modules: [], createdAt: child.createdAt || Date.now(), updatedAt: Date.now() };
+          h.push(disc);
+          existingIds.add(disc.id);
+          existingNames.add(disc.name.toLowerCase());
+          changed = true;
+        }
+
+        // Sync binder questions into hierarchy cards
+        const binderCards = _collectBinderQuestions(child);
+        if (binderCards.length > 0) {
+          const merged = _mergeBinderCards(disc, binderCards);
+          if (merged) changed = true;
+        }
       }
     }
 
-    // Sync ah_disciplines entries
-    for (const disc of (raw.ah_disciplines || [])) {
-      if (existingIds.has(disc.id) || existingNames.has(disc.name.toLowerCase())) continue;
-      h.push({ id: disc.id, name: disc.name, icon: '', color: disc.color || '#FF6B6B', modules: [], createdAt: disc.createdAt || Date.now(), updatedAt: Date.now() });
-      existingIds.add(disc.id);
-      existingNames.add(disc.name.toLowerCase());
+    // Sync ah_disciplines entries (no questions to migrate, just the discipline)
+    for (const d of (raw.ah_disciplines || [])) {
+      if (existingIds.has(d.id) || existingNames.has(d.name.toLowerCase())) continue;
+      h.push({ id: d.id, name: d.name, icon: '', color: d.color || '#FF6B6B', modules: [], createdAt: d.createdAt || Date.now(), updatedAt: Date.now() });
+      existingIds.add(d.id);
+      existingNames.add(d.name.toLowerCase());
       changed = true;
     }
 
@@ -784,6 +797,68 @@ async function reconcileHierarchy() {
   } catch (e) {
     console.warn('[StudyHub] Hierarchy reconciliation failed:', e);
   }
+}
+
+/** Recursively collect all question nodes from a binder folder */
+function _collectBinderQuestions(folder) {
+  const questions = [];
+  for (const child of (folder.children || [])) {
+    if (child.type === 'question' && child.content) {
+      questions.push(child);
+    } else if (child.type === 'folder') {
+      questions.push(..._collectBinderQuestions(child));
+    }
+  }
+  return questions;
+}
+
+/** Merge binder questions into a discipline's hierarchy (Geral module/topic). Returns true if any were added. */
+function _mergeBinderCards(disc, binderQuestions) {
+  if (!disc.modules) disc.modules = [];
+
+  // Find or create "Geral" module
+  let mod = disc.modules.find(m => m.name === 'Geral');
+  if (!mod) {
+    mod = { id: 'm_gen_' + disc.id, name: 'Geral', order: 0, topics: [], createdAt: Date.now(), updatedAt: Date.now() };
+    disc.modules.push(mod);
+  }
+  if (!mod.topics) mod.topics = [];
+
+  // Find or create "Geral" topic
+  let topic = mod.topics.find(t => t.name === 'Geral');
+  if (!topic) {
+    topic = { id: 't_gen_' + disc.id, name: 'Geral', order: 0, cards: [], createdAt: Date.now(), updatedAt: Date.now() };
+    mod.topics.push(topic);
+  }
+  if (!topic.cards) topic.cards = [];
+
+  // Build set of existing card IDs to avoid duplicates
+  const existingCardIds = new Set(topic.cards.map(c => c.id));
+
+  let added = false;
+  for (const q of binderQuestions) {
+    // Skip if already present (by id or by question text)
+    if (existingCardIds.has(q.id)) continue;
+    const qText = (q.content.question || '').trim().toLowerCase();
+    if (qText && topic.cards.some(c => (c.question || '').trim().toLowerCase() === qText)) continue;
+
+    topic.cards.push({
+      id: q.id || ('c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
+      question: q.content.question || '',
+      answer: q.content.answer || '',
+      source: q.content.source || '',
+      sm2: q.content.sm2 || { interval: 0, repetition: 0, ef: 2.5, nextReview: '', lastRated: '', attempts: 0, correct: 0, errors: 0, mastered: false, tags: [], hintUsedLast: false },
+      tags: q.content.tags || [],
+      notes: q.content.notes || '',
+      createdAt: q.createdAt || Date.now(),
+      updatedAt: q.updatedAt || Date.now()
+    });
+    existingCardIds.add(q.id);
+    added = true;
+  }
+
+  if (added) disc.updatedAt = Date.now();
+  return added;
 }
 
 async function loadData() {
