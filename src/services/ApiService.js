@@ -1497,7 +1497,16 @@ Analise o texto passo a passo e responda no formato acima:`;
             // Extract the answer text from "Letra X: [answer text]" in the AI response
             const re = new RegExp(`Letra\\s+${result.letter}\\s*[:\\-]\\s*(.+)`, 'im');
             const textMatch = result.knowledge.match(re);
-            const answerText = textMatch ? textMatch[1].trim().replace(/\s+/g, ' ') : null;
+            let answerText = textMatch ? textMatch[1].trim().replace(/\s+/g, ' ') : null;
+
+            // Clean up: AI sometimes appends reasoning in parentheses or after punctuation
+            if (answerText) {
+                answerText = answerText
+                    .replace(/\s*\(.*$/, '')        // remove trailing (...)
+                    .replace(/\s*[""].*$/, '')       // remove trailing "quoted reasoning"
+                    .replace(/[.;,]+$/, '')          // remove trailing punctuation
+                    .trim();
+            }
 
             return {
                 answerText,

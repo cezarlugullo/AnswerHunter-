@@ -166,12 +166,32 @@ export const OptionsMatchService = {
     /**
      * Maps a free-form answer body to the closest user option body.
      * Returns null when confidence is weak or the match is ambiguous.
+     *
+     * Handles extractions like "gabarito B (I e III)", "I e III", "resposta correta é I e III"
+     * matching against options like "Apenas I e III".
      */
     matchAnswerTextToOptions(answerText, optionsMap) {
         if (!answerText || !optionsMap || Object.keys(optionsMap).length < 2) return null;
 
-        const normalizedAnswer = QuestionParser.normalizeOption(String(answerText || ''));
+        // ── Pre-process: strip contextual presentation patterns ──────────────
+        // "gabarito B (I e III)" → "I e III"
+        // "resposta correta: I e III" → "I e III"
+        // "alternativa correta: I e III" → "I e III"
+        let processedAnswer = String(answerText || '');
+        // Remove leading "gabarito X (" pattern capturing just the parenthesized content
+        processedAnswer = processedAnswer
+            .replace(/\bgabarito\s+[a-e]\s*\(([^)]+)\)/gi, '$1')
+            .replace(/\b(?:gabarito|(?:resposta|alternativa)\s+correta)\s*[:\-–é]?\s*/gi, '')
+            .replace(/[()]/g, '')
+            .trim();
+        if (!processedAnswer) processedAnswer = String(answerText || '');
+
+        const normalizedAnswer = QuestionParser.normalizeOption(processedAnswer);
         if (!normalizedAnswer || normalizedAnswer.length < 2) return null;
+
+        // ── Stripped answer (remove "apenas/somente/só" prefix) ─────────────
+        const APENAS_RE = /^(apenas|somente|so|unicamente)\s+/;
+        const normalizedAnswerStripped = normalizedAnswer.replace(APENAS_RE, '').trim();
 
         const stop = new Set([
             'assinale', 'afirmativa', 'alternativa', 'correta', 'incorreta', 'resposta',
@@ -181,6 +201,7 @@ export const OptionsMatchService = {
         ]);
         const answerTokens = normalizedAnswer.split(/\s+/).map(t => t.trim()).filter(t => t.length >= 4 && !stop.has(t));
         const normalizedAnswerCompact = normalizedAnswer.replace(/\s+/g, '');
+        const normalizedAnswerStrippedCompact = normalizedAnswerStripped.replace(/\s+/g, '');
 
         const scored = [];
         for (const [letterRaw, bodyRaw] of Object.entries(optionsMap || {})) {
@@ -191,12 +212,35 @@ export const OptionsMatchService = {
             const normalizedBody = QuestionParser.normalizeOption(body);
             if (!normalizedBody || normalizedBody.length < 2) continue;
 
+            // Stripped body: "Apenas I e III" → "i e iii" (after normalizeOption)
+            const normalizedBodyStripped = normalizedBody.replace(APENAS_RE, '').trim();
+
             const bodyTokens = normalizedBody.split(/\s+/).map(t => t.trim()).filter(t => t.length >= 4 && !stop.has(t));
             const normalizedBodyCompact = normalizedBody.replace(/\s+/g, '');
+            const normalizedBodyStrippedCompact = normalizedBodyStripped.replace(/\s+/g, '');
+
             const contains = normalizedAnswer.includes(normalizedBody)
                 || (normalizedBodyCompact.length >= 16 && normalizedAnswerCompact.includes(normalizedBodyCompact));
             const reverseContains = (normalizedAnswer.length >= 20 && normalizedBody.includes(normalizedAnswer))
                 || (normalizedAnswerCompact.length >= 16 && normalizedBodyCompact.includes(normalizedAnswerCompact));
+
+            // ── Stripped-prefix matching: "I e III" ↔ "Apenas I e III" ─────
+            // Fires when the option starts with "apenas/somente" and the answer is
+            // just the numeral part (e.g. extracted "I e III" from a source page).
+            const strippedExact = normalizedBodyStripped.length >= 3 && (
+                normalizedAnswerStripped === normalizedBodyStripped
+                || normalizedAnswer === normalizedBodyStripped
+                || normalizedAnswerStripped === normalizedBody
+            );
+            const strippedContains = !strippedExact && normalizedBodyStripped.length >= 4 && (
+                normalizedAnswerStripped.includes(normalizedBodyStripped)
+                || normalizedAnswer.includes(normalizedBodyStripped)
+                || (normalizedBodyStrippedCompact.length >= 6 && normalizedAnswerStrippedCompact.includes(normalizedBodyStrippedCompact))
+            );
+            const strippedReverseContains = !strippedExact && !strippedContains
+                && normalizedBodyStripped.length >= 4 && normalizedAnswerStripped.length >= 3
+                && normalizedBodyStripped.includes(normalizedAnswerStripped)
+                && normalizedAnswerStripped.length >= 3;
 
             let tokenRatio = 0;
             let tokenHits = 0;
@@ -220,17 +264,28 @@ export const OptionsMatchService = {
             const reverseScore = reverseContains
                 ? 0.95 + (normalizedAnswer.length / Math.max(1, normalizedBody.length)) * 0.04
                 : 0;
-            const score = contains ? containsScore : reverseContains ? reverseScore : semanticScore;
+            
+            const strippedScore = strippedExact ? 0.98 : (strippedContains ? 0.93 : (strippedReverseContains ? 0.91 : 0));
+            
+            let finalScore = 0;
+            let method = 'text-semantic';
+            if (contains) { finalScore = containsScore; method = 'text-containment'; }
+            else if (reverseContains) { finalScore = reverseScore; method = 'text-containment'; }
+            else if (strippedExact || strippedContains || strippedReverseContains) { finalScore = strippedScore; method = 'text-stripped-containment'; }
+            else { finalScore = semanticScore; }
+
             scored.push({
                 letter,
                 body,
-                score,
+                score: finalScore,
                 tokenRatio,
                 tokenHits,
                 dice,
                 contains,
                 reverseContains,
-                method: contains || reverseContains ? 'text-containment' : 'text-semantic'
+                strippedExact,
+                strippedContains,
+                method
             });
         }
 
@@ -239,6 +294,7 @@ export const OptionsMatchService = {
         const top = scored[0];
         const second = scored[1] || null;
         const margin = top.score - (second?.score || 0);
+
         if (normalizedAnswer.length < 12) {
             const strictShortHits = scored.filter((entry) => {
                 const normalizedBody = QuestionParser.normalizeOption(entry.body || '');
@@ -255,9 +311,10 @@ export const OptionsMatchService = {
                 };
             }
         }
-        const topStrong = top.contains || top.reverseContains;
+        
+        const topStrong = top.contains || top.reverseContains || top.strippedExact || top.strippedContains;
         const topGoodSemantic = !topStrong && top.score >= 0.68 && top.tokenRatio >= 0.42 && top.tokenHits >= 2;
-        const secondStrong = !!second && (second.contains || second.reverseContains || second.score >= 0.62);
+        const secondStrong = !!second && (second.contains || second.reverseContains || second.strippedExact || second.strippedContains || second.score >= 0.62);
         // If top has exact text containment, it's never ambiguous — containment is definitive
         const ambiguous = !topStrong && !!second && secondStrong && margin < (topStrong ? 0.12 : 0.10);
 

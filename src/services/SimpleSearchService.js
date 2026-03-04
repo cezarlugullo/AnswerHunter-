@@ -120,6 +120,184 @@ const MAX_SOURCES = 3;
 // Textos abaixo disso são páginas de erro, CAPTCHA ou redirecionamentos.
 const MIN_TEXT_LENGTH = 150;
 
+// ══════════════════════════════════════════════════════════════════════════════
+// A) DOMAIN STRATEGY MAP — roteamento inteligente por domínio
+// ══════════════════════════════════════════════════════════════════════════════
+// Classifica domínios em 3 categorias:
+//   'server'  → Jina/NativeFetch funciona bem (blogs, gov, wikis)
+//   'render'  → JS-heavy SPA aberto, BackgroundTab obrigatório
+//   'skip'    → Login/paywall obrigatório, não perca tempo
+const DOMAIN_STRATEGY = {
+    // ── render: SPAs abertos que PRECISAM de JS rendering ──
+    'brainly.com':       'render',
+    'brainly.com.br':    'render',
+    'brainly.lat':       'render',
+    'brainly.co':        'render',
+    'passeidireto.com':  'render',
+    'studocu.com':       'render',   // CF + JS, mas extrator bypass funciona
+    'gauthmath.com':     'render',
+    'slideshare.net':    'render',
+    // ── skip: login/paywall obrigatório, quase sempre vazio ──
+    'scribd.com':        'skip',     // paywall forte, raramente extrai algo útil
+    'chegg.com':         'skip',
+    'coursehero.com':    'skip',
+    'quizlet.com':       'skip',     // login obrigatório
+    // ── server: Jina/NativeFetch funciona bem ──
+    'conhecimentolivre.org': 'server',
+    'gov.br':                'server',
+    'edu.br':                'server',
+    'wikipedia.org':         'server',
+    'medium.com':            'server',
+};
+
+/**
+ * Determina a estratégia para um hostname.
+ * Checa sufixos (ex: "download.inep.gov.br" → match "gov.br" → 'server').
+ * Default: 'server' (Jina primeiro, BackgroundTab como fallback se SPA).
+ */
+function _getDomainStrategy(hostHint) {
+    if (!hostHint) return 'server';
+    const host = hostHint.toLowerCase();
+    // Exact match first
+    if (DOMAIN_STRATEGY[host]) return DOMAIN_STRATEGY[host];
+    // Suffix match (ex: "download.inep.gov.br" → "gov.br")
+    for (const [domain, strategy] of Object.entries(DOMAIN_STRATEGY)) {
+        if (host.endsWith('.' + domain) || host === domain) return strategy;
+    }
+    return 'server';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// B) MULTI-STRATEGY EXTRACTION — fallbacks quando texto principal está vazio
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Tenta extrair conteúdo útil de texto cru/parcial usando múltiplas heurísticas.
+ * Usa: meta tags, schema.org, padrões de gabarito, e seleção por densidade de texto.
+ * @param {string} rawText - texto retornado pelo Jina/NativeFetch (pode ser parcial/shell)
+ * @returns {string|null} - texto enriquecido se conseguiu extrair algo, ou null
+ */
+function _extractWithFallbackStrategies(rawText) {
+    if (!rawText) return null;
+
+    // Strategy 1: Procurar bloco com padrão de gabarito direto
+    // Cobre: "Gabarito: B", "Resposta: I e III", "Alternativa correta: D", "Letra C"
+    const gabaritoPatterns = [
+        /(?:gabarito|resposta\s+correta|alternativa\s+correta|resposta)\s*[:=→\-–]\s*(?:letra\s+)?([A-E](?:\s*[-–—:)]\s*.{3,80})?)/gi,
+        /\b(?:letra|alternativa)\s+([A-E])\s+(?:é\s+)?(?:a\s+)?(?:correta|certa|resposta)/gi,
+        /\bcorreta\s*[:=→\-–]\s*([A-E])\b/gi,
+        /\b([A-E])\s*\)\s*(?:✓|✔|★|correta|certa)/gi,
+        /(?:apenas|somente)\s+(?:[IVX]+(?:\s*[,e]\s*[IVX]+)*)\s+(?:está|estão|são)\s+(?:correta|corretas)/gi,
+    ];
+
+    const gabaritoHits = [];
+    for (const pattern of gabaritoPatterns) {
+        let match;
+        while ((match = pattern.exec(rawText)) !== null) {
+            // Capture surrounding context (±150 chars)
+            const start = Math.max(0, match.index - 150);
+            const end = Math.min(rawText.length, match.index + match[0].length + 150);
+            gabaritoHits.push(rawText.slice(start, end).trim());
+        }
+    }
+
+    if (gabaritoHits.length > 0) {
+        const enriched = gabaritoHits.join('\n---\n');
+        console.log(`[SimpleSearch] [FALLBACK] Padrão de gabarito encontrado no texto parcial (${gabaritoHits.length} hits)`);
+        return enriched.length >= MIN_TEXT_LENGTH ? enriched : null;
+    }
+
+    // Strategy 2: Procurar meta description / og:description / schema.org
+    const metaPatterns = [
+        /(?:description|og:description|twitter:description)["']\s*content\s*=\s*["']([^"']{50,500})["']/gi,
+        /"description"\s*:\s*"([^"]{50,500})"/gi,
+        /"text"\s*:\s*"([^"]{50,500})"/gi,
+        /"acceptedAnswer"\s*:\s*\{[^}]*"text"\s*:\s*"([^"]{20,500})"/gi,
+    ];
+
+    const metaHits = [];
+    for (const pattern of metaPatterns) {
+        let match;
+        while ((match = pattern.exec(rawText)) !== null) {
+            metaHits.push(match[1].trim());
+        }
+    }
+
+    if (metaHits.length > 0) {
+        const enriched = metaHits.join('\n');
+        console.log(`[SimpleSearch] [FALLBACK] Meta/Schema.org encontrado (${metaHits.length} blocos)`);
+        return enriched.length >= 80 ? enriched : null;
+    }
+
+    // Strategy 3: Selecionar blocos densos de texto (boilerpipe-like)
+    // Divide em parágrafos, filtra os que têm alta densidade de palavras (não são menus/nav)
+    const paragraphs = rawText.split(/\n{2,}|\r\n\r\n/);
+    const denseBlocks = paragraphs.filter(p => {
+        const trimmed = p.trim();
+        if (trimmed.length < 60) return false;
+        const words = trimmed.split(/\s+/).length;
+        // "Dense" = at least 15 words per block
+        if (words < 15) return false;
+        // Not a menu/nav: shouldn't have too many links/items per line
+        const lines = trimmed.split(/\n/).length;
+        if (words / lines < 5) return false;
+        return true;
+    });
+
+    if (denseBlocks.length > 0) {
+        const enriched = denseBlocks.join('\n\n');
+        if (enriched.length >= MIN_TEXT_LENGTH) {
+            console.log(`[SimpleSearch] [FALLBACK] Blocos densos extraídos (${denseBlocks.length} parágrafos, ${enriched.length} chars)`);
+            return enriched;
+        }
+    }
+
+    return null;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// C) DOMAIN EXTRACTION CACHE — lembra qual método funcionou por domínio
+// ══════════════════════════════════════════════════════════════════════════════
+const _domainMethodCache = new Map(); // hostHint → { method: 'jina'|'native'|'bgtab', selector?: string, hits: number, lastUsed: number }
+
+/**
+ * Registra que um método de extração funcionou para um domínio.
+ */
+function _cacheSuccessfulMethod(hostHint, method) {
+    if (!hostHint) return;
+    const existing = _domainMethodCache.get(hostHint);
+    if (existing) {
+        existing.hits++;
+        existing.lastUsed = Date.now();
+        existing.method = method;
+    } else {
+        _domainMethodCache.set(hostHint, { method, hits: 1, lastUsed: Date.now() });
+    }
+    // Evict old entries (keep max 50)
+    if (_domainMethodCache.size > 50) {
+        let oldest = null;
+        for (const [key, val] of _domainMethodCache) {
+            if (!oldest || val.lastUsed < oldest.lastUsed) oldest = { key, ...val };
+        }
+        if (oldest) _domainMethodCache.delete(oldest.key);
+    }
+}
+
+/**
+ * Retorna o método que já funcionou para um domínio, ou null.
+ */
+function _getCachedMethod(hostHint) {
+    if (!hostHint) return null;
+    const entry = _domainMethodCache.get(hostHint);
+    if (!entry) return null;
+    // Cache entry expira após 30 minutos
+    if (Date.now() - entry.lastUsed > 30 * 60 * 1000) {
+        _domainMethodCache.delete(hostHint);
+        return null;
+    }
+    return entry.method;
+}
+
 // ── Module-level helpers ──────────────────────────────────────────────────────
 
 /**
@@ -150,46 +328,97 @@ async function _processSingleSource(result, idx, total, questionForInference, or
 
     console.group(`[SimpleSearch] [SEARCH] Fonte ${idx}: ${hostHint}`);
 
-    // Alguns sites com Cloudflare agressivo SEMPRE bloqueiam requests server-side (Jina/NativeFetch)
-    // Pular eles na Fase 1 (allowBgTab=false) economiza ~2-4s por URL de timeout inútil.
-    const BLOCKED_DOMAINS = ['studocu.com', 'gauthmath.com', 'scribd.com'];
-    const skipServerFetches = !allowBgTab && BLOCKED_DOMAINS.some(d => hostHint.endsWith(d));
+    // ── A) Domain Strategy routing ──────────────────────────────────────────
+    const strategy = _getDomainStrategy(hostHint);
+    const isSpa = BackgroundTabExtractorService.isJsHeavySpa(link);
+    const cachedMethod = _getCachedMethod(hostHint);
+
+    // Skip domains que quase sempre exigem login (paywall/account required)
+    if (strategy === 'skip') {
+        return _fail(`Domínio ${hostHint} marcado como 'skip' (login/paywall obrigatório)`);
+    }
 
     let pageText = null;
+    let usedMethod = null;
 
-    if (skipServerFetches) {
-        console.log(`[SimpleSearch] [FAST] Pulando server fetches para ${hostHint} (só funciona via BackgroundTab)`);
-    } else {
-        pageText = await ApiService.fetchViaJina(link);
-
-        // NativeFetch: binário Go com TLS fingerprint Chrome_131 — bypassa CloudFront (PasseiDireto)
-        // e outros CDNs que bloqueiam TLS automático. Só tenta se o binário nativo estiver instalado.
-        if (!pageText && !cancel.cancelled) {
+    // ── C) Cache hit: usar o método que já funcionou antes ──────────────────
+    if (cachedMethod) {
+        console.log(`[SimpleSearch] [CACHE] ${hostHint}: usando método cacheado "${cachedMethod}"`);
+        if (cachedMethod === 'bgtab' && allowBgTab && isSpa) {
+            try {
+                pageText = await BackgroundTabExtractorService.extractFromUrl(link, { timeoutMs: 15000 });
+                if (pageText) { usedMethod = 'bgtab'; console.log(`[SimpleSearch] [OK] BackgroundTab (cached): ${pageText.length} chars`); }
+            } catch (e) { console.warn(`[SimpleSearch] BackgroundTab (cached) erro:`, e?.message); }
+        } else if (cachedMethod === 'native') {
             try {
                 const nativeAvail = await NativeFetchBridgeService.isAvailable();
                 if (nativeAvail) {
-                    console.log(`[SimpleSearch] [RETRY] Jina falhou → tentando NativeFetch (TLS bypass)...`);
                     pageText = await NativeFetchBridgeService.fetchText(link);
-                    if (pageText) console.log(`[SimpleSearch] [OK] NativeFetch: ${pageText.length} chars`);
+                    if (pageText) { usedMethod = 'native'; console.log(`[SimpleSearch] [OK] NativeFetch (cached): ${pageText.length} chars`); }
                 }
-            } catch (_) { /* binário não instalado ou erro — silencioso */ }
+            } catch (_) { /* silencioso */ }
+        } else {
+            pageText = await ApiService.fetchViaJina(link);
+            if (pageText) { usedMethod = 'jina'; }
         }
     }
 
-    // Não abre aba oculta se já temos resultados suficientes (cancellation token)
-    // BackgroundTab só é permitido na fase 2 (allowBgTab=true), nunca na fase 1 paralela
-    if (!pageText && !cancel.cancelled && allowBgTab && BackgroundTabExtractorService.isJsHeavySpa(link)) {
-        console.log(`[SimpleSearch] [RETRY] Jina falhou → tentando BackgroundTab...`);
-        try {
-            pageText = await BackgroundTabExtractorService.extractFromUrl(link, { timeoutMs: 15000 });
-        } catch (e) {
-            console.warn(`[SimpleSearch] BackgroundTab erro:`, e?.message);
+    // ── Sem cache hit: escolher por strategy ────────────────────────────────
+    if (!pageText) {
+        // BackgroundTab-first SÓ quando allowBgTab=true (Fase 2) E é SPA/render
+        // Na Fase 1, Jina vai primeiro — texto parcial > zero texto.
+        const useRenderFirst = allowBgTab && (strategy === 'render' || isSpa);
+
+        if (useRenderFirst) {
+            console.log(`[SimpleSearch] [BGFIRST] ${hostHint}: Fase 2 + SPA/render → BackgroundTab primeiro`);
+            try {
+                pageText = await BackgroundTabExtractorService.extractFromUrl(link, { timeoutMs: 15000 });
+                if (pageText) { usedMethod = 'bgtab'; console.log(`[SimpleSearch] [OK] BackgroundTab: ${pageText.length} chars`); }
+            } catch (e) { console.warn(`[SimpleSearch] BackgroundTab erro:`, e?.message); }
+        }
+
+        // Jina → NativeFetch (SEMPRE tenta quando não tem texto — removido guard strategy!=='render')
+        if (!pageText && !cancel.cancelled) {
+            pageText = await ApiService.fetchViaJina(link);
+            if (pageText) usedMethod = 'jina';
+
+            if (!pageText && !cancel.cancelled) {
+                try {
+                    const nativeAvail = await NativeFetchBridgeService.isAvailable();
+                    if (nativeAvail) {
+                        console.log(`[SimpleSearch] [RETRY] Jina falhou → tentando NativeFetch (TLS bypass)...`);
+                        pageText = await NativeFetchBridgeService.fetchText(link);
+                        if (pageText) { usedMethod = 'native'; console.log(`[SimpleSearch] [OK] NativeFetch: ${pageText.length} chars`); }
+                    }
+                } catch (_) { /* binário não instalado ou erro — silencioso */ }
+            }
+        }
+
+        // BackgroundTab fallback final (quando server fetch falhou, BgTab está disponível, e não tentamos antes)
+        if (!pageText && !cancel.cancelled && allowBgTab && isSpa && !useRenderFirst) {
+            console.log(`[SimpleSearch] [RETRY] Métodos server falharam → tentando BackgroundTab...`);
+            try {
+                pageText = await BackgroundTabExtractorService.extractFromUrl(link, { timeoutMs: 15000 });
+                if (pageText) { usedMethod = 'bgtab'; }
+            } catch (e) { console.warn(`[SimpleSearch] BackgroundTab erro:`, e?.message); }
         }
     }
 
+    // ── B) Multi-strategy extraction fallbacks ──────────────────────────────
+    // Se o texto retornado é curto demais, tentar extrair gabarito de texto parcial
+    if (pageText && pageText.length < MIN_TEXT_LENGTH) {
+        console.log(`[SimpleSearch] [FALLBACK] Texto muito curto (${pageText.length} chars), tentando estratégias alternativas...`);
+        const enriched = _extractWithFallbackStrategies(pageText);
+        if (enriched) pageText = enriched;
+    }
+
+    // Se mesmo com fallback não temos texto suficiente, falhar
     if (!pageText || pageText.length < MIN_TEXT_LENGTH) {
         return _fail(`Sem texto útil (len=${pageText?.length || 0})`);
     }
+
+    // ── C) Registrar método que funcionou ───────────────────────────────────
+    if (usedMethod) _cacheSuccessfulMethod(hostHint, usedMethod);
 
     // Aborta antes de chamar a IA se já temos fontes suficientes — evita rate limit 429
     if (cancel.cancelled) {
@@ -251,7 +480,24 @@ async function _processSingleSource(result, idx, total, questionForInference, or
     const matchResult = OptionsMatchService.matchAnswerTextToOptions(aiResult.answerText, originalOptionsMap);
 
     if (!matchResult?.letter) {
-        return _fail(`Texto "${aiResult.answerText.slice(0, 60)}" não casou com nenhuma opção`);
+        // Text matching failed but AI DID find an answer — preserve it as rawAnswer
+        // so the LLM consensus mechanism (aiConsolidateExtractedAnswers) can evaluate it
+        const rawText = aiResult.answerText || '';
+        console.log(`[SimpleSearch] [RAW] ${hostHint}: match falhou, preservando para consenso LLM: "${rawText.slice(0, 80)}"`);
+        console.groupEnd();
+        return {
+            success: false,
+            hasRawAnswer: true,
+            rawAnswer: rawText,
+            sourceLetter: aiResult.sourceLetter || null,
+            evidence: aiResult.evidence || snippet || '',
+            hostHint,
+            link: link || '',
+            title: title || hostHint,
+            letter: null,
+            answerText: null,
+            confidence: null
+        };
     }
 
     const letter = matchResult.letter;
@@ -788,11 +1034,72 @@ export const SimpleSearchService = {
         const optionsMismatchWarning = await validationPromise;
 
         if (sources.length === 0) {
+            // ── Tabela de diagnóstico COMPLETA no DevTools ──────────────────────────
+            // Mostra TODAS as tentativas (sucesso ou falha) para debug fácil
+            console.log('\n[SimpleSearch] 📊 ═══ DIAGNÓSTICO COMPLETO DE FONTES ═══');
+            console.table(allAttempts.map(a => ({
+                'Fonte': (a.hostHint || '').slice(0, 30),
+                'Link': (a.link || '').slice(0, 60),
+                'Extraiu?': a.success ? '✅ SIM' : (a.hasRawAnswer ? '⚠️ PARCIAL' : '❌ NÃO'),
+                'Gabarito': a.success
+                    ? `${a.letter}) ${(a.answerText || '').slice(0, 50)}`
+                    : (a.hasRawAnswer ? (a.rawAnswer || '').slice(0, 50) : '—')
+            })));
+            console.log('═══════════════════════════════════════════════════════\n');
+
             // Nenhuma URL retornou resultado útil via match de alternativas.
             // Verificar se há respostas ENCONTRADO_FORA (fonte tem gabarito mas alternativas são erradas)
             const rawAnswerItems = allAttempts.filter(a => a.hasRawAnswer && a.rawAnswer);
 
             if (rawAnswerItems.length > 0) {
+                // Feature requested: tabelinha userfriendly no console
+                console.log('\n[SimpleSearch] 📊 --- RESUMO DOS GABARITOS EXTRAÍDOS ---');
+                console.table(rawAnswerItems.map(a => ({
+                    Fonte: a.hostHint || a.link,
+                    'Extração com Sucesso': 'SIM',
+                    'Gabarito Encontrado': a.rawAnswer.length > 100 ? a.rawAnswer.slice(0, 100) + '...' : a.rawAnswer
+                })));
+                console.log('-------------------------------------------------------\n');
+
+                if (typeof onStatus === 'function') onStatus(' Consolidando gabaritos com IA...');
+                
+                // Super Feature: Consenso de LLM
+                console.log('[SimpleSearch] Solicitando consenso analítico da IA sobre gabaritos cru...');
+                const extractedForLLM = rawAnswerItems.map(a => ({ host: a.hostHint || a.link, text: a.rawAnswer }));
+                const llmConsensus = await ApiService.aiConsolidateExtractedAnswers(extractedForLLM, questionForInference);
+
+                if (llmConsensus?.letter && originalOptionsMap[llmConsensus.letter]) {
+                    const bestLetter = llmConsensus.letter;
+                    const shiftNote = `Letra identificada por consenso da IA mapeando e interpretando os diferentes gabaritos das fontes.\nJustificativa da IA: ${llmConsensus.reasoning}`;
+                    console.log(`[SimpleSearch] [LLM_CONSENSUS] 🏆 Venceu a Letra ${bestLetter}. Motivo: ${llmConsensus.reasoning}`);
+                    
+                    const fakeResultState = llmConsensus.confidence >= 0.8 ? 'confirmed' : 'suggested';
+                    return [{
+                        question: questionText,
+                        answer: `Letra ${bestLetter}: ${originalOptionsMap[bestLetter]}`,
+                        answerLetter: bestLetter,
+                        answerText: originalOptionsMap[bestLetter],
+                        resultState: fakeResultState,
+                        confidence: llmConsensus.confidence,
+                        evidenceTier: 'WEB_SOURCES',
+                        positionShiftNote: shiftNote,
+                        mismatchWarning: optionsMismatchWarning || undefined,
+                        optionsMap: originalOptionsMap,
+                        votes: { [bestLetter]: llmConsensus.confidence },
+                        allAttempts: allAttempts.map(a => ({ hostHint: a.hostHint, link: a.link, success: a.success, letter: a.letter, answerText: a.rawAnswer || a.answerText })),
+                        sources: rawAnswerItems.map(m => ({ 
+                            letter: bestLetter, 
+                            confidence: 0.75, 
+                            answerText: m.rawAnswer, 
+                            positionShifted: true, 
+                            hostHint: m.hostHint, 
+                            link: m.link, 
+                            title: m.hostHint 
+                        }))
+                    }];
+                }
+
+                // --------- Fallback 1: tentamos string match se a IA não ajudou ---------
                 // First: try to match raw answers against current alternatives (position shift case)
                 // Example: source from last year says "B. Sistematização..." but current question
                 // has the same text as "D" → we find D by text matching
