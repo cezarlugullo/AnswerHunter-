@@ -1418,6 +1418,10 @@ export const PopupController = {
       if (ok) {
         this.view.setTestButtonLoading(provider, 'ok');
         this.view.setSetupStatus(provider, this.t('setup.status.ok'), 'ok');
+        
+        // Ensure the "Configured" chip is shown immediately
+        this.view.showKeyStatus(provider, true);
+
         const providerLabel = provider === 'serper'
           ? this.t(this.getSelectedSearchProvider() === 'serpapi' ? 'provider.serpapi' : 'provider.serper')
           : provider.charAt(0).toUpperCase() + provider.slice(1);

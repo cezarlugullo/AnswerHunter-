@@ -610,12 +610,16 @@ export const PopupView = {
       // Toggle key management wrapper (change + remove buttons)
       const keyMgmtEl = this.elements[`keyMgmt${cap}`];
       if (keyMgmtEl) keyMgmtEl.classList.toggle('hidden', !isReopen);
-      // Toggle close-settings button
+      // Toggle close-settings button (Done)
       const closeBtn = this.elements[`closeSettings${cap}`];
       if (closeBtn) closeBtn.classList.toggle('hidden', !isReopen);
-      // Hide btn-next for ALL providers in reopen mode.
+
+      // In reopen mode, allow "Next" buttons to remain visible so user can navigate between settings pages
+      // unless specifically hidden by other logic. We don't force hide them here anymore.
+      /*
       const btnNext = this.elements[`btnNext${cap}`];
       if (btnNext) btnNext.classList.toggle('hidden', !!isReopen);
+      */
     });
   },
 
