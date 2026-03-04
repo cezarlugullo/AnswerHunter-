@@ -173,14 +173,19 @@ export const StorageModel = {
         if (!name) return;
         const current = this.findNode(this.currentFolderId);
         if (current && current.type === 'folder') {
-            current.children.push({
+            const folder = {
                 id: 'f' + crypto.randomUUID().replace(/-/g, '').slice(0, 12),
                 type: 'folder',
                 title: name,
                 children: [],
                 createdAt: Date.now()
-            });
+            };
+            current.children.push(folder);
             await this.save();
+            // If created at root level, sync to ah_hierarchy for Study tab
+            if (this._isRootFolder(current)) {
+                await this._syncAddToHierarchy({ id: folder.id, name: folder.title, color: '#FF6B6B', createdAt: folder.createdAt });
+            }
         }
     },
 
@@ -292,6 +297,9 @@ export const StorageModel = {
      * @returns {boolean} Sucesso
      */
     async deleteNode(id) {
+        // Check if it's a top-level folder before removing (for hierarchy sync)
+        const isTopLevel = this._isTopLevelFolder(id);
+
         const removeFromTree = (nodes, targetId) => {
             for (let i = 0; i < nodes.length; i++) {
                 if (nodes[i].id === targetId) {
@@ -307,6 +315,7 @@ export const StorageModel = {
 
         if (removeFromTree(this.data, id)) {
             await this.save();
+            if (isTopLevel) await this._syncDeleteFromHierarchy(id);
             return true;
         }
         return false;
@@ -360,6 +369,10 @@ export const StorageModel = {
         if (!folder || folder.type !== 'folder') return false;
         folder.title = newName;
         await this.save();
+        // If top-level folder, sync rename to ah_hierarchy for Study tab
+        if (this._isTopLevelFolder(folderId)) {
+            await this._syncRenameInHierarchy(folderId, newName);
+        }
         return true;
     },
 
@@ -391,6 +404,8 @@ export const StorageModel = {
         const folder = this.findNode(folderId);
         if (!folder || folder.type !== 'folder') return false;
 
+        const isTopLevel = this._isTopLevelFolder(folderId);
+
         const parent = this.findParent(folderId);
         if (!parent || !parent.children) return false;
 
@@ -402,6 +417,7 @@ export const StorageModel = {
         parent.children.splice(folderIndex, 1, ...children);
 
         await this.save();
+        if (isTopLevel) await this._syncDeleteFromHierarchy(folderId);
         return true;
     },
 
@@ -689,6 +705,18 @@ export const StorageModel = {
     },
 
     // ─── Hierarchy sync helpers (ah_disciplines ↔ ah_hierarchy) ──────
+
+    /** Check if a node is the root folder */
+    _isRootFolder(node) {
+        return node && (node.id === 'root' || this.data.indexOf(node) !== -1);
+    },
+
+    /** Check if a folder id is a direct child of the root (top-level discipline) */
+    _isTopLevelFolder(folderId) {
+        const root = this.data?.[0];
+        if (!root || !root.children) return false;
+        return root.children.some(c => c.id === folderId && c.type === 'folder');
+    },
 
     async _getHierarchy() {
         return new Promise(resolve => {
