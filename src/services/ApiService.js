@@ -710,6 +710,91 @@ export const ApiService = {
     },
 
     /**
+     * Generic provider dispatcher used by PageGabaritoCache and other services.
+     * Tries providers in primaryProvider order, returns { content, usedProvider }.
+     */
+    async _callAnyProvider(messages, callOpts = {}, logPrefix = '[aiCall]') {
+        const settings = await this._getSettings();
+        const opts = Object.assign({ temperature: 0.05, max_tokens: 300 }, callOpts);
+
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                const model = opts.model_gemini || settings.geminiModelSmart || 'gemini-2.5-flash';
+                console.log(`  ${logPrefix} Trying Gemini (${model})...`);
+                return await this._callGemini(messages, { ...opts, model });
+            } catch (e) { console.warn(`  ${logPrefix} Gemini error:`, e?.message || e); return null; }
+        };
+        const tryGroq = async () => {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = opts.model_groq || settings.groqModelSmart || 'llama-3.3-70b-versatile';
+                console.log(`  ${logPrefix} Trying Groq (${model})...`);
+                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model, messages, temperature: opts.temperature, max_tokens: opts.max_tokens })
+                }));
+                return data?.choices?.[0]?.message?.content?.trim() || null;
+            } catch (e) { console.warn(`  ${logPrefix} Groq error:`, e?.message || e); return null; }
+        };
+        const tryCopilot = async () => {
+            if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = opts.model_copilot || settings.copilotModel || 'claude-sonnet-4.6';
+                console.log(`  ${logPrefix} Trying Copilot (${model})...`);
+                return await this._callCopilot(messages, { ...opts, model });
+            } catch (e) { console.warn(`  ${logPrefix} Copilot error:`, e?.message || e); return null; }
+        };
+        const tryChatGPT = async () => {
+            if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = opts.model_chatgpt || settings.chatgptModel || 'gpt-4o';
+                console.log(`  ${logPrefix} Trying ChatGPT (${model})...`);
+                return await this._callChatGPT(messages, { ...opts, model });
+            } catch (e) { console.warn(`  ${logPrefix} ChatGPT error:`, e?.message || e); return null; }
+        };
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                const model = opts.model_openrouter || settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                console.log(`  ${logPrefix} Trying OpenRouter (${model})...`);
+                return await this._callOpenRouter(messages, { ...opts, model });
+            } catch (e) { console.warn(`  ${logPrefix} OpenRouter error:`, e?.message || e); return null; }
+        };
+
+        const fallbackChain = [];
+        if (settings.geminiApiKey) fallbackChain.push({ name: 'gemini', fn: tryGemini });
+        if (settings.openrouterApiKey && this._openRouterQuotaExhaustedUntil <= Date.now()) fallbackChain.push({ name: 'openrouter', fn: tryOpenRouter });
+        if (settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) fallbackChain.push({ name: 'groq', fn: tryGroq });
+        if (this._chatgptQuotaExhaustedUntil <= Date.now()) fallbackChain.push({ name: 'chatgpt', fn: tryChatGPT });
+        if (this._copilotQuotaExhaustedUntil <= Date.now()) fallbackChain.push({ name: 'copilot', fn: tryCopilot });
+
+        const primary = settings.primaryProvider || 'groq';
+        const primaryIdx = fallbackChain.findIndex(p => p.name === primary);
+        if (primaryIdx > 0) fallbackChain.unshift(...fallbackChain.splice(primaryIdx, 1));
+
+        const providerOrder = fallbackChain.map(p => p.name);
+        console.log(`  ${logPrefix} primaryProvider=${primary} | order=${providerOrder.join(' -> ') || '(none)'}`);
+
+        let usedProvider = null;
+        let result = null;
+        for (const provider of fallbackChain) {
+            result = await provider.fn();
+            if (result && result.length >= 10) {
+                usedProvider = provider.name;
+                break;
+            }
+            console.log(`  ${logPrefix} ${provider.name} returned empty/null — trying next...`);
+        }
+
+        if (usedProvider && usedProvider !== primary) {
+            console.log(`  ${logPrefix} fallback used: requested=${primary} → actual=${usedProvider}`);
+        }
+        return { content: result, usedProvider };
+    },
+
+    /**
      * Run multi-attempt Gemini consensus for MC inference.
      * @param {string} systemMsg - System prompt
      * @param {string} userPrompt - User prompt
@@ -1717,6 +1802,83 @@ Letra B: TCP
         console.log(`  🧠 [aiReflect] RESULT: letter=${letter}`);
         return { letter, response: content, method: 'ai-combined-reflection' };
     },
+
+    /**
+     * Verifies whether the letter found in a source is correct for the student's question.
+     * Handles shuffled option order between source and question.
+     * Returns { letter, confidence, reasoning, action } or null.
+     */
+    async aiVerifyLetterInContext(questionText, suggestedLetter, sourceText, host = '') {
+        if (!questionText || !suggestedLetter || !sourceText || sourceText.length < 200) {
+            console.log(`  🔎 [aiVerify] SKIP: missing args or text too short (${(sourceText||'').length} chars)`);
+            return null;
+        }
+
+        const settings = await this._getSettings();
+        const truncatedSource = sourceText.substring(0, 2000);
+        const truncatedQuestion = questionText.substring(0, 1800);
+        console.log(`  🔎 [aiVerify] START host=${host} suggestedLetter=${suggestedLetter} sourceLen=${truncatedSource.length}`);
+
+        const systemMsg = `Você é um especialista em questões de múltipla escolha brasileiras. Sua tarefa é verificar se a letra de resposta encontrada em uma fonte está correta para a questão do aluno. As alternativas podem estar em ordem diferente entre a fonte e a questão — identifique a letra CORRETA na questão do aluno com base no CONTEÚDO. Responda APENAS no formato solicitado.`;
+
+        const prompt = `# Verificação de Gabarito
+
+A análise automática encontrou a resposta **Letra ${suggestedLetter}** em uma fonte (${host}).
+Verifique se essa letra é realmente a correta para a questão do aluno, considerando que as alternativas PODEM estar em ordem diferente.
+
+# Questão do aluno (com as alternativas na ordem dele):
+${truncatedQuestion}
+
+# Texto encontrado na fonte (${host}):
+${truncatedSource}
+
+# Tarefa:
+1. Leia o texto da fonte e identifique qual é a resposta correta (pelo CONTEÚDO, não pela letra)
+2. Compare com as alternativas da questão do aluno
+3. Determine qual letra na questão do aluno corresponde à resposta correta
+
+# Responda EXATAMENTE em um dos formatos:
+
+## Se conseguiu verificar:
+CONFIRMADO: Letra ${suggestedLetter} (a fonte e a questão concordam)
+OU
+CORRECAO: Letra X (a letra correta na questão do aluno é X, não ${suggestedLetter})
+RAZAO: [explicação em 1 linha de por que]
+
+## Se não conseguiu verificar:
+INCONCLUSIVO: [motivo em 1 linha]`;
+
+        const parseVerifyResponse = (text) => {
+            if (!text) return null;
+            const confirmMatch = text.match(/CONFIRMADO:\s*Letra\s*([A-E])/i);
+            if (confirmMatch) return { letter: confirmMatch[1].toUpperCase(), confidence: 0.80, reasoning: 'confirmed', action: 'confirm' };
+            const correctMatch = text.match(/CORRECAO:\s*Letra\s*([A-E])/i);
+            const reasonMatch = text.match(/RAZAO:\s*(.+)/i);
+            if (correctMatch) return {
+                letter: correctMatch[1].toUpperCase(),
+                confidence: 0.72,
+                reasoning: reasonMatch?.[1]?.trim() || '',
+                action: 'correct'
+            };
+            return null;
+        };
+
+        const { content: _verifRaw, usedProvider: _verifProvider } = await this._callAnyProvider(
+            [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
+            { temperature: 0.05, max_tokens: 200, model_groq: settings.groqModelFast || settings.groqModel, model_gemini: settings.geminiModelFast || 'gemini-2.0-flash' },
+            '🔎 [aiVerify]'
+        );
+        const result = parseVerifyResponse(_verifRaw);
+        if (_verifProvider) console.log(`  🔎 [aiVerify] provider used: ${_verifProvider} | parsed: ${JSON.stringify(result)}`);
+
+        if (result) {
+            console.log(`  🔎 [aiVerify] DONE: action=${result.action} letter=${result.letter} confidence=${result.confidence}`);
+        } else {
+            console.log(`  🔎 [aiVerify] DONE: no result from any provider`);
+        }
+        return result;
+    },
+
 
     /**
      * Fetches a snapshot preserving BOTH HTML and derived text, with fallback for blocked sources.
