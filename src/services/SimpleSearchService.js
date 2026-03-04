@@ -880,7 +880,7 @@ export const SimpleSearchService = {
             : Promise.resolve([]);
 
         const fase1Promise = _collectFirstNSources(
-            topResults, questionForInference, originalOptionsMap, 5, 8, onStatus, true
+            topResults, questionForInference, originalOptionsMap, 3, MAX_SOURCES, onStatus, true
         );
 
         // Lançar Fase 0 (snippets) em paralelo
@@ -1023,7 +1023,7 @@ export const SimpleSearchService = {
         if (sources.length < MAX_SOURCES) {
             const alreadyProcessed = new Set(allAttempts.map(a => a.link));
             const spaResults = topResults
-                .filter(r => r.link && BackgroundTabExtractorService.isJsHeavySpa(r.link) && !alreadyProcessed.has(r.link));
+                .filter(r => r.link && !alreadyProcessed.has(r.link));
             if (spaResults.length > 0) {
                 if (typeof onStatus === 'function') onStatus(' Expandindo busca com mais fontes…');
                 const remaining = MAX_SOURCES - sources.length;
@@ -1201,7 +1201,7 @@ export const SimpleSearchService = {
         for (const src of sources) preVotes[src.letter] = (preVotes[src.letter] || 0) + (src.confidence || 0);
         const preTotal = Object.values(preVotes).reduce((a, b) => a + b, 0);
         const preBest = Math.max(...Object.values(preVotes), 0);
-        const skipPhase3 = sources.length >= 4 && preTotal > 0 && (preBest / preTotal) >= 0.85;
+        const skipPhase3 = sources.length >= 2 && preTotal > 0 && (preBest / preTotal) >= 0.80;
 
         if (skipPhase3) {
             console.log(`[SimpleSearch] [FAST] Pulando Fase 3 de confirmação (consenso atual ≥ 80%)`);

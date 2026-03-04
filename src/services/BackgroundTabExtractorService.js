@@ -23,6 +23,27 @@ const CF_PROTECTED_SITES = new Set(['studocu', 'gauthmath']);
 // Sites with heavy behavior analysis (mouse tracking, scroll detection) — use HumanMouseSimulator
 const HUMAN_SIM_SITES = new Set(['brainly', 'scribd']);
 
+// Concurrency semaphore — limit simultaneous background tabs to avoid Chrome choking
+const MAX_CONCURRENT_TABS = 3;
+let _activeTabCount = 0;
+const _tabQueue = [];
+
+function _acquireTabSlot() {
+  if (_activeTabCount < MAX_CONCURRENT_TABS) {
+    _activeTabCount++;
+    return Promise.resolve();
+  }
+  return new Promise(resolve => _tabQueue.push(resolve));
+}
+
+function _releaseTabSlot() {
+  _activeTabCount--;
+  if (_tabQueue.length > 0) {
+    _activeTabCount++;
+    _tabQueue.shift()();
+  }
+}
+
 export class BackgroundTabExtractorService {
 
   // Public API
@@ -42,17 +63,22 @@ export class BackgroundTabExtractorService {
    * @returns {Promise<string|null>}
    */
   static async extractFromUrl(url, options = {}) {
-    const site = BackgroundTabExtractorService._detectSite(url);
-    const extractor = site ? BackgroundTabExtractorService._getExtractor(site) : null;
+    await _acquireTabSlot();
+    try {
+      const site = BackgroundTabExtractorService._detectSite(url);
+      const extractor = site ? BackgroundTabExtractorService._getExtractor(site) : null;
 
-    // Route CF-protected sites through full bypass pipeline
-    if (site && CF_PROTECTED_SITES.has(site) && extractor) {
-      return BackgroundTabExtractorService._extractWithCFBypass(url, site, extractor, options);
+      // Route CF-protected sites through full bypass pipeline
+      if (site && CF_PROTECTED_SITES.has(site) && extractor) {
+        return await BackgroundTabExtractorService._extractWithCFBypass(url, site, extractor, options);
+      }
+
+      // Standard extraction — works for known sites (with specific extractor) AND
+      // unknown sites (generic textContent fallback kicks in automatically)
+      return await BackgroundTabExtractorService._extractStandard(url, site || 'generic', extractor, options);
+    } finally {
+      _releaseTabSlot();
     }
-
-    // Standard extraction — works for known sites (with specific extractor) AND
-    // unknown sites (generic textContent fallback kicks in automatically)
-    return BackgroundTabExtractorService._extractStandard(url, site || 'generic', extractor, options);
   }
 
   /**
@@ -206,16 +232,15 @@ export class BackgroundTabExtractorService {
 
   static _getRenderWaitMs(site) {
     const waits = {
-      // Brainly: React SPA — needs full hydration, login modal removal, and bot-check delay
-      brainly: 7500,
-      studocu: 5000,
-      // PasseiDireto: Next.js SSR, but bot-detection can delay a redirect; give it more time
-      passeidireto: 4500,
-      gauthmath: 5000,
-      scribd: 3500,
-      slideshare: 3000
+      brainly: 5000,
+      studocu: 4000,
+      passeidireto: 3000,
+      gauthmath: 4000,
+      scribd: 3000,
+      slideshare: 2500
     };
-    return waits[site] || 3500;
+    // Generic/unknown sites get a short wait — just enough for basic JS to render
+    return waits[site] || 2000;
   }
 
   static _getExtractor(site) {
