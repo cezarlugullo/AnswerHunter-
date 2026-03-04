@@ -169,6 +169,13 @@ export const BinderController = {
                 return;
             }
 
+            const moveToParentBtn = e.target.closest('.move-to-parent-btn');
+            if (moveToParentBtn) {
+                e.stopPropagation();
+                this.handleMoveToParent(moveToParentBtn.dataset.id);
+                return;
+            }
+
             const renameBtn = e.target.closest('.rename-btn');
             if (renameBtn) {
                 e.stopPropagation();
@@ -281,6 +288,15 @@ export const BinderController = {
             await StorageModel.renameFolder(id, newName.trim());
             this.renderBinder();
         }
+    },
+
+    async handleMoveToParent(id) {
+        const parent = StorageModel.findParent(id);
+        if (!parent) return;
+        const grandparent = StorageModel.findParent(parent.id);
+        if (!grandparent) return;
+        await StorageModel.moveItem(id, grandparent.id);
+        this.renderBinder();
     },
 
     async handleDelete(id) {
@@ -666,11 +682,6 @@ export const BinderController = {
     },
 
     async handleOpenStudyPage() {
-        const questions = this._collectAllQuestions();
-        if (!questions.length) {
-            if (this.view.showToast) this.view.showToast(this.t('binder.toast.nothingToExport'), 'error');
-            return;
-        }
         const url = chrome.runtime.getURL('src/study/study.html');
         chrome.tabs.create({ url });
     },
