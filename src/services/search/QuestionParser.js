@@ -87,8 +87,8 @@ export const QuestionParser = {
         // NOT by a determiner/connector word.
         const altLabelMatch = stem.match(/\bALTERNATIVAS?\b/i);
         if (altLabelMatch && altLabelMatch.index > 30) {
-            const before = stem.slice(Math.max(0, altLabelMatch.index - 12), altLabelMatch.index).trim().toLowerCase();
-            const isPartOfSentence = /(?:qual|a|da|das|na|nas|essa|este|esta|uma|cada|outra|marque|assinale|indique|identifique|encontre|selecione)\s*$/i.test(before);
+            const before = stem.slice(Math.max(0, altLabelMatch.index - 30), altLabelMatch.index).trim().toLowerCase();
+            const isPartOfSentence = /(?:qual|a|da|das|na|nas|essa|este|esta|uma|cada|outra|seguintes?|pr[oó]ximas?|demais|marque|assinale|indique|identifique|encontre|selecione)\s*$/i.test(before);
             if (!isPartOfSentence) {
                 stem = stem.slice(0, altLabelMatch.index).trim();
             }
