@@ -784,16 +784,6 @@ export const PopupView = {
 
           <div class="qa-card-question">${formatQuestionText(item.question)}</div>
 
-          <div class="qa-card-ai-warning">
-            <span class="material-symbols-rounded">info</span>
-            <span>${escapeHtml(this.t('result.aiWarning'))}</span>
-          </div>
-
-          ${item.mismatchWarning ? `<div class="qa-card-ai-warning" style="background:rgba(231,76,60,0.08);border-color:rgba(231,76,60,0.35);color:#c0392b;margin-top:4px;">
-            <span class="material-symbols-rounded">warning</span>
-            <span>${escapeHtml(item.mismatchWarning)}</span>
-          </div>` : ''}
-
           ${item.positionShiftNote ? `<div class="qa-card-ai-warning" style="background:rgba(230,126,34,0.08);border-color:rgba(230,126,34,0.35);color:#d35400;margin-top:4px;">
             <span class="material-symbols-rounded">swap_horiz</span>
             <span>${escapeHtml(item.positionShiftNote)}</span>
@@ -998,7 +988,8 @@ export const PopupView = {
         .replace(/^\s*Q\d+\s*:\s*/i, '')
         .replace(/\bENUNCIADO\b/gi, '')
         .replace(/\bALTERNATIVAS?\b/gi, '')
-        .replace(/\s+/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
 
       const stem = String(QuestionParser.extractQuestionStem(questionRaw) || '').trim();
