@@ -6,6 +6,7 @@ import { GeminiCLIApiAdapter } from './GeminiCLIApiAdapter.js';
 import { CopilotAuthService } from './CopilotAuthService.js';
 import { CopilotApiAdapter } from './CopilotApiAdapter.js';
 import { BackgroundTabExtractorService } from './BackgroundTabExtractorService.js';
+import { QuestionParser } from './search/QuestionParser.js';
 
 
 /**
@@ -3191,30 +3192,91 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             .replace(/[^a-z0-9_]+/g, '')
             .replace(/\s+/g, '')
             .trim();
-        const extractOptionHints = (raw) => {
-            const text = String(raw || '').replace(/\r\n/g, '\n');
-            const re = /(?:^|[\n\r\t ;])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:[\n\r\t ;][A-E]\s*[\)\.\-:]\s)|$)/gi;
+        const extractOptionHints = (raw, stemText = '') => {
+            const optionLines = QuestionParser.extractOptionsFromQuestion(raw || '');
+            if (!optionLines || optionLines.length === 0) return [];
+
+            const byLetter = new Map();
+            for (const line of optionLines) {
+                const mm = String(line || '').match(/^([A-E])\)\s*(.+)$/i);
+                if (!mm) continue;
+                const letter = (mm[1] || '').toUpperCase();
+                let body = normalizeSpace(QuestionParser.stripOptionTailNoise(mm[2] || ''));
+                if (!body) continue;
+                // Hard leak signatures from multi-question pages/UI fragments
+                if (/\b(?:\d{1,2}\s+(?:marcar|revis[aã]o|quest[aã]o|um|uma|voce|você)|marcar\s+para\s+revis[aã]o)\b/i.test(body)) {
+                    continue;
+                }
+                if (!byLetter.has(letter) || body.length > String(byLetter.get(letter) || '').length) {
+                    byLetter.set(letter, body);
+                }
+            }
+
+            const orderedEntries = ['A', 'B', 'C', 'D', 'E']
+                .filter((letter) => byLetter.has(letter))
+                .map((letter) => ({ letter, body: byLetter.get(letter) }));
+            if (orderedEntries.length === 0) return [];
+
+            // Keep only contiguous A..N sequence to avoid accidental jumps after contamination.
+            const contiguousEntries = [];
+            for (let i = 0; i < orderedEntries.length; i++) {
+                const expected = String.fromCharCode(65 + i);
+                if (orderedEntries[i].letter !== expected) break;
+                contiguousEntries.push(orderedEntries[i]);
+            }
+            const workingEntries = contiguousEntries.length >= 2 ? contiguousEntries : orderedEntries;
+
+            const lengths = workingEntries.map((entry) => entry.body.length).sort((a, b) => a - b);
+            const medianLen = lengths.length > 0 ? lengths[Math.floor(lengths.length / 2)] : 0;
+            const leakMarkers = /\b(?:considere|assinale|marque|associe|associa[cç][aã]o|sobre a|sobre o|s[aã]o corretas|est[aã]o corretas|analise|verifique|qual(?:is)?\b|quest[aã]o|pergunta)\b/i;
+
+            const filteredEntries = workingEntries.filter((entry) => {
+                const body = String(entry.body || '').trim();
+                if (!body) return false;
+                if (body.length > 320) return false;
+                if (medianLen > 0 && body.length > Math.max(90, medianLen * 3.5) && leakMarkers.test(body)) {
+                    return false;
+                }
+                return true;
+            });
+
             const out = [];
             const seen = new Set();
-            let m;
-            while ((m = re.exec(text)) !== null) {
-                const body = normalizeSpace(m[2] || '')
+            for (const entry of filteredEntries) {
+                const body = normalizeSpace(entry.body || '')
                     .replace(/\b(?:gabarito|resposta\s+correta|parab(?:ens|\u00e9ns))\b.*$/i, '')
                     .trim();
                 const codeLikeHint = looksLikeCodeOption(body) || /^[a-z0-9_]+(?:\s*\(\s*\))?$/i.test(body);
-                const bodyNorm = looksLikeCodeOption(body)
+                const bodyNorm = codeLikeHint
                     ? normalizeCodeAwareHint(body)
                     : normalizeForMatch(body);
                 const malformed = !body || body.length < (codeLikeHint ? 2 : 12)
                     || /^[A-E]\s*[\)\.\-:]?\s*$/i.test(body)
                     || /^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(body)
                     || seen.has(bodyNorm);
-                if (!malformed) {
-                    out.push(body);
-                    seen.add(bodyNorm);
-                }
+                if (malformed) continue;
+                out.push(body);
+                seen.add(bodyNorm);
                 if (out.length >= 5) break;
             }
+
+            // Final contextual safety: if we have many hints but zero lexical contact with stem,
+            // keep only the two shortest hints to avoid poisoning options-only queries.
+            const stemTokens = normalizeForMatch(stemText || '')
+                .split(/\s+/)
+                .filter((t) => t.length >= 4);
+            if (out.length >= 3 && stemTokens.length >= 6) {
+                const stemSet = new Set(stemTokens);
+                const overlapHits = out.reduce((acc, hint) => {
+                    const hintTokens = normalizeForMatch(hint).split(/\s+/).filter((t) => t.length >= 4);
+                    const hasHit = hintTokens.some((t) => stemSet.has(t));
+                    return acc + (hasHit ? 1 : 0);
+                }, 0);
+                if (overlapHits === 0) {
+                    return [...out].sort((a, b) => a.length - b.length).slice(0, 2);
+                }
+            }
+
             return out;
         };
 
@@ -3452,10 +3514,12 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
         cleanQuery = cleanQuery.substring(0, maxQueryLen);
         console.log(`AnswerHunter: Query limpa: "${cleanQuery}"`);
 
-        const optionHints = extractOptionHints(rawQuery);
+        const optionHints = extractOptionHints(rawQuery, cleanQuery);
         const hintQuery = buildHintQuery(cleanQuery, optionHints);
         if (hintQuery) {
             console.log(`AnswerHunter: Query com alternativas: "${hintQuery}"`);
+        } else if (optionHints.length === 0) {
+            console.log('AnswerHunter: Query com alternativas: skip (nenhuma alternativa confiável após sanitização)');
         }
 
         const BOOST_SITES = [
