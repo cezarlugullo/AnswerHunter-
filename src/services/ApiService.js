@@ -2781,7 +2781,63 @@ Letra B: TCP
         }
     },
 
+    /**
+     * Search Google Scholar via SerpAPI (engine=google_scholar) or
+     * Serper's /scholar endpoint. Returns [{title, link, snippet}].
+     * Falls back to [] on any error so callers can safely .catch(() => []).
+     */
+    async searchWithScholar(query, num = 5) {
+        try {
+            const { serperApiUrl, serperApiKey } = await this._getSettings();
+            if (!serperApiKey || !String(serperApiKey).trim()) return [];
 
+            const providerMode = /serpapi\.com\//i.test(String(serperApiUrl || '')) ? 'serpapi' : 'serper';
+
+            const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
+            if (providerMode === 'serpapi') {
+                const url = new URL(String(serperApiUrl || 'https://serpapi.com/search.json'));
+                url.searchParams.set('engine', 'google_scholar');
+                url.searchParams.set('q', query);
+                url.searchParams.set('hl', 'pt');
+                url.searchParams.set('num', String(num));
+                url.searchParams.set('api_key', serperApiKey);
+                if (!url.searchParams.has('output')) url.searchParams.set('output', 'json');
+
+                const payload = await this._fetch(url.toString(), {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                return ((payload?.organic_results || []).slice(0, num)).map(r => ({
+                    title: normalizeSpace(r?.title || ''),
+                    link: normalizeSpace(r?.link || r?.url || ''),
+                    snippet: normalizeSpace(r?.snippet || r?.publication_info?.summary || '')
+                })).filter(r => r.title && r.link);
+            }
+
+            // Serper: dedicated /scholar endpoint
+            const serperBase = String(serperApiUrl || 'https://google.serper.dev/search');
+            const scholarUrl = serperBase.replace(/\/(search|scholar|images|news|places|maps)$/, '') + '/scholar';
+            const payload = await this._fetch(scholarUrl, {
+                method: 'POST',
+                headers: {
+                    'X-API-KEY': serperApiKey,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ q: query, hl: 'pt', num })
+            });
+
+            return ((payload?.organic || []).slice(0, num)).map(r => ({
+                title: normalizeSpace(r?.title || ''),
+                link: normalizeSpace(r?.link || ''),
+                snippet: normalizeSpace(r?.snippet || r?.publicationInfo?.summary || r?.summary || '')
+            })).filter(r => r.title && r.link);
+        } catch (e) {
+            console.warn('AnswerHunter: Scholar search error:', e?.message || e);
+            return [];
+        }
+    },
 
 
 
