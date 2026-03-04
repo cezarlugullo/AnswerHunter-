@@ -49,6 +49,13 @@ export function formatQuestionText(text, visionGuidedParsed) {
             return fallback;
         };
         const _esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        // Convert stem newlines to HTML: double-newline = paragraph gap, single = <br>
+        const _stemHtml = (s) => {
+            const escaped = _esc(String(s || ''));
+            return escaped
+                .replace(/\n{2,}/g, '</p><p class="enunciado-para">')
+                .replace(/\n/g, '<br>');
+        };
         const altsHtml = visionGuidedParsed.alternatives.map(a => `
                     <div class="alternative">
                         <span class="alt-letter">${_esc(a.letter)}</span>
@@ -57,7 +64,7 @@ export function formatQuestionText(text, visionGuidedParsed) {
         return `
                 <div class="question-section">
                     <div class="question-section-title">${_esc(_t('result.statement', 'Statement'))}</div>
-                    <div class="question-enunciado">${_esc(visionGuidedParsed.stem)}</div>
+                    <div class="question-enunciado"><p class="enunciado-para">${_stemHtml(visionGuidedParsed.stem)}</p></div>
                 </div>
                 <div class="question-section">
                     <div class="question-section-title">${_esc(_t('result.options', 'Options'))}</div>

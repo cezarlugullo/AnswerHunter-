@@ -592,9 +592,19 @@ button:disabled {
   font-size: 0.9rem;
   line-height: 1.75;
   margin-bottom: 0;
-  text-align: justify;
-  text-wrap: pretty;
-  hyphens: auto;
+  text-align: left;
+  hyphens: manual;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.enunciado-para {
+  margin: 0 0 0.6em 0;
+  padding: 0;
+}
+
+.enunciado-para:last-child {
+  margin-bottom: 0;
 }
 
 /* ===== ENUNCIADO: EDITORIAL LIST (I. II. III.) ===== */

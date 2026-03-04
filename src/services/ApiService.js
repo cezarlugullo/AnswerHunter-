@@ -5,9 +5,6 @@ import { GeminiCLIAuthService } from './GeminiCLIAuthService.js';
 import { GeminiCLIApiAdapter } from './GeminiCLIApiAdapter.js';
 import { CopilotAuthService } from './CopilotAuthService.js';
 import { CopilotApiAdapter } from './CopilotApiAdapter.js';
-import { BackgroundTabExtractorService } from './BackgroundTabExtractorService.js';
-import { QuestionParser } from './search/QuestionParser.js';
-
 
 /**
  * ApiService.js
@@ -59,7 +56,7 @@ export const ApiService = {
                             { model, temperature: opts.temperature, max_tokens: opts.max_tokens }
                         );
                         if (cliResult && typeof cliResult === 'string') {
-                            console.log(`%c[AH] [OK] Gemini CLI success (model=${model}, ${cliResult.length} chars, project=${projectId})`, 'color:#0f0;font-weight:bold');
+                            console.log(`%c[AH] ✅ Gemini CLI success (model=${model}, ${cliResult.length} chars, project=${projectId})`, 'color:#0f0;font-weight:bold');
                             return cliResult;
                         }
                         if (cliResult?.error && cliResult.status === 429) {
@@ -140,7 +137,7 @@ export const ApiService = {
                     console.warn(`AnswerHunter: Gemini empty content (model=${callModel}, finish=${finishReason}, msgKeys=[${msgKeys}])`);
                     return null;
                 }
-                console.log(`%c[AH] [OK] Gemini API success (model=${callModel}, auth=${authSource}, ${content.length} chars)`, 'color:#34a853');
+                console.log(`%c[AH] ✅ Gemini API success (model=${callModel}, auth=${authSource}, ${content.length} chars)`, 'color:#34a853');
                 return content;
             } catch (err) {
                 console.warn(`AnswerHunter: Gemini error (model=${callModel}):`, err?.message || String(err));
@@ -164,15 +161,9 @@ export const ApiService = {
     },
 
     _isOpenRouterModelUnavailableError(status, errorText = '') {
+        if (status !== 404) return false;
         const text = String(errorText || '');
-        if (status === 404) {
-            return /no endpoints found for/i.test(text) || /model[^\n]*not found/i.test(text);
-        }
-        if (status === 400) {
-            // Catches: "X is not a valid model ID", "Invalid model", wrong format (e.g. 'model-free' vs 'model:free')
-            return /not a valid model id/i.test(text) || /invalid model/i.test(text);
-        }
-        return false;
+        return /no endpoints found for/i.test(text) || /model[^\n]*not found/i.test(text);
     },
 
     _getOpenRouterFallbackModel(settings = {}, currentModel = '') {
@@ -181,7 +172,7 @@ export const ApiService = {
 
         const candidates = [
             configured,
-            'google/gemini-2.5-flash:free', // fixed: was 'google/gemini-2.5-flash-free' (invalid)
+            'google/gemini-2.5-flash-free',
             'qwen/qwen-2.5-coder-32b-instruct:free',
             'google/gemini-exp-1121:free',
             'zhipuai/glm-4-plus'
@@ -288,7 +279,7 @@ export const ApiService = {
             }
 
             if (!content) return null;
-            console.log(`%c[AH] [OK] OpenRouter success (model=${model}, ${content.length} chars)`, 'color:#f59e0b');
+            console.log(`%c[AH] ✅ OpenRouter success (model=${model}, ${content.length} chars)`, 'color:#f59e0b');
             return content;
         } catch (err) {
             console.warn('AnswerHunter: OpenRouter request error:', err?.message || String(err));
@@ -357,7 +348,7 @@ export const ApiService = {
 
             const content = data?.choices?.[0]?.message?.content;
             if (typeof content === 'string' && content.trim()) {
-                console.log(`%c[AH] [OK] Groq success (model=${model}, ${content.trim().length} chars)`, 'color:#22c55e');
+                console.log(`%c[AH] ✅ Groq success (model=${model}, ${content.trim().length} chars)`, 'color:#22c55e');
                 return content.trim();
             }
             return null;
@@ -483,7 +474,7 @@ export const ApiService = {
                 buffer = lines.pop() || ''; // keep incomplete last line
 
                 for (const line of lines) {
-                    if (!line.startsWith('data:')) continue;
+                    if (!line.startsWith('data: ')) continue;
                     const jsonStr = line.slice(6).trim();
                     if (!jsonStr || jsonStr === '[DONE]') continue;
 
@@ -517,7 +508,7 @@ export const ApiService = {
                         .join('\n')
                         .trim();
                     if (finalText) {
-                        console.log(`%c[AH] [OK] ChatGPT success (model=${model}, ${finalText.length} chars)`, 'color:#a78bfa');
+                        console.log(`%c[AH] ✅ ChatGPT success (model=${model}, ${finalText.length} chars)`, 'color:#a78bfa');
                         return finalText;
                     }
                 }
@@ -526,7 +517,7 @@ export const ApiService = {
             // Fallback: use collected deltas
             const trimmed = collectedText.trim();
             if (trimmed) {
-                console.log(`%c[AH] [OK] ChatGPT success via deltas (model=${model}, ${trimmed.length} chars)`, 'color:#a78bfa');
+                console.log(`%c[AH] ✅ ChatGPT success via deltas (model=${model}, ${trimmed.length} chars)`, 'color:#a78bfa');
                 return trimmed;
             }
 
@@ -557,20 +548,14 @@ export const ApiService = {
 
         // Check if user is authenticated
         const loggedIn = await CopilotAuthService.isLoggedIn();
-        if (!loggedIn) {
-            console.warn('AnswerHunter: Copilot unavailable — user not logged in (fallback enabled)');
-            return null;
-        }
+        if (!loggedIn) return null; // Not logged in — silently skip
 
         const settings = await this._getSettings();
         const model = opts.model || settings.copilotModel || 'gpt-4o';
 
         // Get a valid Copilot token (auto-refreshes the 30-min token)
         const copilotToken = await CopilotAuthService.getValidToken();
-        if (!copilotToken) {
-            console.warn('AnswerHunter: Copilot unavailable — no valid token (fallback enabled)');
-            return null;
-        }
+        if (!copilotToken) return null;
 
         const apiUrl = await CopilotAuthService.getApiUrl();
 
@@ -581,7 +566,7 @@ export const ApiService = {
             );
 
             if (result && typeof result === 'string') {
-                console.log(`%c[AH] [OK] Copilot success (model=${model}, ${result.length} chars)`, 'color:#79c0ff;font-weight:bold');
+                console.log(`%c[AH] ✅ Copilot success (model=${model}, ${result.length} chars)`, 'color:#79c0ff;font-weight:bold');
                 return result;
             }
 
@@ -591,27 +576,7 @@ export const ApiService = {
                     console.warn('AnswerHunter: Copilot 401 — token will refresh on next call');
                     return null;
                 }
-                if (result.status === 408) {
-                    // Request timed out — skip Copilot this round, fall through to next provider
-                    console.warn('AnswerHunter: Copilot timeout — skipping to next provider');
-                    return null;
-                }
                 if (result.status === 429) {
-                    // Premium model quota exhausted — retry with gpt-4o-mini (always free on all Copilot plans)
-                    const FREE_FALLBACK = 'gpt-4o-mini';
-                    if (model !== FREE_FALLBACK && model !== 'gpt-4o') {
-                        console.warn(`AnswerHunter: Copilot 429 on ${model} — retrying with ${FREE_FALLBACK}`);
-                        try {
-                            const fallback = await CopilotApiAdapter.chatCompletion(
-                                copilotToken, apiUrl, messages,
-                                { model: FREE_FALLBACK, temperature: opts.temperature, max_tokens: opts.max_tokens }
-                            );
-                            if (fallback && typeof fallback === 'string') {
-                                console.log(`%c[AH] [OK] Copilot fallback success (${FREE_FALLBACK}, ${fallback.length} chars)`, 'color:#79c0ff');
-                                return fallback;
-                            }
-                        } catch (_) { /* fall through to cooldown */ }
-                    }
                     const cooldownMs = 120000;
                     this._copilotQuotaExhaustedUntil = Date.now() + cooldownMs;
                     console.warn(`AnswerHunter: Copilot rate-limited (429), cooldown=${cooldownMs}ms`);
@@ -642,7 +607,7 @@ export const ApiService = {
     /* ─────────────────────────────────────────────────────────────────
      * _callWithProviderChain — centralised multi-provider fallback
      *
-     * Replaces the repeated try-chain pattern found across many
+     * Replaces the repeated  try*/chain pattern found across many
      * methods with ONE reusable mechanism.
      *
      * ALL five providers already share the same contract:
@@ -690,11 +655,11 @@ export const ApiService = {
         // ── Provider registry: name → call function ──
         // Each entry guards on API-key / quota automatically inside _call*.
         const registry = {
-            gemini: (msgs, o) => this._callGemini(msgs, { ...o, model: models.gemini || o.model }),
-            groq: (msgs, o) => this._callGroq(msgs, { ...o, model: models.groq || o.model }),
+            gemini:     (msgs, o) => this._callGemini(msgs, { ...o, model: models.gemini || o.model }),
+            groq:       (msgs, o) => this._callGroq(msgs, { ...o, model: models.groq || o.model }),
             openrouter: (msgs, o) => this._callOpenRouter(msgs, { ...o, model: models.openrouter || o.model }),
-            chatgpt: (msgs, o) => this._callChatGPT(msgs, { ...o, model: models.chatgpt || o.model }),
-            copilot: (msgs, o) => this._callCopilot(msgs, { ...o, model: models.copilot || o.model }),
+            chatgpt:    (msgs, o) => this._callChatGPT(msgs, { ...o, model: models.chatgpt || o.model }),
+            copilot:    (msgs, o) => this._callCopilot(msgs, { ...o, model: models.copilot || o.model }),
         };
 
         // ── Build ordered list ──
@@ -705,11 +670,11 @@ export const ApiService = {
 
         // Default ordering per primary preference
         const ORDER_MAP = {
-            copilot: ['copilot', 'chatgpt', 'openrouter', 'gemini', 'groq'],
-            chatgpt: ['chatgpt', 'copilot', 'openrouter', 'gemini', 'groq'],
+            copilot:    ['copilot', 'chatgpt', 'openrouter', 'gemini', 'groq'],
+            chatgpt:    ['chatgpt', 'copilot', 'openrouter', 'gemini', 'groq'],
             openrouter: ['openrouter', 'gemini', 'copilot', 'chatgpt', 'groq'],
-            gemini: ['gemini', 'openrouter', 'copilot', 'chatgpt', 'groq'],
-            groq: ['groq', 'openrouter', 'gemini', 'copilot', 'chatgpt'],
+            gemini:     ['gemini', 'openrouter', 'copilot', 'chatgpt', 'groq'],
+            groq:       ['groq', 'openrouter', 'gemini', 'copilot', 'chatgpt'],
         };
         const ordered = (ORDER_MAP[primary] || ORDER_MAP.groq).filter(p => allowed.includes(p));
 
@@ -720,7 +685,7 @@ export const ApiService = {
         };
         const validate = customIsValid || defaultIsValid;
 
-        console.log(` [LINK] [${label}] primary=${primary} order=${ordered.join(' →')}`);
+        console.log(`  🔗 [${label}] primary=${primary}  order=${ordered.join(' → ')}`);
 
         for (const providerName of ordered) {
             try {
@@ -729,18 +694,18 @@ export const ApiService = {
 
                 const value = postProcess ? postProcess(raw) : raw;
                 if (!validate(value)) {
-                    console.log(` [LINK] [${label}] ${providerName} → rejected by validation, trying next…`);
+                    console.log(`  🔗 [${label}] ${providerName} → rejected by validation, trying next…`);
                     continue;
                 }
 
-                console.log(`%c[AH] [TARGET] ${label} → ${providerName}`, 'color:#0ff;font-weight:bold');
+                console.log(`%c[AH] 🎯 ${label} → ${providerName}`, 'color:#0ff;font-weight:bold');
                 return { result: value, provider: providerName };
             } catch (err) {
-                console.warn(` [LINK] [${label}] ${providerName} error:`, err?.message || err);
+                console.warn(`  🔗 [${label}] ${providerName} error:`, err?.message || err);
             }
         }
 
-        console.warn(` [LINK] [${label}] all providers failed`);
+        console.warn(`  🔗 [${label}] all providers failed`);
         return { result: fallbackValue, provider: null };
     },
 
@@ -951,8 +916,6 @@ export const ApiService = {
 
     /**
      * Wrapper for fetch with common headers and robust retry
-     * NOTE: This method contains Groq-specific 429 handling. For non-Groq
-     * APIs (Serper, Scholar, etc.), use _fetchGeneric() instead.
      */
     async _fetch(url, options) {
         const maxRetries = 3;
@@ -975,16 +938,8 @@ export const ApiService = {
                         throw new Error(`GROQ_QUOTA_EXHAUSTED: retry-after=${retryAfter}s (~${waitMin}min)`);
                     }
 
-                    // Medium retry-after (10–30s): too long for parallel extraction — block Groq
-                    // temporarily so other parallel calls skip to Copilot immediately
-                    if (retryAfter > 10) {
-                        this._groqQuotaExhaustedUntil = Date.now() + retryAfter * 1000;
-                        console.warn(`AnswerHunter: Groq 429 retry-after=${retryAfter}s — blocking Groq for ${retryAfter}s, falling back to next provider`);
-                        throw new Error(`GROQ_QUOTA_EXHAUSTED: retry-after=${retryAfter}s (temp block)`);
-                    }
-
-                    // Short retry-after (≤ 10s): per-minute rate limit, wait once and retry
-                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 10) {
+                    // Short retry-after (< 30s): per-minute rate limit, wait once and retry
+                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 30) {
                         const backoffMs = Math.ceil(retryAfter * 1000) + 500;
                         console.log(`AnswerHunter: Rate limit 429, aguardando ${backoffMs}ms (retry-after=${retryAfter}s, tentativa ${attempt + 1}/${maxRetries})...`);
                         await new Promise(resolve => setTimeout(resolve, backoffMs));
@@ -1007,43 +962,6 @@ export const ApiService = {
                     continue;
                 }
                 console.error(`ApiService Fetch Error (${url}):`, error);
-                throw error;
-            }
-        }
-    },
-
-    /**
-     * Generic fetch wrapper for non-Groq APIs (Serper, Scholar, SerpAPI, etc.).
-     * Does NOT touch Groq quota state on 429 errors.
-     */
-    async _fetchGeneric(url, options) {
-        const maxRetries = 3;
-        for (let attempt = 0; attempt < maxRetries; attempt++) {
-            try {
-                const response = await fetch(url, options);
-                if (response.ok) {
-                    return await response.json();
-                }
-
-                if (response.status === 429) {
-                    const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
-                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 15) {
-                        const backoffMs = Math.ceil(retryAfter * 1000) + 500;
-                        console.log(`AnswerHunter: Generic 429, aguardando ${backoffMs}ms (retry-after=${retryAfter}s, tentativa ${attempt + 1}/${maxRetries})...`);
-                        await new Promise(resolve => setTimeout(resolve, backoffMs));
-                        continue;
-                    }
-                    throw new Error(`Rate limited (429) by ${new URL(url).hostname}`);
-                }
-
-                throw new Error(`HTTP Error ${response.status}`);
-            } catch (error) {
-                if (attempt < maxRetries - 1 && !error.message?.includes('HTTP Error') && !error.message?.includes('Rate limited')) {
-                    const jitter = 500 + Math.random() * 500;
-                    await new Promise(resolve => setTimeout(resolve, jitter));
-                    continue;
-                }
-                console.error(`ApiService Generic Fetch Error (${url}):`, error);
                 throw error;
             }
         }
@@ -1150,652 +1068,17 @@ export const ApiService = {
      * @param {string} hostHint - Source domain for logging
      * @returns {Promise<{letter:string, evidence:string, confidence:number, method:string, knowledge:string}|null>}
      */
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // SHARED HELPER: call the user's preferred AI provider with fallback cascade
-    // Respects settings.primaryProvider and falls back in order of availability
-    // Returns: { content: string|null, usedProvider: string|null }
-    // ─────────────────────────────────────────────────────────────────────────
-    async _callAnyProvider(messages, callOpts = {}, logPrefix = '[aiCall]') {
-        const settings = await this._getSettings();
-        const opts = Object.assign({ temperature: 0.05, max_tokens: 300 }, callOpts);
-
-        // Strike mechanism: if ChatGPT returns empty repeatedly, put it on a 5-min cooldown
-        const chatgptStrikeKey = '_chatgptConsecutiveEmpties';
-        const CHATGPT_MAX_STRIKES = 3;
-        const chatgptStrikes = this[chatgptStrikeKey] || 0;
-        const chatgptCooledDown = !this._chatgptStrikeCooldownUntil || this._chatgptStrikeCooldownUntil <= Date.now();
-
-
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                const model = opts.model_gemini || settings.geminiModelSmart || 'gemini-2.5-flash';
-                console.log(` ${logPrefix} Trying Gemini (${model})...`);
-                return await this._callGemini(messages, { ...opts, model });
-            } catch (e) { console.warn(` ${logPrefix} Gemini error:`, e?.message || e); return null; }
-        };
-        const tryGroq = async () => {
-            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const model = opts.model_groq || settings.groqModelSmart || 'llama-3.3-70b-versatile';
-                console.log(` ${logPrefix} Trying Groq (${model})...`);
-                const fetchFn = () => this._fetch(settings.groqApiUrl, {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model, messages, temperature: opts.temperature, max_tokens: opts.max_tokens })
-                });
-                // fastParallel: skips the serialization queue — used for bulk page extraction
-                // (parallel calls, fail fast on 429, fallback to Copilot instantly)
-                const data = opts.fastParallel
-                    ? await fetchFn()
-                    : await this._withGroqRateLimit(fetchFn);
-                return data?.choices?.[0]?.message?.content?.trim() || null;
-            } catch (e) { console.warn(` ${logPrefix} Groq error:`, e?.message || e); return null; }
-        };
-        const tryCopilot = async () => {
-            if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const model = opts.model_copilot || settings.copilotModel || 'claude-sonnet-4.6';
-                console.log(` ${logPrefix} Trying Copilot (${model})...`);
-                return await this._callCopilot(messages, { ...opts, model });
-            } catch (e) { console.warn(` ${logPrefix} Copilot error:`, e?.message || e); return null; }
-        };
-        const tryChatGPT = async () => {
-            if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
-            if (chatgptStrikes >= CHATGPT_MAX_STRIKES && !chatgptCooledDown) {
-                console.log(` ${logPrefix} ChatGPT on strike cooldown — skipping`);
-                return null;
-            }
-            try {
-                const model = opts.model_chatgpt || settings.chatgptModel || 'gpt-4o';
-                console.log(` ${logPrefix} Trying ChatGPT (${model})...`);
-                const res = await this._callChatGPT(messages, { ...opts, model });
-                if (!res || res.length < 10) {
-                    this[chatgptStrikeKey] = (this[chatgptStrikeKey] || 0) + 1;
-                    if (this[chatgptStrikeKey] >= CHATGPT_MAX_STRIKES) {
-                        this._chatgptStrikeCooldownUntil = Date.now() + 5 * 60 * 1000; // 5 min
-                        console.warn(` ${logPrefix} ChatGPT returned empty 3 times — cooling down for 5 min`);
-                    }
-                } else {
-                    this[chatgptStrikeKey] = 0;
-                    this._chatgptStrikeCooldownUntil = 0;
-                }
-                return res;
-            } catch (e) {
-                console.warn(` ${logPrefix} ChatGPT error:`, e?.message || e);
-                return null;
-            }
-        };
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const model = opts.model_openrouter || settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
-                console.log(` ${logPrefix} Trying OpenRouter (${model})...`);
-                return await this._callOpenRouter(messages, { ...opts, model });
-            } catch (e) { console.warn(` ${logPrefix} OpenRouter error:`, e?.message || e); return null; }
-        };
-
-        // Build chain with all available providers
-        const fallbackChain = [];
-        if (settings.geminiApiKey) fallbackChain.push({ name: 'gemini', fn: tryGemini });
-        if (settings.openrouterApiKey && this._openRouterQuotaExhaustedUntil <= Date.now()) fallbackChain.push({ name: 'openrouter', fn: tryOpenRouter });
-        if (settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) fallbackChain.push({ name: 'groq', fn: tryGroq });
-        if (this._chatgptQuotaExhaustedUntil <= Date.now()) fallbackChain.push({ name: 'chatgpt', fn: tryChatGPT });
-        if (this._copilotQuotaExhaustedUntil <= Date.now()) fallbackChain.push({ name: 'copilot', fn: tryCopilot });
-
-        // Promote user's primary provider to front of chain
-        const primary = settings.primaryProvider || 'groq';
-        const primaryIdx = fallbackChain.findIndex(p => p.name === primary);
-        if (primaryIdx > 0) fallbackChain.unshift(...fallbackChain.splice(primaryIdx, 1));
-
-        const providerOrder = fallbackChain.map(p => p.name);
-        console.log(` ${logPrefix} primaryProvider=${primary} | order=${providerOrder.join(' ->') || '(none)'}`);
-
-        let usedProvider = null;
-        let result = null;
-        for (const provider of fallbackChain) {
-            result = await provider.fn();
-            if (result && result.length >= 10) {
-                usedProvider = provider.name;
-                break;
-            }
-            console.log(` ${logPrefix} ${provider.name} returned empty/null — trying next...`);
-        }
-
-        if (usedProvider && usedProvider !== primary) {
-            console.log(` ${logPrefix} fallback used: requested=${primary} → actual=${usedProvider}`);
-        }
-        return { content: result, usedProvider };
-    },
-
-
-    /**
-     * aiExtractFromUrl — simplified pipeline: URL → Jina Reader → aiExtractFromPage
-     *
-     * Instead of the full fetch+parse+evidence pipeline, this method:
-     *   1. Fetches the URL via Jina Reader (r.jina.ai) — free proxy that renders JS,
-     *      bypasses 403/CORS, and returns clean markdown text.
-     *   2. Passes the clean text directly to aiExtractFromPage (LLM extraction).
-     *
-     * Ideal as a fast fallback when fetchPageSnapshot returns a weak snapshot
-     * (blocked, too short, or JS-heavy SPA with no pre-fetcher).
-     *
-     * @param {string} url           - the source page URL
-     * @param {string} questionText  - full question + options text
-     * @returns {Promise<{letter, confidence, method, evidence, knowledge}|null>}
-     */
-    async aiExtractFromUrl(url, questionText) {
-        if (!url || !questionText) return null;
-
-        const jinaUrl = `https://r.jina.ai/${url}`;
-        let hostHint = '';
-        try { hostHint = new URL(url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
-
-        console.log(` [NET] [aiExtractFromUrl] Fetching via Jina: ${hostHint}`);
-        try {
-            const snap = await this._fetchTextWithTimeout(jinaUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/plain,text/markdown,*/*',
-                    'X-Return-Format': 'text',
-                    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
-                },
-                mode: 'cors',
-                credentials: 'omit'
-            }, 12000);
-
-            const text = (snap?.text || '').trim();
-            if (!snap?.ok || text.length < 100) {
-                console.log(` [NET] [aiExtractFromUrl] Jina failed (ok=${snap?.ok} len=${text.length}) for ${hostHint}`);
-                return null;
-            }
-
-            console.log(` [NET] [aiExtractFromUrl] Jina OK — ${text.length} chars for ${hostHint}`);
-            return await this.aiExtractFromPage(text, questionText, hostHint);
-        } catch (e) {
-            console.warn(` [NET] [aiExtractFromUrl] Error for ${hostHint}:`, e?.message || e);
-            return null;
-        }
-    },
-
-    /**
-     * fetchViaJina — Busca o conteúdo de uma URL via Jina Reader (r.jina.ai).
-     *
-     * COMO FUNCIONA
-     * ─────────────────────────────────────────────────────────────
-     * Jina Reader é um proxy gratuito que recebe uma URL e retorna o conteúdo
-     * da página como texto limpo (markdown), renderizando JS no servidor.
-     *
-     * Requisição: GET https://r.jina.ai/{url}
-     * Não requer autenticação nem chave de API.
-     *
-     * VANTAGENS
-     * - Contorna CORS (a requisição parte do servidor Jina, não do navegador)
-     * - Contorna bloqueios 403 básicos (user-agent real, IP de servidor confiável)
-     * - Renderiza SPAs JavaScript (React, Vue, etc.)
-     * - Retorna texto limpo sem HTML/CSS/scripts — ideal para enviar à IA
-     * - Grátis, sem limite documentado para uso moderado
-     *
-     * LIMITAÇÕES / QUANDO FALHA
-     * - Sites com Cloudflare Bot Management ou Akamai avançado (Studocu, Gauthmath)
-     *   → Jina recebe página de challenge JS → texto < 150 chars → descartado
-     * - Sites que exigem login/sessão real (alguns PDFs do PasseiDireto)
-     * - Sites com rate limit agressivo contra proxies
-     * - Timeout: se Jina demorar mais que timeoutMs (default 10s) → retorna null
-     *
-     * Quando falha, SimpleSearchService usa BackgroundTabExtractorService como fallback.
-     *
-     * @param {string} url          - URL completa a buscar (https://...)
-     * @param {number} [timeoutMs=10000]
-     * @returns {Promise<string|null>} Texto limpo da página ou null
-     */
-    async fetchViaJina(url, timeoutMs = 10000) {
-        if (!url) return null;
-        let hostHint = '';
-        try { hostHint = new URL(url).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
-        try {
-            const jinaUrl = `https://r.jina.ai/${url}`;
-            console.log(` [Jina] Fetching ${hostHint}...`);
-            const snap = await this._fetchTextWithTimeout(jinaUrl, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'text/plain,text/markdown,*/*',
-                    'X-Return-Format': 'text',      // força retorno em texto puro
-                    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
-                },
-                mode: 'cors',
-                credentials: 'omit'                 // não envia cookies (proxy público)
-            }, timeoutMs);
-            const text = (snap?.text || '').trim();
-            if (!snap?.ok || text.length < 150) {
-                // Menos de 150 chars = página de CAPTCHA, erro ou redirect vazio
-                console.log(` [Jina] [BLOCKED] Failed (ok=${snap?.ok}, len=${text.length}) for ${hostHint}`);
-                return null;
-            }
-            console.log(` [Jina] [OK] Got ${text.length} chars from ${hostHint}`);
-            return text;
-        } catch (e) {
-            console.warn(` [Jina] [FAIL] Error for ${hostHint}:`, e?.message);
-            return null;
-        }
-    },
-
-    /**
-     * _smartTruncate — Trunca páginas grandes de forma inteligente.
-     *
-     * Para páginas ≤ maxLen: retorna o texto inteiro.
-     * Para páginas > maxLen: extrai palavras-chave da questão, busca a região
-     * do texto com maior concentração dessas palavras, e retorna uma janela
-     * de maxLen chars centrada nessa região. Isso resolve o problema de sites
-     * como passeidireto/brainly que têm provas inteiras (500K+ chars) onde a
-     * questão relevante pode estar em qualquer posição.
-     */
-    _smartTruncate(pageText, questionText, maxLen = 8000) {
-        if (!pageText || pageText.length <= maxLen) return pageText || '';
-
-        // Extrai palavras significativas da questão (≥4 chars, sem stopwords comuns)
-        const stopwords = new Set([
-            'para', 'como', 'mais', 'qual', 'quais', 'sobre', 'está', 'pode', 'deve',
-            'essa', 'esse', 'este', 'esta', 'pela', 'pelo', 'entre', 'sendo', 'seria',
-            'numa', 'cada', 'todo', 'toda', 'caso', 'onde', 'aqui', 'suas', 'seus',
-            'isso', 'além', 'após', 'foram', 'from', 'that', 'with', 'this', 'have',
-            'will', 'been', 'which', 'their', 'what', 'when', 'there', 'them', 'then',
-            'than', 'some', 'only', 'also', 'into', 'other', 'could', 'just',
-            'uma', 'são', 'dos', 'das', 'que', 'não', 'com', 'por',
-        ]);
-        const words = (questionText || '').toLowerCase()
-            .replace(/[^a-záàâãéèêíïóôõúüç\s]/gi, '')
-            .split(/\s+/)
-            .filter(w => w.length >= 4 && !stopwords.has(w));
-        const keywords = [...new Set(words)].slice(0, 15);
-
-        if (keywords.length === 0) return pageText.substring(0, maxLen);
-
-        // Sliding window: avalia janelas de maxLen chars com passo de 2000
-        const step = 2000;
-        const pageLower = pageText.toLowerCase();
-        let bestStart = 0;
-        let bestScore = -1;
-
-        for (let start = 0; start <= pageText.length - maxLen; start += step) {
-            const window = pageLower.substring(start, start + maxLen);
-            let score = 0;
-            for (const kw of keywords) {
-                let idx = 0;
-                while ((idx = window.indexOf(kw, idx)) !== -1) {
-                    score++;
-                    idx += kw.length;
-                }
-            }
-            if (score > bestScore) {
-                bestScore = score;
-                bestStart = start;
-            }
-        }
-
-        // Também avaliar a última janela (pode não ser coberta pelo step)
-        if (pageText.length > maxLen) {
-            const lastStart = pageText.length - maxLen;
-            const window = pageLower.substring(lastStart, lastStart + maxLen);
-            let score = 0;
-            for (const kw of keywords) {
-                let idx = 0;
-                while ((idx = window.indexOf(kw, idx)) !== -1) {
-                    score++;
-                    idx += kw.length;
-                }
-            }
-            if (score > bestScore) {
-                bestScore = score;
-                bestStart = lastStart;
-            }
-        }
-
-        const result = pageText.substring(bestStart, bestStart + maxLen);
-        if (bestStart > 0) {
-            console.log(` [smartTruncate] Janela otimizada: start=${bestStart}/${pageText.length} score=${bestScore} keywords=${keywords.length}`);
-        }
-        return result;
-    },
-
-    /**
-     * aiExtractTextFromPage — Extrai o TEXTO da alternativa correta de uma página.
-     *
-     * DIFERENÇA CRÍTICA em relação a aiExtractFromPage() (método mais abaixo)
-     * ─────────────────────────────────────────────────────────────────────────
-     * - aiExtractFromPage  (ANTIGO): retorna "Letra C: [texto]" → usa a LETRA da fonte
-     *   BUG: se a fonte tem C=tabela e o usuário tem A=tabela, o sistema retornava C errado
-     *
-     * - aiExtractTextFromPage (ESTE): retorna "TEXTO_CORRETO: [texto exato da opção do usuário]"
-     *   CORRETO: o texto "tabela" é mapeado para a letra A nas opções do usuário
-     *
-     * COMO FUNCIONA
-     * ─────────────────────────────────────────────────────────────────────────
-     * 1. Trunca o texto da página para 8000 chars e a questão para 1800 chars
-     * 2. Envia à IA via _callAnyProvider() (tenta Gemini → OpenRouter → Groq → ChatGPT → Copilot)
-     * 3. O prompt instrui a IA a:
-     *    - Localizar a resposta na página (gabarito explícito ou por raciocínio)
-     *    - Retornar EXATAMENTE o texto de UMA das alternativas da questão DO ALUNO
-     *    - NÃO retornar a letra da fonte (que pode estar em ordem diferente)
-     * 4. Parse do output: extrai TEXTO_CORRETO e EVIDÊNCIA
-     * 5. Remove aspas que o modelo pode adicionar ao redor do texto
-     *
-     * O CALLER (SimpleSearchService) passa o resultado para:
-     * OptionsMatchService.matchAnswerTextToOptions(answerText, userOptionsMap)
-     * que localiza o texto nas opções do usuário e retorna a letra correta.
-     *
-     * LIMITAÇÕES
-     * - Confiança fixa em 0.85 (nunca muda — não há sinal direto de certeza da IA aqui)
-     * - Se a IA alucinar um texto que não existe nas opções → matchAnswerTextToOptions retorna null
-     * - Páginas com muitas questões: a IA pode confundir questões similares
-     *   (mitigado pelo prompt que exige comparar enunciado + alternativas exatos)
-     * - Se nenhum provider IA estiver configurado → _callAnyProvider lança erro → retorna null
-     *
-     * @param {string} pageText      - Texto limpo da página (de Jina ou BackgroundTab)
-     * @param {string} questionText  - Questão completa com alternativas no formato A) ... B) ...
-     * @param {string} [hostHint=''] - Domínio da fonte (para logging)
-     * @returns {Promise<{answerText:string, evidence:string, confidence:number}|null>}
-     */
-    async aiExtractTextFromPage(pageText, questionText, hostHint = '') {
-        if (!pageText || pageText.length < 100 || !questionText) {
-            console.log(` [aiExtractText] SKIP: texto muito curto (${(pageText || '').length} chars)`);
-            return null;
-        }
-
-        const settings = await this._getSettings();
-        const truncatedPage = this._smartTruncate(pageText, questionText, 8000);
-        const truncatedQuestion = questionText.substring(0, 1800);
-
-        console.log(` [aiExtractText] START host=${hostHint} pageLen=${truncatedPage.length}`);
-
-        const systemMsg = `Você é um especialista em encontrar respostas de questões de múltipla escolha dentro de textos acadêmicos. Analise o texto fornecido com rigor. Responda APENAS com base no texto — nunca invente informações.`;
-
-        const prompt = `# Tarefa
-Analise o TEXTO abaixo e encontre a resposta para a QUESTÃO do aluno.
-
-# REGRA CRÍTICA
-A fonte pode ter as alternativas em ORDEM DIFERENTE da questão do aluno, ou até com letras diferentes.
-NÃO retorne a letra da fonte — retorne o TEXTO EXATO de uma das alternativas da questão do aluno.
-
-# ATENÇÃO: Páginas com múltiplas questões
-Se o texto contiver várias questões, compare o ENUNCIADO e as ALTERNATIVAS EXATAS da questão do aluno.
-Use APENAS o gabarito que pertence a esta questão específica.
-
-# PRIORIDADE DE BUSCA (verifique nesta ordem)
-1. DECLARAÇÃO EXPLÍCITA da resposta correta — procure por frases como:
-   "A resposta correta é: [texto]"
-   "Resposta correta: [texto]"
-   "A alternativa correta é: [texto]"
-   "Gabarito: [letra ou texto]"
-   "Resposta: [letra ou texto]"
-   "A alternativa X está correta"
-   Se encontrar, use o TEXTO dessa declaração para identificar qual alternativa da questão do aluno corresponde.
-2. Explicação que conclua claramente em uma alternativa
-3. Conceitos que confirmem uma das alternativas
-
-# Formato de resposta
-
-## Se encontrou e o gabarito corresponde a UMA das alternativas do aluno:
-RESULTADO: ENCONTRADO
-EVIDÊNCIA: [trecho exato do texto que indica a resposta]
-TEXTO_CORRETO: [copie EXATAMENTE o texto de UMA das alternativas da questão do aluno abaixo]
-LETRA_FONTE: [somente se a fonte citar explicitamente uma letra (A, B, C, D ou E) como gabarito; caso contrário, omita esta linha]
-
-## Se encontrou o gabarito mas ele NÃO corresponde a nenhuma das alternativas do aluno:
-RESULTADO: ENCONTRADO_FORA
-EVIDÊNCIA: [trecho exato do texto que indica a resposta]
-TEXTO_FONTE: [texto exato do gabarito conforme indicado na fonte, mesmo sem corresponder às alternativas]
-LETRA_FONTE: [somente se a fonte citar explicitamente uma letra (A, B, C, D ou E) como gabarito; caso contrário, omita esta linha]
-
-## Se não encontrou:
-RESULTADO: NAO_ENCONTRADO
-
-───────────────────────────────
-TEXTO DA FONTE (${hostHint}):
-${truncatedPage}
-───────────────────────────────
-QUESTÃO DO ALUNO (copie o TEXTO_CORRETO de UMA dessas alternativas):
-${truncatedQuestion}
-───────────────────────────────
-
-Responda no formato acima:`;
-
-        // _callAnyProvider tenta providers na ordem de prioridade configurada pelo usuário:
-        // Gemini → OpenRouter → Groq → ChatGPT → Copilot
-        // temperature=0.05: máximo determinismo (menos criatividade = menos alucinação)
-        // max_tokens=500: suficiente para RESULTADO+EVIDÊNCIA+TEXTO_CORRETO (aumentado de 280)
-        // model_groq=groqModelFast: usa 8b-instant (14.4K RPD) — tarefa simples de extração de texto
-        // fastParallel=true: ignora a fila de serialização (chamadas paralelas, fail-fast no 429)
-        const { content, usedProvider } = await this._callAnyProvider(
-            [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-            { temperature: 0.05, max_tokens: 500, model_groq: settings.groqModelFast || 'llama-3.1-8b-instant', fastParallel: true },
-            '[aiExtractText]'
-        );
-
-        if (!content || /RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
-            console.log(` [aiExtractText] RESULT: NAO_ENCONTRADO (provider=${usedProvider})`);
-            return null;
-        }
-
-        // Handle ENCONTRADO_FORA: source has the answer but it doesn't match user's alternatives.
-        // This happens when the user pasted alternatives from a different question.
-        if (/RESULTADO:\s*ENCONTRADO_FORA/i.test(content)) {
-            const fonteMatch = content.match(/TEXTO_FONTE:\s*(.+)/i);
-            const evidenceFora = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_FONTE:|$)/i);
-            const letraFonteFora = content.match(/LETRA_FONTE:\s*([A-E])/i);
-            if (fonteMatch?.[1]) {
-                const rawSourceAnswer = fonteMatch[1].trim().replace(/^["""''`]+|["""''`]+$/g, '').replace(/^[A-E]\s*[\)\.\-:]\s*/i, '').trim();
-                const sourceLetter = letraFonteFora?.[1]?.toUpperCase() || null;
-                console.log(` [aiExtractText] RESULT: ENCONTRADO_FORA rawAnswer="${rawSourceAnswer.slice(0, 100)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
-                return {
-                    answerText: null,
-                    rawSourceAnswer,
-                    sourceLetter,
-                    evidence: ((evidenceFora?.[1] || '').trim()).slice(0, 900),
-                    confidence: 0.70
-                };
-            }
-        }
-
-
-        const evidenceMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_CORRETO:|$)/i);
-        // TEXTO_CORRETO: deve estar em uma única linha
-        const textMatch = content.match(/TEXTO_CORRETO:\s*(.+)/i);
-
-        if (!textMatch?.[1]) {
-            // O modelo disse ENCONTRADO mas não incluiu TEXTO_CORRETO — resposta malformada
-            console.log(` [aiExtractText] RESULT: sem TEXTO_CORRETO na resposta`);
-            return null;
-        }
-
-        // Remove aspas e prefixos de letra que modelos frequentemente incluem
-        // Ex: TEXTO_CORRETO: "Chave de partição" → "Chave de partição"
-        // Ex: TEXTO_CORRETO: A) Chave de partição → "Chave de partição"
-        // Ex: TEXTO_CORRETO: A - Chave de partição → "Chave de partição"
-        const answerText = textMatch[1].trim()
-            .replace(/^["""''`]+|["""''`]+$/g, '')
-            .replace(/^[A-E]\s*[\)\.\-:]\s*/i, '')
-            .trim();
-        const evidence = (evidenceMatch?.[1] || '').trim();
-
-        // LETRA_FONTE: the letter the source explicitly cited (may differ from current position)
-        const letraFonteMatch = content.match(/LETRA_FONTE:\s*([A-E])/i);
-        const sourceLetter = letraFonteMatch?.[1]?.toUpperCase() || null;
-
-        console.log(` [aiExtractText] RESULT: answerText="${answerText.slice(0, 100)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
-
-        return {
-            answerText,
-            sourceLetter,
-            evidence: evidence.slice(0, 900),
-            confidence: 0.85  // fixo — não há como medir certeza da IA de forma confiável aqui
-        };
-    },
-
-    /**
-     * searchWithScholar — Pesquisa no Google Scholar via Serper /scholar endpoint.
-     *
-     * Ideal para questões de vestibular/concurso com conteúdo acadêmico (biologia, física,
-     * química, história, direito, etc.). Os snippets do Scholar costumam conter definições
-     * e conceitos exatos que aparecem nas alternativas.
-     *
-     * @param {string} query  - Query de busca (stem da questão, sem as alternativas)
-     * @param {number} [num=5] - Número de resultados (padrão 5 para economizar créditos)
-     * @returns {Promise<Array<{title:string,link:string,snippet:string,authors:string[],year:string}>>}
-     */
-    async searchWithScholar(query, num = 5) {
-        if (!query || query.length < 10) return [];
-        const { serperApiKey } = await this._getSettings();
-        if (!serperApiKey) return [];
-        const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-        const q = normalizeSpace(query).slice(0, 280);
-        try {
-            const scholarUrl = 'https://google.serper.dev/scholar';
-            const payload = await this._fetchGeneric(scholarUrl, {
-                method: 'POST',
-                headers: { 'X-API-KEY': serperApiKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ q, num, hl: 'pt-br' })
-            });
-            return (payload?.organic || [])
-                .map(e => ({
-                    title: normalizeSpace(e?.title || ''),
-                    link: normalizeSpace(e?.link || ''),
-                    snippet: normalizeSpace(e?.snippet || ''),
-                    authors: Array.isArray(e?.authors) ? e.authors : [],
-                    year: String(e?.year || '')
-                }))
-                .filter(e => e.title && e.snippet);
-        } catch (e) {
-            console.warn('[searchWithScholar] Error:', e?.message);
-            return [];
-        }
-    },
-
-    /**
-     * aiExtractFromSnippets — Extrai o gabarito dos snippets do Serper em UM único call de IA.     *
-     * Por que isto é poderoso:
-     *   - Serper retorna 10 snippets em paralelo — nenhuma página precisa ser aberta
-     *   - Muitos sites de questões (passeidireto, brainly, studocu) expõem o gabarito no snippet
-     *   - Uma única chamada IA processa todas as fontes simultaneamente → resultado em < 3s
-     *
-     * @param {Array<{host:string, title:string, snippet:string}>} snippets
-     * @param {string} questionText - Questão completa com alternativas
-     * @returns {Promise<{answerText, sourceLetter, evidence, confidence}|null>}
-     */
-    async aiExtractFromSnippets(snippets, questionText) {
-        const useful = snippets.filter(s => s.snippet && s.snippet.length >= 30);
-        if (useful.length === 0 || !questionText) return null;
-
-        const settings = await this._getSettings();
-
-        const combinedText = useful.map((s, i) =>
-            `[Fonte ${i + 1} — ${s.host}]\n${s.title ? s.title + '\n' : ''}${s.snippet}`
-        ).join('\n\n');
-
-        console.log(` [snippetExtract] START: ${useful.length} snippets, ${combinedText.length} chars total`);
-
-        const systemMsg = `Você é um especialista em encontrar respostas de questões de múltipla escolha. Analise os trechos de busca e encontre o gabarito da questão. Responda APENAS com base nos trechos.`;
-
-        const prompt = `# Tarefa
-Analise os TRECHOS DE BUSCA abaixo (snippets do Google) e encontre a resposta para a QUESTÃO do aluno.
-
-# REGRAS
-- Se vários trechos indicam a mesma resposta, isso aumenta a confiança
-- Procure por: "gabarito:", "resposta:", "alternativa correta:", "letra X", "apenas X e Y estão corretas"
-- NÃO retorne a letra da fonte — retorne o TEXTO EXATO de UMA das alternativas da questão do aluno
-- Se os trechos não contêm o gabarito explícito, responda NAO_ENCONTRADO
-
-# Formato de resposta
-
-## Se encontrou e o gabarito corresponde a UMA das alternativas do aluno:
-RESULTADO: ENCONTRADO
-EVIDÊNCIA: [trecho exato que indica a resposta]
-TEXTO_CORRETO: [copie EXATAMENTE o texto de UMA das alternativas da questão do aluno abaixo]
-LETRA_FONTE: [somente se algum trecho citar explicitamente uma letra (A-E); caso contrário, omita]
-
-## Se encontrou o gabarito mas NÃO corresponde a nenhuma alternativa do aluno:
-RESULTADO: ENCONTRADO_FORA
-EVIDÊNCIA: [trecho exato que indica a resposta]
-TEXTO_FONTE: [texto exato do gabarito conforme os trechos]
-LETRA_FONTE: [somente se algum trecho citar explicitamente uma letra (A-E); caso contrário, omita]
-
-## Se não encontrou:
-RESULTADO: NAO_ENCONTRADO
-
-───────────────────────────────
-TRECHOS DE BUSCA (${useful.length} fontes):
-${combinedText.substring(0, 6000)}
-───────────────────────────────
-QUESTÃO DO ALUNO (copie o TEXTO_CORRETO de UMA dessas alternativas):
-${questionText.substring(0, 1800)}
-───────────────────────────────
-
-Responda no formato acima:`;
-
-        const { content, usedProvider } = await this._callAnyProvider(
-            [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-            { temperature: 0.05, max_tokens: 500, model_groq: settings.groqModelFast || 'llama-3.1-8b-instant', fastParallel: true },
-            '[snippetExtract]'
-        );
-
-        if (!content || /RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
-            console.log(` [snippetExtract] RESULT: NAO_ENCONTRADO (provider=${usedProvider})`);
-            return null;
-        }
-
-        const letraFonteSnip = content.match(/LETRA_FONTE:\s*([A-E])/i);
-        const sourceLetter = letraFonteSnip?.[1]?.toUpperCase() || null;
-
-        if (/RESULTADO:\s*ENCONTRADO_FORA/i.test(content)) {
-            const fonteMatch = content.match(/TEXTO_FONTE:\s*(.+)/i);
-            const evidFora = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_FONTE:|$)/i);
-            if (fonteMatch?.[1]) {
-                const rawSourceAnswer = fonteMatch[1].trim()
-                    .replace(/^["""''`]+|["""''`]+$/g, '')
-                    .replace(/^[A-E]\s*[\)\.\-:]\s*/i, '')
-                    .trim();
-                console.log(` [snippetExtract] RESULT: ENCONTRADO_FORA rawAnswer="${rawSourceAnswer.slice(0, 80)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
-                return { answerText: null, rawSourceAnswer, sourceLetter, evidence: (evidFora?.[1] || '').trim().slice(0, 400), confidence: 0.72 };
-            }
-        }
-
-        const evidMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=TEXTO_CORRETO:|$)/i);
-        const textMatch = content.match(/TEXTO_CORRETO:\s*(.+)/i);
-        if (!textMatch?.[1]) {
-            console.log(` [snippetExtract] RESULT: sem TEXTO_CORRETO`);
-            return null;
-        }
-        const answerText = textMatch[1].trim()
-            .replace(/^["""''`]+|["""''`]+$/g, '')
-            .replace(/^[A-E]\s*[\)\.\-:]\s*/i, '')
-            .trim();
-
-        console.log(` [snippetExtract] RESULT: answerText="${answerText.slice(0, 80)}" sourceLetter=${sourceLetter} (provider=${usedProvider})`);
-        return { answerText, sourceLetter, evidence: (evidMatch?.[1] || '').trim().slice(0, 400), confidence: 0.78 };
-    },
-
-    /**
-     *
-     * Retornava "Letra X: [texto]" — a LETRA vinha da fonte, não das opções do usuário.
-     * Isso causava o bug de remapeamento (ver SimpleSearchService.js para detalhes).
-     *
-     * Mantido porque ainda pode ser chamado por partes do pipeline LEGADO em SearchService.js
-     * (código que fica após o return do SimpleSearchService — dead code, mas não deletado).
-     *
-     * Para novo código: use aiExtractTextFromPage() em vez deste.
-     */
     async aiExtractFromPage(pageText, questionText, hostHint = '') {
         if (!pageText || pageText.length < 100 || !questionText) {
-            console.log(` [EXTRACT] [aiExtract] SKIP: text too short (${(pageText || '').length} chars)`);
+            console.log(`  🔬 [aiExtract] SKIP: text too short (${(pageText || '').length} chars)`);
             return null;
         }
 
         const settings = await this._getSettings();
-        const truncatedPage = this._smartTruncate(pageText, questionText, 8000);
+        const truncatedPage = pageText.substring(0, 8000);
         const truncatedQuestion = questionText.substring(0, 1800);
 
-        console.log(` [EXTRACT] [aiExtract] START host=${hostHint} pageLen=${truncatedPage.length} questionLen=${truncatedQuestion.length}`);
+        console.log(`  🔬 [aiExtract] START host=${hostHint} pageLen=${truncatedPage.length} questionLen=${truncatedQuestion.length}`);
 
         const systemMsg = `Você é um especialista em encontrar respostas de questões de múltipla escolha dentro de textos acadêmicos. Analise o texto fornecido com rigor. Responda APENAS com base no texto — nunca invente informações.`;
 
@@ -1809,7 +1092,7 @@ O texto pode conter VÁRIAS questões sobre o mesmo tema. Você DEVE:
 - NUNCA usar gabarito/resposta de uma questão DIFERENTE, mesmo que trate do mesmo assunto
 
 # O que procurar (em ordem de prioridade)
-1. Gabarito explícito: "Gabarito: X", "Resposta: X", "Alternativa correta: X", marcação /
+1. Gabarito explícito: "Gabarito: X", "Resposta: X", "Alternativa correta: X", marcação ✓/★
 2. Resolução da questão: explicação que conclua em uma alternativa
 3. Questão idêntica/similar com resposta em outro local do texto
 4. Definições ou conceitos que confirmem/refutem alternativas
@@ -1880,11 +1163,11 @@ Analise o texto passo a passo e responda no formato acima:`;
         /* ---------- Try Gemini (preferred — free, higher limits) ---------- */
         const tryGemini = async () => {
             if (!settings.geminiApiKey) {
-                console.log(` [EXTRACT] [aiExtract] Gemini: no API key`);
+                console.log(`  🔬 [aiExtract] Gemini: no API key`);
                 return null;
             }
             try {
-                console.log(` [EXTRACT] [aiExtract] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
+                console.log(`  🔬 [aiExtract] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
                 const result = await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -1893,11 +1176,11 @@ Analise o texto passo a passo e responda no formato acima:`;
                     max_tokens: 300,
                     model: 'gemini-2.5-flash' // Force fast model for heavy extraction loop
                 });
-                console.log(` [EXTRACT] [aiExtract] Gemini response: ${result ? result.length + ' chars' : 'null'}`);
-                if (result) console.log(` [EXTRACT] [aiExtract] Gemini preview: "${result.substring(0, 200)}"`);
+                console.log(`  🔬 [aiExtract] Gemini response: ${result ? result.length + ' chars' : 'null'}`);
+                if (result) console.log(`  🔬 [aiExtract] Gemini preview: "${result.substring(0, 200)}"`);
                 return result;
             } catch (e) {
-                console.warn(` [EXTRACT] [aiExtract] Gemini error:`, e?.message || e);
+                console.warn(`  🔬 [aiExtract] Gemini error:`, e?.message || e);
                 return null;
             }
         };
@@ -1925,15 +1208,15 @@ Analise o texto passo a passo e responda no formato acima:`;
         const tryGroq = async () => {
             const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
             if (!groqApiKey) {
-                console.log(` [EXTRACT] [aiExtract] Groq: no API key`);
+                console.log(`  🔬 [aiExtract] Groq: no API key`);
                 return null;
             }
             if (this._groqQuotaExhaustedUntil > Date.now()) {
-                console.log(` [EXTRACT] [aiExtract] Groq: quota exhausted, skipping`);
+                console.log(`  🔬 [aiExtract] Groq: quota exhausted, skipping`);
                 return null;
             }
             try {
-                console.log(` [EXTRACT] [aiExtract] Trying Groq (${groqModelSmart})...`);
+                console.log(`  🔬 [aiExtract] Trying Groq (${groqModelSmart})...`);
                 const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
@@ -1945,11 +1228,11 @@ Analise o texto passo a passo e responda no formato acima:`;
                     })
                 }));
                 const result = data?.choices?.[0]?.message?.content?.trim() || null;
-                console.log(` [EXTRACT] [aiExtract] Groq response: ${result ? result.length + ' chars' : 'null'}`);
-                if (result) console.log(` [EXTRACT] [aiExtract] Groq preview: "${result.substring(0, 200)}"`);
+                console.log(`  🔬 [aiExtract] Groq response: ${result ? result.length + ' chars' : 'null'}`);
+                if (result) console.log(`  🔬 [aiExtract] Groq preview: "${result.substring(0, 200)}"`);
                 return result;
             } catch (e) {
-                console.warn(` [EXTRACT] [aiExtract] Groq error:`, e?.message || e);
+                console.warn(`  🔬 [aiExtract] Groq error:`, e?.message || e);
                 return null;
             }
         };
@@ -1957,7 +1240,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         const tryChatGPT = async () => {
             if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
             try {
-                console.log(` [EXTRACT] [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.2-codex'})...`);
+                console.log(`  🔬 [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.2-codex'})...`);
                 const result = await this._callChatGPT([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -1966,10 +1249,10 @@ Analise o texto passo a passo e responda no formato acima:`;
                     max_tokens: 300,
                     model: settings.chatgptModel || 'gpt-5.2-codex'
                 });
-                console.log(` [EXTRACT] [aiExtract] ChatGPT response: ${result ? result.length + ' chars' : 'null'}`);
+                console.log(`  🔬 [aiExtract] ChatGPT response: ${result ? result.length + ' chars' : 'null'}`);
                 return result;
             } catch (e) {
-                console.warn(' [EXTRACT] [aiExtract] ChatGPT error:', e?.message || e);
+                console.warn('  🔬 [aiExtract] ChatGPT error:', e?.message || e);
                 return null;
             }
         };
@@ -1977,7 +1260,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         const tryCopilot = async () => {
             if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
             try {
-                console.log(` [EXTRACT] [aiExtract] Trying Copilot (${settings.copilotModel || 'gpt-4o'})...`);
+                console.log(`  🔬 [aiExtract] Trying Copilot (${settings.copilotModel || 'gpt-4o'})...`);
                 const result = await this._callCopilot([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -1986,10 +1269,10 @@ Analise o texto passo a passo e responda no formato acima:`;
                     max_tokens: 300,
                     model: settings.copilotModel || 'gpt-4o'
                 });
-                console.log(` [EXTRACT] [aiExtract] Copilot response: ${result ? result.length + ' chars' : 'null'}`);
+                console.log(`  🔬 [aiExtract] Copilot response: ${result ? result.length + ' chars' : 'null'}`);
                 return result;
             } catch (e) {
-                console.warn(' [EXTRACT] [aiExtract] Copilot error:', e?.message || e);
+                console.warn('  🔬 [aiExtract] Copilot error:', e?.message || e);
                 return null;
             }
         };
@@ -2032,8 +1315,8 @@ Analise o texto passo a passo e responda no formato acima:`;
         }
 
         const fallbackOrder = fallbackChain.map(p => p.name);
-        console.log(` [EXTRACT] [aiExtract] primaryProvider(config)=${primary}`);
-        console.log(` [EXTRACT] [aiExtract] providerOrder(run)=${fallbackOrder.length ? fallbackOrder.join(' ->') : '(empty)'}`);
+        console.log(`  🔬 [aiExtract] primaryProvider(config)=${primary}`);
+        console.log(`  🔬 [aiExtract] providerOrder(run)=${fallbackOrder.length ? fallbackOrder.join(' -> ') : '(empty)'}`);
 
         let usedProvider = null;
         for (const provider of fallbackChain) {
@@ -2046,19 +1329,19 @@ Analise o texto passo a passo e responda no formato acima:`;
             }
             // If provider returned null (likely quota error or crash) or explicitly NAO_ENCONTRADO,
             // we loop to the next provider in the chain.
-            console.log(` [EXTRACT] [aiExtract] ${provider.name} failed or NAO_ENCONTRADO, trying next fallback...`);
+            console.log(`  🔬 [aiExtract] ${provider.name} failed or NAO_ENCONTRADO, trying next fallback...`);
         }
 
         if (!content || content.length < 10) {
-            console.log(` [EXTRACT] [aiExtract] RESULT: no response from any provider`);
+            console.log(`  🔬 [aiExtract] RESULT: no response from any provider`);
             return null;
         }
 
-        console.log(` [EXTRACT] [aiExtract] providerUsed(result)=${usedProvider || 'unknown'}`);
+        console.log(`  🔬 [aiExtract] providerUsed(result)=${usedProvider || 'unknown'}`);
         if (usedProvider && usedProvider !== primary) {
-            console.log(` [EXTRACT] [aiExtract] providerFallback=true (requested=${primary} -> used=${usedProvider})`);
+            console.log(`  🔬 [aiExtract] providerFallback=true (requested=${primary} -> used=${usedProvider})`);
         } else {
-            console.log(` [EXTRACT] [aiExtract] providerFallback=false`);
+            console.log(`  🔬 [aiExtract] providerFallback=false`);
         }
 
         /* ---------- Parse response ---------- */
@@ -2066,8 +1349,8 @@ Analise o texto passo a passo e responda no formato acima:`;
         if (/RESULTADO:\s*CONHECIMENTO_PARCIAL/i.test(content)) {
             const knowledgeMatch = content.match(/CONHECIMENTOS?:\s*([\s\S]+)/i);
             const knowledge = knowledgeMatch ? knowledgeMatch[1].trim().substring(0, 1200) : content.substring(0, 1200);
-            console.log(` [EXTRACT] [aiExtract] RESULT: PARTIAL KNOWLEDGE (${knowledge.length} chars)`);
-            console.log(` [EXTRACT] [aiExtract] Knowledge preview: "${knowledge.substring(0, 200)}"`);
+            console.log(`  🔬 [aiExtract] RESULT: PARTIAL KNOWLEDGE (${knowledge.length} chars)`);
+            console.log(`  🔬 [aiExtract] Knowledge preview: "${knowledge.substring(0, 200)}"`);
             return {
                 letter: null,
                 evidence: null,
@@ -2079,7 +1362,7 @@ Analise o texto passo a passo e responda no formato acima:`;
 
         // Check for NAO_ENCONTRADO
         if (/RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
-            console.log(` [EXTRACT] [aiExtract] RESULT: NAO_ENCONTRADO`);
+            console.log(`  🔬 [aiExtract] RESULT: NAO_ENCONTRADO`);
             return null;
         }
 
@@ -2088,7 +1371,7 @@ Analise o texto passo a passo e responda no formato acima:`;
             || content.match(/\b([A-E])\s*[\):\.\-]\s*\S/);
         if (!letterMatch) {
             // No letter but might have useful knowledge
-            console.log(` [EXTRACT] [aiExtract] RESULT: response but no letter found. Treating as knowledge.`);
+            console.log(`  🔬 [aiExtract] RESULT: response but no letter found. Treating as knowledge.`);
             return {
                 letter: null,
                 evidence: null,
@@ -2101,7 +1384,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         const letter = letterMatch[1].toUpperCase();
         const evidenceMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
         const evidence = evidenceMatch ? evidenceMatch[1].trim() : content;
-        console.log(` [EXTRACT] [aiExtract] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
+        console.log(`  🔬 [aiExtract] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
 
         return {
             letter,
@@ -2122,7 +1405,7 @@ Analise o texto passo a passo e responda no formato acima:`;
      */
     async aiExtractFromHtml(htmlSnippet, questionText, hostHint = '') {
         if (!htmlSnippet || htmlSnippet.length < 300 || !questionText) {
-            console.log(` [EXTRACT] [aiHtml] SKIP: snippet too short (${(htmlSnippet || '').length} chars)`);
+            console.log(`  🔬 [aiHtml] SKIP: snippet too short (${(htmlSnippet || '').length} chars)`);
             return null;
         }
 
@@ -2130,7 +1413,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         const truncatedHtml = htmlSnippet.substring(0, 12000);
         const truncatedQuestion = questionText.substring(0, 1800);
 
-        console.log(` [EXTRACT] [aiHtml] START host=${hostHint} htmlLen=${truncatedHtml.length} questionLen=${truncatedQuestion.length}`);
+        console.log(`  🔬 [aiHtml] START host=${hostHint} htmlLen=${truncatedHtml.length} questionLen=${truncatedQuestion.length}`);
 
         const systemMsg = `Você é um especialista em análise de HTML/CSS de páginas educacionais. Sua tarefa é encontrar respostas de questões identificando DESTAQUES VISUAIS no HTML.`;
 
@@ -2179,35 +1462,82 @@ ${truncatedQuestion}
 
 Analise o HTML e responda:`;
 
-        const { content, usedProvider } = await this._callAnyProvider(
-            [
-                { role: 'system', content: systemMsg },
-                { role: 'user', content: prompt }
-            ],
-            {
-                temperature: 0.05,
-                max_tokens: 400,
-                model_groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                model_openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
-                model_gemini: settings.geminiModelSmart || settings.geminiModel || 'gemini-2.5-flash',
-                model_chatgpt: settings.chatgptModel || 'gpt-5.2',
-                model_copilot: settings.copilotModel || 'claude-sonnet-4.6'
-            },
-            ' [aiHtml]'
-        );
-        if (usedProvider) {
-            console.log(` [EXTRACT] [aiHtml] provider used: ${usedProvider}`);
+        /* Try Gemini first (larger context window, free) */
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                console.log(`  🔬 [aiHtml] Trying Gemini...`);
+                return await this._callGemini([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.05, max_tokens: 400, model: 'gemini-2.5-flash' });
+            } catch (e) {
+                console.warn(`  🔬 [aiHtml] Gemini error:`, e?.message || e);
+                return null;
+            }
+        };
+
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, { temperature: 0.05, max_tokens: 400, model: 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
+        const tryGroq = async () => {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                console.log(`  🔬 [aiHtml] Trying Groq (${settings.groqModelSmart})...`);
+                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: settings.groqModelSmart,
+                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
+                        temperature: 0.05,
+                        max_tokens: 400
+                    })
+                }));
+                return data?.choices?.[0]?.message?.content?.trim() || null;
+            } catch (e) {
+                console.warn(`  🔬 [aiHtml] Groq error:`, e?.message || e);
+                return null;
+            }
+        };
+
+        let content = null;
+        const primary = settings.primaryProvider || 'groq';
+        if (primary === 'openrouter') {
+            content = await tryOpenRouter();
+            if (!content) content = await tryGroq();
+            if (!content) content = await tryGemini();
+        } else if (primary === 'gemini') {
+            content = await tryGemini();
+            if (!content) content = await tryGroq();
+            if (!content) content = await tryOpenRouter();
+        } else {
+            content = await tryGroq();
+            if (!content) content = await tryOpenRouter();
+            if (!content) content = await tryGemini();
         }
 
         if (!content || content.length < 10) {
-            console.log(` [EXTRACT] [aiHtml] RESULT: no response`);
+            console.log(`  🔬 [aiHtml] RESULT: no response`);
             return null;
         }
 
-        console.log(` [EXTRACT] [aiHtml] Response (${content.length} chars): "${content.substring(0, 250)}"`);
+        console.log(`  🔬 [aiHtml] Response (${content.length} chars): "${content.substring(0, 250)}"`);
 
         if (/RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
-            console.log(` [EXTRACT] [aiHtml] RESULT: NAO_ENCONTRADO`);
+            console.log(`  🔬 [aiHtml] RESULT: NAO_ENCONTRADO`);
             return null;
         }
 
@@ -2219,7 +1549,7 @@ Analise o HTML e responda:`;
             || content.match(/\b([A-E])\s*[\):\.\-]\s*\S/);
 
         if (!letterMatch) {
-            console.log(` [EXTRACT] [aiHtml] RESULT: response but no letter found`);
+            console.log(`  🔬 [aiHtml] RESULT: response but no letter found`);
             return {
                 letter: null, evidence: null, confidence: 0,
                 method: 'ai-html-noletter',
@@ -2232,7 +1562,7 @@ Analise o HTML e responda:`;
         const evidenceText = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
         const evidence = (evidenceCss ? evidenceCss[1].trim() : evidenceText ? evidenceText[1].trim() : content).slice(0, 900);
 
-        console.log(` [EXTRACT] [aiHtml] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
+        console.log(`  🔬 [aiHtml] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
         return {
             letter,
             evidence,
@@ -2261,7 +1591,7 @@ Analise o HTML e responda:`;
             .join('\n\n───────────────────────────────\n\n');
 
         const totalKnowledge = knowledgePool.reduce((sum, k) => sum + (k.knowledge || '').length, 0);
-        console.log(` [AI] [aiReflect] START: ${knowledgePool.length} sources, ${totalKnowledge} total knowledge chars`);
+        console.log(`  🧠 [aiReflect] START: ${knowledgePool.length} sources, ${totalKnowledge} total knowledge chars`);
 
         const systemMsg = `Você é um professor universitário. Analise as informações das fontes para responder a questão. Use seu conhecimento acadêmico para complementar quando necessário. IGNORE quaisquer indicações de "Letra", "Gabarito" ou "Resposta" que estejam nas fontes — essas podem ser de questões diferentes. Avalie cada alternativa de forma independente com base nos FATOS. Responda APENAS no formato solicitado.`;
 
@@ -2301,108 +1631,92 @@ Letra B: TCP
 
 # Sua análise (siga os 4 passos):`;
 
-        /* ---------- Execute with primaryProvider cascade ---------- */
-        const { content, usedProvider: _reflectProvider } = await this._callAnyProvider(
-            [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-            { temperature: 0.1, max_tokens: 800, model_groq: settings.groqModelSmart, model_gemini: settings.geminiModelSmart },
-            ' [aiReflect]'
-        );
-        if (_reflectProvider) console.log(` [AI] [aiReflect] provider used: ${_reflectProvider}`);
+        /* ---------- Try Gemini first (free, no quota concern) ---------- */
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                console.log(`  🧠 [aiReflect] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
+                return await this._callGemini([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+            } catch (e) {
+                console.warn(`  🧠 [aiReflect] Gemini error:`, e?.message || e);
+                return null;
+            }
+        };
+
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                // intercept options to overwrite model
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                return await this._callOpenRouter([
+                    { role: 'system', content: systemMsg },
+                    { role: 'user', content: prompt }
+                ], opts);
+            } catch (e) {
+                console.warn('AnswerHunter: OpenRouter logic error:', e?.message || e);
+                return null;
+            }
+        };
+        const tryGroq = async () => {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                console.log(`  🧠 [aiReflect] Trying Groq (${settings.groqModelSmart})...`);
+                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: settings.groqModelSmart,
+                        messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
+                        temperature: 0.1, max_tokens: 800
+                    })
+                }));
+                return data?.choices?.[0]?.message?.content?.trim() || null;
+            } catch (e) {
+                console.warn(`  🧠 [aiReflect] Groq error:`, e?.message || e);
+                return null;
+            }
+        };
+
+        /* ---------- Execute with provider routing ---------- */
+        const geminiPrimary = await this._isGeminiPrimary();
+        let content = null;
+        if (geminiPrimary) {
+            content = await tryGemini();
+            if (!content || /INCONCLUSIVO/i.test(content)) {
+                const groqContent = await tryGroq();
+                if (groqContent && !/INCONCLUSIVO/i.test(groqContent)) content = groqContent;
+            }
+        } else {
+            content = await tryGroq();
+            if (!content || /INCONCLUSIVO/i.test(content)) {
+                const geminiContent = await tryGemini();
+                if (geminiContent && !/INCONCLUSIVO/i.test(geminiContent)) content = geminiContent;
+            }
+        }
+
         if (!content || content.length < 20) {
-            console.log(` [AI] [aiReflect] RESULT: no response`);
+            console.log(`  🧠 [aiReflect] RESULT: no response`);
             return null;
         }
 
-        console.log(` [AI] [aiReflect] Response (${content.length} chars): "${content.substring(0, 300)}"`);
+        console.log(`  🧠 [aiReflect] Response (${content.length} chars): "${content.substring(0, 300)}"`);
 
         // Parse letter
         const letterMatch = content.match(/\bLetra\s+([A-E])\b/i)
             || content.match(/CONCLUS[AÃ]O:[\s\S]*?\b([A-E])\s*[\):\.\-]/i);
         if (!letterMatch) {
-            console.log(` [AI] [aiReflect] RESULT: response but no letter (INCONCLUSIVO?)`);
+            console.log(`  🧠 [aiReflect] RESULT: response but no letter (INCONCLUSIVO?)`);
             return null;
         }
 
         const letter = letterMatch[1].toUpperCase();
-        console.log(` [AI] [aiReflect] RESULT: letter=${letter}`);
+        console.log(`  🧠 [aiReflect] RESULT: letter=${letter}`);
         return { letter, response: content, method: 'ai-combined-reflection' };
     },
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // AI VERIFICATION — Lightweight check for low-confidence single-source results
-    // Called when remap was ambiguous or source text was too short to verify options
-    // Returns: { letter, confidence, reasoning } or null
-    // ─────────────────────────────────────────────────────────────────────────
-    async aiVerifyLetterInContext(questionText, suggestedLetter, sourceText, host = '') {
-        if (!questionText || !suggestedLetter || !sourceText || sourceText.length < 200) {
-            console.log(` [SEARCH] [aiVerify] SKIP: missing args or text too short (${(sourceText || '').length} chars)`);
-            return null;
-        }
-
-        const settings = await this._getSettings();
-        const truncatedSource = sourceText.substring(0, 2000);
-        const truncatedQuestion = questionText.substring(0, 1800);
-        console.log(` [SEARCH] [aiVerify] START host=${host} suggestedLetter=${suggestedLetter} sourceLen=${truncatedSource.length}`);
-
-        const systemMsg = `Você é um especialista em questões de múltipla escolha brasileiras. Sua tarefa é identificar qual é a resposta correta para a questão do aluno com base no texto de uma fonte. As alternativas podem estar embaralhadas ou com letras diferentes entre a fonte e a questão — identifique pelo CONTEÚDO (texto), não pela letra. Responda APENAS no formato solicitado.`;
-
-        const prompt = `# Verificação de Gabarito
-
-A análise automática encontrou algo relacionado à resposta **Letra ${suggestedLetter}** em uma fonte (${host}).
-Com base no texto da fonte, identifique qual é a resposta correta para a questão do aluno.
-
-# Questão do aluno (com as alternativas na ordem dele):
-${truncatedQuestion}
-
-# Texto encontrado na fonte (${host}):
-${truncatedSource}
-
-# Tarefa:
-1. Leia o texto da fonte e identifique qual é a resposta correta (pelo CONTEÚDO do texto, não pela letra)
-2. Encontre na questão do aluno qual alternativa tem esse conteúdo
-3. Copie o TEXTO EXATO da alternativa correta da questão do aluno
-
-# Responda EXATAMENTE neste formato:
-
-## Se conseguiu verificar:
-RESPOSTA: [texto exato da alternativa correta — copie da questão do aluno, sem a letra]
-RAZAO: [explicação em 1 linha]
-
-## Se não conseguiu verificar:
-INCONCLUSIVO: [motivo em 1 linha]`;
-
-        const parseVerifyResponse = (text) => {
-            if (!text) return null;
-            const reasonMatch = text.match(/RAZAO:\s*(.+)/i);
-            const reasoning = reasonMatch?.[1]?.trim() || '';
-            // Primary: extract answer TEXT (robust to shuffled options / year changes)
-            const textMatch = text.match(/RESPOSTA:\s*(.+?)(?:\n|RAZAO:|$)/si);
-            if (textMatch) {
-                const answerText = textMatch[1].trim().replace(/^[A-E][)\s.\-:]+\s*/i, '');
-                if (answerText.length >= 3) {
-                    return { answerText, confidence: 0.85, reasoning, action: 'text' };
-                }
-            }
-            return null;
-        };
-
-        // Use primaryProvider cascade — respects user's chosen provider with automatic fallback
-        const { content: _verifRaw, usedProvider: _verifProvider } = await this._callAnyProvider(
-            [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-            { temperature: 0.05, max_tokens: 200, model_groq: settings.groqModelSmart || settings.groqModelFast || 'llama-3.3-70b-versatile', model_gemini: settings.geminiModelSmart || settings.geminiModelFast || 'gemini-2.5-flash' },
-            ' [aiVerify]'
-        );
-        const result = parseVerifyResponse(_verifRaw);
-        if (_verifProvider) console.log(` [SEARCH] [aiVerify] provider used: ${_verifProvider} | parsed: ${JSON.stringify(result)}`);
-
-        if (result) {
-            console.log(` [SEARCH] [aiVerify] DONE: action=${result.action} letter=${result.letter} confidence=${result.confidence}`);
-        } else {
-            console.log(` [SEARCH] [aiVerify] DONE: no result from any provider`);
-        }
-        return result;
-    },
-
 
     /**
      * Fetches a snapshot preserving BOTH HTML and derived text, with fallback for blocked sources.
@@ -2435,52 +1749,14 @@ INCONCLUSIVO: [motivo em 1 linha]`;
         let final = primary;
         const primaryBlockedLike = primary.ok && this._looksBlockedLikeContent(primary.text, url);
         const primaryTooSmall = primary.ok && (primary.text || '').length < 500;
-        // PasseiDireto CDN returns a 50KB partial SSR shell from SW/bot context (ok=true, ~12000
-        // chars text) — correct HTTP 200 but __NEXT_DATA__ is absent. BackgroundTabExtractorService
-        // opens a real Chrome tab and gets the fully JS-rendered DOM with __NEXT_DATA__ intact.
-        const primaryLacksNextData = primary.ok
-            && BackgroundTabExtractorService.isJsHeavySpa(url)
-            && !/id="__NEXT_DATA__"/.test(primary.text || '');
         const shouldTryFallbacks =
             (!primary.ok && (primary.status === 403 || primary.status === 429 || primary.status === 0))
             || primaryTooSmall
-            || primaryBlockedLike
-            || primaryLacksNextData;  // JS-heavy SPA returned partial SSR without __NEXT_DATA__
+            || primaryBlockedLike;
 
         if (shouldTryFallbacks) {
-            // ── Background Tab Extraction (JS-heavy SPAs: Studocu, PasseiDireto, Scribd) ──
-            // Opens a real hidden browser tab, waits for full JS render, bypasses
-            // client-side paywall CSS, and extracts readable text.
-            // Much more reliable than HTTP-only fetch for SPA sites.
-            if (BackgroundTabExtractorService.isJsHeavySpa(url)) {
-                console.log(`[AH-TAB] SPA detected — trying background tab extraction: ${url}`);
-                // Site-specific render wait times:
-                // Brainly (React SPA) = 3500ms, Studocu (PDF viewer SPA) = 4000ms, others = 2000ms
-                const _isBrainlyTab = url.includes('brainly.com') || url.includes('brainly.lat');
-                const _isStudocuTab = url.includes('studocu.com');
-                const _tabText = await BackgroundTabExtractorService.extractViaTab(url, {
-                    timeoutMs: 15000,
-                    renderWaitMs: _isStudocuTab ? 4000 : _isBrainlyTab ? 3500 : 2000
-                });
-                if (_tabText && _tabText.length > 80) {
-                    console.log(`[AH-TAB] [OK] Extracted ${_tabText.length} chars via hidden tab`);
-                    return {
-                        ok: true,
-                        status: 200,
-                        url,
-                        viaWebcache: false,
-                        viaMirror: false,
-                        viaTab: true,
-                        html: _tabText,
-                        text: _tabText.slice(0, maxTextChars)
-                    };
-                }
-                console.log('[AH-TAB] Tab extraction failed — falling through to Jina mirror');
-            }
-
             // Skip webcache if we've hit too many consecutive 429s from Google.
-            const skipWebcache = this._webcache429Count >= this._webcache429Threshold
-                || BackgroundTabExtractorService.isJsHeavySpa(url); // skip dead webcache for JS-heavy SPAs
+            const skipWebcache = this._webcache429Count >= this._webcache429Threshold;
             const webcacheUrl = skipWebcache ? null : this._makeWebcacheUrl(url);
             if (webcacheUrl) {
                 const cached = await this._fetchTextWithTimeout(webcacheUrl, {
@@ -2573,26 +1849,26 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             // (e.g. from HTML truncation or anti-bot injectors like DataDome / captcha-display).
             const sanitized = html
                 // Remove ALL script blocks: paired, self-closing, unclosed, and JSON-embedded
-                .replace(/<script\b[\s\S]*?<\/script>/gi, '')
-                .replace(/<script\b[^>]*\/?>/gi, '')
-                .replace(/<script\b[\s\S]*?(?=<(?:\/head|\/body|!--|meta|link))/gi, '')
-                .replace(/<\s*script\b[\s\S]*$/gi, '')
-                .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, '')
-                .replace(/<noscript\b[^>]*\/?>/gi, '')
-                .replace(/<\s*noscript\b[\s\S]*$/gi, '')
-                .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, '')
-                .replace(/<iframe\b[^>]*\/?>/gi, '')
-                .replace(/<\s*iframe\b[\s\S]*$/gi, '')
-                .replace(/<object\b[\s\S]*?<\/object>/gi, '')
-                .replace(/<\s*object\b[\s\S]*$/gi, '')
-                .replace(/<embed\b[^>]*>/gi, '')
-                .replace(/<link\b[^>]*>/gi, '')
+                .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+                .replace(/<script\b[^>]*\/?>/gi, ' ')
+                .replace(/<script\b[\s\S]*?(?=<(?:\/head|\/body|!--|meta|link))/gi, ' ')
+                .replace(/<\s*script\b[\s\S]*$/gi, ' ')
+                .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
+                .replace(/<noscript\b[^>]*\/?>/gi, ' ')
+                .replace(/<\s*noscript\b[\s\S]*$/gi, ' ')
+                .replace(/<iframe\b[\s\S]*?<\/iframe>/gi, ' ')
+                .replace(/<iframe\b[^>]*\/?>/gi, ' ')
+                .replace(/<\s*iframe\b[\s\S]*$/gi, ' ')
+                .replace(/<object\b[\s\S]*?<\/object>/gi, ' ')
+                .replace(/<\s*object\b[\s\S]*$/gi, ' ')
+                .replace(/<embed\b[^>]*>/gi, ' ')
+                .replace(/<link\b[^>]*>/gi, ' ')
                 // Remove anti-bot / captcha domains in ALL encoding forms
-                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, '')
-                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.captcha-display\.com(?:\/|\\?\/)[^\s"'<>]*/gi, '')
-                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)(?:api-js\.)?datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, '')
-                .replace(/datadome\.co/gi, '')
-                .replace(/captcha-display\.com/gi, '');
+                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
+                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)js\.captcha-display\.com(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
+                .replace(/(?:https?:)?(?:\/\/|\\?\/\\?\/)(?:api-js\.)?datadome\.co(?:\/|\\?\/)[^\s"'<>]*/gi, ' ')
+                .replace(/datadome\.co/gi, ' ')
+                .replace(/captcha-display\.com/gi, ' ');
             const parser = new DOMParser();
             const doc = parser.parseFromString(sanitized, 'text/html');
             const elementsToRemove = doc.querySelectorAll('style, nav, header, footer, aside, noscript, [role="navigation"], [role="banner"], .ads, .advertisement, .sidebar');
@@ -2601,7 +1877,7 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             // to avoid word fragmentation in extracted text.
             doc.querySelectorAll('.blank').forEach(el => el.remove());
             doc.querySelectorAll('div, p, br, li, h1, h2, h3, h4, h5, h6, tr, td, article, section, footer, header').forEach(el => {
-                el.appendChild(doc.createTextNode(''));
+                el.appendChild(doc.createTextNode(' '));
             });
             derivedText = (doc.body?.textContent || '').trim();
         } catch {
@@ -2655,391 +1931,6 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             html,
             text: cleanedText
         };
-    },
-
-    /**
-     * validateOptionsCoherence — Pergunta à IA se as alternativas fazem sentido com o enunciado.
-     *
-     * Reproduz o raciocínio humano do "Turno 0": antes de buscar, verificar se o usuário
-     * não colou alternativas de uma questão diferente (ex: questão sobre IHC com alternativas
-     * sobre redes sociais). Usa o mesmo modelo de extração (rápido, temperature=0.1).
-     *
-     * @param {string} questionStem - Texto do enunciado (sem alternativas)
-     * @param {string} optionsText  - Alternativas formatadas (ex: "A) texto\nB) texto\n...")
-     * @returns {Promise<{ coherent: boolean, reason: string }>}
-     */
-    async validateOptionsCoherence(questionStem, optionsText) {
-        if (!questionStem || !optionsText) return { coherent: true, reason: '' };
-        const prompt = `Analise se as ALTERNATIVAS (letras A, B, C, D, E) abaixo são coerentes com o ENUNCIADO da questão.
-
-IMPORTANTE: O enunciado pode conter assertivas numeradas com I, II, III, IV — ignore isso, são parte do enunciado.
-Foque APENAS em verificar se os TEXTOS das alternativas A-E têm relação semântica com o TEMA do enunciado.
-
-ENUNCIADO:
-${questionStem.slice(0, 600)}
-
-ALTERNATIVAS (A-E):
-${optionsText.slice(0, 400)}
-
-Responda APENAS neste formato:
-COERENTE: SIM
-ou
-COERENTE: NÃO
-MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem sentido para este enunciado]`;
-
-        try {
-            const { content } = await this._callAnyProvider(
-                [{ role: 'user', content: prompt }],
-                { temperature: 0.1, max_tokens: 80, model_groq: 'llama-3.1-8b-instant', fastParallel: true },
-                '[validateOptions]'
-            );
-            if (!content) return { coherent: true, reason: '' };
-            if (/COERENTE:\s*N[ÃA]O/i.test(content)) {
-                const motivoMatch = content.match(/MOTIVO:\s*(.+)/i);
-                const reason = (motivoMatch?.[1] || 'As alternativas parecem pertencer a uma questão diferente.').trim();
-                return { coherent: false, reason };
-            }
-            return { coherent: true, reason: '' };
-        } catch (e) {
-            console.warn('[validateOptions] Error:', e?.message);
-            return { coherent: true, reason: '' }; // falha silenciosa — não bloqueia a busca
-        }
-    },
-
-    // ╔══════════════════════════════════════════════════════════════════════╗
-    // ║  ⛔ llmExtractStructuredQuestion — EXTRAÇÃO INTELIGENTE VIA LLM     ║
-    // ║  NÃO REMOVA. Fallback universal para questões que o parser regex    ║
-    // ║  não consegue resolver (associação, matching, formato incomum).     ║
-    // ║                                                                     ║
-    // ║  Usa Groq fast (llama-3.1-8b-instant) para extrair stem + opções   ║
-    // ║  de qualquer formato de questão em ~150ms. Só é chamado quando:     ║
-    // ║    1. PRE_SEARCH_GATE falha após todas as tentativas de rescue      ║
-    // ║    2. Contamination guard rejeita as opções extraídas               ║
-    // ║                                                                     ║
-    // ║  Retorna { stem, options: { A: "body", B: "body", ... } }           ║
-    // ║  ou null se a LLM não conseguir extrair.                            ║
-    // ║  Última calibração: 2026-03-04                                      ║
-    // ╚══════════════════════════════════════════════════════════════════════╝
-    async llmExtractStructuredQuestion(rawText) {
-        if (!rawText || rawText.length < 30) return null;
-        const settings = await this._getSettings();
-
-        const truncated = rawText.slice(0, 3000);
-        const prompt = `Analise o texto de uma questão de prova e extraia o ENUNCIADO e as ALTERNATIVAS DE RESPOSTA.
-
-REGRAS IMPORTANTES:
-- O enunciado pode conter listas numeradas (1. char, 2. int) ou rotuladas (A. %d, B. %s) que NÃO são alternativas de resposta — são itens do próprio enunciado.
-- As ALTERNATIVAS DE RESPOSTA são as escolhas finais rotuladas A) até E) que o aluno deve marcar.
-- Em questões de ASSOCIAÇÃO, o enunciado tem dois grupos de itens e as alternativas combinam esses grupos (ex: "A3, B4, C1, D2").
-- Em questões de AFIRMATIVAS, o enunciado tem itens I, II, III e as alternativas dizem quais são corretas (ex: "Apenas a I e III").
-
-FORMATO DE SAÍDA (exatamente assim, sem explicações):
-ENUNCIADO: <texto completo do enunciado, incluindo listas internas>
-A) <texto da alternativa A>
-B) <texto da alternativa B>
-C) <texto da alternativa C>
-D) <texto da alternativa D>
-E) <texto da alternativa E>
-
-Se houver menos de 5 alternativas, omita as que não existem.
-NÃO invente alternativas. Extraia APENAS o que está no texto.
-
-TEXTO:
-${truncated}`;
-
-        const systemMsg = 'Você é um extrator de questões de prova. Responda APENAS no formato solicitado, sem explicações.';
-
-        try {
-            const content = await this._callAnyProvider(
-                [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
-                { temperature: 0.05, max_tokens: 800, purpose: 'llmExtractQuestion' }
-            );
-
-            if (!content) return null;
-
-            // Parse the response
-            const stemMatch = content.match(/ENUNCIADO:\s*(.+?)(?=\n\s*[A-E]\s*\))/is);
-            const stem = stemMatch ? stemMatch[1].trim() : '';
-
-            const optionsMap = {};
-            const optRe = /([A-E])\)\s*(.+?)(?=\n\s*[A-E]\s*\)|$)/gis;
-            let m;
-            while ((m = optRe.exec(content)) !== null) {
-                const letter = m[1].toUpperCase();
-                const body = m[2].trim().replace(/\n+/g, ' ').trim();
-                if (body && body.length >= 1) {
-                    optionsMap[letter] = body;
-                }
-            }
-
-            if (!stem || Object.keys(optionsMap).length < 2) {
-                console.log(`[llmExtractQuestion] Failed to parse LLM response (stem=${stem.length}, opts=${Object.keys(optionsMap).length})`);
-                return null;
-            }
-
-            console.log(`[llmExtractQuestion] SUCCESS — stem=${stem.length} chars, opts=${Object.keys(optionsMap).length} (${Object.keys(optionsMap).join(',')})`);
-            return { stem, options: optionsMap };
-        } catch (e) {
-            console.warn('[llmExtractQuestion] Error:', e?.message || e);
-            return null;
-        }
-    },
-
-    // ╔══════════════════════════════════════════════════════════════════════╗
-    // ║  ⛔ visionGuidedExtraction — EXTRAÇÃO INTELIGENTE: SCREENSHOT + HTML║
-    // ║  NÃO REMOVA. Método de extração mais poderoso da extensão.          ║
-    // ║                                                                     ║
-    // ║  Envia a captura de tela (screenshot) + HTML bruto da página para   ║
-    // ║  uma LLM com visão (Gemini/Groq). A LLM:                           ║
-    // ║    1. VÊ o que o aluno está vendo (screenshot)                      ║
-    // ║    2. BUSCA a questão COMPLETA no HTML da página                    ║
-    // ║    3. Retorna stem + alternativas EXATAS do HTML                    ║
-    // ║                                                                     ║
-    // ║  Resolve todos os problemas de extração: texto cortado, opções      ║
-    // ║  faltando, questões de associação, afirmativas, formato incomum.    ║
-    // ║  Última calibração: 2026-03-04                                      ║
-    // ╚══════════════════════════════════════════════════════════════════════╝
-    async visionGuidedExtraction(base64Image, viewportHtml, ocrHint) {
-        if (!base64Image && !viewportHtml) return null;
-        const settings = await this._getSettings();
-
-        const htmlTruncated = (viewportHtml || '').substring(0, 14000);
-        const hintSection = ocrHint
-            ? `\nDICA DO OCR (pode estar incompleto/cortado):\n${(ocrHint || '').substring(0, 600)}\n`
-            : '';
-
-        const prompt = [
-            'Você é um sistema extrator de dados estruturados com altíssima precisão, focado em plataformas de ensino.',
-            '',
-            'OBJETIVO PRINCIPAL:',
-            '1. Use a CAPTURA DE TELA para reconhecer visualmente o texto da questão com os dados originais e contar o número de alternativas.',
-            '2. Em seguida, localize minuciosamente essa mesma questão dentro do CÓDIGO HTML fornecido abaixo.',
-            '3. Extraia o texto do enunciado COMPLETAMENTE ATÉ as alternativas e extraia todas as alternativas SEPARADAS.',
-            '',
-            'REGRAS INQUEBRÁVEIS:',
-            '1. IDENTIFICAR MINUCIOSAMENTE A QUESTÃO: Encontre no HTML exatamente a questão que está visível e focada na imagem.',
-            '2. DEFINIÇÃO DO ENUNCIADO: Começa na primeira palavra da questão e vai até EXATAMENTE ANTES da primeira alternativa clicável. Você DEVE extrair o enunciado COMPLETO (isso inclui textos de apoio, cabeçalhos, tabelas, código, variáveis e qualquer lista descritiva como (A. \%d, B. \%s), (I. item, II. item), (1, 2, 3), que devem ficar dentro do enunciado).',
-            '3. DEFINIÇÃO DE ALTERNATIVAS: São EXCLUSIVAMENTE as opções finais de resposta que o aluno visualiza e pode selecionar para resolver a questão (ex: A, B, C, D, E).',
-            '4. INTEGRIDADE (VERIFICAÇÃO OBRIGATÓRIA): Verifique minuciosamente na imagem e no HTML quantas alternativas existem. Você é OBRIGADO a extrair todas elas separadamente. Se a questão possui 5 alternativas, liste exatamente as 5 associadas à suas letras corretas.',
-            '5. FIDELIDADE: Nunca junte, misture ou modifique o texto do HTML/imagem.',
-            '',
-            hintSection,
-            'HTML DA PÁGINA:',
-            htmlTruncated,
-            '',
-            'FORMATO DE SAÍDA OBRIGATÓRIO (retorne EXATAMENTE este formato, sem blocos markdown ou conversa extra):',
-            'ENUNCIADO: <Cole aqui TODO o texto do enunciado, incluindo códigos e itens de associação/afirmação>',
-            'A) <texto íntegro da alternativa A>',
-            'B) <texto íntegro da alternativa B>',
-            'C) <texto íntegro da alternativa C>',
-            'D) <texto íntegro da alternativa D>',
-            'E) <texto íntegro da alternativa E (se houver)>',
-            'F) <continue se houver mais>'
-        ].join('\n');
-
-        // Build vision messages — if we have image, use multimodal; otherwise text-only
-        const userContent = base64Image
-            ? [
-                { type: 'text', text: prompt },
-                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-              ]
-            : prompt; // plain text fallback when no screenshot
-
-        const messages = [{ role: 'user', content: userContent }];
-
-        const tryGemini = async () => {
-            if (!settings.geminiApiKey) return null;
-            try {
-                const model = settings.geminiModel || 'gemini-2.5-flash';
-                console.log(`AnswerHunter: VisionGuided — sending screenshot+HTML to Gemini (${model})...`);
-                const content = await this._callGemini(messages, {
-                    temperature: 0.05,
-                    max_tokens: 1500,
-                    model
-                });
-                if (!content || content.length < 30) return null;
-                console.log(`AnswerHunter: VisionGuided Gemini → ${content.length} chars`);
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: VisionGuided Gemini failed:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryGroq = async () => {
-            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            const model = settings.groqModelVision || 'meta-llama/llama-3.2-90b-vision-preview';
-            try {
-                console.log(`AnswerHunter: VisionGuided — sending screenshot+HTML to Groq (${model})...`);
-                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${settings.groqApiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model,
-                        messages,
-                        temperature: 0.05,
-                        max_tokens: 1500
-                    })
-                }));
-                const content = (data.choices?.[0]?.message?.content || '').trim();
-                if (content.length < 30) return null;
-                console.log(`AnswerHunter: VisionGuided Groq → ${content.length} chars`);
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: VisionGuided Groq failed:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const model = settings.openrouterModelVision || 'google/gemini-2.5-flash';
-                console.log(`AnswerHunter: VisionGuided — sending screenshot+HTML to OpenRouter (${model})...`);
-                const content = await this._callOpenRouter(messages, {
-                    temperature: 0.05,
-                    max_tokens: 1500,
-                    model
-                });
-                if (!content || content.length < 30) return null;
-                console.log(`AnswerHunter: VisionGuided OpenRouter → ${content.length} chars`);
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: VisionGuided OpenRouter failed:', e?.message || e);
-                return null;
-            }
-        };
-
-        const tryChatGPT = async () => {
-            if (!settings.chatgptApiKey || this._chatgptQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const model = settings.chatgptModelVision || 'gpt-4o-mini';
-                console.log(`AnswerHunter: VisionGuided — sending screenshot+HTML to ChatGPT (${model})...`);
-                const content = await this._callChatGPT(messages, {
-                    temperature: 0.05,
-                    max_tokens: 1500,
-                    model
-                });
-                if (!content || content.length < 30) return null;
-                console.log(`AnswerHunter: VisionGuided ChatGPT → ${content.length} chars`);
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: VisionGuided ChatGPT failed:', e?.message || e);
-                return null;
-            }
-        };
-
-        // Text-only fallback — uses ANY available provider (Copilot, Groq, Gemini, etc.)
-        // ALWAYS tried when vision providers fail, even if screenshot exists.
-        // This is the user's requested "simple HTML + fragment → LLM" path.
-        const tryTextOnly = async () => {
-            if (htmlTruncated.length < 50) return null;
-            try {
-                console.log('AnswerHunter: VisionGuided — trying text-only extraction via _callAnyProvider (HTML + hint)...');
-                const { content: textContent } = await this._callAnyProvider(
-                    [{ role: 'user', content: prompt }],
-                    { temperature: 0.05, max_tokens: 1500, purpose: 'visionGuidedTextOnly' },
-                    '[visionGuided-textOnly]'
-                );
-                if (textContent && textContent.length >= 30) {
-                    console.log(`AnswerHunter: VisionGuided text-only → ${textContent.length} chars`);
-                    return textContent;
-                }
-                console.log(`AnswerHunter: VisionGuided text-only returned empty/short (${(textContent || '').length} chars)`);
-            } catch (e) {
-                console.warn('AnswerHunter: VisionGuided text-only failed:', e?.message || e);
-            }
-            return null;
-        };
-
-        try {
-            const primary = settings.primaryProvider || 'groq';
-            let result = null;
-
-            if (base64Image) {
-                if (primary === 'openrouter') {
-                    result = await tryOpenRouter();
-                    if (!result) result = await tryChatGPT();
-                    if (!result) result = await tryGemini();
-                    if (!result) result = await tryGroq();
-                } else if (primary === 'chatgpt') {
-                    result = await tryChatGPT();
-                    if (!result) result = await tryOpenRouter();
-                    if (!result) result = await tryGemini();
-                    if (!result) result = await tryGroq();
-                } else if (primary === 'gemini') {
-                    result = await tryGemini();
-                    if (!result) result = await tryChatGPT();
-                    if (!result) result = await tryOpenRouter();
-                    if (!result) result = await tryGroq();
-                } else {
-                    result = await tryGroq();
-                    if (!result) result = await tryGemini();
-                    if (!result) result = await tryChatGPT();
-                    if (!result) result = await tryOpenRouter();
-                }
-            }
-
-            // Text-only fallback if vision failed or no screenshot
-            if (!result) result = await tryTextOnly();
-            if (!result) return null;
-
-            // ── Parse the LLM response ──
-            const stemMatch = result.match(/ENUNCIADO:\s*(.+?)(?=\n\s*[A-H]\s*\))/is);
-            const stem = stemMatch ? stemMatch[1].trim() : '';
-
-            const optionsMap = {};
-            const optRe = /([A-H])\)\s*(.+?)(?=\n\s*[A-H]\s*\)|$)/gis;
-            let m;
-            while ((m = optRe.exec(result)) !== null) {
-                const letter = m[1].toUpperCase();
-                const body = m[2].trim().replace(/\n+/g, ' ').trim();
-                if (body && body.length >= 1) {
-                    optionsMap[letter] = body;
-                }
-            }
-
-            if (!stem || Object.keys(optionsMap).length < 2) {
-                // Fallback: try to parse without ENUNCIADO: prefix (LLM might return raw text)
-                const lines = result.split('\n');
-                const optLines = [];
-                const stemLines = [];
-                for (const line of lines) {
-                    const optMatch = line.match(/^\s*([A-H])\)\s*(.+)/i);
-                    if (optMatch) {
-                        optLines.push({ letter: optMatch[1].toUpperCase(), body: optMatch[2].trim() });
-                    } else if (optLines.length === 0) {
-                        stemLines.push(line);
-                    }
-                }
-                if (stemLines.length > 0 && optLines.length >= 2) {
-                    const fallbackStem = stemLines.join('\n').replace(/^ENUNCIADO:\s*/i, '').trim();
-                    const fallbackOptLines = optLines.map(o => `${o.letter}) ${o.body}`);
-                    const assembled = `${fallbackStem}\n${fallbackOptLines.join('\n')}`;
-                    console.log(`[visionGuided] Fallback parse: stem=${fallbackStem.length}, opts=${optLines.length}`);
-                    return assembled;
-                }
-
-                console.log(`[visionGuided] Failed to parse (stem=${stem.length}, opts=${Object.keys(optionsMap).length})`);
-                return null;
-            }
-
-            // Assemble clean question text
-            const optLines = Object.entries(optionsMap)
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([letter, body]) => `${letter}) ${body}`);
-
-            const assembled = `${stem}\n${optLines.join('\n')}`;
-            console.log(`[visionGuided] SUCCESS — stem=${stem.length}, opts=${Object.keys(optionsMap).length} (${Object.keys(optionsMap).join(',')}), total=${assembled.length}`);
-            console.log(`[visionGuided] ENUNCIADO COMPLETO EXTRAÍDO:\n--------------------------------------------------\n${stem}\n--------------------------------------------------`);
-            return assembled;
-        } catch (e) {
-            console.warn('[visionGuided] Error:', e?.message || e);
-            return null;
-        }
     },
 
     /**
@@ -3145,21 +2036,11 @@ ${truncated}`;
 
         const promptText = [
             'Você é um OCR especializado em provas educacionais.',
-            'Extraia TODA a questão PRINCIPAL que está sendo respondida na imagem.',
-            'A questão principal é a que ocupa a MAIOR área central da tela, geralmente com alternativas A-E selecionáveis.',
-            'IGNORE questões em painéis laterais, recomendações, "questões similares" ou rodapés.',
-            '',
-            'IMPORTANTE: O enunciado COMPLETO inclui TUDO antes das alternativas:',
-            '- Cabeçalho da banca/concurso (ex: "(AFAP - FCC 2019)")',
-            '- Todos os parágrafos de contexto e explicação',
-            '- Trechos de código (SQL, Java, etc.), tabelas e fórmulas',
-            '- Lacunas (I, II, III) e seus conteúdos',
-            '- A pergunta final antes das alternativas',
-            'NÃO omita nenhuma parte do texto que aparece antes das alternativas A-E.',
-            'Extraia APENAS UMA questão. Se houver múltiplas, escolha a principal (maior/central).',
+            'Extraia APENAS a questão (enunciado + alternativas A-E) que está mais centralizada/visível na imagem.',
+            'Se houver múltiplas questões, escolha a que está mais ao centro da tela.',
             'Retorne o texto puro da questão com as alternativas, sem nenhum comentário adicional.',
             'Formato esperado:',
-            '<TODO o texto do enunciado, incluindo cabeçalho, contexto, código e pergunta>',
+            '<enunciado da questão>',
             'A) <texto>',
             'B) <texto>',
             'C) <texto>',
@@ -3206,7 +2087,7 @@ ${truncated}`;
 
         const tryGroq = async () => {
             if (!groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-            const model = groqModelVision || 'meta-llama/llama-3.2-90b-vision-preview';
+            const model = groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct';
             try {
                 console.log(`AnswerHunter: Vision OCR — sending screenshot to Groq (${model})...`);
                 const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
@@ -3236,69 +2117,16 @@ ${truncated}`;
             }
         };
 
-        const tryOpenRouter = async () => {
-            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const model = settings.openrouterModelVision || 'google/gemini-2.5-flash';
-                console.log(`AnswerHunter: Vision OCR — sending screenshot to OpenRouter (${model})...`);
-                const content = await this._callOpenRouter(visionMessages, {
-                    temperature: 0.1,
-                    max_tokens: 700,
-                    model
-                });
-                if (!content || content.length < 20) return null;
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: OpenRouter Vision OCR failed:', e?.message || e);
-                return null;
-            }
-        };
-        
-        const tryChatGPT = async () => {
-            if (!settings.chatgptApiKey || this._chatgptQuotaExhaustedUntil > Date.now()) return null;
-            try {
-                const model = settings.chatgptModelVision || 'gpt-4o-mini';
-                console.log(`AnswerHunter: Vision OCR — sending screenshot to ChatGPT (${model})...`);
-                const content = await this._callChatGPT(visionMessages, {
-                    temperature: 0.1,
-                    max_tokens: 700,
-                    model
-                });
-                if (!content || content.length < 20) return null;
-                return content;
-            } catch (e) {
-                console.warn('AnswerHunter: ChatGPT Vision OCR failed:', e?.message || e);
-                return null;
-            }
-        };        
-
         try {
-            const primary = settings.primaryProvider || 'groq';
+            const geminiPrimary = await this._isGeminiPrimary();
             let result = null;
-
-            if (primary === 'openrouter') {
-                result = await tryOpenRouter();
-                if (!result) result = await tryChatGPT();
-                if (!result) result = await tryGemini();
-                if (!result) result = await tryGroq();
-            } else if (primary === 'chatgpt') {
-                result = await tryChatGPT();
-                if (!result) result = await tryOpenRouter();
-                if (!result) result = await tryGemini();
-                if (!result) result = await tryGroq();
-            } else if (primary === 'gemini') {
+            if (geminiPrimary) {
                 result = await tryGemini();
-                if (!result) result = await tryChatGPT();
-                if (!result) result = await tryOpenRouter();
                 if (!result) result = await tryGroq();
             } else {
-                // Groq or default
                 result = await tryGroq();
                 if (!result) result = await tryGemini();
-                if (!result) result = await tryChatGPT();
-                if (!result) result = await tryOpenRouter();
             }
-
             return result || '';
         } catch (error) {
             console.error('AnswerHunter: Vision OCR failed:', error);
@@ -3307,256 +2135,114 @@ ${truncated}`;
     },
 
     /**
-     * Phase 2.2 — Two-pass OCR: second pass with focused prompt to refine extraction.
-     * Called when first-pass OCR result seems incomplete or multi-question.
-     * Uses a stricter prompt that emphasizes isolating exactly one question.
-     * @param {string} base64Image - base64-encoded JPEG/PNG
-     * @param {string} firstPassHint - Text from the first OCR pass (used as context)
-     * @returns {Promise<string>} refined question text
+     * Vision-guided extraction: combines screenshot + viewport HTML to extract
+     * a question with full formatting preserved (paragraphs, line breaks, etc.)
+     * @param {string} base64Image - base64-encoded JPEG screenshot (no data URI prefix)
+     * @param {string|null} htmlContent - simplified viewport HTML for context
+     * @param {*} _extra - reserved / unused
+     * @returns {Promise<string>} extracted text: stem (with \n for breaks) + A) B) C)...
      */
-    async extractTextFromScreenshotFocused(base64Image, firstPassHint) {
+    async visionGuidedExtraction(base64Image, htmlContent, _extra) {
         if (!base64Image) return '';
         const settings = await this._getSettings();
 
-        const hintSummary = (firstPassHint || '').substring(0, 200);
-        const focusedPrompt = [
-            'Você é um OCR de precisão para provas de múltipla escolha.',
-            'Extraia EXATAMENTE UMA questão da imagem — a questão PRINCIPAL que ocupa a região central.',
-            '',
-            'REGRAS RÍGIDAS:',
-            '1. Retorne APENAS UMA questão com alternativas A) a E)',
-            '2. IGNORE completamente: painéis laterais, menus, questões anteriores/seguintes, rodapés',
-            '3. O enunciado DEVE ser completo: inclua cabeçalho da banca, contexto, código, tabelas',
-            '4. Se houver múltiplas questões visíveis, escolha a que tem alternativas SELECIONÁVEIS (botões radio/checkbox ativos)',
-            '5. NÃO inclua texto de "gabarito", "resposta correta", "você acertou"',
-            '',
-            hintSummary ? `DICA: A questão principal começa com algo parecido com: "${hintSummary}"` : '',
-            '',
-            'Formato:',
-            '<enunciado completo>',
-            'A) <texto>',
-            'B) <texto>',
-            'C) <texto>',
-            'D) <texto>',
-            'E) <texto>'
-        ].filter(Boolean).join('\n');
+        const htmlSnippet = htmlContent
+            ? `\n\nContexto extra (HTML simplificado da página):\n${String(htmlContent).slice(0, 4000)}`
+            : '';
 
-        const messages = [{
-            role: 'user',
-            content: [
-                { type: 'text', text: focusedPrompt },
-                { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-            ]
-        }];
+        const promptText = [
+            'Você é um extrator especializado em provas educacionais brasileiras.',
+            'Observe a imagem e extraia APENAS a questão principal visível (a mais centralizada/em foco).',
+            '',
+            'REGRAS OBRIGATÓRIAS:',
+            '1. Preserve TODAS as quebras de linha e parágrafos do enunciado.',
+            '   Use \\n para cada quebra de linha e \\n\\n para separar parágrafos.',
+            '2. Se o enunciado tiver afirmações numeradas (I. II. III.) ou listas, coloque cada item em sua própria linha.',
+            '3. Retorne APENAS o texto da questão — nenhum comentário, prefixo ou explicação.',
+            '4. Formato obrigatório de alternativas: A) texto, B) texto, etc. (cada uma em linha separada).',
+            '5. NÃO inclua gabarito, comentários, ou texto fora da questão.',
+            '',
+            'FORMATO DE SAÍDA:',
+            '<enunciado com quebras de linha preservadas>',
+            '',
+            'A) <texto da alternativa>',
+            'B) <texto da alternativa>',
+            'C) <texto da alternativa>',
+            'D) <texto da alternativa>',
+            'E) <texto da alternativa>',
+            `${htmlSnippet}`
+        ].join('\n');
+
+        const visionMessages = [
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: promptText },
+                    {
+                        type: 'image_url',
+                        image_url: { url: `data:image/jpeg;base64,${base64Image}` }
+                    }
+                ]
+            }
+        ];
+
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                const model = settings.geminiModel || 'gemini-2.5-flash';
+                console.log(`AnswerHunter: visionGuidedExtraction — Gemini (${model})`);
+                const content = await this._callGemini(visionMessages, { temperature: 0.05, max_tokens: 1200, model });
+                if (!content || content.length < 20) return null;
+                console.log(`AnswerHunter: visionGuidedExtraction Gemini OK — ${content.length} chars`);
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: visionGuidedExtraction Gemini failed:', e?.message || e);
+                return null;
+            }
+        };
+
+        const tryGroq = async () => {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            const model = settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct';
+            try {
+                console.log(`AnswerHunter: visionGuidedExtraction — Groq (${model})`);
+                const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${settings.groqApiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model,
+                        messages: visionMessages,
+                        temperature: 0.05,
+                        max_tokens: 1200
+                    })
+                }));
+                const content = (data?.choices?.[0]?.message?.content || '').trim();
+                if (content.length < 20) return null;
+                console.log(`AnswerHunter: visionGuidedExtraction Groq OK — ${content.length} chars`);
+                return content;
+            } catch (e) {
+                console.warn('AnswerHunter: visionGuidedExtraction Groq failed:', e?.message || e);
+                return null;
+            }
+        };
 
         try {
             const geminiPrimary = await this._isGeminiPrimary();
             let result = null;
-
-            const tryGemini = async () => {
-                if (!settings.geminiApiKey) return null;
-                try {
-                    const model = settings.geminiModel || 'gemini-2.5-flash';
-                    const content = await this._callGemini(messages, { temperature: 0.05, max_tokens: 800, model });
-                    return content && content.length >= 20 ? content : null;
-                } catch { return null; }
-            };
-
-            const tryGroq = async () => {
-                if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
-                const model = settings.groqModelVision || 'meta-llama/llama-3.2-90b-vision-preview';
-                try {
-                    const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model, messages, temperature: 0.05, max_tokens: 800 })
-                    }));
-                    const content = (data.choices?.[0]?.message?.content || '').trim();
-                    return content.length >= 20 ? content : null;
-                } catch { return null; }
-            };
-
-            const tryOpenRouter = async () => {
-                if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
-                try {
-                    const model = settings.openrouterModelVision || 'google/gemini-2.5-flash';
-                    const content = await this._callOpenRouter(messages, { temperature: 0.05, max_tokens: 800, model });
-                    return content && content.length >= 20 ? content : null;
-                } catch { return null; }
-            };
-
-            const tryChatGPT = async () => {
-                if (!settings.chatgptApiKey || this._chatgptQuotaExhaustedUntil > Date.now()) return null;
-                try {
-                    const model = settings.chatgptModelVision || 'gpt-4o-mini';
-                    const content = await this._callChatGPT(messages, { temperature: 0.05, max_tokens: 800, model });
-                    return content && content.length >= 20 ? content : null;
-                } catch { return null; }
-            };
-
-            const primary = settings.primaryProvider || 'groq';
-
-            if (primary === 'openrouter') {
-                result = await tryOpenRouter();
-                if (!result) result = await tryChatGPT();
-                if (!result) result = await tryGemini();
-                if (!result) result = await tryGroq();
-            } else if (primary === 'chatgpt') {
-                result = await tryChatGPT();
-                if (!result) result = await tryOpenRouter();
-                if (!result) result = await tryGemini();
-                if (!result) result = await tryGroq();
-            } else if (primary === 'gemini') {
+            if (geminiPrimary) {
                 result = await tryGemini();
-                if (!result) result = await tryChatGPT();
-                if (!result) result = await tryOpenRouter();
                 if (!result) result = await tryGroq();
             } else {
                 result = await tryGroq();
                 if (!result) result = await tryGemini();
-                if (!result) result = await tryChatGPT();
-                if (!result) result = await tryOpenRouter();
             }
-            
-            console.log(`AnswerHunter: Focused OCR (2nd pass) → ${(result || '').length} chars`);
             return result || '';
-        } catch (e) {
-            console.warn('AnswerHunter: Focused OCR failed:', e?.message);
+        } catch (error) {
+            console.error('AnswerHunter: visionGuidedExtraction failed:', error);
             return '';
-        }
-    },
-
-    /**
-     * Phase 3.2 — LLM post-validation: checks if extracted text is exactly one complete question.
-     * @param {string} questionText - The extracted question text to validate
-     * @returns {Promise<{ valid: boolean, reason: string, fixedText?: string }>}
-     */
-    async llmPostValidateQuestion(questionText) {
-        if (!questionText || questionText.length < 30) {
-            return { valid: false, reason: 'text too short' };
-        }
-        const settings = await this._getSettings();
-
-        const systemPrompt = [
-            'Você é um validador de extração de questões de provas.',
-            'Analise o texto abaixo e responda em JSON:',
-            '{',
-            ' "valid": true/false,',
-            ' "reason": "string explicando",',
-            ' "questionCount": número de questões detectadas,',
-            ' "hasCompleteEnunciado": true/false,',
-            ' "hasOptions": true/false,',
-            ' "fixedText": "texto corrigido se valid=false e correção possível, senão null"',
-            '}',
-            '',
-            'Critérios:',
-            '- valid=true se houver EXATAMENTE 1 questão de múltipla escolha completa',
-            '- valid=false se: texto vazio, múltiplas questões, enunciado truncado, sem alternativas',
-            '- fixedText: se houver 2+ questões, retorne apenas a primeira completa',
-            'Responda APENAS o JSON, sem markdown ou texto extra.'
-        ].join('\n');
-
-        const messages = [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: questionText.substring(0, 3000) }
-        ];
-
-        try {
-            const geminiPrimary = await this._isGeminiPrimary();
-            let content = null;
-
-            if (geminiPrimary && settings.geminiApiKey) {
-                try {
-                    content = await this._callGemini(messages, { temperature: 0.05, max_tokens: 600, model: settings.geminiModel || 'gemini-2.5-flash' });
-                } catch { /* fall through */ }
-            }
-            if (!content && settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) {
-                try {
-                    const model = settings.groqModel || 'llama-3.3-70b-versatile';
-                    const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ model, messages, temperature: 0.05, max_tokens: 600 })
-                    }));
-                    content = (data.choices?.[0]?.message?.content || '').trim();
-                } catch { /* fall through */ }
-            }
-
-            if (!content) return { valid: true, reason: 'LLM unavailable — assuming valid' };
-
-            // Parse JSON response
-            const jsonMatch = content.match(/\{[\s\S]*?\}/);
-            if (!jsonMatch) return { valid: true, reason: 'LLM response not JSON' };
-
-            const parsed = JSON.parse(jsonMatch[0]);
-            return {
-                valid: !!parsed.valid,
-                reason: parsed.reason || 'unknown',
-                fixedText: parsed.fixedText || undefined,
-                questionCount: parsed.questionCount,
-                hasCompleteEnunciado: parsed.hasCompleteEnunciado,
-                hasOptions: parsed.hasOptions
-            };
-        } catch (e) {
-            console.warn('AnswerHunter: LLM post-validation error:', e?.message);
-            return { valid: true, reason: 'validation error — assuming valid' };
-        }
-    },
-
-    /**
-     * searchSingleQuery — Faz UMA busca no Serper/SerpApi com a query EXATA fornecida.
-     *
-     * Diferente de searchWithSerper() (que gera um plano de 10+ queries automaticamente),
-     * este método executa EXATAMENTE a query fornecida — sem expandi-la ou modificá-la.
-     * Usado pela Fase 3 (busca de confirmação) do pipeline de SimpleSearchService, que
-     * reproduz o "Turno 6" do fluxo humano: após encontrar um candidato líder, pesquisar
-     * explicitamente pelo texto desse candidato para confirmar com fontes independentes.
-     *
-     * @param {string} query - Query já construída (ex: '"Apenas I e II estão corretas" gabarito')
-     * @param {number} [num=8] - Número de resultados a retornar
-     * @returns {Promise<Array<{title:string,link:string,snippet:string}>>}
-     */
-    async searchSingleQuery(query, num = 8) {
-        if (!query || query.length < 5) return [];
-        const { serperApiUrl, serperApiKey } = await this._getSettings();
-        if (!serperApiKey) return [];
-        const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-        const providerMode = /serpapi\.com\//i.test(String(serperApiUrl || '')) ? 'serpapi' : 'serper';
-        const q = normalizeSpace(query).slice(0, 340);
-        try {
-            if (providerMode === 'serpapi') {
-                const url = new URL(String(serperApiUrl || 'https://serpapi.com/search.json'));
-                url.searchParams.set('engine', url.searchParams.get('engine') || 'google');
-                url.searchParams.set('q', q);
-                url.searchParams.set('gl', 'br');
-                url.searchParams.set('hl', 'pt-br');
-                url.searchParams.set('num', String(num));
-                url.searchParams.set('api_key', serperApiKey);
-                if (!url.searchParams.has('output')) url.searchParams.set('output', 'json');
-                const payload = await this._fetchGeneric(url.toString(), { method: 'GET' });
-                return (payload?.organic_results || [])
-                    .map(e => ({
-                        title: normalizeSpace(e?.title || ''),
-                        link: normalizeSpace(e?.link || e?.url || ''),
-                        snippet: normalizeSpace(e?.snippet || '')
-                    }))
-                    .filter(e => e.title && e.link);
-            }
-            const payload = await this._fetchGeneric(serperApiUrl, {
-                method: 'POST',
-                headers: { 'X-API-KEY': serperApiKey, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ q, gl: 'br', hl: 'pt-br', num, autocorrect: false })
-            });
-            return (payload?.organic || [])
-                .map(e => ({
-                    title: normalizeSpace(e?.title || ''),
-                    link: normalizeSpace(e?.link || ''),
-                    snippet: normalizeSpace(e?.snippet || '')
-                }))
-                .filter(e => e.title && e.link);
-        } catch (e) {
-            console.warn('[searchSingleQuery] Error:', e?.message);
-            return [];
         }
     },
 
@@ -3568,19 +2254,13 @@ ${truncated}`;
         const { serperApiUrl, serperApiKey } = await this._getSettings();
         const hasSerperKey = Boolean(String(serperApiKey || '').trim());
         const providerMode = /serpapi\.com\//i.test(String(serperApiUrl || '')) ? 'serpapi' : 'serper';
-        const _flowId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
-        const flowLog = (step, status, message, payload = null) => {
-            const prefix = `[AH FLOW SEARCH_QUERY ${_flowId}] ${String(step || '').toUpperCase()} ${String(status || 'INFO').toUpperCase()} - ${message || ''}`;
-            if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) console.log(prefix, payload);
-            else console.log(prefix);
-        };
 
         const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
         const normalizeForMatch = (s) => String(s || '')
             .toLowerCase()
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/[^a-z0-9\s]/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
         const STOPWORDS = new Set([
@@ -3589,11 +2269,11 @@ ${truncated}`;
             'sobre', 'apenas', 'indica', 'afirmativa', 'fator', 'importante', 'desempenho'
         ]);
         const toTokens = (text) => normalizeForMatch(text)
-            .split(/\s+/)
+            .split(' ')
             .filter(t => t.length >= 3 && !STOPWORDS.has(t));
         const unique = (arr) => Array.from(new Set((arr || []).filter(Boolean)));
         const decodeHtml = (raw) => String(raw || '')
-            .replace(/&nbsp;/gi, '')
+            .replace(/&nbsp;/gi, ' ')
             .replace(/&amp;/gi, '&')
             .replace(/&quot;/gi, '"')
             .replace(/&#39;/gi, '\'')
@@ -3606,125 +2286,58 @@ ${truncated}`;
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .replace(/^[a-e]\s*[\)\.\-:]\s*/i, '')
-            .replace(/->>/g, ' op_json_text')
-            .replace(/->/g, ' op_json_obj')
-            .replace(/=>/g, ' op_arrow')
-            .replace(/::/g, ' op_dcolon')
-            .replace(/:=/g, ' op_assign')
-            .replace(/!=/g, ' op_neq')
-            .replace(/<>/g, ' op_neq')
-            .replace(/<=/g, ' op_lte')
-            .replace(/>=/g, ' op_gte')
-            .replace(/</g, ' op_lt')
-            .replace(/>/g, ' op_gt')
-            .replace(/:/g, ' op_colon')
-            .replace(/=/g, ' op_eq')
-            .replace(/[^a-z0-9_]+/g, '')
-            .replace(/\s+/g, '')
+            .replace(/->>/g, ' op_json_text ')
+            .replace(/->/g, ' op_json_obj ')
+            .replace(/=>/g, ' op_arrow ')
+            .replace(/::/g, ' op_dcolon ')
+            .replace(/:=/g, ' op_assign ')
+            .replace(/!=/g, ' op_neq ')
+            .replace(/<>/g, ' op_neq ')
+            .replace(/<=/g, ' op_lte ')
+            .replace(/>=/g, ' op_gte ')
+            .replace(/</g, ' op_lt ')
+            .replace(/>/g, ' op_gt ')
+            .replace(/:/g, ' op_colon ')
+            .replace(/=/g, ' op_eq ')
+            .replace(/[^a-z0-9_]+/g, ' ')
+            .replace(/\s+/g, ' ')
             .trim();
-        // ⛔ FROZEN — extractOptionHints + buildHintQuery
-        // NÃO MODIFIQUE. Constrói hints de alternativas para query de busca.
-        // Depende de QuestionParser.extractOptionsFromQuestion (que já limpa letras fundidas).
-        // Filtros de leak, contiguidade e tamanho calibrados em produção. 2026-03-04.
-        const extractOptionHints = (raw, stemText = '') => {
-            const optionLines = QuestionParser.extractOptionsFromQuestion(raw || '');
-            if (!optionLines || optionLines.length === 0) return [];
-
-            const byLetter = new Map();
-            for (const line of optionLines) {
-                const mm = String(line || '').match(/^([A-E])\)\s*(.+)$/i);
-                if (!mm) continue;
-                const letter = (mm[1] || '').toUpperCase();
-                let body = normalizeSpace(QuestionParser.stripOptionTailNoise(mm[2] || ''));
-                if (!body) continue;
-                // Hard leak signatures from multi-question pages/UI fragments
-                if (/\b(?:\d{1,2}\s+(?:marcar|revis[aã]o|quest[aã]o|um|uma|voce|você)|marcar\s+para\s+revis[aã]o)\b/i.test(body)) {
-                    continue;
-                }
-                if (!byLetter.has(letter) || body.length > String(byLetter.get(letter) || '').length) {
-                    byLetter.set(letter, body);
-                }
-            }
-
-            const orderedEntries = ['A', 'B', 'C', 'D', 'E']
-                .filter((letter) => byLetter.has(letter))
-                .map((letter) => ({ letter, body: byLetter.get(letter) }));
-            if (orderedEntries.length === 0) return [];
-
-            // Keep only contiguous A..N sequence to avoid accidental jumps after contamination.
-            const contiguousEntries = [];
-            for (let i = 0; i < orderedEntries.length; i++) {
-                const expected = String.fromCharCode(65 + i);
-                if (orderedEntries[i].letter !== expected) break;
-                contiguousEntries.push(orderedEntries[i]);
-            }
-            const workingEntries = contiguousEntries.length >= 2 ? contiguousEntries : orderedEntries;
-
-            const lengths = workingEntries.map((entry) => entry.body.length).sort((a, b) => a - b);
-            const medianLen = lengths.length > 0 ? lengths[Math.floor(lengths.length / 2)] : 0;
-            const leakMarkers = /\b(?:considere|assinale|marque|associe|associa[cç][aã]o|sobre a|sobre o|s[aã]o corretas|est[aã]o corretas|analise|verifique|qual(?:is)?\b|quest[aã]o|pergunta)\b/i;
-            const questionishBodyRe = /\b(?:marque|assinale|considere|associe|qual(?:is)?|pergunta|quest[aã]o)\b/i;
-
-            const filteredEntries = workingEntries.filter((entry) => {
-                const body = String(entry.body || '').trim();
-                if (!body) return false;
-                if (body.length > 320) return false;
-                if (body.length >= 45 && questionishBodyRe.test(body)) return false;
-                if (medianLen > 0 && body.length > Math.max(90, medianLen * 3.5) && leakMarkers.test(body)) {
-                    return false;
-                }
-                return true;
-            });
-
+        const extractOptionHints = (raw) => {
+            const text = String(raw || '').replace(/\r\n/g, '\n');
+            const re = /(?:^|[\n\r\t ;])([A-E])\s*[\)\.\-:]\s*([^]*?)(?=(?:[\n\r\t ;][A-E]\s*[\)\.\-:]\s)|$)/gi;
             const out = [];
             const seen = new Set();
-            for (const entry of filteredEntries) {
-                const body = normalizeSpace(entry.body || '')
+            let m;
+            while ((m = re.exec(text)) !== null) {
+                const body = normalizeSpace(m[2] || '')
                     .replace(/\b(?:gabarito|resposta\s+correta|parab(?:ens|\u00e9ns))\b.*$/i, '')
                     .trim();
                 const codeLikeHint = looksLikeCodeOption(body) || /^[a-z0-9_]+(?:\s*\(\s*\))?$/i.test(body);
-                const bodyNorm = codeLikeHint
+                const bodyNorm = looksLikeCodeOption(body)
                     ? normalizeCodeAwareHint(body)
                     : normalizeForMatch(body);
                 const malformed = !body || body.length < (codeLikeHint ? 2 : 12)
                     || /^[A-E]\s*[\)\.\-:]?\s*$/i.test(body)
                     || /^(?:[A-E]\s*[\)\.\-:]\s*){1,2}$/i.test(body)
                     || seen.has(bodyNorm);
-                if (malformed) continue;
-                out.push(body);
-                seen.add(bodyNorm);
+                if (!malformed) {
+                    out.push(body);
+                    seen.add(bodyNorm);
+                }
                 if (out.length >= 5) break;
             }
-
-            // Final contextual safety: if we have many hints but zero lexical contact with stem,
-            // keep only the two shortest hints to avoid poisoning options-only queries.
-            const stemTokens = normalizeForMatch(stemText || '')
-                .split(/\s+/)
-                .filter((t) => t.length >= 4);
-            if (out.length >= 3 && stemTokens.length >= 6) {
-                const stemSet = new Set(stemTokens);
-                const overlapHits = out.reduce((acc, hint) => {
-                    const hintTokens = normalizeForMatch(hint).split(/\s+/).filter((t) => t.length >= 4);
-                    const hasHit = hintTokens.some((t) => stemSet.has(t));
-                    return acc + (hasHit ? 1 : 0);
-                }, 0);
-                if (overlapHits === 0) {
-                    return [...out].sort((a, b) => a.length - b.length).slice(0, 2);
-                }
-            }
-
             return out;
         };
 
         const compactOptionHint = (optRaw) => {
-            let opt = normalizeSpace(optRaw || '').replace(/["'`]+/g, '').trim();
+            let opt = normalizeSpace(optRaw || '').replace(/["'`]+/g, ' ').trim();
             if (!opt) return '';
 
             if (looksLikeCodeOption(opt)) {
                 // SQL alternatives usually share a long identical prefix (INSERT INTO ... VALUES).
                 // Keep only the discriminative JSON/operator segment.
                 opt = opt
-                    .replace(/\binsert\s+into[\s\S]*?\bvalues\s*\(/i, '')
+                    .replace(/\binsert\s+into[\s\S]*?\bvalues\s*\(/i, ' ')
                     .replace(/^\s*\(+/, '')
                     .replace(/\)+\s*;?$/, '')
                     .trim();
@@ -3735,7 +2348,7 @@ ${truncated}`;
                 if (braceMatch && braceMatch[0].length > 6) opt = braceMatch[0];
             }
 
-            return normalizeSpace(opt).split(/\s+/).slice(0, looksLikeCodeOption(optRaw) ? 12 : 7).join(' ');
+            return normalizeSpace(opt).split(' ').slice(0, looksLikeCodeOption(optRaw) ? 12 : 7).join(' ');
         };
 
         const buildHintQuery = (stem, options) => {
@@ -3773,7 +2386,7 @@ ${truncated}`;
             return (items || []).map((entry) => {
                 const title = normalizeSpace(entry?.title || '');
                 const link = normalizeSpace(entry?.link || entry?.url || '');
-                const snippet = normalizeSpace(entry?.snippet || entry?.snippet_highlighted_words?.join('') || '');
+                const snippet = normalizeSpace(entry?.snippet || entry?.snippet_highlighted_words?.join(' ') || '');
                 return { title, link, snippet };
             }).filter((entry) => entry.title && entry.link);
         };
@@ -3803,8 +2416,6 @@ ${truncated}`;
                 answerBox: raw.answerBox || null,
                 aiOverview: raw.aiOverview || raw.ai_overview || null,
                 peopleAlsoAsk: raw.peopleAlsoAsk || null,
-                knowledgeGraph: raw.knowledgeGraph || null,
-                relatedSearches: raw.relatedSearches || null,
                 provider: 'serper'
             };
         };
@@ -3820,7 +2431,7 @@ ${truncated}`;
                 if (!url.searchParams.has('output')) {
                     url.searchParams.set('output', 'json');
                 }
-                const payload = await this._fetchGeneric(url.toString(), {
+                const payload = await this._fetch(url.toString(), {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json'
@@ -3829,7 +2440,7 @@ ${truncated}`;
                 return normalizeSearchPayload(payload);
             }
 
-            const payload = await this._fetchGeneric(serperApiUrl, {
+            const payload = await this._fetch(serperApiUrl, {
                 method: 'POST',
                 headers: {
                     'X-API-KEY': serperApiKey,
@@ -3839,8 +2450,7 @@ ${truncated}`;
                     q,
                     gl: 'br',
                     hl: 'pt-br',
-                    num,
-                    autocorrect: false
+                    num
                 })
             });
             return normalizeSearchPayload(payload);
@@ -3868,10 +2478,10 @@ ${truncated}`;
                 if (!linkMatch) continue;
 
                 let link = decodeHtml(linkMatch[1] || '').trim();
-                const title = normalizeSpace(decodeHtml((linkMatch[2] || '').replace(/<[^>]+>/g, '')));
+                const title = normalizeSpace(decodeHtml((linkMatch[2] || '').replace(/<[^>]+>/g, ' ')));
                 const snippetMatch = block.match(/<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<div[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/div>/i);
                 const snippetRaw = snippetMatch ? (snippetMatch[1] || snippetMatch[2] || '') : '';
-                const snippet = normalizeSpace(decodeHtml(String(snippetRaw).replace(/<[^>]+>/g, '')));
+                const snippet = normalizeSpace(decodeHtml(String(snippetRaw).replace(/<[^>]+>/g, ' ')));
 
                 if (link.startsWith('/l/?')) {
                     try {
@@ -3949,23 +2559,11 @@ ${truncated}`;
         const maxQueryLen = hasMultipleChoiceShape ? 380 : 250;
         cleanQuery = cleanQuery.substring(0, maxQueryLen);
         console.log(`AnswerHunter: Query limpa: "${cleanQuery}"`);
-        flowLog('CLEAN_QUERY', 'OK', 'Query base normalizada', {
-            providerMode,
-            hasSerperKey,
-            len: cleanQuery.length
-        });
 
-        const optionHints = extractOptionHints(rawQuery, cleanQuery);
+        const optionHints = extractOptionHints(rawQuery);
         const hintQuery = buildHintQuery(cleanQuery, optionHints);
         if (hintQuery) {
             console.log(`AnswerHunter: Query com alternativas: "${hintQuery}"`);
-            flowLog('HINT_QUERY', 'OK', 'Query com alternativas montada', {
-                hints: optionHints.length,
-                len: hintQuery.length
-            });
-        } else if (optionHints.length === 0) {
-            console.log('AnswerHunter: Query com alternativas: skip (nenhuma alternativa confiável após sanitização)');
-            flowLog('HINT_QUERY', 'SKIP', 'Sem alternativas confiáveis para hint query');
         }
 
         const BOOST_SITES = [
@@ -3973,15 +2571,11 @@ ${truncated}`;
             'qconcursos.com.br',
             'tecconcursos.com.br',
             'gran.com.br',
-            'estrategiaconcursos.com.br',
-            'grancursosonline.com.br',
             'passeidireto.com',
             'studocu.com',
             'brainly.com.br'
         ];
-        const siteFilter = BOOST_SITES.map(s2 => `site:${s2}`).join(' OR');
-        // Filtro acadêmico: universidades + slides + fontes curadas
-        const academicSiteFilter = 'site:edu.br OR site:slideshare.net OR site:academia.edu OR site:scielo.br OR site:gov.br';
+        const siteFilter = BOOST_SITES.map(s2 => `site:${s2}`).join(' OR ');
         const domainFromLink = (link) => {
             try {
                 return new URL(link).hostname.replace(/^www\./, '');
@@ -3993,13 +2587,9 @@ ${truncated}`;
             'qconcursos.com': 1.95,
             'qconcursos.com.br': 1.95,
             'tecconcursos.com.br': 1.85,
-            'estrategiaconcursos.com.br': 1.75,
-            'grancursosonline.com.br': 1.60,
             'gran.com.br': 1.55,
             'passeidireto.com': 1.35,
             'studocu.com': 1.05,
-            'slideshare.net': 1.15,
-            'academia.edu': 1.20,
             'brainly.com.br': 0.72,
             'brainly.com': 0.7,
             'scribd.com': 0.55,
@@ -4012,8 +2602,8 @@ ${truncated}`;
             'pt.scribd.com': 0.75
         };
         const stemTokens = toTokens(cleanQuery).slice(0, 12);
-        const optionTokens = toTokens(optionHints.join('')).slice(0, 10);
-        const rareTokens = unique([...toTokens(cleanQuery), ...toTokens(optionHints.join(''))])
+        const optionTokens = toTokens(optionHints.join(' ')).slice(0, 10);
+        const rareTokens = unique([...toTokens(cleanQuery), ...toTokens(optionHints.join(' '))])
             .filter(t => t.length >= 7)
             .slice(0, 5);
         const scoreOrganic = (item, position = 0, queryBoost = 0, provider = 'serper') => {
@@ -4050,33 +2640,14 @@ ${truncated}`;
                 || hosts.has('qconcursos.com')
                 || hosts.has('qconcursos.com.br')
                 || hosts.has('tecconcursos.com.br')
-                || hosts.has('estrategiaconcursos.com.br')
-                || hosts.has('grancursosonline.com.br')
                 || Array.from(hosts).some(h => h.endsWith('.gov.br') || h.endsWith('.edu.br'));
         };
         const buildQueryPlan = () => {
             const safe = cleanQuery.replace(/[:"']/g, '').slice(0, 200);
-            const compactTokens = toTokens(cleanQuery).slice(0, 10).join('');
-            const rareTokenQuery = rareTokens.slice(0, 3).join('');
+            const compactTokens = toTokens(cleanQuery).slice(0, 10).join(' ');
+            const rareTokenQuery = rareTokens.slice(0, 3).join(' ');
             const exactQuery = safe ? `"${safe}"` : '';
-
-            // ── "plain" query: enunciado + alternativas sem palavra-chave ─────────
-            // Imita o que o usuário faz numa busca manual no Google:
-            // apenas o texto da questão + trechos das alternativas, sem "gabarito".
-            // É a query mais natural e frequentemente traz as fontes mais relevantes.
-            const buildPlainQuery = (stem, options) => {
-                if (!options || options.length < 2) return normalizeSpace(stem).slice(0, 340);
-                const sortedOpts = [...options].filter(o => o && o.length >= 8).sort((a, b) => b.length - a.length);
-                const picked = sortedOpts.slice(0, 3).map(o => `"${normalizeSpace(o).slice(0, 45).replace(/["]/g, '')}"`);
-                const hintPart = picked.join('');
-                const maxStem = Math.max(60, 340 - hintPart.length - 1);
-                return normalizeSpace(`${normalizeSpace(stem).slice(0, maxStem)} ${hintPart}`).slice(0, 340);
-            };
-            const plainQuery = buildPlainQuery(cleanQuery, optionHints);
-
             const plan = [
-                // plain (sem "gabarito") — prioridade máxima, imita busca manual
-                { q: plainQuery, num: 10, boost: 0.95, label: 'plain' },
                 { q: normalizeSpace(`${cleanQuery} resposta correta`), num: 10, boost: 0.55, label: 'base' },
                 { q: normalizeSpace(`${cleanQuery} gabarito`), num: 10, boost: 0.6, label: 'gabarito' }
             ];
@@ -4099,82 +2670,6 @@ ${truncated}`;
                 plan.push({ q: normalizeSpace(`${rareTokenQuery} ${cleanQuery.slice(0, 120)} gabarito`), num: 8, boost: 0.52, label: 'rare' });
             }
             plan.push({ q: normalizeSpace(`${cleanQuery} ${siteFilter}`).slice(0, 340), num: 8, boost: 0.5, label: 'site-filter' });
-            // ── Academic site filter — universidades, slides, fontes curadas ──────
-            plan.push({ q: normalizeSpace(`${cleanQuery} ${academicSiteFilter}`).slice(0, 340), num: 8, boost: 0.58, label: 'academic-filter' });
-
-            // ── Options-only queries (busca pelo texto das alternativas) ──────────
-            // Search using ONLY the most distinctive option texts, without the stem.
-            // A site that has the exact option text almost certainly has the exact
-            // question — this avoids snapshot-empty-options-mismatch rejections and
-            // finds documents that topic-only queries miss entirely.
-            if (optionHints && optionHints.length >= 2) {
-                // Sort options by length desc — longer = more specific/distinctive
-                const sortedOpts = [...optionHints]
-                    .filter(o => o && o.length >= 15)
-                    .sort((a, b) => b.length - a.length);
-                if (sortedOpts.length >= 1) {
-                    // Build compact quoted versions (max 50 chars each to keep query short)
-                    const opt1 = normalizeSpace(sortedOpts[0]).slice(0, 52).replace(/["]/g, '');
-                    const opt2 = sortedOpts.length >= 2 ? normalizeSpace(sortedOpts[1]).slice(0, 52).replace(/["]/g, '') : null;
-                    // options-only: just the 2 best options + gabarito (no stem)
-                    const optOnlyQ = opt2
-                        ? normalizeSpace(`"${opt1}" "${opt2}" gabarito`)
-                        : normalizeSpace(`"${opt1}" gabarito`);
-                    plan.push({ q: optOnlyQ.slice(0, 280), num: 10, boost: 0.88, label: 'options-only' });
-                    // options-site: best single option + site filter (very targeted)
-                    const optSiteQ = normalizeSpace(`"${opt1}" gabarito ${siteFilter}`).slice(0, 340);
-                    plan.push({ q: optSiteQ, num: 8, boost: 0.82, label: 'options-site' });
-                    console.log(`AnswerHunter: Options-only query: "${optOnlyQ.slice(0, 120)}"`);
-                }
-            }
-            // ── Assertiva-phrase queries ──────────────────────────────────────────
-            // When the question has Roman-numeral assertions (I. text / II. text / III. ...),
-            // extract the most distinctive phrases from each assertion and build quoted
-            // search queries from them.
-            //
-            // This mirrors the multi-query parallel-search approach used when searching
-            // for questions manually: instead of one generic query, we produce several
-            // independent angles — one per assertiva — so that educational sites which
-            // contain the exact assertion text are found even when the stem query misses.
-            //
-            // Example output for a question with assertivas I–IV:
-            //   assertiva-phrase:      "resultados mais uniformes abrangentes" "avaliadores conduzidos exame" gabarito
-            //   assertiva-phrase-site: "resultados mais uniformes abrangentes" "avaliadores conduzidos exame" site:brainly.com.br OR site:passeidireto.com ...
-            //   assertiva-phrase-3:    "qualidades avaliadores determinam possibilidades" gabarito <stem>
-            const extractAssertivaPhrases = (text) => {
-                const phrases = [];
-                // Matches both multiline (I.\n text) and inline (I. text II. text) formats.
-                // Captures up to 4 assertivas (I, II, III, IV and lowercase variants).
-                const re = /(?:^|[\s;,\n\r])([IVXivx]{1,4})\s*[\.\-:]\s+([^\n\r]{15,})/g;
-                let m;
-                while ((m = re.exec(text)) !== null) {
-                    const body = normalizeSpace(m[2] || '').replace(/["'`]/g, '').trim();
-                    if (body.length < 20) continue;
-                    // Keep 4–6 non-stopword tokens — enough to be distinctive, short enough for URL limits
-                    const words = body.split(/\s+/)
-                        .filter(w => w.length >= 4 && !STOPWORDS.has(normalizeForMatch(w)))
-                        .slice(0, 6);
-                    if (words.length >= 3) phrases.push(words.join('').slice(0, 65));
-                    if (phrases.length >= 4) break;
-                }
-                return phrases;
-            };
-            const assertivaPhrases = extractAssertivaPhrases(rawQuery);
-            if (assertivaPhrases.length >= 2) {
-                // Two assertiva phrases + gabarito (most targeted angle)
-                const phraseQ1 = `"${assertivaPhrases[0]}" "${assertivaPhrases[1]}" gabarito`;
-                plan.push({ q: normalizeSpace(phraseQ1).slice(0, 340), num: 10, boost: 0.87, label: 'assertiva-phrase' });
-                // Same two phrases but restricted to educational sites
-                const phraseQ2 = `"${assertivaPhrases[0]}" "${assertivaPhrases[1]}" ${siteFilter}`;
-                plan.push({ q: normalizeSpace(phraseQ2).slice(0, 340), num: 8, boost: 0.83, label: 'assertiva-phrase-site' });
-                console.log(`AnswerHunter: Assertiva-phrase query: "${phraseQ1.slice(0, 120)}"`);
-            }
-            if (assertivaPhrases.length >= 3) {
-                // Third assertiva as an independent search angle (catches pages that match III/IV but not I/II)
-                const phraseQ3 = `"${assertivaPhrases[2]}" gabarito ${cleanQuery.slice(0, 60)}`;
-                plan.push({ q: normalizeSpace(phraseQ3).slice(0, 280), num: 8, boost: 0.75, label: 'assertiva-phrase-3' });
-            }
-
             return plan.filter((entry) => entry.q && entry.q.length >= 8);
         };
 
@@ -4190,10 +2685,6 @@ ${truncated}`;
                 });
             };
             const plan = buildQueryPlan();
-            flowLog('QUERY_PLAN', 'OK', 'Plano de consultas gerado', {
-                total: plan.length,
-                labels: plan.map((p) => p.label).slice(0, 12)
-            });
             const seenQueries = new Set();
             let serperCalls = 0;
 
@@ -4201,7 +2692,7 @@ ${truncated}`;
             // Serper may return these rich fields alongside organic results.
             // We capture the FIRST occurrence across all Serper calls and attach
             // it to the returned array as `_serperMeta` for downstream processing.
-            let serperMeta = { answerBox: null, aiOverview: null, peopleAlsoAsk: null, knowledgeGraph: null, relatedSearches: null };
+            let serperMeta = { answerBox: null, aiOverview: null, peopleAlsoAsk: null };
             const captureSerperMeta = (data) => {
                 if (!data) return;
                 if (!serperMeta.answerBox && data.answerBox) {
@@ -4215,14 +2706,6 @@ ${truncated}`;
                 if (!serperMeta.peopleAlsoAsk && data.peopleAlsoAsk && data.peopleAlsoAsk.length > 0) {
                     serperMeta.peopleAlsoAsk = data.peopleAlsoAsk;
                     console.log(`AnswerHunter: Captured ${data.peopleAlsoAsk.length} peopleAlsoAsk entries`);
-                }
-                if (!serperMeta.knowledgeGraph && data.knowledgeGraph) {
-                    serperMeta.knowledgeGraph = data.knowledgeGraph;
-                    console.log(`AnswerHunter: Captured knowledgeGraph: ${data.knowledgeGraph.title || '(no title)'}`);
-                }
-                if (!serperMeta.relatedSearches && data.relatedSearches && data.relatedSearches.length > 0) {
-                    serperMeta.relatedSearches = data.relatedSearches;
-                    console.log(`AnswerHunter: Captured ${data.relatedSearches.length} relatedSearches`);
                 }
             };
 
@@ -4244,23 +2727,15 @@ ${truncated}`;
 
             let ranked = dedupeAndRank(pooled);
 
-            // Expansion pass when recall is weak — run all tasks in parallel.
+            // Expansion pass when recall is weak.
             if (hasSerperKey && (ranked.length < 10 || !hasTrustedCoverage(ranked.slice(0, 7)))) {
-                const expansionTasks = plan.slice(4).filter(task => {
-                    if (seenQueries.has(task.q)) return false;
+                for (const task of plan.slice(4)) {
+                    if (seenQueries.has(task.q)) continue;
                     seenQueries.add(task.q);
-                    return true;
-                });
-                if (expansionTasks.length > 0) {
-                    const expansionResults = await Promise.all(
-                        expansionTasks.map(task => runSerper(task.q, task.num))
-                    );
-                    for (let _ei = 0; _ei < expansionTasks.length; _ei++) {
-                        const data = expansionResults[_ei];
-                        captureSerperMeta(data);
-                        pushScored(data?.organic || [], expansionTasks[_ei].boost, providerMode === 'serpapi' ? 'serpapi' : 'serper');
-                        serperCalls += 1;
-                    }
+                    const data = await runSerper(task.q, task.num);
+                    captureSerperMeta(data);
+                    pushScored(data?.organic || [], task.boost, providerMode === 'serpapi' ? 'serpapi' : 'serper');
+                    serperCalls += 1;
                 }
                 ranked = dedupeAndRank(pooled);
             }
@@ -4291,12 +2766,6 @@ ${truncated}`;
             if (ranked.length > 0) {
                 console.log(`AnswerHunter: Search diagnostics => provider=${providerMode}, providerCalls=${serperCalls}, fallbackProvider=${fallbackProviderUsed ? 'duckduckgo' : 'none'}, uniqueResults=${ranked.length}`);
                 console.log(`AnswerHunter: ${ranked.length} resultados combinados e ranqueados (${hasSerperKey ? 'Serper + fallback' : 'fallback only'})`);
-                flowLog('RESULTS', 'OK', 'Resultados combinados e ranqueados', {
-                    provider: providerMode,
-                    providerCalls: serperCalls,
-                    fallback: fallbackProviderUsed ? 'duckduckgo' : 'none',
-                    uniqueResults: ranked.length
-                });
                 const finalResults = ranked.slice(0, 12);
                 // Attach Google meta signals (answerBox, aiOverview, peopleAlsoAsk) to the
                 // results array so SearchService can process them as high-priority evidence.
@@ -4321,7 +2790,7 @@ ${truncated}`;
      */
     _extractOptionsLocally(sourceContent) {
         if (!sourceContent) return null;
-        const clean = (s) => (s || '').replace(/\s+/g, '').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
         const normalized = sourceContent.replace(/\r\n/g, '\n');
 
         const byLines = () => {
@@ -5050,7 +3519,7 @@ REGRAS:
 - Nunca invente alternativas que não estejam na questão do cliente.
 - O ENUNCIADO define o critério: responda ao que ele PERGUNTA, não ao que parece "mais correto" em geral.
 - Textos explicativos/justificativos nas fontes são a evidência mais valiosa — use-os.
-${isDesperate ?`
+${isDesperate ? `
 ATENÇÃO - EVIDÊNCIA LIMITADA:
 As fontes acima contêm informação limitada e podem não ter a resposta explícita.
 Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
@@ -5160,12 +3629,12 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
             .map((item, index) => {
                 const title = String(item?.title || `Fonte ${index + 1}`).slice(0, 180);
                 const link = String(item?.link || '').slice(0, 500);
-                const text = String(item?.text || '').replace(/\s+/g, '').slice(0, 850);
+                const text = String(item?.text || '').replace(/\s+/g, ' ').slice(0, 850);
                 return `FONTE ${index + 1}\nTITULO: ${title}\nLINK: ${link || 'n/a'}\nTRECHO: ${text}`;
             })
             .join('\n\n');
 
-        const prompt = `Analise as evidências abaixo e crie um resumo ÚTIL para o estudante — não apenas repita fatos, mas ajude a ENTENDER o conceito da questão.
+        const prompt = `Você vai gerar um overview curto e útil (estilo Google AI Overview), SEM inventar fatos.
 
 QUESTÃO:
 ${String(questionText).slice(0, 1800)}
@@ -5175,22 +3644,21 @@ ${compactEvidence}
 
 RETORNE APENAS JSON válido no formato:
 {
-  "summary": "2-4 frases que contextualizem o tema e respondam à questão de forma compreensível. Evite linguagem de livro — explique como um professor explicaria verbalmente.",
-  "keyPoints": ["insight 1 (não repita a pergunta — agregue valor)", "insight 2", "insight 3 (diferença-chave ou armadilha comum se relevante)"],
+  "summary": "resumo em 2-4 frases, objetivo",
+  "keyPoints": ["ponto 1", "ponto 2", "ponto 3"],
   "references": [
     {"title": "nome curto da fonte", "link": "https://..."}
   ]
 }
 
 REGRAS:
-- Use apenas o que está nas evidências — NUNCA invente.
-- summary: priorize clareza e utilidade sobre formalidade.
-- keyPoints: destaque o que DIFERENCIA este conceito de conceitos parecidos. Máximo 4.
-- Se houver conflito, explicite: "Fontes divergem sobre..."
+- Use apenas o que está nas evidências.
+- Se houver conflito ou baixa clareza, mencione isso no summary.
+- keyPoints: no máximo 4 itens.
 - references: no máximo 5 itens.
 - Não inclua markdown, comentário ou texto fora do JSON.`;
 
-        const sysMsg = 'Você sintetiza evidências acadêmicas em resumos que realmente ajudam o estudante a entender — não apenas a ler. Contextualiza, destaca diferenças-chave e aponta armadilhas. Nunca invente links, citações ou fatos fora da entrada.';
+        const sysMsg = 'Você transforma evidências em resumo estruturado e confiável. Nunca invente links, citações ou fatos fora da entrada.';
 
         /** Parse overview JSON from raw response */
         const parseOverview = (raw, modelLabel) => {
@@ -5298,7 +3766,7 @@ REGRAS:
         const normQ = questionText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const wantsIncorrect = /\b(falsa|incorreta|errada|exceto|nao\s+correta)\b/i.test(normQ);
         const polarityNote = wantsIncorrect
-            ? '\n A questão pede a alternativa INCORRETA/FALSA/EXCETO.'
+            ? '\n⚠️ A questão pede a alternativa INCORRETA/FALSA/EXCETO.'
             : '';
 
         const prompt = `ANÁLISE ACADÊMICA POR ELIMINAÇÃO
@@ -5556,16 +4024,14 @@ REGRAS:
             if (copilotPrimary) {
                 // ── Copilot PRIMARY for MC ──
                 console.log(`AnswerHunter: MC via Copilot (primary, model=${settings.copilotModel || 'gpt-4o'})...`);
-                const copilotAttempts = (await Promise.all([
-                    this._callCopilot([
+                const copilotAttempts = [];
+                for (let i = 0; i < 2; i++) {
+                    const content = await this._callCopilot([
                         { role: 'system', content: mcSystemMsg },
                         { role: 'user', content: prompt }
-                    ], { model: settings.copilotModel || 'gpt-4o' }),
-                    this._callCopilot([
-                        { role: 'system', content: mcSystemMsg },
-                        { role: 'user', content: prompt }
-                    ], { model: settings.copilotModel || 'gpt-4o' })
-                ])).filter(Boolean);
+                    ], { model: settings.copilotModel || 'gpt-4o' });
+                    if (content) copilotAttempts.push(content);
+                }
                 if (copilotAttempts.length > 0) {
                     const tabulated = tabulateGroqAttempts(copilotAttempts);
                     if (tabulated) return tabulated;
@@ -5576,16 +4042,14 @@ REGRAS:
             if (chatgptPrimary) {
                 // ── ChatGPT PRIMARY for MC ──
                 console.log(`AnswerHunter: MC via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
-                const chatgptAttempts = (await Promise.all([
-                    this._callChatGPT([
+                const chatgptAttempts = [];
+                for (let i = 0; i < 2; i++) {
+                    const content = await this._callChatGPT([
                         { role: 'system', content: mcSystemMsg },
                         { role: 'user', content: prompt }
-                    ], { model: settings.chatgptModel || 'gpt-5.2-codex' }),
-                    this._callChatGPT([
-                        { role: 'system', content: mcSystemMsg },
-                        { role: 'user', content: prompt }
-                    ], { model: settings.chatgptModel || 'gpt-5.2-codex' })
-                ])).filter(Boolean);
+                    ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
+                    if (content) chatgptAttempts.push(content);
+                }
                 if (chatgptAttempts.length > 0) {
                     const tabulated = tabulateGroqAttempts(chatgptAttempts);
                     if (tabulated) return tabulated;
@@ -5766,21 +4230,10 @@ REGRAS:
      */
     async defineTerm(term, contextText = '') {
         const settings = await this._getSettings();
-        const systemMsg = `Você é um professor que explica conceitos técnicos com clareza CRISTALINA, pensando em alunos com dificuldade de concentração.
-
-Para cada definição:
-(1) O que É — linguagem simples, frase curta
-(2) Analogia do cotidiano — torne tangível ("é como o índice de um livro — mapeia onde cada coisa está")
-(3) O que NÃO é — evite a confusão mais comum
-
-Regras ADHD-friendly:
-- Máximo 3-4 linhas
-- Uma ideia por frase
-- Use negrito nos termos-chave
-- Comece com a informação mais útil`;
+        const systemMsg = 'Você é um dicionário educacional conciso. Defina termos de forma clara e breve (2-3 linhas).';
         const prompt = contextText
-            ? `O aluno encontrou o termo "${term}" durante o estudo e não entendeu. Contexto onde apareceu:\n\n${contextText.slice(0, 500)}\n\nExplique este termo de forma que o aluno entenda na hora — como se fosse uma explicação sussurrada durante a aula. Comece direto com o que o termo significa, sem preâmbulo.`
-            : `O aluno quer entender o termo "${term}". Explique de forma clara e memorável — definição + analogia/exemplo em 2-3 linhas. Comece direto, sem "claro!" ou "ótima pergunta!".`;
+            ? `Defina o termo "${term}" considerando o seguinte contexto educacional:\n\n${contextText.slice(0, 500)}\n\nDefinição breve:`
+            : `Defina o termo "${term}" de forma breve e educacional. Definição:`;
 
         const { result } = await this._callWithProviderChain({
             messages: [
@@ -5805,22 +4258,9 @@ Regras ADHD-friendly:
     async generateTutorExplanation(question, answer, context = '') {
         const settings = await this._getSettings();
 
-        const systemMsg = `Você é um professor universitário sênior renomado, com décadas de experiência transformando assuntos complexos em explicações que qualquer pessoa entende. Você cria "momentos eureka" — quando o aluno pensa "agora fez sentido!".
+        const systemMsg = `Você é um professor paciente, didático e experiente. Sua ÚNICA tarefa é explicar POR QUE a resposta do GABARITO está correta, de forma que qualquer estudante entenda completamente o raciocínio.
 
-Sua personalidade docente:
-- Usa analogias do cotidiano ("DNS é a agenda de contatos do celular")
-- Antecipa onde o aluno vai se confundir e já esclarece antes
-- Fala como gente, não como livro — mas com rigor técnico
-- Faz o aluno gostar da matéria
-
- PRINCÍPIOS CIENTÍFICOS (aplique sempre):
-- DUAL CODING: use emoji/ícones como marcadores visuais para cada seção
-- CHUNKING: máximo 3 frases por parágrafo. Quebre blocos longos
-- ELABORAÇÃO: explique o "por quê" por trás de cada afirmação
-- EXEMPLOS CONCRETOS: pelo menos 1 exemplo do mundo real por conceito
-- ADHD-FRIENDLY: frases curtas, uma ideia por frase, evite paredes de texto
-
- REGRA ABSOLUTA: A resposta correta é EXATAMENTE a que está indicada no GABARITO. Você NÃO pode discordar. Sua explicação DEVE justificar essa resposta.`;
+⚠️ REGRA ABSOLUTA: A resposta correta é EXATAMENTE a que está indicada no GABARITO abaixo. Você NÃO pode discordar do gabarito. Sua explicação DEVE obrigatoriamente justificar essa resposta específica do gabarito, mesmo que você pessoalmente pensasse diferente.`;
 
         const prompt = `QUESTÃO:
 ${question.slice(0, 1500)}
@@ -5832,30 +4272,23 @@ ${context ? `CONTEXTO ADICIONAL:\n${context.slice(0, 300)}\n` : ''}FORMATO OBRIG
 
 1. Comece com: "✅ Resposta correta: [copie exatamente a letra e/ou texto da resposta do gabarito]"
 
-2. ** Primeiro, entenda o cenário** — Em 2-3 frases, contextualize o assunto como se fosse a primeira vez que o aluno ouve sobre isso. Use uma analogia ou exemplo do dia-a-dia para tornar concreto. O objetivo é que o aluno pense "ah, então é ISSO que esse conceito significa na prática".
+2. **Contexto do tema** — Em 2-3 frases, explique o assunto/tema da questão de forma simples, como se o aluno nunca tivesse visto o tema antes.
 
-3. **🧩 Construindo o raciocínio** — Numere cada passo lógico (1., 2., 3., ...) que leva à resposta do gabarito:
-   - Cada passo deve fluir naturalmente do anterior ("Se isso é verdade, então...")
-   - Dê pelo menos 1 exemplo concreto ou analogia
-   - Destaque armadilhas: "Cuidado: muitos confundem X com Y"
-   - Se possível, mostre a aplicação real do conceito
+3. **Raciocínio passo a passo** — Numere cada etapa do raciocínio (1., 2., 3., ...) que leva à resposta do gabarito:
+   - Use linguagem simples e direta
+   - Dê exemplos práticos quando possível
+   - Conecte cada passo ao anterior
 
-4. **❌ Eliminando as alternativas erradas** — Para cada alternativa incorreta, explique em 1-2 frases por que está errada de forma que o aluno NUNCA MAIS caia nessa armadilha. Formato:
-   " Alternativa X: [por que está errada + armadilha que levaria o aluno a marcar esta]"
+4. **Por que as outras alternativas estão erradas** — Para cada alternativa incorreta, explique brevemente (1 frase) por que está errada. Use o formato: "❌ Alternativa X: [motivo]"
 
-5. ** Resumo pra levar pro resto da vida:** [1-2 frases que sintetizem o conceito de forma tão marcante que o aluno não esquece. Pode ser uma regra mnemônica, frase de efeito ou analogia-chave.]
+5. Finalize com: "💡 Resumo: [1 frase que sintetize o conceito-chave]"
 
 REGRAS:
-- Linguagem CLARA e CONVERSACIONAL — como se estivesse explicando pessoalmente
-- Máximo 500 palavras
-- NUNCA contradiga o gabarito
-- Use **negrito** para termos-chave e conceitos importantes
-- Se a questão não tiver alternativas, foque nos passos 1, 2, 3 e 5
-- Proibido: frases genéricas como "é importante estudar" ou "esse tema cai bastante"
-- CHUNKING: máximo 3 frases por bloco. Pule linha entre cada seção numerada
-- ADHD-FRIENDLY: comece cada seção com o emoji do formato. Uma ideia por frase. Zero parágrafos longos
-- ELABORAÇÃO: para cada afirmação, adicione "porque..." ou "isso funciona porque..."  
-- EXEMPLO CONCRETO obrigatório: pelo menos 1 cenário real por seção`;
+- Linguagem CLARA e ACESSÍVEL — imagine que está ensinando a um aluno do ensino médio
+- Máximo 450 palavras
+- NUNCA contradiga o gabarito — se o gabarito diz que a resposta é X, justifique X
+- Use **negrito** para termos importantes
+- Se a questão não tiver alternativas, foque nos passos 1, 2, 3 e 5`;
 
         const { result } = await this._callWithProviderChain({
             messages: [
@@ -5881,21 +4314,9 @@ REGRAS:
     async generateReviewCard(question, answer, context = '') {
         const settings = await this._getSettings();
 
-        const systemMsg = `Você é um mentor de estudos lendário — resume em 30 segundos o que o livro leva 30 páginas. Especialista em revisão espaçada e elaborative interrogation.
+        const systemMsg = `Você é um especialista em técnicas de estudo e memorização (Anki, flashcards, revisão espaçada). Crie fichas de revisão objetivas e memoráveis.`;
 
-Filosofia: "Se não consegue explicar pra avó, não entendeu."
-
-Seu trabalho: fichas que o aluno lê uma vez e GRAVA.
-
- PRINCÍPIOS CIENTÍFICOS (aplique sempre):
-- DUAL CODING: cada seção tem emoji como âncora visual
-- CHUNKING: 2-3 frases por seção, nunca mais. Quebre blocos longos
-- RETRIEVAL PRACTICE: inclua 1 pergunta-gatilho que force o aluno a pensar antes de ler a resposta
-- EXEMPLOS CONCRETOS: pelo menos 1 exemplo tangível por regra de ouro
-- ADHD-FRIENDLY: frases curtas e diretas. Negrito nos termos-chave. Zero paredes de texto
-- INTERLEAVING: no "Conecte com", sugira temas de OUTRAS disciplinas quando possível`;
-
-        const prompt = `Crie uma FICHA DE REVISÃO poderosa para o estudante memorizar esta questão.
+        const prompt = `Crie uma FICHA DE REVISÃO concisa para o estudante memorizar o conteúdo desta questão.
 
 QUESTÃO:
 ${question.slice(0, 1500)}
@@ -5905,39 +4326,34 @@ ${answer.slice(0, 800)}
 
 ${context ? `CONTEXTO:\n${context.slice(0, 300)}\n` : ''}FORMATO OBRIGATÓRIO:
 
- CONCEITO-CHAVE
-[Nome do conceito + subtítulo que já ensina algo — ex: "Polimorfismo — Quando o mesmo comando faz coisas diferentes"]
+📌 CONCEITO-CHAVE
+[Nome do conceito/tema principal testado — 1 linha]
 
- EM PALAVRAS SIMPLES
-[Explique o conceito em 2-3 frases como se tivesse explicando pra um amigo no bar. Sem jargão desnecessário. Se usar um termo técnico, traduza entre parênteses. O objetivo é o aluno pensar "ah, é só isso?"]
+📖 DEFINIÇÃO RÁPIDA
+[Definição objetiva do conceito em 2-3 frases curtas. Sem enrolação.]
 
- REGRAS DE OURO (pra nunca errar)
-- [Regra 1: afirmação direta + contra-exemplo curto se útil]
-- [Regra 2: use formato "X é..., mas NÃO é..." quando ajudar a distinguir conceitos parecidos]
-- [Regra 3: fórmula, acrônimo ou regra prática se aplicável]
-- [Regra 4 (opcional): diferença-chave entre este conceito e um facilmente confundido]
+🔑 O QUE MEMORIZAR
+- [Ponto essencial 1]
+- [Ponto essencial 2]
+- [Ponto essencial 3]
+- [Fórmula ou regra se aplicável]
 
- ARMADILHAS DE PROVA
-- [Armadilha 1: descreva o que parece certo mas está errado + por que o aluno cai nessa]
-- [Armadilha 2: outra pegadinha clássica com cenário concreto]
+⚠️ PEGADINHAS COMUNS
+- [Erro comum 1 que bancas exploram]
+- [Erro comum 2]
 
- GATILHO DE MEMÓRIA
-[Crie algo MARCANTE e ORIGINAL: pode ser uma analogia inusitada, um mnemônico criativo, uma frase de efeito, ou uma micro-história. O teste: o aluno deve conseguir lembrar daqui 1 semana. Seja ousado.]
+🧠 DICA DE MEMORIZAÇÃO
+[Uma técnica mnemônica, analogia ou macete para lembrar — seja criativo e marcante]
 
- CONECTE COM
-[2-3 temas diretamente relacionados que o aluno deve dominar junto — explique em ~5 palavras por que cada um é relevante]
-
- PERGUNTA-GATILHO
-[Uma pergunta curta que o aluno tenta responder ANTES de ler a ficha. Ex: "Qual a diferença entre TCP e UDP em uma palavra?" — Isso ativa retrieval practice e fixa melhor]
+🔗 TEMAS RELACIONADOS
+[Liste 2-3 temas que o aluno deve estudar junto]
 
 REGRAS:
-- Máximo 280 palavras
-- Proibido texto de livro didático — use linguagem VIVA e DIRETA
-- Foque no que DIFERENCIA quem acerta de quem erra
+- Máximo 250 palavras
+- Linguagem direta, sem floreios
+- Foque no que CAI EM PROVA
 - Use **negrito** para termos-chave
-- Proibido frases genéricas ("é importante saber", "cai muito em provas")
-- CHUNKING: máximo 2-3 frases por seção. Seções visualmente separadas
-- ADHD-FRIENDLY: comece cada seção com emoji. Frases curtas. Uma ideia por frase`;
+- A ficha deve funcionar como material de revisão rápida antes da prova`;
 
         const { result } = await this._callWithProviderChain({
             messages: [
@@ -5963,31 +4379,15 @@ REGRAS:
     async generateSimilarQuestion(originalQuestion) {
         const settings = await this._getSettings();
 
-        const systemMsg = `Você é um professor-banca que cria questões desafiadoras mas justas. Conhece as armadilhas que separam quem memorizou de quem entendeu.
-
-Princípios:
-- Teste COMPREENSÃO, não decoreba
-- Alternativas erradas = erros reais que alunos cometem (elaborative interrogation)
-- Enunciado com contexto suficiente para quem estudou resolver
-- Evite pegadinhas linguísticas (dupla negação, "sempre/nunca")
-- INTERLEAVING: quando possível, misture conceitos relacionados no enunciado
-- EXEMPLOS CONCRETOS: use cenários do mundo real no enunciado, não abstrações
-
-Responda APENAS em JSON válido, sem markdown ou texto adicional.`;
-        const prompt = `Analise a questão abaixo e crie UMA nova questão que teste o MESMO conceito, mas com uma abordagem diferente (cenário novo, perspectiva invertida, ou aplicação prática).
+        const systemMsg = 'Você cria questões de múltipla escolha educacionais. Responda APENAS em JSON válido, sem texto adicional.';
+        const prompt = `Com base na questão abaixo, crie UMA questão similar de múltipla escolha com 4 alternativas (A, B, C, D).
 
 QUESTÃO ORIGINAL:
 ${originalQuestion.slice(0, 1000)}
 
-ESTRATÉGIA DE CRIAÇÃO:
-1. Identifique o conceito central sendo testado
-2. Pense: "como posso testar isso de um ângulo que o aluno não espera?"
-3. Crie alternativas incorretas baseadas em confusões REAIS que alunos cometem
-4. A alternativa correta não deve ser óbvia por eliminação — o aluno precisa SABER
-
-FORMATO DE RESPOSTA (JSON exato):
+FORMATO DE RESPOSTA (JSON exato, sem markdown):
 {
-  "questionText": "enunciado contextualizado da nova questão",
+  "questionText": "enunciado da nova questão",
   "optionsMap": {
     "A": "texto da alternativa A",
     "B": "texto da alternativa B",
@@ -5998,10 +4398,10 @@ FORMATO DE RESPOSTA (JSON exato):
 }
 
 REGRAS:
-- Apenas UMA alternativa correta
-- Alternativas erradas baseadas em confusões conceituais reais (não absurdos óbvios)
-- Dificuldade similar ou levemente maior que a original
-- Responda APENAS com o JSON`;
+- A questão deve testar o mesmo conceito, mas com abordagem diferente
+- Apenas UMA alternativa deve ser correta
+- As alternativas incorretas devem ser plausíveis
+- Responda APENAS com o JSON, sem explicações adicionais`;
 
         const parseResponse = (content) => {
             if (!content) return null;
@@ -6040,28 +4440,12 @@ REGRAS:
     async answerFollowUp(originalQuestion, originalAnswer, context, userMessage, messageHistory = []) {
         const settings = await this._getSettings();
 
-        const systemMsg = `Você é um tutor particular paciente e brilhante. O estudante acabou de resolver uma questão e está tirando dúvidas com você.
+        const systemMsg = `Você é um tutor educacional. O estudante acabou de resolver uma questão e tem dúvidas.
+Questão original: ${originalQuestion.slice(0, 800)}
+Resposta correta: ${originalAnswer.slice(0, 300)}
+${context ? `Contexto: ${context.slice(0, 200)}` : ''}
 
-Contexto da conversa:
-- Questão: ${originalQuestion.slice(0, 800)}
-- Resposta correta: ${originalAnswer.slice(0, 300)}
-${context ? `- Contexto: ${context.slice(0, 200)}` : ''}
-
-Seu estilo de tutoria:
-- Responda como se estivesse sentado ao lado do aluno, com calma e clareza
-- Se já foi explicado, NÃO repita — explique de ÂNGULO DIFERENTE (analogia nova, exemplo diferente)
-- Se dúvida revelar conceito mal compreendido, corrija com gentileza
-- EXEMPLOS CONCRETOS e analogias do cotidiano obrigatórios
-- Se a dúvida envolve pré-requisito não dominado, explique o pré-requisito primeiro
-- Máximo 250 palavras — denso em valor, não volume
-- Não repita o enunciado da questão inteira
-
- FORMATO ADHD-FRIENDLY:
-- Frases curtas (máximo 2 linhas)
-- Uma ideia por parágrafo
-- Use **negrito** nos termos-chave
-- Se a resposta tiver mais de 3 conceitos, use lista com bullets
-- Comece direto com a resposta, sem "Ótima pergunta!" ou preâmbulos`;
+Responda de forma clara, didática e concisa (máximo 200 palavras). Não repita a questão inteira.`;
 
         // Build message history for multi-turn context (cap at last 6 messages)
         const recentHistory = messageHistory.slice(-6);
