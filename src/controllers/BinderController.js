@@ -189,7 +189,9 @@ export const BinderController = {
                 const item = StorageModel.findNode(copyBtn.dataset.id);
                 if (item && item.content) {
                     const text = `${this.t('binder.copy.question')}: ${item.content.question}\n\n${this.t('binder.copy.answer')}: ${item.content.answer}`;
-                    navigator.clipboard.writeText(text);
+                    navigator.clipboard.writeText(text).catch(err => {
+                        console.warn('BinderController: clipboard write failed:', err?.message);
+                    });
                 }
                 return;
             }
@@ -616,14 +618,23 @@ export const BinderController = {
         const prevFolder = StorageModel.currentFolderId;
         if (folderId) StorageModel.currentFolderId = folderId;
 
-        const added = await StorageModel.addItem(question, answer, source, { subject });
-
-        StorageModel.currentFolderId = prevFolder;
-
-        // Restore button
-        if (saveBtn) {
-            saveBtn.disabled = false;
-            saveBtn.innerHTML = '<span class="material-symbols-rounded">save</span><span>' + this.t('manual.add.save') + '</span>';
+        let added;
+        try {
+            added = await StorageModel.addItem(question, answer, source, { subject });
+        } catch (err) {
+            console.error('BinderController: manual add failed:', err);
+            if (errDiv) {
+                errDiv.textContent = 'Erro ao salvar: ' + (err?.message || 'desconhecido');
+                errDiv.classList.remove('hidden');
+            }
+            return;
+        } finally {
+            StorageModel.currentFolderId = prevFolder;
+            // Always restore button state
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<span class="material-symbols-rounded">save</span><span>' + this.t('manual.add.save') + '</span>';
+            }
         }
 
         if (added === false) {

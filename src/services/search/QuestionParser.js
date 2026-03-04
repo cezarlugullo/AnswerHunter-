@@ -185,7 +185,11 @@ export const QuestionParser = {
         // Contamination guard: for code-oriented stems, drop textual outlier options
         const stemNorm = this.normalizeOption(this.extractQuestionStem(text));
         const expectsCodeOptions = /\b(?:sql|jsonb?|insert|update|delete|select|comando|sintaxe|codigo)\b/i.test(stemNorm);
-        if (expectsCodeOptions && options.length >= 4) {
+
+        // Detect assertion-based questions (I, II, III)
+        const hasAssertions = /\b(?:I|II|III|IV)\s*[\-\.)]\s*[A-ZÀ-Ö]/i.test(text) || /\b(?:afirmações|assertivas|itens)\b/i.test(stemNorm);
+
+        if (options.length >= 4) {
             const parsed = options.map((line) => {
                 const mm = String(line || '').match(/^([A-E])\)\s*(.+)$/i);
                 const letter = (mm?.[1] || '').toUpperCase();
@@ -199,8 +203,19 @@ export const QuestionParser = {
             const allLetters = parsed.map((o) => o.letter).sort();
             const expectedLettersForCount = ['A', 'B', 'C', 'D', 'E'].slice(0, allLetters.length);
             const isCompleteSequence = allLetters.join('') === expectedLettersForCount.join('');
-            if (codeEntries.length >= 3 && nonCodeEntries.length >= 1 && !isCompleteSequence) {
+
+            // Scenario 1: Stem expects code, options have a mix of code and non-code -> Keep only code
+            if (expectsCodeOptions && codeEntries.length >= 3 && nonCodeEntries.length >= 1 && !isCompleteSequence) {
                 return codeEntries.map((o) => `${o.letter}) ${o.body}`);
+            }
+
+            // Scenario 2: Stem expects assertions (I, II, III) but extracted mostly code -> Reject code options
+            // (They are likely from another question entirely, like an SQL question above this one)
+            const assertionLikeRe = /\b(?:somente|apenas|afirma[cç][aã]o(?:es)?|assertiva(?:s)?|itens?|est[aã]o\s+corretas?|i\s*e\s*ii|ii\s*e\s*iii|i\s*,\s*ii|iii\s+est[aá])\b/i;
+            const assertionLikeEntries = parsed.filter((o) => assertionLikeRe.test(o.body));
+            if (hasAssertions && !expectsCodeOptions && codeEntries.length >= 3 && assertionLikeEntries.length === 0) {
+                console.log(`AnswerHunter: QuestionParser dropped ${codeEntries.length} code-like options (likely contamination) because stem contains assertions (I/II/III).`);
+                return []; // Return empty so fallback logic can look for the REAL text options
             }
         }
 

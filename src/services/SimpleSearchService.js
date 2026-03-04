@@ -150,19 +150,30 @@ async function _processSingleSource(result, idx, total, questionForInference, or
 
     console.group(`[SimpleSearch] 🔍 Fonte ${idx}: ${hostHint}`);
 
-    let pageText = await ApiService.fetchViaJina(link);
+    // Alguns sites com Cloudflare agressivo SEMPRE bloqueiam requests server-side (Jina/NativeFetch)
+    // Pular eles na Fase 1 (allowBgTab=false) economiza ~2-4s por URL de timeout inútil.
+    const BLOCKED_DOMAINS = ['studocu.com', 'gauthmath.com', 'scribd.com'];
+    const skipServerFetches = !allowBgTab && BLOCKED_DOMAINS.some(d => hostHint.endsWith(d));
 
-    // NativeFetch: binário Go com TLS fingerprint Chrome_131 — bypassa CloudFront (PasseiDireto)
-    // e outros CDNs que bloqueiam TLS automático. Só tenta se o binário nativo estiver instalado.
-    if (!pageText && !cancel.cancelled) {
-        try {
-            const nativeAvail = await NativeFetchBridgeService.isAvailable();
-            if (nativeAvail) {
-                console.log(`[SimpleSearch] 🔄 Jina falhou → tentando NativeFetch (TLS bypass)...`);
-                pageText = await NativeFetchBridgeService.fetchText(link);
-                if (pageText) console.log(`[SimpleSearch] ✅ NativeFetch: ${pageText.length} chars`);
-            }
-        } catch (_) { /* binário não instalado ou erro — silencioso */ }
+    let pageText = null;
+
+    if (skipServerFetches) {
+        console.log(`[SimpleSearch] ⚡ Pulando server fetches para ${hostHint} (só funciona via BackgroundTab)`);
+    } else {
+        pageText = await ApiService.fetchViaJina(link);
+
+        // NativeFetch: binário Go com TLS fingerprint Chrome_131 — bypassa CloudFront (PasseiDireto)
+        // e outros CDNs que bloqueiam TLS automático. Só tenta se o binário nativo estiver instalado.
+        if (!pageText && !cancel.cancelled) {
+            try {
+                const nativeAvail = await NativeFetchBridgeService.isAvailable();
+                if (nativeAvail) {
+                    console.log(`[SimpleSearch] 🔄 Jina falhou → tentando NativeFetch (TLS bypass)...`);
+                    pageText = await NativeFetchBridgeService.fetchText(link);
+                    if (pageText) console.log(`[SimpleSearch] ✅ NativeFetch: ${pageText.length} chars`);
+                }
+            } catch (_) { /* binário não instalado ou erro — silencioso */ }
+        }
     }
 
     // Não abre aba oculta se já temos resultados suficientes (cancellation token)
@@ -255,7 +266,7 @@ async function _processSingleSource(result, idx, total, questionForInference, or
         matchResult.confidence || 0.85
     );
 
-    console.log(`[SimpleSearch] ✅ Resposta: ${letter}) ${originalOptionsMap[letter]} (conf=${confidence.toFixed(2)}, match="${matchResult.method}")`);
+    console.log(`[SimpleSearch] 🧪 Candidato da fonte (${hostHint}): ${letter}) ${originalOptionsMap[letter]} (conf=${confidence.toFixed(2)}, match="${matchResult.method}")`);
     console.groupEnd();
 
     return {
@@ -280,7 +291,7 @@ async function _processSingleSource(result, idx, total, questionForInference, or
  * Usa um cancel token para impedir que fontes em-flight abram BackgroundTabs desnecessárias.
  * @param {boolean} [allowBgTab=false] - se true, permite BackgroundTab como último recurso
  */
-function _collectFirstNSources(topResults, questionForInference, originalOptionsMap, maxSources, onStatus, allowBgTab = false) {
+function _collectFirstNSources(topResults, questionForInference, originalOptionsMap, minSources, maxSources, onStatus, allowBgTab = false) {
     return new Promise((resolve) => {
         const total = topResults.length;
         if (total === 0) { resolve({ sources: [], allAttempts: [] }); return; }
@@ -293,23 +304,34 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
 
         const checkDone = () => {
             if (resolved) return;
-            // Early exit: 2+ sources agree with dominance ≥ 0.85 → no need to wait for more
-            if (sources.length >= 2) {
+
+            // Check consensus among successful sources
+            let consensusScore = 0;
+            if (sources.length > 0) {
                 const votes = {};
-                for (const src of sources) votes[src.letter] = (votes[src.letter] || 0) + src.confidence;
+                for (const src of sources) votes[src.letter] = (votes[src.letter] || 0) + (src.confidence || 0);
                 const totalScore = Object.values(votes).reduce((a, b) => a + b, 0);
                 const bestScore = Math.max(...Object.values(votes));
-                if (totalScore > 0 && bestScore / totalScore >= 0.85) {
+                consensusScore = totalScore > 0 ? bestScore / totalScore : 0;
+            }
+
+            // Early exit conditions:
+            // 1. We hit minSources AND consensus is strong (>= 0.6)
+            // 2. We hit maxSources (hard limit)
+            // 3. We exhausted all available results
+            const strongConsensus = sources.length >= minSources && consensusScore >= 0.6;
+
+            if (strongConsensus || sources.length >= maxSources || settled >= total) {
+                if (!resolved) {
+                    if (strongConsensus && sources.length < maxSources && typeof onStatus === 'function') {
+                        onStatus(`⚡ Consenso forte atingido (${(consensusScore * 100).toFixed(0)}%), ignorando mais fontes...`);
+                    } else if (sources.length >= minSources && sources.length < maxSources && !strongConsensus) {
+                        if (typeof onStatus === 'function') onStatus('🔎 Consenso fraco, expandindo busca para desempatar...');
+                    }
                     resolved = true;
                     cancel.cancelled = true;
                     resolve({ sources: [...sources], allAttempts: [...allAttempts] });
-                    return;
                 }
-            }
-            if (sources.length >= maxSources || settled >= total) {
-                resolved = true;
-                cancel.cancelled = true;
-                resolve({ sources: [...sources], allAttempts: [...allAttempts] });
             }
         };
 
@@ -450,16 +472,19 @@ export const SimpleSearchService = {
         // sobre IHC com alternativas coladas de outra questão ("Segurança de mensagens",
         // "Integração com redes sociais", etc.).
         // Falha silenciosa: se a IA não responder, a busca continua normalmente.
-        let optionsMismatchWarning = '';
-        try {
-            const stemForValidation = questionText.slice(0, 600);
-            const optsText = Object.entries(originalOptionsMap).map(([l, t]) => `${l}) ${t}`).join('\n');
-            const validation = await ApiService.validateOptionsCoherence(stemForValidation, optsText);
-            if (!validation.coherent) {
-                optionsMismatchWarning = validation.reason;
-                console.log(`[SimpleSearch] ⚠️ Alternativas incoerentes: ${optionsMismatchWarning}`);
-            }
-        } catch (_) { /* silencioso */ }
+        // PARALELIZADO: rodamos a validação sem await para não bloquear o fetch inicial.
+        const validationPromise = (async () => {
+            try {
+                const stemForValidation = questionText.slice(0, 600);
+                const optsText = Object.entries(originalOptionsMap).map(([l, t]) => `${l}) ${t}`).join('\n');
+                const validation = await ApiService.validateOptionsCoherence(stemForValidation, optsText);
+                if (!validation.coherent) {
+                    console.log(`[SimpleSearch] ⚠️ Alternativas incoerentes: ${validation.reason}`);
+                    return validation.reason;
+                }
+            } catch (_) { /* silencioso */ }
+            return '';
+        })();
 
         const topResults = results.slice(0, MAX_CANDIDATES);
 
@@ -482,7 +507,19 @@ export const SimpleSearchService = {
         const snippetSources = [];
         const snippetAttempts = [];
 
-        if (snippetInputs.length >= 2) {
+        // ── Fase 1 e Scholar (Paralelo) ─────────────
+        const _scholarStem = QuestionParser.extractQuestionStem(questionForInference);
+        const scholarPromise = _scholarStem && _scholarStem.length >= 15
+            ? ApiService.searchWithScholar(_scholarStem.slice(0, 220), 5).catch(() => [])
+            : Promise.resolve([]);
+
+        const fase1Promise = _collectFirstNSources(
+            topResults, questionForInference, originalOptionsMap, 3, 5, onStatus, false
+        );
+
+        // Lançar Fase 0 (snippets) em paralelo
+        const snippetPromise = async () => {
+            if (snippetInputs.length < 2) return;
             try {
                 if (typeof onStatus === 'function') onStatus('⚡ Leitura rápida dos resultados de busca…');
                 const snipResult = await ApiService.aiExtractFromSnippets(snippetInputs, questionForInference);
@@ -495,77 +532,57 @@ export const SimpleSearchService = {
                         const conf = Math.min(snipResult.confidence || 0.78, matchResult.confidence || 0.78);
                         console.log(`[SimpleSearch] ✅ Fase 0 (snippets): ${letter}) conf=${conf.toFixed(2)}${positionShifted ? ` [POSIÇÃO_DIFERENTE: fonte=${sourceLetter}]` : ''}`);
                         snippetSources.push({
-                            success: true,
-                            hostHint: 'search-snippets',
-                            link: '',
-                            title: `${snippetInputs.length} snippets de busca`,
-                            letter,
-                            answerText: originalOptionsMap[letter],
-                            confidence: conf,
-                            evidence: snipResult.evidence || '',
-                            evidenceType: 'snippet',
-                            positionShifted,
-                            sourceOriginalLetter: sourceLetter
+                            success: true, hostHint: 'search-snippets', link: '', title: `${snippetInputs.length} snippets de busca`,
+                            letter, answerText: originalOptionsMap[letter], confidence: conf, evidence: snipResult.evidence || '',
+                            evidenceType: 'snippet', positionShifted, sourceOriginalLetter: sourceLetter
                         });
                     }
                 } else if (snipResult?.rawSourceAnswer) {
-                    // Snippets found answer but it doesn't match current alternatives
                     const rawMatch = OptionsMatchService.matchAnswerTextToOptions(snipResult.rawSourceAnswer, originalOptionsMap);
                     if (rawMatch?.letter) {
                         const letter = rawMatch.letter;
                         const conf = Math.min(snipResult.confidence || 0.72, rawMatch.confidence || 0.72);
                         console.log(`[SimpleSearch] 🔀 Fase 0 (snippets POSIÇÃO_DIFERENTE): rawAnswer → ${letter}) conf=${conf.toFixed(2)}`);
                         snippetSources.push({
-                            success: true,
-                            hostHint: 'search-snippets',
-                            link: '',
-                            title: `${snippetInputs.length} snippets de busca`,
-                            letter,
-                            answerText: originalOptionsMap[letter],
-                            confidence: conf,
-                            evidence: snipResult.evidence || '',
-                            evidenceType: 'snippet',
-                            positionShifted: true,
-                            sourceOriginalLetter: snipResult.sourceLetter || null
+                            success: true, hostHint: 'search-snippets', link: '', title: `${snippetInputs.length} snippets de busca`,
+                            letter, answerText: originalOptionsMap[letter], confidence: conf, evidence: snipResult.evidence || '',
+                            evidenceType: 'snippet', positionShifted: true, sourceOriginalLetter: snipResult.sourceLetter || null
                         });
                     } else {
                         console.log(`[SimpleSearch] 📌 Fase 0 (snippets ENCONTRADO_FORA): "${snipResult.rawSourceAnswer.slice(0, 80)}"`);
                         snippetAttempts.push({
-                            success: false,
-                            hasRawAnswer: true,
-                            rawAnswer: snipResult.rawSourceAnswer,
-                            sourceLetter: snipResult.sourceLetter || null,
-                            hostHint: 'search-snippets',
-                            link: '',
-                            title: 'search-snippets',
-                            letter: null,
-                            answerText: null,
-                            confidence: null
+                            success: false, hasRawAnswer: true, rawAnswer: snipResult.rawSourceAnswer, sourceLetter: snipResult.sourceLetter || null,
+                            hostHint: 'search-snippets', link: '', title: 'search-snippets', letter: null, answerText: null, confidence: null
                         });
                     }
                 }
             } catch (snipErr) {
                 console.warn('[SimpleSearch] Fase 0 (snippets) erro:', snipErr?.message);
             }
-        }
+        };
 
-        // ── Fase 1: Jina + NativeFetch em paralelo (sem abrir abas) ─────────────
-        // Scholar search runs concurrently with Fase 1 — no extra latency on the happy path
-        const _scholarStem = QuestionParser.extractQuestionStem(questionForInference);
-        const scholarPromise = _scholarStem && _scholarStem.length >= 15
-            ? ApiService.searchWithScholar(_scholarStem.slice(0, 220), 5).catch(() => [])
-            : Promise.resolve([]);
-        const { sources, allAttempts } = await _collectFirstNSources(
-            topResults, questionForInference, originalOptionsMap, MAX_SOURCES, onStatus, false
-        );
+        // Espera Fase 0 e 1 concluirem juntas
+        const [, fase1Result] = await Promise.all([snippetPromise(), fase1Promise]);
+        const sources = fase1Result.sources;
+        const allAttempts = fase1Result.allAttempts;
 
         // Merge snippet results into the main arrays
         sources.unshift(...snippetSources);
         allAttempts.unshift(...snippetAttempts);
 
         // ── Fase 0.5: Scholar snippets (Google Scholar) ──────────────────────
-        // Already running in parallel since before Fase 1; now collect results.
-        const scholarResults = await scholarPromise;
+        // Already running in parallel since before Fase 1; conditionally wait for it.
+        // Skip Scholar if we already have strong consensus from snippets + Fase 1
+        const _qVotes = {};
+        for (const s of sources) _qVotes[s.letter] = (_qVotes[s.letter] || 0) + (s.confidence || 0);
+        const _qTotal = Object.values(_qVotes).reduce((a, b) => a + b, 0);
+        const _qBest = Math.max(...Object.values(_qVotes), 0);
+        const _skipScholar = sources.length >= 2 && _qTotal > 0 && (_qBest / _qTotal) >= 0.85;
+
+        if (_skipScholar) {
+            console.log(`[SimpleSearch] ⚡ Pulando await do Scholar (consenso forte atingido: ${(_qBest / _qTotal * 100).toFixed(0)}%)`);
+        }
+        const scholarResults = _skipScholar ? [] : await scholarPromise;
         if (scholarResults.length > 0) {
             const scholarInputs = scholarResults
                 .filter(r => r.snippet && r.snippet.length >= 30)
@@ -642,12 +659,14 @@ export const SimpleSearchService = {
             if (spaResults.length > 0) {
                 if (typeof onStatus === 'function') onStatus('🔄 Tentando método alternativo de extração…');
                 const bgResult = await _collectFirstNSources(
-                    spaResults, questionForInference, originalOptionsMap, MAX_SOURCES, onStatus, true
+                    spaResults, questionForInference, originalOptionsMap, 3, 5, onStatus, true
                 );
                 sources.push(...bgResult.sources);
                 allAttempts.push(...bgResult.allAttempts);
             }
         }
+
+        const optionsMismatchWarning = await validationPromise;
 
         if (sources.length === 0) {
             // Nenhuma URL retornou resultado útil via match de alternativas.
@@ -747,8 +766,18 @@ export const SimpleSearchService = {
         // ── Fase 3: Busca de confirmação (espelha "Turno 6" do fluxo humano) ──────
         // Após a Fase 1/2, se há candidatos mas ainda não temos cobertura total,
         // fazemos buscas adicionais usando o texto de TODOS os candidatos empatados.
-        // Quando D=0.85 e C=0.85, confirma ambos — não apenas o primeiro do sort.
-        if (sources.length < MAX_SOURCES) {
+
+        const preVotes = {};
+        for (const src of sources) preVotes[src.letter] = (preVotes[src.letter] || 0) + (src.confidence || 0);
+        const preTotal = Object.values(preVotes).reduce((a, b) => a + b, 0);
+        const preBest = Math.max(...Object.values(preVotes), 0);
+        const skipPhase3 = sources.length >= 2 && preTotal > 0 && (preBest / preTotal) >= 0.80;
+
+        if (skipPhase3) {
+            console.log(`[SimpleSearch] ⚡ Pulando Fase 3 de confirmação (consenso atual ≥ 80%)`);
+        }
+
+        if (!skipPhase3 && sources.length < MAX_SOURCES) {
             const tiedCandidates = _getTiedCandidates(sources);
             const validCandidates = tiedCandidates.filter(c => c.answerText && c.answerText.length >= 12 && c.avgConf >= 0.60);
             if (validCandidates.length > 0) {
@@ -800,8 +829,7 @@ export const SimpleSearchService = {
         const votes = {};
         const voteCounts = {};
         for (const src of sources) {
-            const bonus = src.positionShifted ? 0.10 : 0;
-            votes[src.letter] = (votes[src.letter] || 0) + (src.confidence || 0) + bonus;
+            votes[src.letter] = (votes[src.letter] || 0) + (src.confidence || 0);
             voteCounts[src.letter] = (voteCounts[src.letter] || 0) + 1;
         }
 

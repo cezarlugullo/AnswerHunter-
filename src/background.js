@@ -194,10 +194,14 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 // Keep the service worker alive briefly when auth is pending
 chrome.storage.local.get(['chatgpt_pkce_pending', 'gemini_cli_pkce_pending'], (result) => {
-    if (result.chatgpt_pkce_pending) {
+    if (chrome.runtime.lastError) {
+        console.warn('AnswerHunter BG: storage get failed:', chrome.runtime.lastError);
+        return;
+    }
+    if (result?.chatgpt_pkce_pending) {
         console.log('ChatGPTAuth BG: PKCE session pending — monitoring tabs for callback');
     }
-    if (result.gemini_cli_pkce_pending) {
+    if (result?.gemini_cli_pkce_pending) {
         console.log('GeminiCLIAuth BG: PKCE session pending — monitoring tabs for callback');
     }
 });
@@ -242,9 +246,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     }
 
     if (msg.type === 'AH_RECORD_REVIEW') {
-        AnalyticsService.recordReview(msg.data || {});
-        sendResponse({ ack: true });
-        return false;
+        (async () => {
+            try {
+                await AnalyticsService.recordReview(msg.data || {});
+            } catch (err) {
+                console.warn('AnswerHunter BG: recordReview failed:', err?.message);
+            }
+            sendResponse({ ack: true });
+        })();
+        return true; // Will respond async
     }
 
     if (msg.type === 'AH_END_SESSION') {
@@ -269,7 +279,15 @@ async function _runPhase2Search(requestId, question, displayQuestion) {
 
     // Ping a Chrome API every 20 s to prevent the MV3 service worker from being
     // terminated mid-search (Chrome's idle timer is ~30 s).
+    // Safety: auto-clear after 4.5 min to prevent indefinite keep-alive if search hangs.
+    const MAX_KEEPALIVE_MS = 4.5 * 60 * 1000;
+    const keepAliveStart = Date.now();
     const keepAlive = setInterval(() => {
+        if (Date.now() - keepAliveStart > MAX_KEEPALIVE_MS) {
+            clearInterval(keepAlive);
+            console.warn('AnswerHunter BG: keepAlive max duration reached, releasing service worker.');
+            return;
+        }
         chrome.runtime.getPlatformInfo(() => {});
     }, 20000);
 

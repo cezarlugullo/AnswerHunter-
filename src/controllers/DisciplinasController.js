@@ -192,9 +192,14 @@ export const DisciplinasController = {
         });
 
         setTimeout(() => {
-            document.addEventListener('click', () => {
+            // Remove previous listener if any, then add a persistent one
+            if (this._closeMenuHandler) {
+                document.removeEventListener('click', this._closeMenuHandler);
+            }
+            this._closeMenuHandler = () => {
                 container.querySelectorAll('.disc-menu-dropdown').forEach(m => m.classList.add('hidden'));
-            }, { once: true });
+            };
+            document.addEventListener('click', this._closeMenuHandler);
         }, 0);
     },
 

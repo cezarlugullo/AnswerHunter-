@@ -147,6 +147,7 @@ export const TRANSLATIONS = {
     'result.aiReasoning': 'View AI reasoning',
     'result.inconclusiveAnswer': 'Inconclusive',
     'result.suggestedAnswer': 'Suggested Answer',
+    'result.reportExtraction': 'Report Extraction Error',
     'result.inconclusive': 'Inconclusive',
     'result.statement': 'Statement',
     'result.options': 'Options',
@@ -278,7 +279,7 @@ export const TRANSLATIONS = {
     'setup.gemini.step3': 'Copy the key, paste below, and validate it if you want backup AI.',
     'setup.hint.gemini': 'Gemini keys start with \"AIza\".',
     'setup.gemini.hint': 'You can skip this step and finish now.',
-    
+
     'setup.openrouter.title': 'Optional: set up OpenRouter API',
     'setup.openrouter.step2': 'Sign up or Log in to OpenRouter.ai to get your API key.',
     'setup.openrouter.step3': 'Go to Keys, generate a new key and paste it below.',
@@ -595,6 +596,7 @@ export const TRANSLATIONS = {
     'result.inconclusiveAnswer': 'Inconclusivo',
     'result.suggestedAnswer': 'Resposta Sugerida',
     'result.inconclusive': 'Inconclusivo',
+    'result.reportExtraction': 'Erro na Extração?',
     'result.statement': 'Enunciado',
     'result.options': 'Alternativas',
     'result.sources': 'Fontes ({count})',
@@ -725,7 +727,7 @@ export const TRANSLATIONS = {
     'setup.gemini.step3': 'Copie a chave, cole abaixo e valide-a se desejar um backup.',
     'setup.hint.gemini': 'Chaves Gemini começam com \"AIza\".',
     'setup.gemini.hint': 'Você pode pular esta etapa.',
-    
+
     'setup.openrouter.title': 'Opcional: configure a API da OpenRouter',
     'setup.openrouter.step2': 'Crie uma conta ou faça login na OpenRouter.ai',
     'setup.openrouter.step3': 'Vá em Keys, gere uma chave nova e cole abaixo.',
@@ -763,7 +765,7 @@ export const TRANSLATIONS = {
     'setup.changeKey': 'Trocar chave',
     'setup.removeSerperKey': 'Remover chave Serper',
     'setup.removeGeminiKey': 'Remover chave Gemini',
-    'setup.closeSettings': 'Fechar configurações',
+    'setup.closeSettings': 'Concluir',
     'setup.keyStatus.configured': 'Configurado',
     'setup.keyStatus.missing': 'Não configurado',
     'setup.keyStatus.geminiMissing': 'Você não tem nenhuma chave do Gemini salva/gravada',
@@ -794,7 +796,7 @@ export const TRANSLATIONS = {
     'binder.studyMode.enable': 'Ativar Modo Estudo',
     'binder.studyMode.disable': 'Desativar Modo Estudo',
     'binder.studyMode.reveal': 'Revelar Resposta',
-    'setup.removeOpenrouterKey': 'Remover chave OpenRouter',
+    'setup.removeOpenrouterKey': 'Remover chave',
 
     'manual.add.btnTitle': 'Adicionar questão manualmente',
     'manual.add.title': 'Adicionar Questão',

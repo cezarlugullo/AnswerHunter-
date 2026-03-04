@@ -38,17 +38,21 @@ function formatReasoning(raw) {
       continue;
     }
 
-    // Option row: A) **V** - text  or  A) **F** - text
-    const optM = trimmed.match(/^([A-E])\)\s*\*\*(V|F)\*\*\s*[-–]\s*(.+)$/i);
+    // Option row: A) **V** - text  or  A) **F** - text / A) ✅ / A) ❌
+    const optM = trimmed.match(/^[-*]?\s*\*?\*?([A-E])\)\*?\*?\s*(?:\*\*(V|F)\*\*|[-–]\s*(V|F)|(✅|❌))\s*[-–:]?\s*(.+)$/i);
     if (optM) {
       closeBulletList();
-      const verdict = optM[2].toUpperCase();
-      const cls = verdict === 'V' ? 'rz-v' : 'rz-f';
+      let verdictRaw = (optM[2] || optM[3] || optM[4] || '').toUpperCase();
+      let isCorrect = verdictRaw === 'V' || verdictRaw === '✅';
+      const verdict = isCorrect ? 'V' : 'F';
+      const cls = isCorrect ? 'rz-v' : 'rz-f';
       out.push(
-        `<div class="rz-option">` +
+        `<div class="rz-option ${cls}">` +
+        `<div class="rz-opt-header">` +
         `<span class="rz-opt-letter">${escapeHtml(optM[1])}</span>` +
-        `<span class="rz-badge ${cls}">${verdict === 'V' ? 'V' : 'F'}</span>` +
-        `<span class="rz-opt-text">${inline(optM[3].trim())}</span>` +
+        `<span class="rz-badge ${cls}">${verdict === 'V' ? 'Certo' : 'Errado'}</span>` +
+        `</div>` +
+        `<div class="rz-opt-text">${inline(optM[5].trim())}</div>` +
         `</div>`
       );
       continue;

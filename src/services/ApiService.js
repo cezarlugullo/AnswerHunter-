@@ -689,11 +689,11 @@ export const ApiService = {
         // ── Provider registry: name → call function ──
         // Each entry guards on API-key / quota automatically inside _call*.
         const registry = {
-            gemini:     (msgs, o) => this._callGemini(msgs, { ...o, model: models.gemini || o.model }),
-            groq:       (msgs, o) => this._callGroq(msgs, { ...o, model: models.groq || o.model }),
+            gemini: (msgs, o) => this._callGemini(msgs, { ...o, model: models.gemini || o.model }),
+            groq: (msgs, o) => this._callGroq(msgs, { ...o, model: models.groq || o.model }),
             openrouter: (msgs, o) => this._callOpenRouter(msgs, { ...o, model: models.openrouter || o.model }),
-            chatgpt:    (msgs, o) => this._callChatGPT(msgs, { ...o, model: models.chatgpt || o.model }),
-            copilot:    (msgs, o) => this._callCopilot(msgs, { ...o, model: models.copilot || o.model }),
+            chatgpt: (msgs, o) => this._callChatGPT(msgs, { ...o, model: models.chatgpt || o.model }),
+            copilot: (msgs, o) => this._callCopilot(msgs, { ...o, model: models.copilot || o.model }),
         };
 
         // ── Build ordered list ──
@@ -704,11 +704,11 @@ export const ApiService = {
 
         // Default ordering per primary preference
         const ORDER_MAP = {
-            copilot:    ['copilot', 'chatgpt', 'openrouter', 'gemini', 'groq'],
-            chatgpt:    ['chatgpt', 'copilot', 'openrouter', 'gemini', 'groq'],
+            copilot: ['copilot', 'chatgpt', 'openrouter', 'gemini', 'groq'],
+            chatgpt: ['chatgpt', 'copilot', 'openrouter', 'gemini', 'groq'],
             openrouter: ['openrouter', 'gemini', 'copilot', 'chatgpt', 'groq'],
-            gemini:     ['gemini', 'openrouter', 'copilot', 'chatgpt', 'groq'],
-            groq:       ['groq', 'openrouter', 'gemini', 'copilot', 'chatgpt'],
+            gemini: ['gemini', 'openrouter', 'copilot', 'chatgpt', 'groq'],
+            groq: ['groq', 'openrouter', 'gemini', 'copilot', 'chatgpt'],
         };
         const ordered = (ORDER_MAP[primary] || ORDER_MAP.groq).filter(p => allowed.includes(p));
 
@@ -950,6 +950,8 @@ export const ApiService = {
 
     /**
      * Wrapper for fetch with common headers and robust retry
+     * NOTE: This method contains Groq-specific 429 handling. For non-Groq
+     * APIs (Serper, Scholar, etc.), use _fetchGeneric() instead.
      */
     async _fetch(url, options) {
         const maxRetries = 3;
@@ -1004,6 +1006,43 @@ export const ApiService = {
                     continue;
                 }
                 console.error(`ApiService Fetch Error (${url}):`, error);
+                throw error;
+            }
+        }
+    },
+
+    /**
+     * Generic fetch wrapper for non-Groq APIs (Serper, Scholar, SerpAPI, etc.).
+     * Does NOT touch Groq quota state on 429 errors.
+     */
+    async _fetchGeneric(url, options) {
+        const maxRetries = 3;
+        for (let attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                const response = await fetch(url, options);
+                if (response.ok) {
+                    return await response.json();
+                }
+
+                if (response.status === 429) {
+                    const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
+                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 15) {
+                        const backoffMs = Math.ceil(retryAfter * 1000) + 500;
+                        console.log(`AnswerHunter: Generic 429, aguardando ${backoffMs}ms (retry-after=${retryAfter}s, tentativa ${attempt + 1}/${maxRetries})...`);
+                        await new Promise(resolve => setTimeout(resolve, backoffMs));
+                        continue;
+                    }
+                    throw new Error(`Rate limited (429) by ${new URL(url).hostname}`);
+                }
+
+                throw new Error(`HTTP Error ${response.status}`);
+            } catch (error) {
+                if (attempt < maxRetries - 1 && !error.message?.includes('HTTP Error') && !error.message?.includes('Rate limited')) {
+                    const jitter = 500 + Math.random() * 500;
+                    await new Promise(resolve => setTimeout(resolve, jitter));
+                    continue;
+                }
+                console.error(`ApiService Generic Fetch Error (${url}):`, error);
                 throw error;
             }
         }
@@ -1120,6 +1159,13 @@ export const ApiService = {
         const settings = await this._getSettings();
         const opts = Object.assign({ temperature: 0.05, max_tokens: 300 }, callOpts);
 
+        // Strike mechanism: if ChatGPT returns empty repeatedly, put it on a 5-min cooldown
+        const chatgptStrikeKey = '_chatgptConsecutiveEmpties';
+        const CHATGPT_MAX_STRIKES = 3;
+        const chatgptStrikes = this[chatgptStrikeKey] || 0;
+        const chatgptCooledDown = !this._chatgptStrikeCooldownUntil || this._chatgptStrikeCooldownUntil <= Date.now();
+
+
         const tryGemini = async () => {
             if (!settings.geminiApiKey) return null;
             try {
@@ -1156,11 +1202,29 @@ export const ApiService = {
         };
         const tryChatGPT = async () => {
             if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
+            if (chatgptStrikes >= CHATGPT_MAX_STRIKES && !chatgptCooledDown) {
+                console.log(`  ${logPrefix} ChatGPT on strike cooldown — skipping`);
+                return null;
+            }
             try {
                 const model = opts.model_chatgpt || settings.chatgptModel || 'gpt-4o';
                 console.log(`  ${logPrefix} Trying ChatGPT (${model})...`);
-                return await this._callChatGPT(messages, { ...opts, model });
-            } catch (e) { console.warn(`  ${logPrefix} ChatGPT error:`, e?.message || e); return null; }
+                const res = await this._callChatGPT(messages, { ...opts, model });
+                if (!res || res.length < 10) {
+                    this[chatgptStrikeKey] = (this[chatgptStrikeKey] || 0) + 1;
+                    if (this[chatgptStrikeKey] >= CHATGPT_MAX_STRIKES) {
+                        this._chatgptStrikeCooldownUntil = Date.now() + 5 * 60 * 1000; // 5 min
+                        console.warn(`  ${logPrefix} ChatGPT returned empty 3 times — cooling down for 5 min`);
+                    }
+                } else {
+                    this[chatgptStrikeKey] = 0;
+                    this._chatgptStrikeCooldownUntil = 0;
+                }
+                return res;
+            } catch (e) {
+                console.warn(`  ${logPrefix} ChatGPT error:`, e?.message || e);
+                return null;
+            }
         };
         const tryOpenRouter = async () => {
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
@@ -1587,7 +1651,7 @@ Responda no formato acima:`;
         const q = normalizeSpace(query).slice(0, 280);
         try {
             const scholarUrl = 'https://google.serper.dev/scholar';
-            const payload = await this._fetch(scholarUrl, {
+            const payload = await this._fetchGeneric(scholarUrl, {
                 method: 'POST',
                 headers: { 'X-API-KEY': serperApiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ q, num, hl: 'pt-br' })
@@ -2270,7 +2334,7 @@ Letra B: TCP
     // ─────────────────────────────────────────────────────────────────────────
     async aiVerifyLetterInContext(questionText, suggestedLetter, sourceText, host = '') {
         if (!questionText || !suggestedLetter || !sourceText || sourceText.length < 200) {
-            console.log(`  🔎 [aiVerify] SKIP: missing args or text too short (${(sourceText||'').length} chars)`);
+            console.log(`  🔎 [aiVerify] SKIP: missing args or text too short (${(sourceText || '').length} chars)`);
             return null;
         }
 
@@ -2392,7 +2456,7 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 // Site-specific render wait times:
                 // Brainly (React SPA) = 3500ms, Studocu (PDF viewer SPA) = 4000ms, others = 2000ms
                 const _isBrainlyTab = url.includes('brainly.com') || url.includes('brainly.lat');
-                const _isStudocuTab  = url.includes('studocu.com');
+                const _isStudocuTab = url.includes('studocu.com');
                 const _tabText = await BackgroundTabExtractorService.extractViaTab(url, {
                     timeoutMs: 15000,
                     renderWaitMs: _isStudocuTab ? 4000 : _isBrainlyTab ? 3500 : 2000
@@ -3044,7 +3108,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                 url.searchParams.set('num', String(num));
                 url.searchParams.set('api_key', serperApiKey);
                 if (!url.searchParams.has('output')) url.searchParams.set('output', 'json');
-                const payload = await this._fetch(url.toString(), { method: 'GET' });
+                const payload = await this._fetchGeneric(url.toString(), { method: 'GET' });
                 return (payload?.organic_results || [])
                     .map(e => ({
                         title: normalizeSpace(e?.title || ''),
@@ -3053,7 +3117,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                     }))
                     .filter(e => e.title && e.link);
             }
-            const payload = await this._fetch(serperApiUrl, {
+            const payload = await this._fetchGeneric(serperApiUrl, {
                 method: 'POST',
                 headers: { 'X-API-KEY': serperApiKey, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ q, gl: 'br', hl: 'pt-br', num, autocorrect: false })
@@ -3258,7 +3322,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                 if (!url.searchParams.has('output')) {
                     url.searchParams.set('output', 'json');
                 }
-                const payload = await this._fetch(url.toString(), {
+                const payload = await this._fetchGeneric(url.toString(), {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json'
@@ -3267,7 +3331,7 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                 return normalizeSearchPayload(payload);
             }
 
-            const payload = await this._fetch(serperApiUrl, {
+            const payload = await this._fetchGeneric(serperApiUrl, {
                 method: 'POST',
                 headers: {
                     'X-API-KEY': serperApiKey,

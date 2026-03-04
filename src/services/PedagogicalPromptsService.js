@@ -77,8 +77,8 @@ Gere uma análise diagnóstica PERSONALIZADA seguindo este formato EXATO:
 [Em 2-3 frases, reconstituir o raciocínio PLAUSÍVEL que levou o aluno a escolher ${wrongLetter}.
 Nunca condene — compreenda. Use "É natural pensar que..." ou "Faz sentido considerar..."]
 
-📋 **Análise de CADA alternativa:**
-${allAlternatives.map(a => `**${a.letter})** ${a.text}: [Em 1-2 frases explique por que está ${a.letter === correctLetter ? 'CORRETA ✅' : 'ERRADA ❌'}. Se errada, diga qual conceito invalida. Se correta, diga o conceito-chave que a sustenta.]`).join('\n')}
+📋 **Análise das Alternativas:**
+${allAlternatives.map(a => `- **${a.letter})** ${a.letter === correctLetter ? '✅' : '❌'} [Em 1-2 frases explique o motivo. Se errada, diga qual conceito invalida. Se correta, qual a sustenta.]`).join('\n\n')}
 
 🔑 **Regra para nunca mais errar:**
 [Uma heurística prática, memorável e aplicável. Ex: "Sempre que ver X, pergunte-se Y."
@@ -308,10 +308,10 @@ FORMATO JSON OBRIGATÓRIO:
 
         const typeGuides = {
             acronym: 'Priorize acrônimos ou acrósticos (primeira letra de cada palavra forma outra palavra).',
-            story:   'Crie uma micro-história absurda e vivida que incorpore todos os elementos do conceito.',
-            rhyme:   'Crie uma rima ou ritmo musical simples que encode o conceito (estilo jingle).',
-            visual:  'Descreva uma imagem mental vívida e inusitada que represente o conceito.',
-            any:     'Escolha o tipo mais eficaz para este conceito específico.'
+            story: 'Crie uma micro-história absurda e vivida que incorpore todos os elementos do conceito.',
+            rhyme: 'Crie uma rima ou ritmo musical simples que encode o conceito (estilo jingle).',
+            visual: 'Descreva uma imagem mental vívida e inusitada que represente o conceito.',
+            any: 'Escolha o tipo mais eficaz para este conceito específico.'
         };
 
         const systemMsg = `Você é especialista em técnicas mnemônicas criativas para estudantes brasileiros.

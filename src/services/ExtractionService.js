@@ -597,6 +597,17 @@ export const ExtractionService = {
             return (text || '').replace(/\s+/g, ' ').trim();
         }
 
+        const OPTION_SELECTORS =
+            'button[data-testid^="alternative-"], ' +
+            'button[data-element="link_resposta"], ' +
+            '[data-testid^="alternative-"], ' +
+            '[class*="alternative"], ' +
+            '[class*="alternativa"], ' +
+            'label[for^="option"], ' +
+            '.radio-option, ' +
+            'label:has(input[type="radio"]), ' +
+            '[role="radio"], [role="option"]';
+
         function normalizeText(text) {
             return (text || '')
                 .toLowerCase()
@@ -683,20 +694,65 @@ export const ExtractionService = {
             return /Gabarito|Resposta correta|Resposta incorreta/i.test(text);
         }
 
+        function countPotentialOptions(rootEl) {
+            if (!rootEl || !rootEl.querySelectorAll) return 0;
+            try {
+                const bySelector = rootEl.querySelectorAll(OPTION_SELECTORS).length;
+                if (bySelector > 0) return bySelector;
+            } catch (_) { }
+
+            const raw = cleanText(rootEl.textContent || rootEl.innerText || '');
+            if (!raw) return 0;
+            const m = raw.match(/(?:^|\s)([A-E])\s*[\)\-:]\s*\S/gi) || [];
+            return m.length;
+        }
+
+        // Expand a visible anchor to the full question scope that contains the alternatives,
+        // so off-screen options (e.g. E) are still captured.
+        function resolveQuestionScope(anchorEl) {
+            if (!anchorEl) return null;
+
+            let current = anchorEl;
+            let best = anchorEl;
+            let bestScore = -1;
+
+            for (let depth = 0; current && depth < 12; depth++) {
+                const optCount = countPotentialOptions(current);
+                const textLen = cleanText(current.textContent || '').length;
+                // Prefer smallest ancestor that already has enough options.
+                // Penalize overly huge containers to avoid multi-question bleed.
+                const sizePenalty = textLen > 35000 ? 4 : textLen > 18000 ? 2 : 0;
+                const score = (optCount * 10) - sizePenalty;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = current;
+                }
+
+                if (optCount >= 4 && textLen <= 25000) {
+                    best = current;
+                    break;
+                }
+
+                if (current.matches && current.matches('[data-section="section_cms-atividade"], section, article, form, main')) {
+                    if (optCount >= 2) {
+                        best = current;
+                        break;
+                    }
+                }
+
+                current = current.parentElement;
+            }
+
+            return best || anchorEl;
+        }
+
         function extractOptionsFromButtons(rootEl) {
             if (!rootEl) return [];
             const options = [];
             const seenLetters = new Set();
 
-            const buttons = rootEl.querySelectorAll(
-                'button[data-testid^="alternative-"], ' +
-                'button[data-element="link_resposta"], ' +
-                '[data-testid^="alternative-"], ' +
-                '[class*="alternative"], ' +
-                '[class*="alternativa"], ' +
-                'label[for^="option"], ' +
-                '.radio-option'
-            );
+            const buttons = rootEl.querySelectorAll(OPTION_SELECTORS);
 
             for (const btn of buttons) {
                 if (isNoiseElement(btn) || isNoiseElement(btn.parentElement)) continue;
@@ -721,9 +777,9 @@ export const ExtractionService = {
                     btn.querySelector('[data-testid="question-typography"]') ||
                     btn.querySelector('p, div');
 
-                let raw = cleanText(textEl ? (textEl.innerText || textEl.textContent || '') : '');
+                let raw = cleanText(textEl ? (textEl.textContent || textEl.innerText || '') : '');
                 if (!raw || raw.length < 5) {
-                    raw = cleanText(btn.innerText || btn.textContent || '');
+                    raw = cleanText(btn.textContent || btn.innerText || '');
                 }
 
                 // Strip leading letter+delimiter (e.g. "A) text" or "A. text").
@@ -805,9 +861,10 @@ export const ExtractionService = {
 
         function extractFromSection(sectionEl) {
             if (!sectionEl) return [];
-            let opts = extractOptionsFromButtons(sectionEl);
+            const scoped = resolveQuestionScope(sectionEl) || sectionEl;
+            let opts = extractOptionsFromButtons(scoped);
             if (opts.length >= 2) return opts;
-            opts = extractOptionsFromText(sectionEl.innerText || '');
+            opts = extractOptionsFromText(scoped.textContent || scoped.innerText || '');
             return opts;
         }
 
@@ -876,6 +933,7 @@ export const ExtractionService = {
         }
 
         if (targetSection) {
+            targetSection = resolveQuestionScope(targetSection) || targetSection;
             console.log('AnswerHunter: extractOptionsOnlyScript - usando seção específica');
             const opts = extractFromSection(targetSection);
             if (opts.length >= 2) {

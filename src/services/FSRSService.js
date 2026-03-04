@@ -100,6 +100,11 @@ export const FSRSService = {
    * @returns {object}       - Novo estado compatível com formato ah_sm2Data
    */
   calculate(entry, quality) {
+    // Auto-migrate legacy SM-2 entries to FSRS format
+    if (entry && entry.fsrs_state === undefined) {
+      entry = this.migrateSm2Entry(entry);
+    }
+
     // Mapear quality SM-2 (0-3) → rating FSRS (1-4)
     const rating = quality + 1; // 0→1, 1→2, 2→3, 3→4
 

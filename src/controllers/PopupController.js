@@ -4344,8 +4344,13 @@ export const PopupController = {
     const text = this.view.getAllResultsText();
     if (!text) return;
 
-    await navigator.clipboard.writeText(text);
-    this.view.showStatus('success', this.t('status.copied'));
+    try {
+      await navigator.clipboard.writeText(text);
+      this.view.showStatus('success', this.t('status.copied'));
+    } catch (err) {
+      console.warn('handleCopyAll: clipboard write failed:', err?.message);
+      this.view.showStatus('error', 'Failed to copy to clipboard');
+    }
   },
 
   async saveLastResults(results) {
