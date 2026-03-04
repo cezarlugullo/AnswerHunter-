@@ -2839,6 +2839,140 @@ Letra B: TCP
         }
     },
 
+    /**
+     * Scan search result snippets with an LLM to extract the answer text for a
+     * multiple-choice question. Faster than fetching full pages.
+     *
+     * @param {Array<{host:string, title:string, snippet:string}>} snippetInputs
+     * @param {string} questionText - Full question with options (A‥E)
+     * @returns {Promise<{answerText?:string, sourceLetter?:string, rawSourceAnswer?:string, confidence?:number, evidence?:string}|null>}
+     */
+    async aiExtractFromSnippets(snippetInputs, questionText) {
+        if (!snippetInputs?.length || !questionText) return null;
+
+        const settings = await this._getSettings();
+
+        // Build a compact snippet block (cap at 3000 chars total)
+        let snippetBlock = '';
+        let budget = 3000;
+        for (let i = 0; i < snippetInputs.length && budget > 0; i++) {
+            const { host = '', title = '', snippet = '' } = snippetInputs[i];
+            const line = `[${i + 1}] (${host}) ${title}: ${snippet}\n`;
+            snippetBlock += line.slice(0, budget);
+            budget -= line.length;
+        }
+
+        const truncatedQuestion = String(questionText || '').substring(0, 1600);
+
+        const systemMsg = `Você é um assistente acadêmico. Identifique a resposta correta para uma questão de múltipla escolha usando APENAS os snippets fornecidos. Não invente informações.`;
+
+        const prompt = `# Tarefa
+Analise os SNIPPETS de resultados de busca e encontre a resposta para a QUESTÃO abaixo.
+
+# SNIPPETS
+${snippetBlock}
+
+# QUESTÃO
+${truncatedQuestion}
+
+# Formato de resposta (escolha exatamente um)
+
+## Se encontrou a resposta:
+RESULTADO: ENCONTRADO
+RESPOSTA_TEXTO: [texto completo da alternativa correta, copiado da questão]
+LETRA_FONTE: [letra como aparece no snippet, ex: B — ou N/A se não há letra clara]
+EVIDÊNCIA: [trecho exato do snippet que sustenta a resposta]
+CONFIANÇA: [número de 0.50 a 0.99]
+
+## Se não há resposta nos snippets:
+RESULTADO: NAO_ENCONTRADO`;
+
+        const parseResponse = (raw) => {
+            if (!raw || /RESULTADO:\s*NAO_ENCONTRADO/i.test(raw)) return null;
+            if (!/RESULTADO:\s*ENCONTRADO/i.test(raw)) return null;
+
+            const answerTextMatch = raw.match(/RESPOSTA_TEXTO:\s*(.+)/i);
+            const letraFonteMatch = raw.match(/LETRA_FONTE:\s*([A-E])\b/i);
+            const evidenceMatch   = raw.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=CONFIANÇA:|$)/i);
+            const confMatch       = raw.match(/CONFIANÇA:\s*([\d.]+)/i);
+
+            const answerText   = answerTextMatch ? answerTextMatch[1].trim() : null;
+            const sourceLetter = letraFonteMatch ? letraFonteMatch[1].toUpperCase() : null;
+            const evidence     = evidenceMatch   ? evidenceMatch[1].trim().slice(0, 400) : '';
+            const confidence   = confMatch       ? Math.min(parseFloat(confMatch[1]) || 0.75, 0.95) : 0.75;
+
+            if (!answerText) return null;
+            return { answerText, sourceLetter, evidence, confidence };
+        };
+
+        const callOpts = { temperature: 0.05, max_tokens: 250 };
+        const msgs = [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }];
+
+        /* ---------- helper: try Groq ---------- */
+        const tryGroq = async () => {
+            if (!settings.groqApiKey || this._groqQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                return await this._callGroq(msgs, { ...callOpts, model: settings.groqModelFast || 'llama-3.1-8b-instant' });
+            } catch (_) { return null; }
+        };
+
+        /* ---------- helper: try Gemini ---------- */
+        const tryGemini = async () => {
+            if (!settings.geminiApiKey) return null;
+            try {
+                return await this._callGemini(msgs, { ...callOpts, model: settings.geminiModel || 'gemini-2.5-flash' });
+            } catch (_) { return null; }
+        };
+
+        /* ---------- helper: try OpenRouter ---------- */
+        const tryOpenRouter = async () => {
+            if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                return await this._callOpenRouter(msgs, { ...callOpts, model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free' });
+            } catch (_) { return null; }
+        };
+
+        /* ---------- helper: try ChatGPT ---------- */
+        const tryChatGPT = async () => {
+            if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                return await this._callChatGPT(msgs, { ...callOpts, model: settings.chatgptModel || 'gpt-4o-mini' });
+            } catch (_) { return null; }
+        };
+
+        /* ---------- helper: try Copilot ---------- */
+        const tryCopilot = async () => {
+            if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
+            try {
+                return await this._callCopilot(msgs, { ...callOpts, model: settings.copilotModel || 'gpt-4o' });
+            } catch (_) { return null; }
+        };
+
+        /* ---------- Build chain ordered by primaryProvider ---------- */
+        const fallbackChain = [];
+        if (settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now())
+            fallbackChain.push({ name: 'groq', fn: tryGroq });
+        if (settings.geminiApiKey)
+            fallbackChain.push({ name: 'gemini', fn: tryGemini });
+        if (settings.openrouterApiKey && this._openRouterQuotaExhaustedUntil <= Date.now())
+            fallbackChain.push({ name: 'openrouter', fn: tryOpenRouter });
+        if (this._chatgptQuotaExhaustedUntil <= Date.now())
+            fallbackChain.push({ name: 'chatgpt', fn: tryChatGPT });
+        if (this._copilotQuotaExhaustedUntil <= Date.now())
+            fallbackChain.push({ name: 'copilot', fn: tryCopilot });
+
+        const primary = settings.primaryProvider || 'groq';
+        const primaryIdx = fallbackChain.findIndex(p => p.name === primary);
+        if (primaryIdx > 0) fallbackChain.unshift(...fallbackChain.splice(primaryIdx, 1));
+
+        for (const provider of fallbackChain) {
+            const raw = await provider.fn();
+            const parsed = parseResponse(raw);
+            if (parsed) return parsed;
+        }
+
+        return null;
+    },
 
 
     /**
