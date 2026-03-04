@@ -1231,7 +1231,7 @@ export const PopupController = {
 
       let hitRateLimit = false;
       for (const model of optionValues) {
-        if (isFresh && (results[model] === 'ok' || results[model] === 'unsupported')) continue;
+        if (isFresh && (results[model] === 'ok' || results[model] === 'unsupported' || results[model] === 'unknown')) continue;
 
         const probe = await this.probeChatGPTCodexModel(model);
         if (probe.ok) {
@@ -2130,12 +2130,7 @@ export const PopupController = {
     }
   },
 
-  // -- Background search helpers ------------------------------------------------
-
-  /**
-   * Processes the array of finalResults from a background search and
-   * updates the UI exactly as the old inline handleSearch() code did.
-   */
+  // Background search helpers
   async _finishBackgroundSearch(finalResults, displayQuestion, bestQuestion) {
     console.log('[AH FLOW BG] RESULT_RECEIVED', {
       count: Array.isArray(finalResults) ? finalResults.length : 0
