@@ -107,19 +107,28 @@ export class BackgroundTabExtractorService {
     try {
       console.log(`[AH-TAB] Opening hidden tab [${site}] → ${url}`);
 
-      // Open as a tiny off-screen popup — invisible to user, doesn't pollute tab bar.
-      // state:'minimized' is not valid in chrome.windows.create (causes "Invalid value for state").
-      // We position it off-screen at (-9999,-9999) and immediately minimize via windows.update.
+      // Open as a minimized popup — invisible to user, doesn't pollute tab bar.
+      // IMPORTANT: width/height must be large enough for CSS layout to work (innerText requires
+      // a rendered layout — a 1x1 window collapses all elements, making innerText return '').
+      // We create at a normal position and minimize immediately — Chrome now rejects off-screen
+      // coordinates (bounds must be ≥50% visible).
       const win = await new Promise((resolve, reject) => {
-        chrome.windows.create({ url, type: 'popup', focused: false, left: -9999, top: -9999, width: 1, height: 1 }, (w) => {
-          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        chrome.windows.create({ url, type: 'popup', focused: false, width: 1280, height: 800, state: 'minimized' }, (w) => {
+          if (chrome.runtime.lastError) {
+            // Fallback: some Chrome versions don't support state in create — try without it
+            chrome.windows.create({ url, type: 'popup', focused: false, width: 1280, height: 800 }, (w2) => {
+              if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+              resolve(w2);
+            });
+            return;
+          }
           resolve(w);
         });
       });
       winId = win?.id ?? null;
       tabId = win?.tabs?.[0]?.id ?? null;
-      // Force minimized state — chrome.windows.create ignores the state param reliably
-      if (winId !== null) { try { chrome.windows.update(winId, { state: 'minimized' }); } catch (_) {} }
+      // Minimize immediately so it never flashes on the user's screen
+      if (winId !== null) { try { await chrome.windows.update(winId, { state: 'minimized' }); } catch (_) {} }
 
       if (!tabId) throw new Error('Failed to create hidden window/tab');
 
@@ -142,7 +151,28 @@ export class BackgroundTabExtractorService {
         world: 'MAIN'
       });
       const extracted = results?.[0]?.result || '';
-      const text = typeof extracted === 'string' ? extracted.trim() : '';
+      let text = typeof extracted === 'string' ? extracted.trim() : '';
+
+      // Universal safety-net: if site-specific extractor returned nothing, grab raw body
+      // textContent (not innerText) so we always get something even on bot-detection pages.
+      if (!text) {
+        try {
+          const fallback = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              const tc = (document.body?.textContent || '').replace(/\s+/g, ' ').trim();
+              return tc.length > 30 ? tc.slice(0, 15000) : '';
+            },
+            world: 'MAIN'
+          });
+          const fb = fallback?.[0]?.result || '';
+          if (typeof fb === 'string' && fb.length > 30) {
+            console.log(`[AH-TAB] [FALLBACK] textContent fallback: ${fb.length} chars from ${site}`);
+            text = fb;
+          }
+        } catch (_) {}
+      }
+
       console.log(`[AH-TAB] [OK] Extracted ${text.length} chars from ${site}`);
       return text || null;
     } catch (err) {
@@ -172,11 +202,16 @@ export class BackgroundTabExtractorService {
 
   static _getRenderWaitMs(site) {
     const waits = {
-      // PasseiDireto uses Next.js SSR — content is in the initial HTML, no JS wait needed
-      brainly: 3500, studocu: 4500, passeidireto: 400,
-      gauthmath: 4500, scribd: 3000, slideshare: 2500
+      // Brainly: React SPA — needs full hydration, login modal removal, and bot-check delay
+      brainly: 7500,
+      studocu: 5000,
+      // PasseiDireto: Next.js SSR, but bot-detection can delay a redirect; give it more time
+      passeidireto: 4500,
+      gauthmath: 5000,
+      scribd: 3500,
+      slideshare: 3000
     };
-    return waits[site] || 3000;
+    return waits[site] || 3500;
   }
 
   static _getExtractor(site) {
@@ -214,40 +249,66 @@ export class BackgroundTabExtractorService {
 
   static _brainlyExtractor() {
     try {
+      // Helper: get text preferring innerText, falling back to textContent
+      const getText = el => (el?.innerText || el?.textContent || '').trim();
+
       const modalSelectors = [
-        '[data-testid="modal-overlay"]' , '[data-testid="login-modal"]'  ,
-        '[class*="LoginModal"]' , '[class*="AuthModal"]' ,
-        '[class*="SignupModal"]' , '[class*="PaywallModal"]',
-        '.sg-modal__overlay' , '#modal-root'
+        '[data-testid="modal-overlay"]', '[data-testid="login-modal"]',
+        '[class*="LoginModal"]', '[class*="AuthModal"]',
+        '[class*="SignupModal"]', '[class*="PaywallModal"]',
+        '[class*="ModalOverlay"]', '[class*="modal-overlay"]',
+        '[class*="AuthGate"]', '[class*="authGate"]',
+        '.sg-modal__overlay', '#modal-root', '#login-modal'
       ];
       modalSelectors.forEach(sel =>
         document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch(_) {} })
       );
+      // Unlock scroll lock that login modals set
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
+      // Remove blur filters applied to content as paywall indicator
+      document.querySelectorAll('[style*="blur"]').forEach(el => {
+        el.style.filter = 'none'; el.style.webkitFilter = 'none';
+      });
+
       const parts = [];
+
+      // Question selectors — updated for 2025/2026 Brainly DOM
       const qSelectors = [
-        '[data-testid="question-text"]' , '[class*="QuestionContent"]',
-        '[class*="question-content"]' , '.brn-question-title',
-        '[class*="questionText"]'
+        '[data-testid="question-text"]', '[data-testid="question-body"]',
+        '[class*="QuestionContent"]', '[class*="QuestionText"]',
+        '[class*="question-content"]', '[class*="questionText"]',
+        '[class*="questionBody"]', '[class*="QuestionBody"]',
+        '.brn-question-title', '.sg-text'
       ];
       let questionText = '';
       for (const sel of qSelectors) {
         const el = document.querySelector(sel);
-        if (el?.innerText?.length > 20) { questionText = el.innerText.trim(); break; }
+        const t = getText(el);
+        if (t.length > 20) { questionText = t; break; }
       }
-      if (!questionText) { const h = document.querySelector('h1,h2'); if (h) questionText = h.innerText.trim(); }
+      if (!questionText) {
+        for (const h of document.querySelectorAll('h1,h2,h3')) {
+          const t = getText(h);
+          if (t.length > 20) { questionText = t; break; }
+        }
+      }
       if (questionText) parts.push('PERGUNTA: ' + questionText);
+
+      // Answer selectors — updated for 2025/2026
       const ansSelectors = [
-        '[data-testid="answer-content"]' , '[class*="BestAnswer"]',
-        '[data-testid="best-answer"]' , '[class*="AnswerContent"]',
-        '.brn-answer'
+        '[data-testid="answer-content"]', '[data-testid="best-answer"]',
+        '[data-testid="answer"]', '[data-testid="verified-answer"]',
+        '[class*="BestAnswer"]', '[class*="AnswerContent"]',
+        '[class*="AnswerText"]', '[class*="answerText"]',
+        '[class*="answerContent"]', '[class*="answer-content"]',
+        '.brn-answer', '[class*="ExpertAnswer"]'
       ];
       const answers = [];
       for (const sel of ansSelectors) {
         document.querySelectorAll(sel).forEach(el => {
-          const t = el.innerText?.trim();
-          if (t && t.length > 30 && !answers.includes(t)) answers.push(t);
+          const t = getText(el);
+          if (t.length > 30 && !answers.includes(t)) answers.push(t);
         });
         if (answers.length > 0) break;
       }
@@ -255,8 +316,21 @@ export class BackgroundTabExtractorService {
         parts.push('\nMELHOR RESPOSTA: ' + answers[0]);
         if (answers.length > 1) parts.push('\nOUTRAS RESPOSTAS:\n' + answers.slice(1, 3).join('\n\n'));
       }
+
+      // JSON-LD structured data — Brainly embeds Q&A schema; reliable even behind paywalls
+      const ld = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+        .map(s => s.textContent || '')
+        .find(t => /Question|Answer|acceptedAnswer/i.test(t));
+      if (ld && ld.length > 40) parts.push('\nJSON-LD: ' + ld.slice(0, 8000));
+
+      // If structured selectors found nothing, grab full body as fallback
+      if (parts.length === 0) {
+        // Try textContent first (layout-independent) then innerText
+        const body = (document.body?.textContent || document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+        if (body.length > 30) return body.slice(0, 12000);
+      }
       return parts.join('\n');
-    } catch(e) { return ''; }
+    } catch(e) { return (document.body?.textContent || '').trim().slice(0, 12000); }
   }
 
   static _studocuExtractor() {
@@ -400,40 +474,70 @@ export class BackgroundTabExtractorService {
 
   static _passeiDiretoExtractor() {
     try {
-      // Remove blur CSS (PD blurs paid content via CSS)
+      // Helper: get text preferring innerText, falling back to textContent
+      const getText = el => (el?.innerText || el?.textContent || '').trim();
+
+      // Remove blur CSS (PD blurs paid content via CSS filter)
       document.querySelectorAll('[style*="blur"]').forEach(el => {
         el.style.filter = 'none'; el.style.webkitFilter = 'none';
       });
-      // Remove overlays, modals, nav noise
+      // Remove ONLY overlays/modals — NOT nav/header/footer (breadcrumbs are useful)
       ['[class*="modal"]', '[class*="Modal"]', '[class*="overlay"]', '[class*="Overlay"]',
-       '[class*="paywall"]', '[class*="login"]', '[class*="cookie"]',
-       'nav', 'header', 'footer'
+       '[class*="paywall"]', '[class*="login"]', '[class*="cookie"]'
       ].forEach(sel =>
         document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch(_) {} })
       );
+
       const parts = [];
-      // Include __NEXT_DATA__ JSON: PasseiDiretoAnswersApiService uses it to find question IDs
+
+      // Priority 1: __NEXT_DATA__ — SSR JSON with full question + answer data (most reliable)
       const nextDataEl = document.getElementById('__NEXT_DATA__');
-      if (nextDataEl?.textContent?.length > 100) parts.push(nextDataEl.textContent);
-      // Prioritize answer/gabarito sections
+      const nextRaw = nextDataEl?.textContent || '';
+      if (nextRaw.length > 100) {
+        // Try to extract just the readable text from the JSON instead of the whole blob
+        try {
+          const parsed = JSON.parse(nextRaw);
+          // Walk the object looking for long text strings (question/answer bodies)
+          const texts = [];
+          const walk = (obj, depth = 0) => {
+            if (depth > 10 || !obj) return;
+            if (typeof obj === 'string' && obj.length > 30) texts.push(obj);
+            else if (typeof obj === 'object') Object.values(obj).forEach(v => walk(v, depth + 1));
+          };
+          walk(parsed);
+          const joined = [...new Set(texts)].join('\n');
+          if (joined.length > 100) parts.push(joined.slice(0, 50000));
+          else parts.push(nextRaw.slice(0, 20000)); // JSON too nested — push raw
+        } catch (_) {
+          parts.push(nextRaw.slice(0, 20000));
+        }
+      }
+
+      // Priority 2: answer/gabarito semantic sections
       ['[class*="answer"]', '[class*="Answer"]', '[class*="resposta"]', '[class*="gabarito"]',
-       '[class*="correct"]', '[class*="alternativa"]', '[class*="solution"]'
+       '[class*="correct"]', '[class*="alternativa"]', '[class*="solution"]',
+       '[data-testid*="answer"]', '[data-testid*="question"]'
       ].forEach(sel =>
         document.querySelectorAll(sel).forEach(el => {
-          const t = (el.innerText || '').trim();
+          const t = getText(el);
           if (t.length > 20) parts.push(t);
         })
       );
-      // Main content
-      for (const sel of ['main', 'article', '[class*="content"]', '[class*="question"]']) {
+
+      // Priority 3: main content containers
+      for (const sel of ['main', 'article', '[class*="content"]', '[class*="question"]', '#__next']) {
         const el = document.querySelector(sel);
-        if (el) {
-          const t = (el.innerText || '').trim();
-          if (t.length > 200) { parts.push(t); break; }
-        }
+        const t = getText(el);
+        if (t.length > 100) { parts.push(t); break; }
       }
-      if (parts.length === 0) parts.push((document.body?.innerText || '').trim());
-      return [...new Set(parts)].join('\n\n').slice(0, 100000);
-    } catch(e) { return ''; }
+
+      // Ultimate fallback: textContent (layout-independent — works even in narrow viewports)
+      if (parts.length === 0) {
+        const body = (document.body?.textContent || document.body?.innerText || '').replace(/\s+/g, ' ').trim();
+        if (body.length > 30) parts.push(body);
+      }
+
+      return [...new Set(parts)].join('\n\n').slice(0, 100000) || '';
+    } catch(e) { return (document.body?.textContent || '').trim().slice(0, 15000); }
   }
 }

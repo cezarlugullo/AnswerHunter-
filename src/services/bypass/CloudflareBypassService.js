@@ -108,11 +108,10 @@ export class CloudflareBypassService {
       console.log(`[CF-BYPASS] Found existing cf_clearance for ${site} — trying direct tab`);
 
       // Already have clearance — open minimized popup window and extract directly.
-      // NOTE: chrome.windows.create ignores state:'minimized' — must call windows.update after.
-      const win = await chrome.windows.create({ url, type: 'popup', state: 'minimized', focused: false, left: -9999, top: -9999, width: 1, height: 1 });
+      const win = await chrome.windows.create({ url, type: 'popup', focused: false, width: 1280, height: 800, state: 'minimized' });
       const tid = win?.tabs?.[0]?.id;
       if (!tid) return null;
-      try { chrome.windows.update(win.id, { state: 'minimized' }); } catch (_) {}
+      try { await chrome.windows.update(win.id, { state: 'minimized' }); } catch (_) {}
 
       // Still inject stealth patches even with clearance (for good measure)
       await CloudflareBypassService._earlyPatchLoop(tid, cfg.earlyInjectWindowMs);
@@ -180,12 +179,11 @@ export class CloudflareBypassService {
 
       try {
         // Open as a minimized popup so it never appears in the user's tab bar.
-        // NOTE: chrome.windows.create ignores state:'minimized' — must call windows.update after.
-        const win = await chrome.windows.create({ url, type: 'popup', state: 'minimized', focused: false, left: -9999, top: -9999, width: 1, height: 1 });
+        const win = await chrome.windows.create({ url, type: 'popup', focused: false, width: 1280, height: 800, state: 'minimized' });
         winId  = win?.id ?? null;
         tabId  = win?.tabs?.[0]?.id ?? null;
         // Force minimize immediately after creation
-        if (winId !== null) { try { chrome.windows.update(winId, { state: 'minimized' }); } catch (_) {} }
+        if (winId !== null) { try { await chrome.windows.update(winId, { state: 'minimized' }); } catch (_) {} }
         if (!tabId) {
           resolve(null);
           return;
