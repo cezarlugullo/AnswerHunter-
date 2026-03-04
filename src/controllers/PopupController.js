@@ -1982,10 +1982,7 @@ export const PopupController = {
       dotsContainer.appendChild(dot);
     });
 
-    const prevBtn = document.getElementById('ttPrevBtn');
-    const nextBtn = document.getElementById('ttNextBtn');
-    const finishBtn = document.getElementById('ttFinishBtn');
-    const skipBtn = document.getElementById('ttSkipBtn');
+    // Nav button references removed — renderStep re-queries live elements after rebind
 
     function positionPopover(step) {
       const targetEl = document.querySelector(step.target);
@@ -2059,12 +2056,16 @@ export const PopupController = {
         d.classList.toggle('tt-dot--active', di === i);
       });
 
-      // Nav buttons
-      prevBtn.disabled = i === 0;
+      // Nav buttons — re-query after rebind clones them
+      const prevBtn   = document.getElementById('ttPrevBtn');
+      const nextBtn   = document.getElementById('ttNextBtn');
+      const finishBtn = document.getElementById('ttFinishBtn');
+      const skipBtn   = document.getElementById('ttSkipBtn');
+      if (prevBtn)   prevBtn.disabled = i === 0;
       const isLast = i === TOTAL - 1;
-      nextBtn.classList.toggle('hidden', isLast);
-      finishBtn.classList.toggle('hidden', !isLast);
-      skipBtn.classList.toggle('hidden', isLast);
+      if (nextBtn)   nextBtn.classList.toggle('hidden', isLast);
+      if (finishBtn) finishBtn.classList.toggle('hidden', !isLast);
+      if (skipBtn)   skipBtn.classList.toggle('hidden', isLast);
 
       // Show & position
       popover.classList.remove('hidden');
