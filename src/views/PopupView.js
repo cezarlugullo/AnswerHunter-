@@ -790,21 +790,19 @@ export const PopupView = {
           </div>` : ''}
 
           <div class="qa-card-answer">
-            <div class="qa-card-answer-header ${item.userOverride ? 'override-answer' : resultState === 'conflict' ? 'conflict-answer' : resultState === 'suggested' || item.aiFallback ? (item.aiFallback ? 'ai-suggestion' : 'suggested-answer') : ''}">
+            <div class="qa-card-answer-header ${item.userOverride ? 'override-answer' : resultState === 'suggested' || item.aiFallback ? (item.aiFallback ? 'ai-suggestion' : 'suggested-answer') : ''}">
               <span class="material-symbols-rounded answer-state-icon">${(() => {
           if (item.userOverride) return 'person';
           if (resultState === 'confirmed') return 'check_circle';
-          if (resultState === 'conflict') return 'warning';
-          if (resultState === 'suggested') return 'lightbulb';
           if (item.aiFallback) return 'smart_toy';
-          return 'info';
+          if (resultState === 'suggested') return 'lightbulb';
+          return 'check_circle';
         })()}</span>
               <span class="answer-header-title">${escapeHtml((() => {
           if (item.userOverride) return this.t('result.override.applied');
           if (resultState === 'confirmed') return this.t('result.verifiedAnswer');
-          if (resultState === 'conflict') return this.t('result.inconclusiveAnswer');
-          if (resultState === 'suggested') return this.t('result.suggestedAnswer');
           if (item.aiFallback) return this.t('result.aiSuggestion');
+          if (resultState === 'suggested') return this.t('result.suggestedAnswer');
           return this.t('result.correctAnswer');
         })())}</span>
               ${confidence !== null ?`
