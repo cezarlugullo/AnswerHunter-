@@ -970,10 +970,15 @@ function renderDueToday(cards) {
     const parsed = parseQuestionText(raw);
     const preview = parsed.alternatives.length >= 2 ? parsed.stem : raw;
     return `
-    <div class="review-queue-item" data-card-id="${c.id || ''}">
-      <div class="review-queue-item__status due"></div>
-      <div class="review-queue-item__disc">${escHtml(c._disc || '—')}</div>
-      <div class="review-queue-item__q">${escHtml(truncate(preview, 100))}</div>
+    <div class="review-queue-item due" data-card-id="${c.id || ''}">
+      <div class="review-queue-item__icon">
+        <span class="material-symbols-rounded">schedule</span>
+      </div>
+      <div class="review-queue-item__body">
+        <span class="review-queue-item__disc">${escHtml(c._disc || '—')}</span>
+        <span class="review-queue-item__q">${escHtml(truncate(preview, 100))}</span>
+      </div>
+      <span class="material-symbols-rounded review-queue-item__chevron">chevron_right</span>
     </div>`;
   }).join('');
 }
@@ -2626,10 +2631,15 @@ function renderReview() {
         const isOverdue = c.sm2?.nextReview && c.sm2.nextReview < todayStr;
         const statusClass = isOverdue ? 'overdue' : 'due';
         return `
-        <div class="review-queue-item" data-card-id="${c.id || ''}" data-disc-id="${c._discId || ''}">
-          <div class="review-queue-item__status ${statusClass}"></div>
-          <div class="review-queue-item__disc">${escHtml(c._disc || '—')}</div>
-          <div class="review-queue-item__q">${escHtml(truncate(preview, 100))}</div>
+        <div class="review-queue-item ${statusClass}" data-card-id="${c.id || ''}" data-disc-id="${c._discId || ''}">
+          <div class="review-queue-item__icon">
+            <span class="material-symbols-rounded">${isOverdue ? 'warning' : 'schedule'}</span>
+          </div>
+          <div class="review-queue-item__body">
+            <span class="review-queue-item__disc">${escHtml(c._disc || '—')}</span>
+            <span class="review-queue-item__q">${escHtml(truncate(preview, 100))}</span>
+          </div>
+          <span class="material-symbols-rounded review-queue-item__chevron">chevron_right</span>
         </div>`;
       }).join('');
 

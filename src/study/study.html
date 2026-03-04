@@ -566,20 +566,32 @@
 
             <div class="review-overview">
               <div class="review-stat urgent">
-                <span class="review-stat-val" id="reviewOverdue">0</span>
-                <span class="review-stat-lbl">Atrasados</span>
+                <div class="review-stat-icon"><span class="material-symbols-rounded">schedule</span></div>
+                <div class="review-stat-body">
+                  <span class="review-stat-val" id="reviewOverdue">0</span>
+                  <span class="review-stat-lbl">Atrasados</span>
+                </div>
               </div>
               <div class="review-stat today">
-                <span class="review-stat-val" id="reviewDueToday">0</span>
-                <span class="review-stat-lbl">Para hoje</span>
+                <div class="review-stat-icon"><span class="material-symbols-rounded">today</span></div>
+                <div class="review-stat-body">
+                  <span class="review-stat-val" id="reviewDueToday">0</span>
+                  <span class="review-stat-lbl">Para hoje</span>
+                </div>
               </div>
               <div class="review-stat tomorrow">
-                <span class="review-stat-val" id="reviewNew">0</span>
-                <span class="review-stat-lbl">Novos</span>
+                <div class="review-stat-icon"><span class="material-symbols-rounded">fiber_new</span></div>
+                <div class="review-stat-body">
+                  <span class="review-stat-val" id="reviewNew">0</span>
+                  <span class="review-stat-lbl">Novos</span>
+                </div>
               </div>
               <div class="review-stat week">
-                <span class="review-stat-val" id="reviewWeekCount">0</span>
-                <span class="review-stat-lbl">Esta semana</span>
+                <div class="review-stat-icon"><span class="material-symbols-rounded">date_range</span></div>
+                <div class="review-stat-body">
+                  <span class="review-stat-val" id="reviewWeekCount">0</span>
+                  <span class="review-stat-lbl">Esta semana</span>
+                </div>
               </div>
             </div>
 
@@ -939,101 +951,87 @@
         </section>
 
         <!-- VIEW: HISTORY -->
-        <section class="view view-panel" id="viewHistory" aria-label="Histórico de Simulados">
+        <section class="view view-panel" id="viewHistory" aria-label="Histórico">
           <div class="view-inner">
-
-            <!-- Hero header -->
-            <div class="hist-hero">
-              <div class="hist-hero-text">
-                <h1 class="hist-hero-title">Histórico</h1>
-                <p class="hist-hero-sub">Sua jornada de estudo, sessão a sessão</p>
+            <div class="view-header">
+              <div>
+                <h1 class="view-title">Histórico</h1>
+                <p class="view-subtitle">Sua jornada de estudo, sessão a sessão</p>
               </div>
-              <div class="hist-hero-actions">
-                <div class="hist-filter-bar">
-                  <div class="hist-filter-pill">
-                    <span class="material-symbols-rounded hist-filter-icon">filter_list</span>
-                    <select class="hist-filter-select" id="historyFilterType">
-                      <option value="all">Todos os tipos</option>
-                      <option value="quiz">Quiz Rápido</option>
-                      <option value="simulado">Simulado</option>
-                      <option value="ai-simulado">Simulado IA</option>
-                      <option value="challenge">Desafio</option>
-                      <option value="study">Sessão de Estudo</option>
-                    </select>
-                  </div>
-                  <div class="hist-filter-pill">
-                    <span class="material-symbols-rounded hist-filter-icon">school</span>
-                    <select class="hist-filter-select" id="historyFilterDisc">
-                      <option value="all">Todas disciplinas</option>
-                    </select>
-                  </div>
+              <div class="view-header-actions">
+                <div class="hist-filter-pill">
+                  <span class="material-symbols-rounded hist-filter-icon">filter_list</span>
+                  <select class="hist-filter-select" id="historyFilterType">
+                    <option value="all">Todos os tipos</option>
+                    <option value="quiz">Quiz Rápido</option>
+                    <option value="simulado">Simulado</option>
+                    <option value="ai-simulado">Simulado IA</option>
+                    <option value="challenge">Desafio</option>
+                    <option value="study">Sessão de Estudo</option>
+                  </select>
                 </div>
-                <button class="hist-clear-btn" id="historyClearAllBtn" aria-label="Limpar histórico">
+                <div class="hist-filter-pill">
+                  <span class="material-symbols-rounded hist-filter-icon">school</span>
+                  <select class="hist-filter-select" id="historyFilterDisc">
+                    <option value="all">Todas disciplinas</option>
+                  </select>
+                </div>
+                <button class="btn btn-secondary btn-icon" id="historyClearAllBtn" aria-label="Limpar histórico">
                   <span class="material-symbols-rounded">delete_sweep</span>
                 </button>
               </div>
             </div>
 
             <!-- Overview stats -->
-            <div class="hist-stats-grid" id="historyOverview">
-              <div class="hist-stat sessions">
-                <div class="hist-stat-ring">
-                  <span class="material-symbols-rounded">assignment</span>
-                </div>
-                <div class="hist-stat-body">
-                  <span class="hist-stat-num" id="histStatTotal">0</span>
-                  <span class="hist-stat-lbl">Sessões</span>
+            <div class="planning-stats" id="historyOverview">
+              <div class="pstat-card pstat-card--sessions">
+                <span class="material-symbols-rounded pstat-card__icon">assignment</span>
+                <div class="pstat-card__body">
+                  <div class="pstat-card__value" id="histStatTotal">0</div>
+                  <div class="pstat-card__label">Sessões</div>
                 </div>
               </div>
-              <div class="hist-stat questions">
-                <div class="hist-stat-ring">
-                  <span class="material-symbols-rounded">quiz</span>
-                </div>
-                <div class="hist-stat-body">
-                  <span class="hist-stat-num" id="histStatQuestions">0</span>
-                  <span class="hist-stat-lbl">Questões</span>
+              <div class="pstat-card pstat-card--questions">
+                <span class="material-symbols-rounded pstat-card__icon">quiz</span>
+                <div class="pstat-card__body">
+                  <div class="pstat-card__value" id="histStatQuestions">0</div>
+                  <div class="pstat-card__label">Questões</div>
                 </div>
               </div>
-              <div class="hist-stat best">
-                <div class="hist-stat-ring">
-                  <span class="material-symbols-rounded">emoji_events</span>
-                </div>
-                <div class="hist-stat-body">
-                  <span class="hist-stat-num" id="histStatBestAcc">—</span>
-                  <span class="hist-stat-lbl">Melhor nota</span>
+              <div class="pstat-card pstat-card--best">
+                <span class="material-symbols-rounded pstat-card__icon">emoji_events</span>
+                <div class="pstat-card__body">
+                  <div class="pstat-card__value" id="histStatBestAcc">—</div>
+                  <div class="pstat-card__label">Melhor nota</div>
                 </div>
               </div>
-              <div class="hist-stat average">
-                <div class="hist-stat-ring">
-                  <span class="material-symbols-rounded">trending_up</span>
-                </div>
-                <div class="hist-stat-body">
-                  <span class="hist-stat-num" id="histStatAvgAcc">—</span>
-                  <span class="hist-stat-lbl">Média geral</span>
+              <div class="pstat-card pstat-card--average">
+                <span class="material-symbols-rounded pstat-card__icon">trending_up</span>
+                <div class="pstat-card__body">
+                  <div class="pstat-card__value" id="histStatAvgAcc">—</div>
+                  <div class="pstat-card__label">Média geral</div>
                 </div>
               </div>
             </div>
 
             <!-- Timeline list -->
-            <div class="hist-timeline" id="historyList">
-              <!-- Rendered dynamically -->
+            <div class="panel">
+              <div class="hist-timeline" id="historyList">
+                <!-- Rendered dynamically -->
+              </div>
             </div>
 
             <!-- Empty state -->
-            <div class="hist-empty-wrap" id="historyEmpty" hidden>
-              <div class="hist-empty-illustration">
-                <div class="hist-empty-circle">
-                  <span class="material-symbols-rounded">auto_stories</span>
-                </div>
-                <div class="hist-empty-orbit hist-empty-orbit--1"></div>
-                <div class="hist-empty-orbit hist-empty-orbit--2"></div>
+            <div id="historyEmpty" hidden>
+              <div class="empty-state">
+                <span class="material-symbols-rounded empty-state__icon">auto_stories</span>
+                <h3 class="empty-state__title">Nenhuma sessão registrada</h3>
+                <p class="empty-state__desc">Complete um simulado ou sessão de estudo e ela aparecerá aqui automaticamente.</p>
+                <button class="btn btn-primary btn-pill" id="historyGoToPractice">
+                  <span class="material-symbols-rounded">exercise</span>
+                  Ir para Prática
+                </button>
               </div>
-              <h3 class="hist-empty-title">Nenhuma sessão registrada</h3>
-              <p class="hist-empty-desc">Complete um simulado ou sessão de estudo e ela aparecerá aqui automaticamente.</p>
-              <button class="btn btn-primary btn-pill" id="historyGoToPractice">
-                <span class="material-symbols-rounded">exercise</span>
-                Ir para Prática
-              </button>
             </div>
           </div>
         </section>
