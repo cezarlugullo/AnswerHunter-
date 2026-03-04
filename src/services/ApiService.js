@@ -3002,7 +3002,92 @@ INCONCLUSIVO: [motivo em 1 linha]`;
     },
 
     /**
-     * Scan search result snippets with an LLM to extract the answer text for a
+     * Single-shot search — fires exactly ONE Serper/SerpAPI query and returns
+     * the organic results as [{title, link, snippet}].
+     * Used by the Phase 3 confirmation loop in SimpleSearchService.
+     * Falls back to DuckDuckGo if no API key. Returns [] on any error.
+     *
+     * @param {string} query
+     * @param {number} num - max results to request (default 8)
+     * @returns {Promise<Array<{title:string, link:string, snippet:string}>>}
+     */
+    async searchSingleQuery(query, num = 8) {
+        try {
+            const { serperApiUrl, serperApiKey } = await this._getSettings();
+            const hasSerperKey = Boolean(String(serperApiKey || '').trim());
+            const providerMode = /serpapi\.com\//i.test(String(serperApiUrl || '')) ? 'serpapi' : 'serper';
+            const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
+            const toOrganic = (raw) => {
+                if (!raw) return [];
+                const items = providerMode === 'serpapi'
+                    ? (raw.organic_results || [])
+                    : (raw.organic || []);
+                return items.slice(0, num).map(r => ({
+                    title: normalizeSpace(r?.title || ''),
+                    link: normalizeSpace(r?.link || r?.url || ''),
+                    snippet: normalizeSpace(r?.snippet || r?.snippet_highlighted_words?.join(' ') || '')
+                })).filter(r => r.title && r.link);
+            };
+
+            if (hasSerperKey) {
+                if (providerMode === 'serpapi') {
+                    const url = new URL(String(serperApiUrl || 'https://serpapi.com/search.json'));
+                    url.searchParams.set('engine', url.searchParams.get('engine') || 'google');
+                    url.searchParams.set('q', query);
+                    url.searchParams.set('gl', 'br');
+                    url.searchParams.set('hl', 'pt-br');
+                    url.searchParams.set('num', String(num));
+                    url.searchParams.set('api_key', serperApiKey);
+                    if (!url.searchParams.has('output')) url.searchParams.set('output', 'json');
+                    const payload = await this._fetch(url.toString(), {
+                        method: 'GET', headers: { 'Accept': 'application/json' }
+                    });
+                    return toOrganic(payload);
+                }
+                const payload = await this._fetch(serperApiUrl, {
+                    method: 'POST',
+                    headers: { 'X-API-KEY': serperApiKey, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ q: query, gl: 'br', hl: 'pt-br', num })
+                });
+                return toOrganic(payload);
+            }
+
+            // Fallback: DuckDuckGo (no key required)
+            const endpoint = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+            const resp = await this._fetchTextWithTimeout(endpoint, {
+                method: 'GET',
+                headers: { 'Accept': 'text/html', 'Accept-Language': 'pt-BR,pt;q=0.9' },
+                mode: 'cors', credentials: 'omit'
+            }, 6000);
+            if (!resp?.ok || !resp?.text) return [];
+            const organic = [];
+            const blocks = resp.text.split(/<div[^>]+class="result[^"]*"[^>]*>/gi).slice(1);
+            for (const block of blocks) {
+                const lm = block.match(/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+                if (!lm) continue;
+                let link = (lm[1] || '').trim();
+                const title = normalizeSpace((lm[2] || '').replace(/<[^>]+>/g, ' '));
+                const sm = block.match(/<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>|<div[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/div>/i);
+                const snippet = normalizeSpace(((sm?.[1] || sm?.[2]) || '').replace(/<[^>]+>/g, ' '));
+                try {
+                    if (link.startsWith('/l/?')) {
+                        const p = new URL(`https://duckduckgo.com${link}`);
+                        link = decodeURIComponent(p.searchParams.get('uddg') || link);
+                    }
+                } catch (_) {}
+                if (!/^https?:\/\//i.test(link) || !title) continue;
+                organic.push({ title, link, snippet });
+                if (organic.length >= num) break;
+            }
+            return organic;
+        } catch (e) {
+            console.warn('AnswerHunter: searchSingleQuery error:', e?.message || e);
+            return [];
+        }
+    },
+
+    /**
      * multiple-choice question. Faster than fetching full pages.
      *
      * @param {Array<{host:string, title:string, snippet:string}>} snippetInputs
