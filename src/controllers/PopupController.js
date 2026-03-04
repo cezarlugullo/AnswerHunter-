@@ -4367,6 +4367,86 @@ export const PopupController = {
     return div.innerHTML;
   },
 
+  _parseMarkdown(text) {
+    if (!text) return '';
+    let html = this._escapeHtml(text);
+    
+    // Horizontal rules (---)
+    html = html.replace(/^---$/gm, '<hr style="border:0; border-top:1px solid rgba(0,0,0,0.1); margin: 16px 0;">');
+
+    // Headers
+    html = html.replace(/^### (.*$)/gim, '<h3 style="margin-top:16px; margin-bottom:8px; font-size:1.1em; color:var(--text-1);"><strong>$1</strong></h3>');
+    html = html.replace(/^## (.*$)/gim, '<h2 style="margin-top:20px; margin-bottom:10px; font-size:1.3em; color:var(--text-1);"><strong>$1</strong></h2>');
+    html = html.replace(/^# (.*$)/gim, '<h1 style="margin-top:24px; margin-bottom:12px; font-size:1.5em; color:var(--text-1);"><strong>$1</strong></h1>');
+    
+    // Bold & Italic
+    html = html.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>');
+    html = html.replace(/\*(.*?)\*/gim, '<em>$1</em>');
+    
+    // Code blocks and inline code
+    html = html.replace(/```(?:[a-z]+)?\n([\s\S]*?)```/gi, '<div style="background:#f4f4f5; padding:10px; border-radius:6px; font-family:monospace; margin:8px 0; overflow-x:auto;">$1</div>');
+    html = html.replace(/`(.*?)`/g, '<code style="background:#f4f4f5; padding:2px 4px; border-radius:4px; font-family:monospace; color:#ef4444;">$1</code>');
+
+    // Blockquotes
+    html = html.replace(/^&gt; (.*$)/gim, '<blockquote style="border-left: 4px solid var(--primary); margin: 12px 0; color:var(--text-2); background:var(--surface-hover); padding:8px 12px; border-radius: 0 4px 4px 0;">$1</blockquote>');
+
+    // AI Emojis markers
+    html = html.replace(/^\u2705(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">✅$1</div>');
+    html = html.replace(/^\u{1F4A1}(.*)$/gimu, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">💡$1</div>');
+    html = html.replace(/^\u274C(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">❌$1</div>');
+    
+    // Numbered lists
+    html = html.replace(/^(\d+)\.\s+(.*)/gim, '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;padding:8px 12px;background:rgba(255,255,255,0.7);border-radius:8px;border-left:3px solid var(--primary);"><span style="background:var(--primary);color:#fff;font-weight:700;font-size:0.78rem;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$1</span><span>$2</span></div>');
+    
+    // Unordered lists (handling - and +)
+    html = html.replace(/^[-+]\s+(.*)$/gim, '<div style="display:flex; gap:8px; margin-bottom:4px;"><span style="color:var(--primary); font-weight:bold;">•</span> <span>$1</span></div>');
+    
+    // Tables
+    // Find lines starting and ending with |
+    const tableRegex = /(^\|.+?\|$(?:\r?\n)?)+/gim;
+    html = html.replace(tableRegex, (match) => {
+        let rowsHtml = '';
+        const rows = match.trim().split('\n');
+        let isHeader = true;
+        
+        for (const row of rows) {
+            if (/^\|[-:| ]+\|$/.test(row)) {
+                isHeader = false;
+                continue;
+            }
+            
+            const cells = row.split('|').slice(1, -1);
+            let rowHtml = '<tr>';
+            for (const cell of cells) {
+                const tag = isHeader ? 'th' : 'td';
+                const style = isHeader 
+                    ? 'background:var(--surface-hover); font-weight:bold; padding:8px; border:1px solid var(--border); text-align:left;' 
+                    : 'padding:8px; border:1px solid var(--border);';
+                rowHtml += `<${tag} style="${style}">${cell.trim()}</${tag}>`;
+            }
+            rowHtml += '</tr>';
+            rowsHtml += rowHtml;
+        }
+        
+        return `<table style="width:100%; border-collapse:collapse; margin:12px 0; font-size: 0.9em;">\n${rowsHtml}\n</table>\n`;
+    });
+
+    // Handle newlines
+    let blocks = html.split('\n');
+    for (let i = 0; i < blocks.length; i++) {
+        const line = blocks[i].trim();
+        if (line === '') continue; // skip empty lines after blocks
+        if (!line.match(/^<h|^<div|^<hr|^<blockquote|^<table|^<tr|<td/)) {
+            blocks[i] = line + '<br>';
+        }
+    }
+    
+    // Clean up excessive breaks
+    html = blocks.join('\n').replace(/(<br>\n?){2,}/g, '<br><br>');
+    
+    return html;
+  },
+
   _decorateWithSavedMeta(items, questionFallback = '') {
     const ec = this._lastExtractionConfidence || null;
     return (items || []).map((item) => {
@@ -4738,20 +4818,7 @@ export const PopupController = {
         const explanation = await ApiServiceModule.generateTutorExplanation(question, answer, context);
 
         // Escape raw AI content first, then apply safe markdown substitutions
-        const safeExplanation = this._escapeHtml(explanation);
-        const htmlExplanation = safeExplanation
-          .replace(/^### (.*$)/gim, '<strong>$1</strong>')
-          .replace(/^## (.*$)/gim, '<strong>$1</strong>')
-          .replace(/^# (.*$)/gim, '<strong>$1</strong>')
-          .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
-          .replace(/\*(.*?)\*/gim, '<em>$1</em>')
-          .replace(/^\u2705(.*)$/gim, '<div style="background:linear-gradient(90deg,#F0FDF4,#DCFCE7);border:1px solid #BBF7D0;border-radius:10px;padding:10px 14px;font-weight:700;color:#15803D;margin-bottom:12px;">✅$1</div>')
-          .replace(/^\u{1F4A1}(.*)$/gimu, '<div style="background:linear-gradient(90deg,#EEF2FF,#E0E7FF);border:1px solid #C7D2FE;border-radius:10px;padding:10px 14px;font-weight:600;color:#4338CA;margin-top:10px;">💡$1</div>')
-          .replace(/^\u274C(.*)$/gim, '<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:6px 12px;margin-bottom:4px;font-size:0.88em;color:#991B1B;">❌$1</div>')
-          .replace(/^(\d+)\.\s+(.*)/gim, '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;padding:8px 12px;background:rgba(255,255,255,0.7);border-radius:8px;border-left:3px solid #FF6B00;"><span style="background:#FF6B00;color:#fff;font-weight:700;font-size:0.78rem;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$1</span><span>$2</span></div>')
-          .replace(/\n\+/g, '\n• ')
-          .replace(/\n-/g, '\n• ')
-          .replace(/\n/g, '<br>');
+        const htmlExplanation = this._parseMarkdown(explanation);
 
         container.innerHTML = `<div class="study-tutor-explanation">${htmlExplanation}</div>`;
       } catch (err) {
@@ -4877,14 +4944,8 @@ export const PopupController = {
             const pending = history.querySelector('.pending-msg');
             if (pending) pending.remove();
 
-            // Escape raw AI content first, then apply safe markdown substitutions
-            const safeResponse = this._escapeHtml(response);
-            const htmlResponse = safeResponse
-              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-              .replace(/\*(.*?)\*/g, '<em>$1</em>')
-              .replace(/\n\+/g, '\n• ') // prep list items before newline processing
-              .replace(/\n-/g, '\n• ')
-              .replace(/\n/g, '<br>');
+            // Transform markdown safely
+            const htmlResponse = this._parseMarkdown(response);
 
             history.insertAdjacentHTML('beforeend', `
               <div class="chat-message ai-message">

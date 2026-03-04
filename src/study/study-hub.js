@@ -1705,7 +1705,39 @@ function formatMarkdown(text) {
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="ww-keyword">$1</strong>');
 
   // ── 5. Backtick-wrapped text → highlighted code/concept pill ──
+  html = html.replace(/```(?:[a-z]+)?\n([\s\S]*?)```/gi, '<div style="background:var(--surface); padding:var(--sp-3); border-radius:var(--radius-md); font-family:monospace; margin:8px 0; overflow-x:auto; font-size:0.9em;">$1</div>');
   html = html.replace(/`([^`]+)`/g, '<code class="ww-concept">$1</code>');
+
+  // ── 5.5 Standard Markdown (Headers, Lists, Tables, Blockquotes) ──
+  html = html.replace(/^---$/gm, '<hr style="border:0; border-top:1px solid var(--border); margin:16px 0;">');
+  html = html.replace(/^### (.*$)/gim, '<h3 style="margin:16px 0 8px 0; font-size:1.1em; color:var(--text-1);"><strong>$1</strong></h3>');
+  html = html.replace(/^## (.*$)/gim, '<h2 style="margin:20px 0 10px 0; font-size:1.3em; color:var(--text-1);"><strong>$1</strong></h2>');
+  html = html.replace(/^# (.*$)/gim, '<h1 style="margin:24px 0 12px 0; font-size:1.5em; color:var(--text-1);"><strong>$1</strong></h1>');
+  html = html.replace(/^&gt; (.*$)/gim, '<blockquote style="border-left:4px solid var(--primary); margin:12px 0; padding:8px 12px; color:var(--text-2); background:var(--surface-hover); border-radius:0 4px 4px 0;">$1</blockquote>');
+  html = html.replace(/^(\d+)\.\s+(.*)/gim, '<div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;padding:8px 12px;background:var(--surface);border-radius:8px;border-left:3px solid var(--primary);"><span style="background:var(--primary);color:#fff;font-weight:700;font-size:0.78rem;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;">$1</span><span>$2</span></div>');
+  html = html.replace(/^[-+]\s+(.*)$/gim, '<div style="display:flex; gap:8px; margin-bottom:4px;"><span style="color:var(--primary); font-weight:bold;">•</span> <span>$1</span></div>');
+
+  const tableRegex = /(^\|.+?\|$(?:\r?\n)?)+/gim;
+  html = html.replace(tableRegex, (match) => {
+      let rowsHtml = '';
+      const rows = match.trim().split('\n');
+      let isHeader = true;
+      for (const row of rows) {
+          if (/^\|[-:| ]+\|$/.test(row)) { isHeader = false; continue; }
+          const cells = row.split('|').slice(1, -1);
+          let rowHtml = '<tr>';
+          for (const cell of cells) {
+              const tag = isHeader ? 'th' : 'td';
+              const style = isHeader 
+                  ? 'background:var(--surface-hover); font-weight:bold; padding:8px; border:1px solid var(--border); text-align:left;' 
+                  : 'padding:8px; border:1px solid var(--border);';
+              rowHtml += `<${tag} style="${style}">${cell.trim()}</${tag}>`;
+          }
+          rowHtml += '</tr>';
+          rowsHtml += rowHtml;
+      }
+      return `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; margin:12px 0; font-size:0.9em;">\n${rowsHtml}\n</table></div>\n`;
+  });
 
   // ── 6. Individual alternative analysis lines: "- A) ✅/❌ explanation" ──
   // Match lines dynamically, even if they are mashed together without newlines
@@ -1772,7 +1804,11 @@ function formatMarkdown(text) {
     }
 
     // Regular content block
-    const blockHtml = trimmed.replace(/\n/g, '<br>');
+    let blockHtml = trimmed;
+    if (!blockHtml.match(/^<h|^<div|^<hr|^<blockquote|^<table/)) {
+        blockHtml = blockHtml.replace(/\n/g, '<br>');
+    }
+    
     if (inSection) {
       output += `<p>${blockHtml}</p>`;
     } else {
@@ -1930,7 +1966,7 @@ async function aiAction(type) {
     }
     const dock = $('#toolDockBody');
     if (dock) {
-      dock.innerHTML = `<div style="padding:var(--sp-4);white-space:pre-wrap;font-size:var(--text-sm);line-height:1.7">${escHtml(result || 'Sem resposta da IA.')}</div>`;
+      dock.innerHTML = `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7">${formatMarkdown(result || 'Sem resposta da IA.')}</div>`;
     }
   } catch (err) {
     const dock = $('#toolDockBody');
