@@ -740,6 +740,52 @@ function showPomodoroDragTip() {
 
 /* ─── Data Loading ─────────────────────────────────────────────────── */
 
+const HIER_ROOT_NAMES = new Set(['raiz', 'root', 'my study', 'binder', 'meu estudo']);
+
+/** Ensure all binder top-level folders & ah_disciplines exist in ah_hierarchy */
+async function reconcileHierarchy() {
+  try {
+    const raw = await new Promise(resolve => {
+      chrome.storage.local.get(['ah_hierarchy', 'binderStructure', 'ah_disciplines'], r => resolve(r));
+    });
+    const h = raw.ah_hierarchy || [];
+    const existingIds = new Set(h.map(d => d.id));
+    const existingNames = new Set(h.map(d => d.name.toLowerCase()));
+    let changed = false;
+
+    // Sync top-level binder folders
+    const binder = raw.binderStructure;
+    if (Array.isArray(binder) && binder[0]?.children) {
+      for (const child of binder[0].children) {
+        if (child.type !== 'folder') continue;
+        if (HIER_ROOT_NAMES.has((child.title || '').toLowerCase())) continue;
+        if (existingIds.has(child.id) || existingNames.has(child.title.toLowerCase())) continue;
+        h.push({ id: child.id, name: child.title, icon: '', color: '#FF6B6B', modules: [], createdAt: child.createdAt || Date.now(), updatedAt: Date.now() });
+        existingIds.add(child.id);
+        existingNames.add(child.title.toLowerCase());
+        changed = true;
+      }
+    }
+
+    // Sync ah_disciplines entries
+    for (const disc of (raw.ah_disciplines || [])) {
+      if (existingIds.has(disc.id) || existingNames.has(disc.name.toLowerCase())) continue;
+      h.push({ id: disc.id, name: disc.name, icon: '', color: disc.color || '#FF6B6B', modules: [], createdAt: disc.createdAt || Date.now(), updatedAt: Date.now() });
+      existingIds.add(disc.id);
+      existingNames.add(disc.name.toLowerCase());
+      changed = true;
+    }
+
+    if (changed) {
+      await new Promise(resolve => chrome.storage.local.set({ ah_hierarchy: h }, resolve));
+      ContentHierarchyService.invalidate();
+      console.log('[StudyHub] Reconciled hierarchy, total disciplines:', h.length);
+    }
+  } catch (e) {
+    console.warn('[StudyHub] Hierarchy reconciliation failed:', e);
+  }
+}
+
 async function loadData() {
   try {
     // Check migration
@@ -750,8 +796,11 @@ async function loadData() {
       toast('Migração concluída!', 'success');
     }
 
+    // Reconcile binder folders & ah_disciplines into ah_hierarchy
+    await reconcileHierarchy();
+
     // Load hierarchy
-    state.hierarchy = await ContentHierarchyService.load();
+    state.hierarchy = await ContentHierarchyService.load(true);
 
     // Load analytics (enriched with today, streak, dailyActivity)
     state.analytics = await loadAnalytics();

@@ -41,7 +41,8 @@ export const StorageModel = {
                 } else {
                     this.data = [{ id: 'root', type: 'folder', title: 'Raiz', children: [] }];
                 }
-                resolve();
+                // Reconcile top-level binder folders → ah_hierarchy
+                this._reconcileHierarchy().then(resolve, resolve);
             });
         });
     },
@@ -705,6 +706,66 @@ export const StorageModel = {
     },
 
     // ─── Hierarchy sync helpers (ah_disciplines ↔ ah_hierarchy) ──────
+
+    /** Ensure all top-level binder folders and ah_disciplines exist in ah_hierarchy */
+    async _reconcileHierarchy() {
+        try {
+            const h = await this._getHierarchy();
+            const existingIds = new Set(h.map(d => d.id));
+            const existingNames = new Set(h.map(d => d.name.toLowerCase()));
+            let changed = false;
+
+            // Sync top-level binder folders
+            const root = this.data?.[0];
+            const ROOT_NAMES = new Set(['raiz', 'root', 'my study', 'binder', 'meu estudo']);
+            if (root && root.children) {
+                for (const child of root.children) {
+                    if (child.type !== 'folder') continue;
+                    if (ROOT_NAMES.has((child.title || '').toLowerCase())) continue;
+                    if (existingIds.has(child.id) || existingNames.has(child.title.toLowerCase())) continue;
+                    h.push({
+                        id: child.id,
+                        name: child.title,
+                        icon: '',
+                        color: '#FF6B6B',
+                        modules: [],
+                        createdAt: child.createdAt || Date.now(),
+                        updatedAt: Date.now()
+                    });
+                    existingIds.add(child.id);
+                    existingNames.add(child.title.toLowerCase());
+                    changed = true;
+                }
+            }
+
+            // Sync ah_disciplines entries
+            const legacyList = await new Promise(resolve => {
+                chrome.storage.local.get(['ah_disciplines'], d => resolve(d?.ah_disciplines || []));
+            });
+            for (const disc of legacyList) {
+                if (existingIds.has(disc.id) || existingNames.has(disc.name.toLowerCase())) continue;
+                h.push({
+                    id: disc.id,
+                    name: disc.name,
+                    icon: '',
+                    color: disc.color || '#FF6B6B',
+                    modules: [],
+                    createdAt: disc.createdAt || Date.now(),
+                    updatedAt: Date.now()
+                });
+                existingIds.add(disc.id);
+                existingNames.add(disc.name.toLowerCase());
+                changed = true;
+            }
+
+            if (changed) {
+                await this._saveHierarchy(h);
+                console.log('[StorageModel] Reconciled hierarchy, total disciplines:', h.length);
+            }
+        } catch (e) {
+            console.warn('[StorageModel] Hierarchy reconciliation failed:', e);
+        }
+    },
 
     /** Check if a node is the root folder */
     _isRootFolder(node) {
