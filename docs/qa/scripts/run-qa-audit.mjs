@@ -8,7 +8,6 @@ const SRC_DIR = path.join(PROJECT_PATH, 'src');
 const DOCS_QA_DIR = path.join(PROJECT_PATH, 'docs', 'qa');
 const BUTTON_TESTS_DIR = path.join(DOCS_QA_DIR, 'button-tests');
 const SCRIPTS_DIR = path.join(DOCS_QA_DIR, 'scripts');
-const PW_WRAPPER = path.join(SCRIPTS_DIR, 'run_pwcli.ps1');
 const PORT = Number(process.env.QA_PORT || 4174);
 const HOST = process.env.QA_HOST || '127.0.0.1';
 
@@ -21,6 +20,8 @@ const SCENARIOS = (() => {
   return filtered.length ? filtered : ALL_SCENARIOS;
 })();
 const PAGE_FILTER = process.env.QA_PAGE_FILTER ? process.env.QA_PAGE_FILTER.toLowerCase() : null;
+const DEBUG = process.env.QA_DEBUG === '1';
+const SKIP_DYNAMIC = process.env.QA_SKIP_DYNAMIC === '1';
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -418,11 +419,12 @@ function classifyStatus(dynamicByScenario) {
 }
 
 function runPwCli(args, { cwd = PROJECT_PATH } = {}) {
-  const cmd = process.platform === 'win32' ? 'powershell' : 'bash';
+  if (DEBUG) console.error(`[qa] pwcli ${args.join(' ')}`);
+  const cmd = process.platform === 'win32' ? 'cmd.exe' : 'bash';
   const fullArgs = process.platform === 'win32'
-    ? ['-NoProfile', '-File', PW_WRAPPER, ...args]
+    ? ['/c', 'C:\\Progra~1\\nodejs\\npx.cmd', '-y', '@playwright/cli@latest', ...args]
     : ['-lc', `npx -y @playwright/cli@latest ${args.map((a) => JSON.stringify(a)).join(' ')}`];
-  const res = spawnSync(cmd, fullArgs, { cwd, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
+  const res = spawnSync(cmd, fullArgs, { cwd, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024, timeout: 180000 });
   const out = `${res.stdout || ''}${res.stderr || ''}`;
   if (res.status !== 0) {
     const err = res.error ? `ERROR: ${res.error.message}\n` : '';
@@ -444,7 +446,7 @@ function parseRunCodeResult(output) {
 }
 
 function buildScenarioCode(scenario) {
-  return `async (page) => { const scenario=${JSON.stringify(scenario)}; if (scenario === "offline") { try { await page.context().setOffline(true); } catch (e) {} } await page.waitForTimeout(120); const payload = await page.evaluate(async (scenario) => { const wait=(ms)=>new Promise(r=>setTimeout(r,ms)); window.__qaPageErrors=[]; window.addEventListener("error",(e)=>{ window.__qaPageErrors.push(String(e.message || e.error || e)); }); window.addEventListener("unhandledrejection",(e)=>{ window.__qaPageErrors.push(String(e.reason || e)); }); const qaAlert=window.alert; const qaConfirm=window.confirm; const qaPrompt=window.prompt; const qaOpen=window.open; try { window.alert=()=>{}; window.confirm=()=>true; window.prompt=()=>''; window.open=()=>null; } catch {} const ls=()=>{ try { return Object.keys(localStorage).length; } catch { return -1; } }; const ss=()=>{ try { return Object.keys(sessionStorage).length; } catch { return -1; } }; const status=()=>{ const s=document.querySelector("#status, #status-groq, #status-serper, #status-gemini, #status-openrouter"); return (s?.textContent || "").trim().replace(/\\s+/g," ").slice(0,140); }; if (scenario==="empty") { try { localStorage.clear(); } catch {} try { sessionStorage.clear(); } catch {} try { chrome?.storage?.local?.clear?.(); } catch {} try { chrome?.storage?.sync?.clear?.(); } catch {} await wait(80); } if (scenario==="invalid") { try { localStorage.setItem("__qa_invalid__", "{invalid-json"); } catch {} try { localStorage.setItem("binderStructure", "{broken"); } catch {} try { sessionStorage.setItem("__qa_invalid__", "%%%"); } catch {} try { chrome?.storage?.sync?.set?.({ settings: "__invalid__", ah_theme: 999 }); } catch {} await wait(80); } if (scenario==="missing_permissions") { try { window.__qaChromeBackup = window.chrome; if (window.chrome) { window.chrome.storage = undefined; window.chrome.tabs = undefined; window.chrome.scripting = undefined; window.chrome.downloads = undefined; window.chrome.identity = undefined; } } catch {} await wait(60); } const q='button, [role="button"], input[type="button"], input[type="submit"]'; const els=[...document.querySelectorAll(q)]; els.forEach((el,idx)=>el.setAttribute("data-qa-auto", String(idx))); const rows=[]; for (let idx=0; idx<els.length; idx++) { const el=els[idx]; const before={ ls: ls(), ss: ss(), status: status(), url: location.href }; let clickError=null; let clicked=false; try { const times = scenario==="repeat" ? 2 : 1; for (let t=0; t<times; t++) { el.dispatchEvent(new MouseEvent("click", { bubbles:true, cancelable:true, composed:true })); await wait(40); } clicked=true; } catch (err) { clickError=String(err?.message || err); } await wait(60); const after={ ls: ls(), ss: ss(), status: status(), url: location.href }; rows.push({ domIndex: idx, id: el.id || null, text: (el.innerText || el.value || el.getAttribute("aria-label") || "").trim().replace(/\\s+/g," ").slice(0,120), tag: el.tagName.toLowerCase(), disabled: !!el.disabled, hidden: !!(el.offsetParent===null), clicked, clickError, stateChanged: before.ls!==after.ls || before.ss!==after.ss || before.status!==after.status || before.url!==after.url, before, after }); } try { window.alert=qaAlert; window.confirm=qaConfirm; window.prompt=qaPrompt; window.open=qaOpen; } catch {} if (scenario==="missing_permissions") { try { if (window.__qaChromeBackup) window.chrome = window.__qaChromeBackup; } catch {} } return { scenario, rows, pageErrors: (window.__qaPageErrors || []).slice(-40) }; }, scenario); if (scenario === "offline") { try { await page.context().setOffline(false); } catch (e) {} } return payload; }`;
+  return `async (page)=>{const s=${JSON.stringify(scenario)};if(s==='offline'){try{await page.context().setOffline(true)}catch{}};const out=await page.evaluate((s)=>{window.__qe=[];window.addEventListener('error',e=>window.__qe.push(String(e.message||e.error||e)));window.addEventListener('unhandledrejection',e=>window.__qe.push(String(e.reason||e)));try{window.alert=()=>{};window.confirm=()=>true;window.prompt=()=>'';window.open=()=>null}catch{};const snap=()=>{let ls=-1,ss=-1;try{ls=localStorage.length}catch{};try{ss=sessionStorage.length}catch{};const st=(document.querySelector('#status,#status-groq,#status-serper,#status-gemini,#status-openrouter')?.textContent||'').trim().replace(/\\s+/g,' ').slice(0,140);return{ls,ss,status:st,url:location.href}};if(s==='empty'){try{localStorage.clear()}catch{};try{sessionStorage.clear()}catch{};try{chrome?.storage?.local?.clear?.()}catch{};try{chrome?.storage?.sync?.clear?.()}catch{}};if(s==='invalid'){try{localStorage.setItem('__qa_invalid__','{bad')}catch{};try{sessionStorage.setItem('__qa_invalid__','%%%')}catch{}};if(s==='missing_permissions'){try{window.__qb=window.chrome;if(window.chrome){window.chrome.storage=undefined;window.chrome.tabs=undefined;window.chrome.scripting=undefined;window.chrome.downloads=undefined;window.chrome.identity=undefined}}catch{}};const els=[...document.querySelectorAll('button,[role=\"button\"],input[type=\"button\"],input[type=\"submit\"]')];const rows=[];for(let i=0;i<els.length;i++){const e=els[i],b=snap();let err=null;try{const t=s==='repeat'?2:1;for(let k=0;k<t;k++){e.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,composed:true}))}}catch(x){err=String(x?.message||x)};const a=snap();rows.push({domIndex:i,id:e.id||null,text:(e.innerText||e.value||e.getAttribute('aria-label')||'').trim().replace(/\\s+/g,' ').slice(0,120),tag:e.tagName.toLowerCase(),disabled:!!e.disabled,hidden:!!(e.offsetParent===null),clicked:!err,clickError:err,stateChanged:b.ls!==a.ls||b.ss!==a.ss||b.status!==a.status||b.url!==a.url,before:b,after:a})};if(s==='missing_permissions'){try{if(window.__qb)window.chrome=window.__qb}catch{}};return{scenario:s,rows,pageErrors:(window.__qe||[]).slice(-40)}} ,s);if(s==='offline'){try{await page.context().setOffline(false)}catch{}};return out}`;
 }
 
 function collectDynamicForPage(fileRel) {
@@ -505,17 +507,6 @@ function main() {
   ensureDir(BUTTON_TESTS_DIR);
   ensureDir(SCRIPTS_DIR);
 
-  // Wrapper to preserve argument boundaries for playwright-cli run-code on Windows.
-  writeText(
-    PW_WRAPPER,
-    [
-      "param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CliArgs)",
-      "& 'C:\\Program Files\\nodejs\\npx.cmd' -y @playwright/cli@latest @CliArgs",
-      'exit $LASTEXITCODE',
-      '',
-    ].join('\n'),
-  );
-
   let htmlFiles = listFilesRecursive(SRC_DIR, ['.html']);
   if (PAGE_FILTER) {
     htmlFiles = htmlFiles.filter((p) => relFromProject(p).toLowerCase().includes(PAGE_FILTER));
@@ -533,8 +524,12 @@ function main() {
   const dynamicByFile = new Map();
   for (const htmlAbs of htmlFiles) {
     const rel = relFromProject(htmlAbs);
-    const dyn = collectDynamicForPage(rel);
-    dynamicByFile.set(rel, dyn);
+    if (SKIP_DYNAMIC) {
+      dynamicByFile.set(rel, { url: `http://${HOST}:${PORT}/${toPosix(rel)}`, fileRel: rel, scenarios: {}, errors: ['[SKIPPED] dinâmica desativada por QA_SKIP_DYNAMIC=1'] });
+    } else {
+      const dyn = collectDynamicForPage(rel);
+      dynamicByFile.set(rel, dyn);
+    }
   }
 
   const usedSlugs = new Set();
