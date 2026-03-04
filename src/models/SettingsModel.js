@@ -250,7 +250,8 @@ export const SettingsModel = {
             groqKey: settings.groqApiKey,
             serperKey: settings.serperApiKey,
             geminiKey: settings.geminiApiKey,
-            openrouterKey: settings.openrouterApiKey
+            openrouterKey: settings.openrouterApiKey,
+            firecrawlKey: settings.firecrawlApiKey
         };
     }
 };

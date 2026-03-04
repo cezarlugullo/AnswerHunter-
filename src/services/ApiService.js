@@ -1421,7 +1421,7 @@ Analise o texto passo a passo e responda no formato acima:`;
         };
         /* ---------- Try Groq (backup) ---------- */
         const tryGroq = async () => {
-            const { groqApiUrl, groqApiKey, groqModelSmart } = settings;
+            const { groqApiUrl, groqApiKey, groqModelFast, groqModelSmart } = settings;
             if (!groqApiKey) {
                 console.log(`  🔬 [aiExtract] Groq: no API key`);
                 return null;
@@ -1430,13 +1430,18 @@ Analise o texto passo a passo e responda no formato acima:`;
                 console.log(`  🔬 [aiExtract] Groq: quota exhausted, skipping`);
                 return null;
             }
+            // When Groq is primary provider, use groqModelSmart (user chose Groq as main).
+            // When Groq is fallback (another provider failed), use groqModelFast (8b)
+            // to conserve rate limits (30 RPM vs 10 RPM for 70b).
+            const isPrimary = primary === 'groq';
+            const extractModel = isPrimary ? groqModelSmart : (groqModelFast || 'llama-3.1-8b-instant');
             try {
-                console.log(`  🔬 [aiExtract] Trying Groq (${groqModelSmart})...`);
+                console.log(`  🔬 [aiExtract] Trying Groq (${extractModel})...`);
                 const data = await this._withGroqRateLimit(() => this._fetch(groqApiUrl, {
                     method: 'POST',
                     headers: { 'Authorization': `Bearer ${groqApiKey}`, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        model: groqModelSmart,
+                        model: extractModel,
                         messages: [{ role: 'system', content: systemMsg }, { role: 'user', content: prompt }],
                         temperature: 0.05,
                         max_tokens: 300
@@ -1534,21 +1539,32 @@ Analise o texto passo a passo e responda no formato acima:`;
         console.log(`  🔬 [aiExtract] providerOrder(run)=${fallbackOrder.length ? fallbackOrder.join(' -> ') : '(empty)'}`);
 
         let usedProvider = null;
-        for (const provider of fallbackChain) {
+        for (let i = 0; i < fallbackChain.length; i++) {
+            const provider = fallbackChain[i];
             content = await provider.fn();
 
-            // If the provider returned a valid text and it wasn't a hard NAO_ENCONTRADO, keep it.
-            if (content && content.length >= 10 && !/^RESULTADO:\s*NAO_ENCONTRADO/im.test(content)) {
+            // Reject: null, too short (< 40 chars = garbage like 25-char empty responses),
+            // or explicit NAO_ENCONTRADO
+            if (content && content.length >= 40
+                && !/^RESULTADO:\s*NAO_ENCONTRADO/im.test(content)) {
                 usedProvider = provider.name;
                 break;
             }
-            // If provider returned null (likely quota error or crash) or explicitly NAO_ENCONTRADO,
-            // we loop to the next provider in the chain.
+
+            // If the PRIMARY provider returned a short non-null response (e.g. 25 chars),
+            // the page content is likely the problem, not the model.
+            // Skip fallbacks to avoid wasting rate limits on bad content.
+            if (i === 0 && content && content.length > 0 && content.length < 40) {
+                console.log(`  🔬 [aiExtract] ${provider.name} returned short response (${content.length} chars) — page content likely insufficient, skipping fallbacks`);
+                break;
+            }
+
+            // Provider returned null (error/quota) or explicit NAO_ENCONTRADO — try next
             console.log(`  🔬 [aiExtract] ${provider.name} failed or NAO_ENCONTRADO, trying next fallback...`);
         }
 
-        if (!content || content.length < 10) {
-            console.log(`  🔬 [aiExtract] RESULT: no response from any provider`);
+        if (!content || content.length < 40) {
+            console.log(`  🔬 [aiExtract] RESULT: no valid response from any provider`);
             return null;
         }
 

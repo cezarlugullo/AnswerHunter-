@@ -871,7 +871,20 @@ export const SimpleSearchService = {
             return '';
         })();
 
-        const topResults = results.slice(0, MAX_CANDIDATES);
+        // ── Deduplicação por domínio (max 2 URLs por host) ──────────────────────
+        // Evita gastar slots com 5+ URLs do mesmo domínio (brainly, passeidireto)
+        const MAX_PER_DOMAIN = 3;
+        const _domainCounts = {};
+        const topResults = [];
+        for (const r of results.slice(0, MAX_CANDIDATES + 6)) {
+            if (topResults.length >= MAX_CANDIDATES) break;
+            let host = '';
+            try { host = new URL(r.link).hostname.replace(/^www\./, ''); } catch { /* ignore */ }
+            _domainCounts[host] = (_domainCounts[host] || 0) + 1;
+            if (_domainCounts[host] <= MAX_PER_DOMAIN) {
+                topResults.push(r);
+            }
+        }
 
         if (typeof onStatus === 'function') {
             onStatus(` ${topResults.length} fontes encontradas, iniciando análise…`);
@@ -892,19 +905,9 @@ export const SimpleSearchService = {
         const snippetSources = [];
         const snippetAttempts = [];
 
-        // ── Fase 1 e Scholar (Paralelo) ─────────────
-        const _scholarStem = QuestionParser.extractQuestionStem(questionForInference);
-        const scholarPromise = _scholarStem && _scholarStem.length >= 15
-            ? ApiService.searchWithScholar(_scholarStem.slice(0, 220), 5).catch(() => [])
-            : Promise.resolve([]);
-
-        const fase1Promise = _collectFirstNSources(
-            topResults, questionForInference, originalOptionsMap, 3, MAX_SOURCES, onStatus, true
-        );
-
-        // Lançar Fase 0 (snippets) em paralelo
-        const snippetPromise = async () => {
-            if (snippetInputs.length < 2) return;
+        // ── Fase 0: Snippets PRIMEIRO (rápido, ~1-2s) ──────────────────────────
+        // Roda antes da Fase 1 para decidir quantas fontes precisamos
+        if (snippetInputs.length >= 2) {
             try {
                 if (typeof onStatus === 'function') onStatus(' Leitura rápida dos resultados de busca…');
                 const snipResult = await ApiService.aiExtractFromSnippets(snippetInputs, questionForInference);
@@ -944,10 +947,28 @@ export const SimpleSearchService = {
             } catch (snipErr) {
                 console.warn('[SimpleSearch] Fase 0 (snippets) erro:', snipErr?.message);
             }
-        };
+        }
 
-        // Espera Fase 0 e 1 concluirem juntas
-        const [, fase1Result] = await Promise.all([snippetPromise(), fase1Promise]);
+        // ── Fase 1 e Scholar (Paralelo) ─────────────
+        // Se Fase 0 já achou resposta com boa confiança, precisamos de menos fontes para confirmar
+        const snippetFoundAnswer = snippetSources.length > 0 && snippetSources[0].confidence >= 0.75;
+        const fase1MaxSources = snippetFoundAnswer ? 2 : MAX_SOURCES;
+        const fase1MinSources = snippetFoundAnswer ? 1 : 3;
+        if (snippetFoundAnswer) {
+            console.log(`[SimpleSearch] [FAST] Snippet achou resposta (conf=${snippetSources[0].confidence.toFixed(2)}), reduzindo fontes: max=${fase1MaxSources}, min=${fase1MinSources}`);
+        }
+
+        const _scholarStem = QuestionParser.extractQuestionStem(questionForInference);
+        const scholarPromise = _scholarStem && _scholarStem.length >= 15
+            ? ApiService.searchWithScholar(_scholarStem.slice(0, 220), 5).catch(() => [])
+            : Promise.resolve([]);
+
+        const fase1Promise = _collectFirstNSources(
+            topResults, questionForInference, originalOptionsMap, fase1MinSources, fase1MaxSources, onStatus, true
+        );
+
+        // Espera Fase 1 concluir
+        const fase1Result = await fase1Promise;
         const sources = fase1Result.sources;
         const allAttempts = fase1Result.allAttempts;
 
@@ -1037,15 +1058,16 @@ export const SimpleSearchService = {
             }
         }
 
-        // ── Fase 2: BackgroundTab — complementa quando Fase 1 não atingiu MAX_SOURCES ──
-        // Filtra apenas os candidatos que são SPAs JS-pesadas e ainda não tiveram sucesso
-        if (sources.length < MAX_SOURCES) {
+        // ── Fase 2: BackgroundTab — complementa quando Fase 1 não atingiu o alvo ──
+        // Usa o mesmo maxSources da Fase 1 (que pode ter sido reduzido pelo snippet early-exit)
+        const effectiveMaxSources = snippetFoundAnswer ? fase1MaxSources + snippetSources.length : MAX_SOURCES;
+        if (sources.length < effectiveMaxSources) {
             const alreadyProcessed = new Set(allAttempts.map(a => a.link));
             const spaResults = topResults
                 .filter(r => r.link && !alreadyProcessed.has(r.link));
             if (spaResults.length > 0) {
                 if (typeof onStatus === 'function') onStatus(' Expandindo busca com mais fontes…');
-                const remaining = MAX_SOURCES - sources.length;
+                const remaining = effectiveMaxSources - sources.length;
                 const bgResult = await _collectFirstNSources(
                     spaResults, questionForInference, originalOptionsMap, remaining, remaining + 2, onStatus, true
                 );
@@ -1226,7 +1248,7 @@ export const SimpleSearchService = {
             console.log(`[SimpleSearch] [FAST] Pulando Fase 3 de confirmação (consenso atual ≥ 80%)`);
         }
 
-        if (!skipPhase3 && sources.length < MAX_SOURCES) {
+        if (!skipPhase3 && sources.length < effectiveMaxSources) {
             const tiedCandidates = _getTiedCandidates(sources);
             const validCandidates = tiedCandidates.filter(c => c.answerText && c.answerText.length >= 12 && c.avgConf >= 0.60);
             if (validCandidates.length > 0) {
@@ -1236,7 +1258,7 @@ export const SimpleSearchService = {
                 ]);
                 if (typeof onStatus === 'function') onStatus(' Confirmando resposta com mais fontes…');
                 for (const candidate of validCandidates) {
-                    if (sources.length >= MAX_SOURCES) break;
+                    if (sources.length >= effectiveMaxSources) break;
                     const cleanText = candidate.answerText.slice(0, 60).replace(/["""''`]/g, '').trim();
                     const confirmQ = `"${cleanText}" gabarito`;
                     console.log(`[SimpleSearch] [RETRY] Fase 3 (confirmação ${candidate.letter}): "${confirmQ.slice(0, 100)}"`);
@@ -1252,7 +1274,7 @@ export const SimpleSearchService = {
                                 const { sources: confirmSources, allAttempts: confirmAttempts } =
                                     await _collectFirstNSources(
                                         newCandidates, questionForInference, originalOptionsMap,
-                                        MAX_SOURCES - sources.length, onStatus, false
+                                        effectiveMaxSources - sources.length, onStatus, false
                                     );
                                 if (confirmSources.length > 0) {
                                     console.log(`[SimpleSearch] [OK] Fase 3 (${candidate.letter}): +${confirmSources.length} fontes de confirmação`);

@@ -592,7 +592,8 @@ button:disabled {
   font-size: 0.9rem;
   line-height: 1.75;
   margin-bottom: 0;
-  text-align: left;
+  text-align: justify;
+  text-align-last: left;
   hyphens: manual;
   word-break: break-word;
   overflow-wrap: break-word;

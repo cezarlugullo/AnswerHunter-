@@ -456,6 +456,9 @@ export const PopupController = {
     if (this.view.elements.inputGemini) {
       this.view.elements.inputGemini.value = keys.geminiKey || this.view.elements.inputGemini.value || '';
     }
+    if (this.view.elements.inputFirecrawl) {
+      this.view.elements.inputFirecrawl.value = keys.firecrawlKey || this.view.elements.inputFirecrawl.value || '';
+    }
 
     this.applySearchProviderSelection(this.getSearchProviderFromUrl(settings.serperApiUrl), {
       persistDraft: false,
@@ -1691,6 +1694,7 @@ export const PopupController = {
     const serperApiKey = this.sanitizeKey(this.view.elements.inputSerper?.value);
     const openrouterApiKey = this.sanitizeKey(this.view.elements.inputOpenrouter?.value);
     const geminiApiKey = this.sanitizeKey(this.view.elements.inputGemini?.value);
+    const firecrawlApiKey = this.sanitizeKey(this.view.elements.inputFirecrawl?.value);
     const providerConfig = this.getSearchProviderConfig(this.getSelectedSearchProvider());
 
     if (!groqApiKey) {
@@ -1705,6 +1709,7 @@ export const PopupController = {
         serperApiUrl: providerConfig.apiUrl,
         geminiApiKey,
         openrouterApiKey,
+        firecrawlApiKey,
         requiredProviders: {
           groq: true,
           serper: false,
@@ -1716,7 +1721,8 @@ export const PopupController = {
         groqApiKey,
         serperApiKey,
         geminiApiKey,
-        openrouterApiKey
+        openrouterApiKey,
+        firecrawlApiKey
       };
 
       this.onboardingFlags.setupDone = true;

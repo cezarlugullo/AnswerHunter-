@@ -180,6 +180,7 @@ export const PopupView = {
       btnNextOpenrouter: document.getElementById('btn-next-openrouter'),
       prevOpenrouter: document.getElementById('prev-openrouter'),
       inputOpenrouter: document.getElementById('input-openrouter'),
+      inputFirecrawl: document.getElementById('input-firecrawl'),
       testOpenrouter: document.getElementById('test-openrouter'),
       statusOpenrouter: document.getElementById('status-openrouter'),
       pillOpenrouterOb: document.getElementById('pill-openrouter-ob'),
