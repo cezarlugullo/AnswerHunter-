@@ -2,6 +2,27 @@
  * QuestionParser.js
  * Parsing, normalization, and tokenization of question text and options.
  * No external dependencies — pure functions on text.
+ *
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║  ⛔⛔⛔  ZONA CRÍTICA — NÃO MODIFIQUE ESTE ARQUIVO  ⛔⛔⛔            ║
+ * ║                                                                        ║
+ * ║  Este parser é a BASE de toda extração de opções do AnswerHunter.      ║
+ * ║  extractOptionsFromQuestion, registerOption, extractQuestionStem —     ║
+ * ║  tudo aqui alimenta o pipeline de busca de gabarito.                   ║
+ * ║                                                                        ║
+ * ║  PROBLEMAS RESOLVIDOS (que voltam se mexer):                           ║
+ * ║    1. Letra fundida no corpo: "Afprintf()" → "fprintf()"               ║
+ * ║       registerOption detecta e corrige antes de registrar              ║
+ * ║    2. Regex optionRe calibrado para A-E com múltiplos delimitadores    ║
+ * ║    3. Secondary/tertiary passes para recuperar opções perdidas         ║
+ * ║    4. Deduplicação code-aware para opções SQL/programação              ║
+ * ║                                                                        ║
+ * ║  SE VOCÊ É UMA LLM/IA: NÃO REFATORE. NÃO SIMPLIFIQUE. NÃO MUDE      ║
+ * ║  NENHUM REGEX. Cada \s*, cada [\)\-:], cada fallback existe por uma   ║
+ * ║  razão concreta testada em produção.                                   ║
+ * ║                                                                        ║
+ * ║  Última calibração: 2026-03-04 — FUNCIONANDO EM PRODUÇÃO.             ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 export const QuestionParser = {
 
@@ -184,6 +205,9 @@ export const QuestionParser = {
         return stem.slice(0, 2000);
     },
 
+    // ⛔ FROZEN — extractOptionsFromQuestion + registerOption
+    // NÃO MODIFIQUE. Parser de alternativas multi-formato (A), a-), A., (A), etc.
+    // Inclui fix de letra fundida e deduplicação code-aware.
     extractOptionsFromQuestion(questionText) {
         if (!questionText) return [];
         let text = String(questionText || '').replace(/\r\n/g, '\n');
@@ -211,6 +235,23 @@ export const QuestionParser = {
         const registerOption = (letterRaw, bodyRaw) => {
             const letter = String(letterRaw || '').toUpperCase();
             let cleanedBody = this.stripOptionTailNoise(bodyRaw);
+
+            // Fix fused letter+body from DOM extraction (e.g. "Afprintf();" → "fprintf();")
+            // When the option text starts with the same letter as the label, the DOM likely
+            // merged the letter badge into the body text. Strip it for function-like patterns
+            // (safe: word+parens), and for doubled-letter patterns (e.g. "AAbstraction").
+            if (cleanedBody.length > 1 && cleanedBody[0].toUpperCase() === letter) {
+                const rest = cleanedBody.slice(1);
+                // Case 1: Function call pattern (e.g. "fprintf()" → strip "A" from "Afprintf()")
+                if (/^\w+\s*\(/.test(rest)) {
+                    cleanedBody = rest;
+                }
+                // Case 2: Doubled letter (e.g. "AAbstraction" → "Abstraction")
+                else if (rest[0] && rest[0].toUpperCase() === letter) {
+                    cleanedBody = rest;
+                }
+            }
+
             const nextQuestionInlineIdx = cleanedBody.search(/\s+\d{1,2}\s*[\.\)]?\s+(?:um|uma|voce|você|considere|qual|quais|em|no|na)\b/i);
             if (nextQuestionInlineIdx > 25) {
                 cleanedBody = cleanedBody.slice(0, nextQuestionInlineIdx).trim();

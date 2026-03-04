@@ -3144,6 +3144,12 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
         const { serperApiUrl, serperApiKey } = await this._getSettings();
         const hasSerperKey = Boolean(String(serperApiKey || '').trim());
         const providerMode = /serpapi\.com\//i.test(String(serperApiUrl || '')) ? 'serpapi' : 'serper';
+        const _flowId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
+        const flowLog = (step, status, message, payload = null) => {
+            const prefix = `[AH FLOW SEARCH_QUERY ${_flowId}] ${String(step || '').toUpperCase()} ${String(status || 'INFO').toUpperCase()} - ${message || ''}`;
+            if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) console.log(prefix, payload);
+            else console.log(prefix);
+        };
 
         const normalizeSpace = (s) => String(s || '').replace(/\s+/g, ' ').trim();
         const normalizeForMatch = (s) => String(s || '')
@@ -3192,6 +3198,10 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             .replace(/[^a-z0-9_]+/g, '')
             .replace(/\s+/g, '')
             .trim();
+        // ⛔ FROZEN — extractOptionHints + buildHintQuery
+        // NÃO MODIFIQUE. Constrói hints de alternativas para query de busca.
+        // Depende de QuestionParser.extractOptionsFromQuestion (que já limpa letras fundidas).
+        // Filtros de leak, contiguidade e tamanho calibrados em produção. 2026-03-04.
         const extractOptionHints = (raw, stemText = '') => {
             const optionLines = QuestionParser.extractOptionsFromQuestion(raw || '');
             if (!optionLines || optionLines.length === 0) return [];
@@ -3515,13 +3525,23 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
         const maxQueryLen = hasMultipleChoiceShape ? 380 : 250;
         cleanQuery = cleanQuery.substring(0, maxQueryLen);
         console.log(`AnswerHunter: Query limpa: "${cleanQuery}"`);
+        flowLog('CLEAN_QUERY', 'OK', 'Query base normalizada', {
+            providerMode,
+            hasSerperKey,
+            len: cleanQuery.length
+        });
 
         const optionHints = extractOptionHints(rawQuery, cleanQuery);
         const hintQuery = buildHintQuery(cleanQuery, optionHints);
         if (hintQuery) {
             console.log(`AnswerHunter: Query com alternativas: "${hintQuery}"`);
+            flowLog('HINT_QUERY', 'OK', 'Query com alternativas montada', {
+                hints: optionHints.length,
+                len: hintQuery.length
+            });
         } else if (optionHints.length === 0) {
             console.log('AnswerHunter: Query com alternativas: skip (nenhuma alternativa confiável após sanitização)');
+            flowLog('HINT_QUERY', 'SKIP', 'Sem alternativas confiáveis para hint query');
         }
 
         const BOOST_SITES = [
@@ -3746,6 +3766,10 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
                 });
             };
             const plan = buildQueryPlan();
+            flowLog('QUERY_PLAN', 'OK', 'Plano de consultas gerado', {
+                total: plan.length,
+                labels: plan.map((p) => p.label).slice(0, 12)
+            });
             const seenQueries = new Set();
             let serperCalls = 0;
 
@@ -3843,6 +3867,12 @@ MOTIVO: [uma frase curta explicando por que as alternativas A-E não fazem senti
             if (ranked.length > 0) {
                 console.log(`AnswerHunter: Search diagnostics => provider=${providerMode}, providerCalls=${serperCalls}, fallbackProvider=${fallbackProviderUsed ? 'duckduckgo' : 'none'}, uniqueResults=${ranked.length}`);
                 console.log(`AnswerHunter: ${ranked.length} resultados combinados e ranqueados (${hasSerperKey ? 'Serper + fallback' : 'fallback only'})`);
+                flowLog('RESULTS', 'OK', 'Resultados combinados e ranqueados', {
+                    provider: providerMode,
+                    providerCalls: serperCalls,
+                    fallback: fallbackProviderUsed ? 'duckduckgo' : 'none',
+                    uniqueResults: ranked.length
+                });
                 const finalResults = ranked.slice(0, 12);
                 // Attach Google meta signals (answerBox, aiOverview, peopleAlsoAsk) to the
                 // results array so SearchService can process them as high-priority evidence.

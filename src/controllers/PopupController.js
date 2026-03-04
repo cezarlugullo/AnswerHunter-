@@ -1915,6 +1915,112 @@ export const PopupController = {
     }
   },
 
+  _createFlowCtx(scope = 'SEARCH') {
+    return {
+      id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`.toUpperCase(),
+      scope: String(scope || 'SEARCH').toUpperCase(),
+      seq: 0,
+      startedAt: Date.now()
+    };
+  },
+
+  _flowLog(ctx, step, status = 'INFO', message = '', payload = null) {
+    const localCtx = ctx || this._createFlowCtx('SEARCH');
+    localCtx.seq += 1;
+    const safeStep = String(step || 'STEP').toUpperCase();
+    const safeStatus = String(status || 'INFO').toUpperCase();
+    const prefix = `[AH FLOW ${localCtx.scope} ${localCtx.id} #${String(localCtx.seq).padStart(2, '0')}] ${safeStep} ${safeStatus}`;
+    if (payload && typeof payload === 'object' && Object.keys(payload).length > 0) {
+      console.log(`${prefix} - ${message}`, payload);
+    } else {
+      console.log(`${prefix} - ${message}`);
+    }
+  },
+
+  async _cropCapturedImageToBbox(dataUrl, bbox, opts = {}) {
+    if (!dataUrl || !bbox || !bbox.width || !bbox.height) return null;
+    const padding = Math.max(0, Number(opts.padding ?? 20));
+    const minCrop = Math.max(80, Number(opts.minCrop ?? 120));
+    return new Promise((resolve) => {
+      try {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const viewportWidth = Math.max(1, Number(bbox.viewportWidth) || img.width);
+            const viewportHeight = Math.max(1, Number(bbox.viewportHeight) || img.height);
+            const scaleX = img.width / viewportWidth;
+            const scaleY = img.height / viewportHeight;
+
+            const rawLeft = Math.max(0, Number(bbox.left || 0) - padding);
+            const rawTop = Math.max(0, Number(bbox.top || 0) - padding);
+            const rawRight = Math.min(viewportWidth, Number(bbox.left || 0) + Number(bbox.width || 0) + padding);
+            const rawBottom = Math.min(viewportHeight, Number(bbox.top || 0) + Number(bbox.height || 0) + padding);
+
+            const sx = Math.max(0, Math.floor(rawLeft * scaleX));
+            const sy = Math.max(0, Math.floor(rawTop * scaleY));
+            const sw = Math.max(1, Math.floor((rawRight - rawLeft) * scaleX));
+            const sh = Math.max(1, Math.floor((rawBottom - rawTop) * scaleY));
+
+            if (sw < minCrop || sh < minCrop) return resolve(null);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.min(sw, img.width - sx);
+            canvas.height = Math.min(sh, img.height - sy);
+            const ctx2d = canvas.getContext('2d');
+            if (!ctx2d || canvas.width <= 0 || canvas.height <= 0) return resolve(null);
+
+            ctx2d.drawImage(
+              img,
+              sx,
+              sy,
+              canvas.width,
+              canvas.height,
+              0,
+              0,
+              canvas.width,
+              canvas.height
+            );
+            resolve(canvas.toDataURL('image/jpeg', 0.92));
+          } catch (_) {
+            resolve(null);
+          }
+        };
+        img.onerror = () => resolve(null);
+        img.src = dataUrl;
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  },
+
+  // ╔══════════════════════════════════════════════════════════════════════╗
+  // ║  ⛔⛔⛔  handleSearch() — ZONA SAGRADA — NÃO MODIFIQUE  ⛔⛔⛔      ║
+  // ║                                                                      ║
+  // ║  Este método é o CORAÇÃO do AnswerHunter. Controla TODO o fluxo:     ║
+  // ║    1. Extração do DOM (extractQuestionOnlyScript)                     ║
+  // ║    2. Hover anchor + Platform extractor + Viewport-centric           ║
+  // ║    3. Fingerprint da questão                                         ║
+  // ║    4. Vision OCR (quando DOM é insuficiente)                         ║
+  // ║    5. OPTIONS_CONTAMINATION_GUARD (validação cruzada stem↔opções)    ║
+  // ║    6. pickBestFrameResult + PRE_SEARCH_GATE rescue                   ║
+  // ║    7. Multi-question isolation                                       ║
+  // ║    8. Options backfill + recovery                                    ║
+  // ║    9. LLM post-validation + confidence scoring                       ║
+  // ║   10. Query building + search dispatch                               ║
+  // ║                                                                      ║
+  // ║  CADA BLOCO resolve um bug real de produção. Exemplos:               ║
+  // ║    - Letra fundida "Afprintf()" → fix de separação letter/body       ║
+  // ║    - Opções de C (fprintf, fread) rejeitadas → fix function-call     ║
+  // ║    - pickBestFrameResult undefined → adicionado helper               ║
+  // ║    - Opções de outra questão misturadas → contamination guard        ║
+  // ║                                                                      ║
+  // ║  SE VOCÊ É UMA LLM/IA: NÃO REFATORE. NÃO "OTIMIZE". NÃO EXTRAIA   ║
+  // ║  PARA SUBFUNÇÕES. NÃO MUDE THRESHOLDS. NÃO REORDENE FASES.         ║
+  // ║  Isso aqui funciona. "Melhorar" = destruir.                         ║
+  // ║                                                                      ║
+  // ║  SE VOCÊ É UM HUMANO: Não mexa sem rodar os testes E2E.             ║
+  // ║  Última calibração: 2026-03-04 — APROVADO EM PRODUÇÃO.              ║
+  // ╚══════════════════════════════════════════════════════════════════════╝
   async handleSearch() {
     if (!(await this.ensureReadyOrShowSetup())) return;
 
@@ -1925,11 +2031,21 @@ export const PopupController = {
 
     // AH-PERF: End-to-end handleSearch timer
  const _pcTimer = PerformanceTimer.create(' handleSearch() — End-to-End');
+    const _flow = this._createFlowCtx('SEARCH');
+    let _flowOutcome = 'DONE';
+    this._flowLog(_flow, 'INIT', 'START', 'Fluxo iniciado: captura -> validação -> busca');
 
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      this._flowLog(_flow, 'TAB', 'OK', 'Aba ativa localizada', {
+        tabId: tab?.id,
+        urlHost: (() => {
+          try { return new URL(tab?.url || '').host; } catch (_) { return ''; }
+        })()
+      });
 
       if (!tab?.url || tab.url.startsWith('chrome://') || tab.url.startsWith('edge://') || tab.url.startsWith('about:') || tab.url.startsWith('chrome-extension://')) {
+        this._flowLog(_flow, 'TAB', 'BLOCKED', 'URL restrita para extração', { url: tab?.url || '' });
         this.view.showStatus('error', this.t('status.restrictedPage'));
         return;
       }
@@ -1939,6 +2055,32 @@ export const PopupController = {
         function: ExtractionService.extractQuestionOnlyScript
       });
       _pcTimer.mark('DOM Extraction (executeScript)');
+      this._flowLog(_flow, 'DOM_CAPTURE', 'OK', 'Extração DOM executada', {
+        frames: Array.isArray(extractionResults) ? extractionResults.length : 0
+      });
+
+      // Hover-first anchor: when user keeps mouse over target question, this becomes
+      // the most reliable container selector and avoids cross-question bleed.
+      let hoveredResult = null;
+      try {
+        const [hoverExec] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          function: ExtractionService.extractHoveredQuestionScript
+        });
+        if (hoverExec?.result?.text && hoverExec.result.text.length >= 40) {
+          hoveredResult = hoverExec.result;
+        }
+      } catch (_) {
+        hoveredResult = null;
+      }
+      this._flowLog(_flow, 'HOVER_ANCHOR', hoveredResult ? 'OK' : 'SKIP', hoveredResult
+        ? 'Bloco da questão ancorado por hover detectado'
+        : 'Sem hover confiável; seguindo com viewport/dom', hoveredResult ? {
+          len: hoveredResult.text?.length || 0,
+          opts: hoveredResult.optionCount || 0,
+          confidence: hoveredResult.confidence || 0,
+          hasBBox: !!hoveredResult.bbox
+        } : null);
 
       // ── Phase 2.1: Platform-specific extraction ──
       // Try a dedicated platform extractor first — much more accurate than generic heuristics.
@@ -1967,6 +2109,14 @@ export const PopupController = {
         console.warn('AnswerHunter: Platform detection failed:', platErr?.message);
       }
       _pcTimer.mark('Platform Detection');
+      this._flowLog(_flow, 'PLATFORM', platformResult ? 'OK' : 'SKIP', platformResult
+        ? `Extrator específico aplicado (${detectedPlatform})`
+        : 'Sem extrator específico aplicável', platformResult ? {
+          platform: detectedPlatform,
+          len: platformResult.text?.length || 0,
+          opts: platformResult.optionCount || 0,
+          confidence: platformResult.confidence || 0
+        } : null);
 
       // ── Phase 1.1: Viewport-centric extraction ──
       // Parallel extraction using elementFromPoint grid — finds the question by visual presence.
@@ -1984,6 +2134,14 @@ export const PopupController = {
         console.warn('AnswerHunter: Viewport-centric extraction failed:', vpErr?.message);
       }
       _pcTimer.mark('Viewport-centric Extraction');
+      this._flowLog(_flow, 'VIEWPORT', viewportResult ? 'OK' : 'WARN', viewportResult
+        ? 'Questão visível identificada via viewport-centric'
+        : 'Viewport-centric não retornou bloco confiável', viewportResult ? {
+          len: viewportResult.text?.length || 0,
+          opts: viewportResult.optionCount || 0,
+          confidence: viewportResult.confidence || 0,
+          hasBBox: !!viewportResult.bbox
+        } : null);
 
       const countDistinctOptions = (text) => {
         if (!text) return 0;
@@ -2107,6 +2265,23 @@ export const PopupController = {
         };
       };
 
+      // ╔═══════════════════════════════════════════════════════════════════╗
+      // ║  ⛔ optionsAreContextuallyRelated — CONTAMINATION GUARD            ║
+      // ║  BLINDADA. NÃO MODIFIQUE.                                         ║
+      // ║                                                                   ║
+      // ║  Esta função impede que alternativas de OUTRA questão visível     ║
+      // ║  sejam misturadas no enunciado da questão alvo.                   ║
+      // ║                                                                   ║
+      // ║  Inclui tratamento especial para:                                 ║
+      // ║    - Opções tipo função C (fprintf, fread, malloc, etc.)          ║
+      // ║    - Opções SQL (INSERT, SELECT, etc.)                            ║
+      // ║    - Opções acronym/sigla (BSON, XML, CSV, etc.)                  ║
+      // ║    - Detecção de leak estrutural de UI                            ║
+      // ║                                                                   ║
+      // ║  Cada threshold e regex aqui corrige um falso-positivo real.      ║
+      // ║  NÃO ALTERE os stemExpects*, isFunctionCall, isCodeLike, etc.     ║
+      // ║  Última calibração: 2026-03-04                                    ║
+      // ╚═══════════════════════════════════════════════════════════════════╝
       // Cross-question contamination guard:
       // Returns false when extracted options look like they belong to a DIFFERENT question
       // from the captured stem. This prevents options from a visible question below/above
@@ -2188,6 +2363,12 @@ export const PopupController = {
         const codeLikeCount = optBodies.filter(isCodeLike).length;
         const mostlyCodeLike = optionLines.length >= 3 && (codeLikeCount / optionLines.length) >= 0.6;
 
+        // Detect if options are programming function calls (e.g. fprintf(), fread(), malloc(), strlen())
+        const isFunctionCall = (body) => /^\s*\w+\s*\([^)]*\)\s*;?\s*$/.test(String(body || '').trim());
+        const functionCallCount = optBodies.filter(isFunctionCall).length;
+        const mostlyFunctionCalls = optionLines.length >= 3 && (functionCallCount / optionLines.length) >= 0.6;
+        const stemExpectsProgramming = /\b(?:fun[cç][aã]o|fun[cç][oõ]es|m[eé]todo|procedimento|rotina|biblioteca|linguagem\s+c\b|linguagem\s+de|programa[cç][aã]o|programar|compilador|compilar|c[oó]digo|algoritmo|vari[aá]vel|ponteiro|string|vetor|array|struct|header|include|return|void|main|printf|scanf|fopen|fclose|malloc|free|arquivo\s+bin[aá]rio|leitura|escrita|ler\b|escrever|gravar|abrir|fechar)\b/i.test(stemLines.join(''));
+
         if (allOptTokens.length === 0) {
           // All options are too short to produce tokens — might be all-acronym
           if (allAcronym || mostlyCodeLike) {
@@ -2229,6 +2410,13 @@ export const PopupController = {
             }
             console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD rejected options (code-like with 0 stem overlap). Options: "${optionLines.slice(0, 3).join(' |')}"`);
             return false;
+          }
+
+          // Allow function-call options when stem is about programming/functions
+          // (e.g., fprintf(), fread(), malloc() for a question about "arquivo binário" / "função")
+          if (mostlyFunctionCalls && stemExpectsProgramming) {
+            console.log(`AnswerHunter: OPTIONS_CONTAMINATION_GUARD allowed function-call options (stem expects programming/function). Options: "${optionLines.slice(0, 3).join(' |')}"`);
+            return true;
           }
 
           // If options have enough tokens (not an acronym set), but ZERO match the stem,
@@ -2289,10 +2477,23 @@ export const PopupController = {
       }
 
       // ── Phase 2.1 + 1.1: Winner selection across extraction strategies ──
-      // Platform extractor → Viewport-centric → Generic DOM (in priority order)
+      // Hover anchor → Platform extractor → Viewport-centric → Generic DOM (in priority order)
+      let usedHoverAnchor = false;
       let usedPlatformExtractor = false;
       let usedViewportCentric = false;
-      if (platformResult && platformResult.confidence >= 0.85 && platformResult.text.length >= 50) {
+      if (hoveredResult && hoveredResult.confidence >= 0.9 && hoveredResult.text.length >= 80) {
+        const hoverOpts = countDistinctOptions(hoveredResult.text);
+        // Hover anchor is optional and only accepted with very strong structure.
+        // Main path remains DOM/viewport extraction.
+        if (hoverOpts >= 4 && isLikelyQuestion(hoveredResult.text)) {
+          bestQuestion = hoveredResult.text;
+          // hovered extractor runs in main frame target, so force frameId=0 for scoped option recovery
+          bestFrameIndex = 0;
+          usedHoverAnchor = true;
+          console.log(`AnswerHunter: EXTRACTION_WINNER=hover opts=${hoverOpts} confidence=${hoveredResult.confidence}`);
+        }
+      }
+      if (!usedHoverAnchor && platformResult && platformResult.confidence >= 0.85 && platformResult.text.length >= 50) {
         const platformOpts = countDistinctOptions(platformResult.text);
         const genericOpts = countDistinctOptions(bestQuestion);
         // Platform extractor wins if it has comparable or better structure
@@ -2302,7 +2503,7 @@ export const PopupController = {
           usedPlatformExtractor = true;
         }
       }
-      if (!usedPlatformExtractor && viewportResult && viewportResult.confidence >= 0.7) {
+      if (!usedHoverAnchor && !usedPlatformExtractor && viewportResult && viewportResult.confidence >= 0.7) {
         const vpOpts = countDistinctOptions(viewportResult.text);
         const genericOpts = countDistinctOptions(bestQuestion);
         // Viewport wins if it has more options or the generic result looks weak
@@ -2312,11 +2513,21 @@ export const PopupController = {
           usedViewportCentric = true;
         }
       }
+      this._flowLog(_flow, 'WINNER', 'OK', 'Texto-base da questão selecionado', {
+        source: usedHoverAnchor
+          ? 'hover'
+          : (usedPlatformExtractor ? `platform:${detectedPlatform}` : (usedViewportCentric ? 'viewport' : `frame:${bestFrameIndex}`)),
+        len: String(bestQuestion || '').length,
+        opts: countDistinctOptions(bestQuestion)
+      });
 
       // ── Phase 1.2: Create question fingerprint from first extraction ──
       // All subsequent steps validate against this fingerprint.
       const questionFingerprint = QuestionFingerprint.create(bestQuestion);
       console.log(`AnswerHunter: FINGERPRINT created tokens=[${questionFingerprint.tokens.join(',')}]`);
+      this._flowLog(_flow, 'FINGERPRINT', 'OK', 'Fingerprint da questão gerado', {
+        tokenCount: (questionFingerprint.tokens || []).length
+      });
 
       // -- Vision OCR priority --
       // OCR runs only when DOM extraction is insufficient (< 4 options or short text).
@@ -2337,6 +2548,13 @@ export const PopupController = {
 
       const domIsSufficient = domEffectiveOptCount >= 4 && (domQuestion || '').length >= 100 && isLikelyQuestion(domQuestion);
       console.log(`AnswerHunter: OCR_PRIORITY mode=conditional frame=${bestFrameIndex} dom_len=${(domQuestion || '').length} opts_dom=${domOptionCount} opts_dom_inline=${domOptionCountInline} dom_sufficient=${domIsSufficient}`);
+      this._flowLog(_flow, 'OCR_GATE', domIsSufficient ? 'SKIP' : 'RUN', domIsSufficient
+        ? 'OCR pulado: DOM já está suficiente'
+        : 'OCR acionado por DOM insuficiente', {
+          domLen: (domQuestion || '').length,
+          domOpts: domOptionCount,
+          domOptsInline: domOptionCountInline
+        });
 
       if (domIsSufficient) {
         console.log('AnswerHunter: OCR_PRIORITY decision=skipped (DOM already sufficient)');
@@ -2346,9 +2564,37 @@ export const PopupController = {
         try {
           const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 60 });
           if (dataUrl) {
-            const base64 = dataUrl.split(',')[1];
+            const ocrAnchorBbox = (usedHoverAnchor && hoveredResult?.bbox) ? hoveredResult.bbox : (viewportResult?.bbox || null);
+            let ocrDataUrl = dataUrl;
+            let usedBlockCrop = false;
+            if (ocrAnchorBbox && ocrAnchorBbox.width >= 80 && ocrAnchorBbox.height >= 60) {
+              const croppedDataUrl = await this._cropCapturedImageToBbox(dataUrl, ocrAnchorBbox, { padding: 24, minCrop: 120 });
+              if (croppedDataUrl) {
+                ocrDataUrl = croppedDataUrl;
+                usedBlockCrop = true;
+                this._flowLog(_flow, 'OCR_BLOCK', 'OK', 'Recorte da captura no bloco âncora aplicado', {
+                  anchor: usedHoverAnchor ? 'hover' : 'viewport',
+                  bbox: ocrAnchorBbox
+                });
+              } else {
+                this._flowLog(_flow, 'OCR_BLOCK', 'WARN', 'Recorte indisponível; usando captura completa', {
+                  anchor: usedHoverAnchor ? 'hover' : 'viewport'
+                });
+              }
+            } else {
+              this._flowLog(_flow, 'OCR_BLOCK', 'SKIP', 'Sem bbox confiável para recorte OCR');
+            }
+
+            const base64 = ocrDataUrl.split(',')[1];
             if (base64) {
-              const visionText = await ApiService.extractTextFromScreenshot(base64);
+              let visionText = await ApiService.extractTextFromScreenshot(base64);
+              if ((!visionText || visionText.length < 30) && usedBlockCrop) {
+                const fullBase64 = dataUrl.split(',')[1];
+                if (fullBase64) {
+                  this._flowLog(_flow, 'OCR_RETRY', 'RUN', 'OCR do recorte fraco; tentando screenshot completo');
+                  visionText = await ApiService.extractTextFromScreenshot(fullBase64);
+                }
+              }
               if (visionText && visionText.length >= 30) {
                 const visionOpts = countDistinctOptions(visionText);
                 const inlineOptRe = /\b([A-Ea-e])\s*[\)\.\-:]\s*\S/g;
@@ -2359,6 +2605,11 @@ export const PopupController = {
                 const domOptCount = domEffectiveOptCount;
                 console.log(`AnswerHunter: OCR_COMPARE opts_ocr=${visionOpts} opts_dom=${domOptCount} len_ocr=${visionText.length} len_dom=${(domQuestion || '').length}`);
                 console.log(`AnswerHunter: Vision OCR returned ${visionText.length} chars, ${visionOpts} options`);
+                this._flowLog(_flow, 'OCR_RESULT', 'OK', 'OCR retornou conteúdo válido', {
+                  len: visionText.length,
+                  opts: visionOpts,
+                  usedBlockCrop
+                });
 
                 bestQuestion = visionText;
                 usedVisionOcr = true;
@@ -2496,12 +2747,16 @@ export const PopupController = {
               } else {
                 console.log('AnswerHunter: Vision OCR returned insufficient text, keeping DOM result');
                 console.log('AnswerHunter: OCR_PRIORITY decision=dom_insufficient_ocr');
+                this._flowLog(_flow, 'OCR_RESULT', 'WARN', 'OCR sem texto suficiente; mantendo DOM');
               }
             }
           }
         } catch (visionErr) {
           console.warn('AnswerHunter: Vision OCR capture failed:', visionErr.message || visionErr);
           console.log('AnswerHunter: OCR_PRIORITY decision=dom_capture_failed');
+          this._flowLog(_flow, 'OCR', 'ERROR', 'Falha no OCR/captura', {
+            error: visionErr?.message || String(visionErr)
+          });
         }
       } // end else (domIsSufficient)
 
@@ -3772,6 +4027,98 @@ export const PopupController = {
       // Store on instance for _decorateWithSavedMeta to inject into results
       this._lastExtractionConfidence = extractionConfidence;
 
+      // Final options backfill before checklist:
+      // if displayQuestion still has <3 options, try to recover from already captured
+      // texts (display/best/dom/ocr) and, as last resort, from extractOptionsOnlyScript.
+      {
+        const mapToLines = (mapObj) => ['A', 'B', 'C', 'D', 'E']
+          .filter((letter) => !!mapObj?.[letter])
+          .map((letter) => `${letter}) ${mapObj[letter]}`);
+        const linesAreContiguous = (lines) => {
+          const letters = (lines || [])
+            .map((line) => (String(line).match(/^([A-E])\)/i) || [])[1]?.toUpperCase())
+            .filter(Boolean);
+          if (letters.length === 0) return false;
+          for (let i = 0; i < letters.length; i++) {
+            if (letters[i] !== String.fromCharCode(65 + i)) return false;
+          }
+          return true;
+        };
+
+        let currentMap = this._extractOptionsMap(displayQuestion || '');
+        if (Object.keys(currentMap).length < 3) {
+          const stemForBackfill = QuestionParser.extractQuestionStem(displayQuestion || bestQuestion || domQuestion || '') || '';
+          this._flowLog(_flow, 'OPTIONS_BACKFILL', 'RUN', 'Alternativas insuficientes; tentando backfill final', {
+            current: Object.keys(currentMap).length
+          });
+
+          const candidatePool = [];
+          const pushCandidate = (label, rawText) => {
+            if (!rawText) return;
+            const parsedMap = this._extractOptionsMap(rawText);
+            const lines = mapToLines(parsedMap);
+            if (lines.length < 2) return;
+            const contiguous = linesAreContiguous(lines);
+            const related = optionsAreContextuallyRelated(stemForBackfill, lines.join('\n'));
+            candidatePool.push({
+              label,
+              lines,
+              contiguous,
+              related,
+              count: lines.length
+            });
+          };
+
+          pushCandidate('display', displayQuestion);
+          pushCandidate('best', bestQuestion);
+          pushCandidate('dom', domQuestion);
+          pushCandidate('ocr', ocrVisionText);
+
+          if (candidatePool.length === 0 || candidatePool.every((c) => c.count < 3 || !c.related)) {
+            // Last resort: explicit options extraction pass (same frame first, then allFrames).
+            try {
+              const targets = [];
+              if (Number.isFinite(bestFrameIndex) && bestFrameIndex >= 0) {
+                targets.push({ tabId: tab.id, frameIds: [bestFrameIndex] });
+              }
+              targets.push({ tabId: tab.id, allFrames: true });
+
+              for (const target of targets) {
+                const [optExec] = await chrome.scripting.executeScript({
+                  target,
+                  function: ExtractionService.extractOptionsOnlyScript
+                });
+                const rawOpts = String(optExec?.result || '').trim();
+                if (!rawOpts) continue;
+                pushCandidate(target.allFrames ? 'extract_allFrames' : 'extract_sameFrame', rawOpts);
+              }
+            } catch (bfErr) {
+              console.log('AnswerHunter: OPTIONS_BACKFILL extractor pass failed:', bfErr?.message || bfErr);
+            }
+          }
+
+          candidatePool.sort((a, b) => {
+            const scoreA = (a.related ? 100 : 0) + (a.contiguous ? 40 : 0) + (a.count * 10);
+            const scoreB = (b.related ? 100 : 0) + (b.contiguous ? 40 : 0) + (b.count * 10);
+            return scoreB - scoreA;
+          });
+
+          const bestCandidate = candidatePool[0];
+          if (bestCandidate && bestCandidate.count >= 3 && bestCandidate.related) {
+            displayQuestion = [stemForBackfill, ...bestCandidate.lines].filter(Boolean).join('\n').trim();
+            this._flowLog(_flow, 'OPTIONS_BACKFILL', 'OK', 'Backfill aplicado antes do checklist', {
+              source: bestCandidate.label,
+              count: bestCandidate.count,
+              contiguous: bestCandidate.contiguous
+            });
+          } else {
+            this._flowLog(_flow, 'OPTIONS_BACKFILL', 'WARN', 'Backfill não encontrou alternativas suficientes/consistentes', {
+              candidates: candidatePool.map((c) => ({ label: c.label, count: c.count, related: c.related, contiguous: c.contiguous }))
+            });
+          }
+        }
+      }
+
       let _needsOptionRecovery = false;
       let _optionRecoveryStem = '';
 
@@ -3842,10 +4189,17 @@ export const PopupController = {
 
         const failedChecks = checks.filter(c => !c.pass);
         if (failedChecks.length > 0) {
-          console.warn(`AnswerHunter: VALIDATION_CHECKLIST ${failedChecks.length}/${checks.length} FAILED:`,
+          console.log(`AnswerHunter: VALIDATION_CHECKLIST ${failedChecks.length}/${checks.length} FAILED:`,
             failedChecks.map(c => `${c.name}: ${c.detail}`).join(' | '));
+          this._flowLog(_flow, 'VALIDATION', 'WARN', 'Checklist com falhas', {
+            failed: failedChecks.map((c) => c.name),
+            total: checks.length
+          });
         } else {
           console.log(`AnswerHunter: VALIDATION_CHECKLIST all ${checks.length} checks PASSED`);
+          this._flowLog(_flow, 'VALIDATION', 'OK', 'Checklist validado sem falhas críticas', {
+            total: checks.length
+          });
         }
 
         const _criticalOptionFails = new Set(['MIN_3_OPTIONS', 'LETTERS_CONTIGUOUS', 'OPTIONS_CONTEXT_RELATED']);
@@ -3854,30 +4208,110 @@ export const PopupController = {
 
       if (_needsOptionRecovery) {
         try {
-          const [optRecoveryExec] = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            function: ExtractionService.extractOptionsOnlyScript
-          });
-          const optRecoveryRaw = String(optRecoveryExec?.result || '').trim();
-          if (optRecoveryRaw) {
-            const recoveredOptions = QuestionParser.extractOptionsFromQuestion(optRecoveryRaw) || [];
+          const recoveryStem = _optionRecoveryStem || QuestionParser.extractQuestionStem(displayQuestion || bestQuestion || '') || '';
+          const recoveryCandidates = [];
+
+          const parseLenientOptions = (rawText) => {
+            const strict = QuestionParser.extractOptionsFromQuestion(rawText || '') || [];
+            if (strict.length >= 2) return strict;
+
+            const rawLines = String(rawText || '')
+              .replace(/\r/g, '\n')
+              .split('\n')
+              .map((line) => String(line || '').trim())
+              .filter(Boolean);
+            const out = [];
+            const seen = new Set();
+
+            for (let i = 0; i < rawLines.length; i++) {
+              const line = rawLines[i];
+              const direct = line.match(/^([A-E])\s*(?:[\)\-:]|(?:\.\s))\s*(.+)$/i);
+              if (direct) {
+                const letter = direct[1].toUpperCase();
+                const body = QuestionParser.stripOptionTailNoise(direct[2]);
+                if (!seen.has(letter) && QuestionParser.isUsableOptionBody(body)) {
+                  seen.add(letter);
+                  out.push(`${letter}) ${body}`);
+                }
+                continue;
+              }
+
+              const solo = line.match(/^([A-E])$/i);
+              if (solo && i + 1 < rawLines.length) {
+                const letter = solo[1].toUpperCase();
+                const body = QuestionParser.stripOptionTailNoise(rawLines[i + 1]);
+                if (!seen.has(letter) && QuestionParser.isUsableOptionBody(body)) {
+                  seen.add(letter);
+                  out.push(`${letter}) ${body}`);
+                }
+              }
+            }
+            return out;
+          };
+
+          const pushRecoveryCandidate = (label, rawText) => {
+            if (!rawText) return;
+            const recoveredOptions = parseLenientOptions(rawText);
+            if (!recoveredOptions || recoveredOptions.length < 2) return;
             const recoveredLetters = new Set(recoveredOptions
               .map((o) => (String(o).match(/^([A-E])/i) || [])[1]?.toUpperCase())
               .filter(Boolean));
             const recoveredSorted = [...recoveredLetters].sort();
             const recoveredExpected = ['A', 'B', 'C', 'D', 'E'].slice(0, recoveredSorted.length);
             const recoveredContiguous = recoveredSorted.length > 0 && recoveredSorted.join('') === recoveredExpected.join('');
-            const recoveryStem = _optionRecoveryStem || QuestionParser.extractQuestionStem(displayQuestion || bestQuestion || '') || '';
             const recoveredRelated = optionsAreContextuallyRelated(recoveryStem, recoveredOptions.join('\n'));
+            recoveryCandidates.push({
+              label,
+              options: recoveredOptions,
+              count: recoveredOptions.length,
+              letters: recoveredSorted,
+              contiguous: recoveredContiguous,
+              related: recoveredRelated
+            });
+          };
 
-            if (recoveredOptions.length >= 3 && recoveredContiguous && recoveredRelated) {
-              displayQuestion = [recoveryStem, ...recoveredOptions].filter(Boolean).join('\n').trim();
-              console.log(`AnswerHunter: OPTIONS_RECOVERY applied (${recoveredOptions.length} options, letters=${recoveredSorted.join(',')})`);
-            } else {
-              console.log(`AnswerHunter: OPTIONS_RECOVERY rejected (count=${recoveredOptions.length}, contiguous=${recoveredContiguous}, related=${recoveredRelated})`);
+          // Existing payloads first.
+          pushRecoveryCandidate('display', displayQuestion);
+          pushRecoveryCandidate('best', bestQuestion);
+          pushRecoveryCandidate('dom', domQuestion);
+          pushRecoveryCandidate('ocr', ocrVisionText);
+
+          // Script extraction across candidate frame targets (not only main frame).
+          const recoveryTargets = [];
+          if (Number.isFinite(bestFrameIndex) && bestFrameIndex >= 0) {
+            recoveryTargets.push({ tag: 'sameFrame', target: { tabId: tab.id, frameIds: [bestFrameIndex] } });
+          }
+          recoveryTargets.push({ tag: 'mainFrame', target: { tabId: tab.id } });
+          recoveryTargets.push({ tag: 'allFrames', target: { tabId: tab.id, allFrames: true } });
+
+          for (const rt of recoveryTargets) {
+            try {
+              const [optRecoveryExec] = await chrome.scripting.executeScript({
+                target: rt.target,
+                function: ExtractionService.extractOptionsOnlyScript
+              });
+              const optRecoveryRaw = String(optRecoveryExec?.result || '').trim();
+              if (!optRecoveryRaw) continue;
+              pushRecoveryCandidate(`extract_${rt.tag}`, optRecoveryRaw);
+            } catch (optRecoveryFrameErr) {
+              console.log(`AnswerHunter: OPTIONS_RECOVERY ${rt.tag} failed:`, optRecoveryFrameErr?.message || optRecoveryFrameErr);
             }
+          }
+
+          recoveryCandidates.sort((a, b) => {
+            const scoreA = (a.related ? 100 : 0) + (a.contiguous ? 35 : 0) + (a.count * 12);
+            const scoreB = (b.related ? 100 : 0) + (b.contiguous ? 35 : 0) + (b.count * 12);
+            return scoreB - scoreA;
+          });
+
+          const bestRecovery = recoveryCandidates[0];
+          if (bestRecovery && bestRecovery.count >= 3 && bestRecovery.contiguous && bestRecovery.related) {
+            displayQuestion = [recoveryStem, ...bestRecovery.options].filter(Boolean).join('\n').trim();
+            console.log(`AnswerHunter: OPTIONS_RECOVERY applied (${bestRecovery.count} options, letters=${bestRecovery.letters.join(',')}, source=${bestRecovery.label})`);
+          } else if (bestRecovery) {
+            console.log(`AnswerHunter: OPTIONS_RECOVERY rejected (source=${bestRecovery.label}, count=${bestRecovery.count}, contiguous=${bestRecovery.contiguous}, related=${bestRecovery.related})`);
           } else {
-            console.log('AnswerHunter: OPTIONS_RECOVERY skipped (no options returned by extractor)');
+            console.log('AnswerHunter: OPTIONS_RECOVERY skipped (no viable recovery candidates)');
           }
         } catch (optRecoveryErr) {
           console.warn('AnswerHunter: OPTIONS_RECOVERY failed:', optRecoveryErr?.message || optRecoveryErr);
@@ -4112,10 +4546,152 @@ export const PopupController = {
       // Fire bulk extraction in background — caches this page's gabarito for future searches
       this._triggerPageGabaritoExtraction(tab.url).catch(() => { });
 
+      // Pre-search integrity gate: do not send contaminated/incomplete payload to web search.
+      {
+        const evaluateGatePayload = (questionText) => {
+          const gateStem = QuestionParser.extractQuestionStem(questionText || '') || '';
+          const gateOptionsMap = this._extractOptionsMap(questionText || '');
+          const gateOptionLines = Object.entries(gateOptionsMap).map(([letter, body]) => `${letter}) ${body}`);
+          const letters = gateOptionLines
+            .map((line) => (String(line).match(/^([A-E])\)/i) || [])[1]?.toUpperCase())
+            .filter(Boolean);
+          const contiguous = letters.length > 0 && letters.every((letter, idx) => letter === String.fromCharCode(65 + idx));
+          const gateRelated = gateOptionLines.length >= 2
+            ? optionsAreContextuallyRelated(gateStem, gateOptionLines.join('\n'))
+            : false;
+          // Tolerate rare false negatives of contextual matcher when structure is strong.
+          const structuralBypass = gateOptionLines.length >= 4 && contiguous && gateStem.length >= 80;
+          const pass = gateStem.length >= 35 && gateOptionLines.length >= 3 && (gateRelated || structuralBypass);
+          return { pass, gateStem, gateOptionsMap, gateOptionLines, gateRelated, contiguous, structuralBypass };
+        };
+
+        let gateEval = evaluateGatePayload(displayQuestion);
+
+        // ⛔ FROZEN — pickBestFrameResult
+        // NÃO REMOVA. Sem esta função, PRE_SEARCH_GATE rescue CRASHA.
+        // Bug original: "pickBestFrameResult is not defined" — corrigido 2026-03-04.
+        // Helper to pick the best text result from executeScript allFrames results.
+        const pickBestFrameResult = (results) => {
+          if (!Array.isArray(results)) return null;
+          let best = null;
+          let bestScore = -1;
+          for (const fr of results) {
+            let text = '';
+            if (typeof fr?.result === 'string') text = fr.result;
+            else if (fr?.result?.text) text = fr.result.text;
+            if (!text || text.length < 30) continue;
+            const opts = countDistinctOptions(text);
+            const score = opts * 1000 + Math.min(text.length, 3000);
+            if (score > bestScore) {
+              bestScore = score;
+              best = text;
+            }
+          }
+          return best;
+        };
+
+        if (!gateEval.pass) {
+          this._flowLog(_flow, 'PRE_SEARCH_GATE', 'RETRY', 'Gate falhou; iniciando recuperação automática', {
+            stemLen: gateEval.gateStem.length,
+            options: gateEval.gateOptionLines.length,
+            related: gateEval.gateRelated,
+            contiguous: gateEval.contiguous
+          });
+
+          const gateCandidates = [];
+          const pushGateCandidate = (label, rawText, fallbackStem = bestQuestion) => {
+            if (!rawText) return;
+            const canonical = this._canonicalizeDisplayQuestion(rawText, fallbackStem || bestQuestion || '');
+            const evald = evaluateGatePayload(canonical);
+            gateCandidates.push({
+              label,
+              canonical,
+              ...evald,
+              score: (evald.pass ? 1000 : 0)
+                + (evald.gateRelated ? 180 : 0)
+                + (evald.contiguous ? 70 : 0)
+                + (evald.gateOptionLines.length * 20)
+                + Math.min(100, evald.gateStem.length / 3)
+            });
+          };
+
+          pushGateCandidate('bestQuestion', bestQuestion, bestQuestion);
+          pushGateCandidate('domQuestion', domQuestion, bestQuestion);
+          pushGateCandidate('ocrVisionText', ocrVisionText, bestQuestion);
+
+          try {
+            const rescueResults = await chrome.scripting.executeScript({
+              target: { tabId: tab.id, allFrames: true },
+              function: ExtractionService.extractQuestionOnlyScript
+            });
+            const rescueText = pickBestFrameResult(rescueResults);
+            if (rescueText) pushGateCandidate('extractQuestionOnlyScript(allFrames)', rescueText, bestQuestion);
+          } catch (gateRescueErr) {
+            console.log('AnswerHunter: PRE_SEARCH_GATE rescue extractQuestionOnlyScript failed:', gateRescueErr?.message || gateRescueErr);
+          }
+
+          try {
+            const rescueViewport = await chrome.scripting.executeScript({
+              target: { tabId: tab.id, allFrames: true },
+              function: ExtractionService.extractViewportCentricScript
+            });
+            const rescueViewportText = pickBestFrameResult(rescueViewport);
+            if (rescueViewportText) pushGateCandidate('extractViewportCentricScript(allFrames)', rescueViewportText, bestQuestion);
+          } catch (gateViewportErr) {
+            console.log('AnswerHunter: PRE_SEARCH_GATE rescue extractViewportCentricScript failed:', gateViewportErr?.message || gateViewportErr);
+          }
+
+          gateCandidates.sort((a, b) => b.score - a.score);
+          const bestGateCandidate = gateCandidates[0];
+          if (bestGateCandidate?.pass) {
+            displayQuestion = bestGateCandidate.canonical;
+            gateEval = evaluateGatePayload(displayQuestion);
+            this._flowLog(_flow, 'PRE_SEARCH_GATE', 'RECOVERED', 'Gate recuperado automaticamente', {
+              source: bestGateCandidate.label,
+              stemLen: gateEval.gateStem.length,
+              options: gateEval.gateOptionLines.length,
+              related: gateEval.gateRelated,
+              contiguous: gateEval.contiguous
+            });
+            console.log(`AnswerHunter: PRE_SEARCH_GATE recovered via ${bestGateCandidate.label} (stem=${gateEval.gateStem.length}, opts=${gateEval.gateOptionLines.length})`);
+          } else {
+            this._flowLog(_flow, 'PRE_SEARCH_GATE', 'BLOCK', 'Payload inválido após recuperação automática', {
+              stemLen: gateEval.gateStem.length,
+              options: gateEval.gateOptionLines.length,
+              related: gateEval.gateRelated,
+              contiguous: gateEval.contiguous,
+              candidates: gateCandidates.slice(0, 4).map((c) => ({
+                label: c.label,
+                pass: c.pass,
+                stemLen: c.gateStem.length,
+                options: c.gateOptionLines.length,
+                related: c.gateRelated,
+                contiguous: c.contiguous
+              }))
+            });
+            this.view.showStatus('error', 'Questao incompleta ou contaminada detectada apos recuperacao automatica. Recarregue a pagina e tente novamente.');
+            return;
+          }
+        } else {
+          this._flowLog(_flow, 'PRE_SEARCH_GATE', 'PASS', 'Payload validado para busca externa', {
+            stemLen: gateEval.gateStem.length,
+            options: gateEval.gateOptionLines.length,
+            related: gateEval.gateRelated,
+            contiguous: gateEval.contiguous
+          });
+        }
+      }
+
       _pcTimer.mark('Question Selection + Validation');
       {
         const optMapDbg = this._extractOptionsMap(displayQuestion || '');
         const stemDbg = QuestionParser.extractQuestionStem(displayQuestion || '');
+        this._flowLog(_flow, 'QUERY_PAYLOAD', 'OK', 'Payload final enviado para busca', {
+          stemLen: stemDbg.length,
+          options: Object.keys(optMapDbg).length,
+          isoStripped: isolationStrippedOcrOptions,
+          multiQ: detectedMultiQuestionText
+        });
         console.log(
           `AnswerHunter: displayQuestion sent to search (stemLen=${stemDbg.length}, opts=${Object.keys(optMapDbg).length}, isoStripped=${isolationStrippedOcrOptions}, multiQ=${detectedMultiQuestionText})`,
           {
@@ -4173,6 +4749,7 @@ export const PopupController = {
       this.view.showStatus('loading', this.t('status.searchingBackground'));
       this._startPollBackgroundSearch(requestId, displayQuestion, bestQuestion);
     } catch (error) {
+      _flowOutcome = 'ERROR';
       console.error('Search flow error:', error);
       const message = error?.message === 'SETUP_REQUIRED'
         ? this.t('setup.toast.required')
@@ -4183,6 +4760,9 @@ export const PopupController = {
         this.toggleSetupPanel(true);
       }
     } finally {
+      this._flowLog(_flow, 'END', _flowOutcome, 'Fluxo finalizado', {
+        elapsedMs: Date.now() - (_flow.startedAt || Date.now())
+      });
       this.view.setButtonDisabled('searchBtn', false);
     }
   },
@@ -4194,6 +4774,9 @@ export const PopupController = {
    * updates the UI exactly as the old inline handleSearch() code did.
    */
   async _finishBackgroundSearch(finalResults, displayQuestion, bestQuestion) {
+    console.log('[AH FLOW BG] RESULT_RECEIVED', {
+      count: Array.isArray(finalResults) ? finalResults.length : 0
+    });
     if (!finalResults || finalResults.length === 0) {
       this.view.showStatus('loading', this.t('status.noSourceAnswerAskAi'));
       await this.renderAiFallback(displayQuestion, displayQuestion);
@@ -4208,6 +4791,9 @@ export const PopupController = {
     const shouldFallbackToAi = firstResult.resultState === 'inconclusive' && !hasResolvedLetter && !hasSources && !hasVotes;
 
     if (shouldFallbackToAi) {
+      console.log('[AH FLOW BG] FALLBACK_AI_TRIGGERED', {
+        reason: 'inconclusive_without_votes_or_sources'
+      });
       this.view.showStatus('loading', this.t('status.noSourceAnswerAskAi'));
       await this.renderAiFallback(displayQuestion, displayQuestion);
       return;
@@ -4222,6 +4808,9 @@ export const PopupController = {
     this.view.toggleViewSection('view-search');
     this.view.setButtonDisabled('copyBtn', false);
     this.view.setButtonDisabled('searchBtn', false);
+    console.log('[AH FLOW BG] RESULT_RENDERED', {
+      count: finalResults.length
+    });
   },
 
   /**

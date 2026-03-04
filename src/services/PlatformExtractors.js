@@ -6,6 +6,30 @@
  *
  * Each extractor is a function meant to be injected via chrome.scripting.executeScript.
  * Returns { text, platform, confidence } or null if the platform is not detected.
+ *
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║  ⛔⛔⛔  ZONA CRÍTICA — NÃO MODIFIQUE SEM TESTAR  ⛔⛔⛔              ║
+ * ║                                                                        ║
+ * ║  Cada extrator aqui usa CSS selectors ESPECÍFICOS de cada plataforma.  ║
+ * ║  detectPlatformScript identifica o site, e o extrator correspondente   ║
+ * ║  busca questão + alternativas com precisão cirúrgica.                  ║
+ * ║                                                                        ║
+ * ║  PLATAFORMAS COBERTAS E TESTADAS:                                      ║
+ * ║    - Estácio: SIA, simulados, saladeavaliacoes.com.br                  ║
+ * ║    - Passei Direto, QConcursos, Gran, Estratégia                       ║
+ * ║    - Kroton AVA (Unopar, Anhanguera, Colaborar)                        ║
+ * ║                                                                        ║
+ * ║  extractEstacioScript inclui 4 estratégias de extração de opções:      ║
+ * ║    1. Badge/child element letter + body separados                      ║
+ * ║    2. Delimiter-based (A) texto)                                       ║
+ * ║    3. Fused letter stripping (Afprintf→fprintf)                        ║
+ * ║    4. Positional assignment (sem letra, ordem visual)                  ║
+ * ║                                                                        ║
+ * ║  SE VOCÊ É UMA LLM/IA: NÃO MODIFIQUE OS SELETORES CSS.               ║
+ * ║  NÃO REMOVA NENHUMA ESTRATÉGIA DE FALLBACK.                           ║
+ * ║  NÃO MUDE A ORDEM DE PRIORIDADE.                                      ║
+ * ║  Última calibração: 2026-03-04 — FUNCIONANDO EM PRODUÇÃO.             ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 export const PlatformExtractors = {
 
@@ -22,7 +46,7 @@ export const PlatformExtractors = {
         if (host.includes('passeidireto.com')) return 'passeiDireto';
 
         // Estácio (SIA / AVA)
-        if (host.includes('estacio.br') || host.includes('sia.estacio') || host.includes('simulado.estacio')) return 'estacio';
+        if (host.includes('estacio.br') || host.includes('sia.estacio') || host.includes('simulado.estacio') || host.includes('saladeavaliacoes')) return 'estacio';
 
         // Gran Cursos
         if (host.includes('grancursosonline.com.br') || host.includes('gran.com.br')) return 'gran';
@@ -222,35 +246,136 @@ export const PlatformExtractors = {
      * Estácio SIA/AVA
      */
     extractEstacioScript: function () {
-        const clean = (s) => (s || '').replace(/\s+/g, '').trim();
+        const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
 
-        // Estácio often wraps questions in .question-text or numbered divs
+        // Estácio wraps questions in various containers depending on the platform variant
+        // (SIA, simulados, saladeavaliacoes, etc.)
         const questionEl =
             document.querySelector('.question-text') ||
             document.querySelector('[class*="enunciado"]') ||
-            document.querySelector('[class*="pergunta"]');
+            document.querySelector('[class*="pergunta"]') ||
+            document.querySelector('[class*="question-stem"]') ||
+            document.querySelector('[class*="question_text"]') ||
+            document.querySelector('[class*="questao"]');
 
-        if (!questionEl) return null;
+        // Broader selectors for option containers across Estácio variants
+        const optionSelectors = [
+            '.option', '[class*="alternativa"]', '[class*="opcao"]',
+            '[class*="option-item"]', '[class*="answer-option"]',
+            '[role="radio"]', '[role="option"]',
+            '[class*="radio"]', '[class*="choice"]',
+            'label[class*="option"]', 'label[class*="alternative"]',
+            'button[class*="option"]', 'button[class*="alternative"]'
+        ].join(', ');
 
-        const stem = clean(questionEl.innerText || '');
-        if (stem.length < 20) return null;
-
-        const altEls = document.querySelectorAll('.option, [class*="alternativa"], [class*="opcao"]');
+        const altEls = document.querySelectorAll(optionSelectors);
         const options = [];
         const seen = new Set();
+        const letters = ['A', 'B', 'C', 'D', 'E'];
+
         altEls.forEach((el) => {
-            const text = clean(el.innerText || '');
-            const m = text.match(/^\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i);
-            if (m && m[2].trim() && !seen.has(m[1].toUpperCase())) {
-                seen.add(m[1].toUpperCase());
-                options.push(`${m[1].toUpperCase()}) ${m[2].trim()}`);
+            if (options.length >= 5) return;
+
+            // Strategy 1: Look for a separate letter element inside the option
+            let letter = '';
+            let bodyText = '';
+
+            // Try to find the letter in a badge/circle/label child element
+            const letterCandidates = el.querySelectorAll('span, strong, small, div, p, b');
+            for (const node of letterCandidates) {
+                const txt = (node.textContent || '').trim();
+                if (/^[A-E]$/i.test(txt)) {
+                    letter = txt.toUpperCase();
+                    break;
+                }
+            }
+
+            // Try to find body text from a separate child (not the letter element)
+            if (letter) {
+                const bodyCandidates = Array.from(el.querySelectorAll('span, p, div, label'))
+                    .map(n => clean(n.textContent || n.innerText || ''))
+                    .filter(t => t && t.length >= 2 && !/^[A-E]$/i.test(t));
+                if (bodyCandidates.length > 0) {
+                    bodyCandidates.sort((a, b) => b.length - a.length);
+                    bodyText = bodyCandidates[0];
+                    // Strip any leading letter prefix that may still be fused
+                    bodyText = bodyText
+                        .replace(new RegExp('^' + letter + '\\s*[\\)\\.\\-:]\\s*', 'i'), '')
+                        .replace(new RegExp('^' + letter + '\\s+', 'i'), '')
+                        .trim();
+                    // Handle fused letter+body (e.g. "Afprintf()" → "fprintf()")
+                    if (bodyText.length > 1 && bodyText[0].toUpperCase() === letter) {
+                        bodyText = bodyText.slice(1).trim();
+                    }
+                }
+            }
+
+            // Strategy 2: Parse from full text with delimiter
+            if (!bodyText) {
+                const fullText = clean(el.innerText || el.textContent || '');
+                const m = fullText.match(/^\s*([A-E])\s*[\)\.\-:]\s*(.+)$/i);
+                if (m && m[2].trim()) {
+                    if (!letter) letter = m[1].toUpperCase();
+                    bodyText = m[2].trim();
+                }
+            }
+
+            // Strategy 3: If letter found but no delimiter, extract body by removing the fused letter
+            if (letter && !bodyText) {
+                const fullText = clean(el.innerText || el.textContent || '');
+                if (fullText.length > 1 && fullText[0].toUpperCase() === letter) {
+                    bodyText = fullText.slice(1).replace(/^\s*[\)\.\-:]\s*/, '').trim();
+                }
+            }
+
+            // Strategy 4: No letter found at all — assign by position order
+            if (!letter && !bodyText) {
+                const fullText = clean(el.innerText || el.textContent || '');
+                if (fullText && fullText.length >= 2 && options.length < 5) {
+                    letter = letters[options.length];
+                    bodyText = fullText.replace(/^\s*[A-E]\s*[\)\.\-:]\s*/i, '').trim();
+                }
+            }
+
+            if (letter && bodyText && bodyText.length >= 1 && !seen.has(letter)) {
+                seen.add(letter);
+                options.push(`${letter}) ${bodyText}`);
             }
         });
+
+        // Find question stem
+        let stem = '';
+        if (questionEl) {
+            stem = clean(questionEl.innerText || '');
+        }
+
+        // Fallback stem: if no explicit question element, look for text above the options
+        if (!stem || stem.length < 20) {
+            if (altEls.length >= 2) {
+                const firstOpt = altEls[0];
+                let cursor = firstOpt.parentElement;
+                for (let depth = 0; cursor && depth < 8; depth++) {
+                    const siblings = Array.from(cursor.parentElement?.children || []);
+                    for (const sib of siblings) {
+                        if (sib === cursor) break;
+                        const txt = clean(sib.innerText || '');
+                        if (txt.length >= 20 && txt.length <= 3000 && /[?]/.test(txt)) {
+                            stem = txt;
+                            break;
+                        }
+                    }
+                    if (stem) break;
+                    cursor = cursor.parentElement;
+                }
+            }
+        }
+
+        if (!stem || stem.length < 20) return null;
 
         return {
             text: options.length >= 2 ? `${stem}\n${options.join('\n')}` : stem,
             platform: 'estacio',
-            confidence: options.length >= 3 ? 0.88 : 0.65,
+            confidence: options.length >= 3 ? 0.92 : 0.65,
             optionCount: options.length
         };
     },

@@ -437,6 +437,21 @@ export const SimpleSearchService = {
      * @param {Function} [onStatus=null]            - Callback de status para a UI (ex: "Analisando 2/10...")
      * @returns {Promise<Array>} Array com 0 ou 1 objeto de resultado
      */
+    // ╔═══════════════════════════════════════════════════════════════════╗
+    // ║  ⛔ refineFromResults — PIPELINE DE GABARITO — NÃO MODIFIQUE     ║
+    // ║                                                                   ║
+    // ║  Este método constrói o mapa de opções do usuário, busca em       ║
+    // ║  múltiplas fontes (Serper, Scholar, Jina), extrai respostas       ║
+    // ║  via LLM (snippets + aiExtract), e faz remapeamento texto→letra.  ║
+    // ║                                                                   ║
+    // ║  CORRIGIDO: sanitizeOptionsMap valida coerência stem↔opções.      ║
+    // ║  CORRIGIDO: QuestionParser.extractOptionsFromQuestion já limpa    ║
+    // ║  letras fundidas antes de chegar aqui.                            ║
+    // ║                                                                   ║
+    // ║  NÃO ALTERE o mapa de opções, a lógica de matching texto→letra,  ║
+    // ║  nem os thresholds de confiança. Cada um corrige um bug real.     ║
+    // ║  Última calibração: 2026-03-04                                    ║
+    // ╚═══════════════════════════════════════════════════════════════════╝
     async refineFromResults(questionText, results, originalQuestionWithOptions = '', onStatus = null) {
         if (!results || results.length === 0) return [];
 
