@@ -258,7 +258,7 @@ function _extractWithFallbackStrategies(rawText) {
 // ══════════════════════════════════════════════════════════════════════════════
 // C) DOMAIN EXTRACTION CACHE — lembra qual método funcionou por domínio
 // ══════════════════════════════════════════════════════════════════════════════
-const _domainMethodCache = new Map(); // hostHint → { method: 'jina'|'native'|'bgtab', selector?: string, hits: number, lastUsed: number }
+const _domainMethodCache = new Map(); // hostHint → { method: 'jina'|'firecrawl'|'native'|'wayback'|'bgtab', selector?: string, hits: number, lastUsed: number }
 
 /**
  * Registra que um método de extração funcionou para um domínio.
@@ -357,6 +357,12 @@ async function _processSingleSource(result, idx, total, questionForInference, or
                     if (pageText) { usedMethod = 'native'; console.log(`[SimpleSearch] [OK] NativeFetch (cached): ${pageText.length} chars`); }
                 }
             } catch (_) { /* silencioso */ }
+        } else if (cachedMethod === 'firecrawl') {
+            pageText = await ApiService.fetchViaFirecrawl(link);
+            if (pageText) { usedMethod = 'firecrawl'; }
+        } else if (cachedMethod === 'wayback') {
+            pageText = await ApiService.fetchViaWayback(link);
+            if (pageText) { usedMethod = 'wayback'; }
         } else {
             pageText = await ApiService.fetchViaJina(link);
             if (pageText) { usedMethod = 'jina'; }
@@ -377,27 +383,40 @@ async function _processSingleSource(result, idx, total, questionForInference, or
             } catch (e) { console.warn(`[SimpleSearch] BackgroundTab erro:`, e?.message); }
         }
 
-        // Jina → NativeFetch (SEMPRE tenta quando não tem texto — removido guard strategy!=='render')
+        // Jina → Firecrawl → NativeFetch → Wayback (cadeia de fallbacks server-side)
         if (!pageText && !cancel.cancelled) {
             pageText = await ApiService.fetchViaJina(link);
             if (pageText) usedMethod = 'jina';
+
+            // Firecrawl: retorna markdown limpo, renderiza JS (free 500/mês)
+            if (!pageText && !cancel.cancelled) {
+                pageText = await ApiService.fetchViaFirecrawl(link);
+                if (pageText) { usedMethod = 'firecrawl'; console.log(`[SimpleSearch] [OK] Firecrawl: ${pageText.length} chars`); }
+            }
 
             if (!pageText && !cancel.cancelled) {
                 try {
                     const nativeAvail = await NativeFetchBridgeService.isAvailable();
                     if (nativeAvail) {
-                        console.log(`[SimpleSearch] [RETRY] Jina falhou → tentando NativeFetch (TLS bypass)...`);
+                        console.log(`[SimpleSearch] [RETRY] Jina/Firecrawl falhou → tentando NativeFetch (TLS bypass)...`);
                         pageText = await NativeFetchBridgeService.fetchText(link);
                         if (pageText) { usedMethod = 'native'; console.log(`[SimpleSearch] [OK] NativeFetch: ${pageText.length} chars`); }
                     }
                 } catch (_) { /* binário não instalado ou erro — silencioso */ }
+            }
+
+            // Wayback Machine: versão arquivada (grátis, sem limite)
+            if (!pageText && !cancel.cancelled) {
+                console.log(`[SimpleSearch] [RETRY] Server fetch falhou → tentando Wayback Machine...`);
+                pageText = await ApiService.fetchViaWayback(link);
+                if (pageText) { usedMethod = 'wayback'; console.log(`[SimpleSearch] [OK] Wayback: ${pageText.length} chars`); }
             }
         }
 
         // BackgroundTab fallback final (quando server fetch falhou, BgTab está disponível, e não tentamos antes)
         // Tenta para QUALQUER domínio — extração genérica (textContent) funciona em qualquer site.
         if (!pageText && !cancel.cancelled && allowBgTab && !useRenderFirst) {
-            console.log(`[SimpleSearch] [RETRY] Métodos server falharam → tentando BackgroundTab...`);
+            console.log(`[SimpleSearch] [RETRY] Todos métodos server falharam → tentando BackgroundTab...`);
             try {
                 pageText = await BackgroundTabExtractorService.extractFromUrl(link, { timeoutMs: 15000 });
                 if (pageText) { usedMethod = 'bgtab'; }

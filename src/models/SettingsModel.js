@@ -25,6 +25,7 @@ export const SettingsModel = {
         openrouterModelSmart: 'deepseek/deepseek-r1:free',
         chatgptModel: 'gpt-5.2',
         copilotModel: 'claude-sonnet-4.6',
+        firecrawlApiKey: '',
         primaryProvider: 'groq',
         setupCompleted: false,
         requiredProviders: {

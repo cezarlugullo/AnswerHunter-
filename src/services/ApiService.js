@@ -1073,6 +1073,136 @@ export const ApiService = {
         }
     },
 
+    /**
+     * Fetch page text via Jina Reader API (free, returns clean markdown).
+     * @param {string} url
+     * @returns {Promise<string|null>} Clean text or null on failure
+     */
+    async fetchViaJina(url) {
+        if (!url) return null;
+        const mirrorUrl = this._makeJinaMirrorUrl(url);
+        if (!mirrorUrl) return null;
+        try {
+            const result = await this._fetchTextWithTimeout(mirrorUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/plain,text/html;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Cache-Control': 'no-cache'
+                },
+                mode: 'cors',
+                credentials: 'omit'
+            }, 8000);
+            if (result.ok && result.text && result.text.length > 150) {
+                if (this._looksBlockedLikeContent(result.text, url)) return null;
+                const cleaned = result.text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 15000);
+                console.log(`[AH] Jina OK: ${cleaned.length} chars from ${url.slice(0, 60)}`);
+                return cleaned;
+            }
+        } catch (_) { /* silent */ }
+        return null;
+    },
+
+    /**
+     * Fetch page text via Firecrawl API (returns clean markdown, handles JS rendering).
+     * Free tier: 500 pages/month, 10 scrapes/min.
+     * @param {string} url
+     * @returns {Promise<string|null>} Clean markdown text or null
+     */
+    async fetchViaFirecrawl(url) {
+        if (!url) return null;
+        const settings = await this._getSettings();
+        const apiKey = settings.firecrawlApiKey;
+        if (!apiKey) return null;
+        try {
+            const result = await this._fetchTextWithTimeout('https://api.firecrawl.dev/v1/scrape', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    url,
+                    formats: ['markdown'],
+                    onlyMainContent: true,
+                    timeout: 10000
+                }),
+                mode: 'cors',
+                credentials: 'omit'
+            }, 12000);
+            if (result.ok && result.text) {
+                const parsed = JSON.parse(result.text);
+                const md = parsed?.data?.markdown || '';
+                if (md.length > 150) {
+                    const cleaned = md.slice(0, 15000);
+                    console.log(`[AH] Firecrawl OK: ${cleaned.length} chars from ${url.slice(0, 60)}`);
+                    return cleaned;
+                }
+            }
+        } catch (e) {
+            console.warn(`[AH] Firecrawl error:`, e?.message);
+        }
+        return null;
+    },
+
+    /**
+     * Fetch page text via Wayback Machine (Internet Archive).
+     * No API key needed. Falls back to archived version of blocked/paywall pages.
+     * @param {string} url
+     * @returns {Promise<string|null>} Archived page text or null
+     */
+    async fetchViaWayback(url) {
+        if (!url) return null;
+        try {
+            // Check if a snapshot exists via the Availability API
+            const checkResult = await this._fetchTextWithTimeout(
+                `https://archive.org/wayback/available?url=${encodeURIComponent(url)}`,
+                { method: 'GET', mode: 'cors', credentials: 'omit' },
+                5000
+            );
+            if (!checkResult.ok || !checkResult.text) return null;
+            const data = JSON.parse(checkResult.text);
+            const snapshot = data?.archived_snapshots?.closest;
+            if (!snapshot?.available || !snapshot?.url) return null;
+
+            // Fetch the archived page
+            const archiveUrl = snapshot.url.replace(/^http:/, 'https:');
+            const pageResult = await this._fetchTextWithTimeout(archiveUrl, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8',
+                    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
+                },
+                mode: 'cors',
+                credentials: 'omit'
+            }, 8000);
+            if (!pageResult.ok || !pageResult.text || pageResult.text.length < 200) return null;
+
+            // Parse HTML to extract text
+            const html = pageResult.text.slice(0, 1500000);
+            const sanitized = html
+                .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+                .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+                .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ')
+                .replace(/<nav\b[\s\S]*?<\/nav>/gi, ' ')
+                .replace(/<header\b[\s\S]*?<\/header>/gi, ' ')
+                .replace(/<footer\b[\s\S]*?<\/footer>/gi, ' ');
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(sanitized, 'text/html');
+            // Remove Wayback Machine toolbar
+            doc.querySelectorAll('#wm-ipp-base, #wm-ipp, .wb-autocomplete-suggestions, #donato, #playback').forEach(el => el.remove());
+            doc.querySelectorAll('style, nav, header, footer, aside, [role="navigation"], [role="banner"]').forEach(el => el.remove());
+            const text = (doc.body?.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 15000);
+            if (text.length > 150) {
+                console.log(`[AH] Wayback OK: ${text.length} chars from ${url.slice(0, 60)} (snapshot: ${snapshot.timestamp})`);
+                return text;
+            }
+        } catch (e) {
+            console.warn(`[AH] Wayback error:`, e?.message);
+        }
+        return null;
+    },
+
     _looksBlockedLikeContent(raw = '', targetUrl = '') {
         const text = String(raw || '').toLowerCase();
         if (!text) return false;
