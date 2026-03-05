@@ -42,7 +42,7 @@ export const CopilotApiAdapter = {
             stream: false
         };
 
-        const timeoutMs = opts.timeoutMs ?? 60000;
+        const timeoutMs = opts.timeoutMs ?? 20000;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -75,8 +75,10 @@ export const CopilotApiAdapter = {
                 console.warn(`CopilotApi: chatCompletion timeout (${timeoutMs}ms) — model=${model}`);
                 return { error: true, status: 408, text: 'timeout' };
             }
+            // Network errors: Failed to fetch, etc
+            const errMsg = err?.message || String(err);
             console.error('CopilotApi: chatCompletion error:', err);
-            return null;
+            return { error: true, status: 0, text: `Network error: ${errMsg}` };
         }
     },
 
@@ -92,6 +94,7 @@ export const CopilotApiAdapter = {
     async streamChatCompletion(copilotToken, apiUrl, messages, opts = {}) {
         const model = opts.model || 'gpt-4o';
         const url = `${apiUrl || this.DEFAULT_API_URL}/chat/completions`;
+        const timeoutMs = opts.timeoutMs ?? 120000; // 2min for streaming
 
         const body = {
             model,
@@ -100,6 +103,9 @@ export const CopilotApiAdapter = {
             max_tokens: opts.max_tokens ?? 2048,
             stream: true
         };
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
 
         try {
             const response = await fetch(url, {
@@ -113,10 +119,12 @@ export const CopilotApiAdapter = {
                     'Openai-Intent': 'conversation-panel',
                     'User-Agent': 'GithubCopilot/1.300.0'
                 },
-                body: JSON.stringify(body)
+                body: JSON.stringify(body),
+                signal: controller.signal
             });
 
             if (!response.ok) {
+                clearTimeout(timer);
                 return { error: true, ...(await logHttpError(response, 'CopilotApi: streamChatCompletion')) };
             }
 
@@ -147,8 +155,14 @@ export const CopilotApiAdapter = {
                 }
             }
 
+            clearTimeout(timer);
             return fullText || null;
         } catch (err) {
+            clearTimeout(timer);
+            if (err.name === 'AbortError') {
+                console.warn(`CopilotApi: streamChatCompletion timeout (${timeoutMs}ms) — model=${model}`);
+                return null;
+            }
             console.error('CopilotApi: streamChatCompletion error:', err);
             return null;
         }

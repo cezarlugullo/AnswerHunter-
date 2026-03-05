@@ -577,6 +577,8 @@ export const ApiService = {
             console.warn(`AnswerHunter: Copilot temporarily unavailable (~${waitMin}min left)`);
             return null;
         }
+        // Fast-fail if network is flaky (catches concurrent calls that started before streak threshold)
+        if (this._copilotNetworkFailStreak >= 2) return null;
 
         // Check if user is authenticated
         const loggedIn = await CopilotAuthService.isLoggedIn();
@@ -590,6 +592,9 @@ export const ApiService = {
         if (!copilotToken) return null;
 
         const apiUrl = await CopilotAuthService.getApiUrl();
+
+        // Re-check streak after async auth (concurrent calls may have incremented it)
+        if (this._copilotNetworkFailStreak >= 2) return null;
 
         try {
             const result = await CopilotApiAdapter.chatCompletion(
