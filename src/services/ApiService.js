@@ -1579,9 +1579,9 @@ Analise o texto passo a passo e responda no formato acima:`;
         }
 
         // Auto-disable non-primary providers that consistently return short/garbage responses.
-        // After 2 consecutive short responses, the provider is skipped for this session.
-        // This prevents ChatGPT Codex (always 25 chars) from being called ~12x per question.
-        const DISABLE_THRESHOLD = 2;
+        // After 1 consecutive short response, the provider is skipped for this session.
+        // This prevents ChatGPT Codex (always 25 chars) from being called repeatedly.
+        const DISABLE_THRESHOLD = 1;
         const activeChain = fallbackChain.filter(p => {
             const streak = this._providerShortStreak[p.name] || 0;
             if (streak >= DISABLE_THRESHOLD && p.name !== primary) {
@@ -1621,6 +1621,67 @@ Analise o texto passo a passo e responda no formato acima:`;
 
             // Provider returned null (error/quota) or explicit NAO_ENCONTRADO — try next
             console.log(`  🔬 [aiExtract] ${provider.name} failed or NAO_ENCONTRADO, trying next fallback...`);
+        }
+
+        // Last-resort retry: all providers returned NAO_ENCONTRADO or failed.
+        // Try the primary provider once more with a simpler "gabarito scanner" prompt —
+        // less strict than the main prompt (no question-matching requirement), just looks
+        // for any explicit answer marker (Resposta/Gabarito/letter pattern) in the text.
+        if ((!content || content.length < 40) && truncatedPage.length > 200) {
+            const simplifiedPrompt = `Leia o TEXTO abaixo e procure por qualquer marcador de resposta: "Resposta: X", "Gabarito: X", "Letra X", "alternativa X", "a resposta é X", "resposta correta é X" ou padrão similar.
+
+QUESTÃO (apenas para referência de contexto):
+${truncatedQuestion.substring(0, 400)}
+
+TEXTO:
+${truncatedPage}
+
+Se encontrar um marcador de resposta, responda:
+RESULTADO: ENCONTRADO
+EVIDÊNCIA: [trecho exato com o marcador]
+RACIOCÍNIO: [breve explicação]
+Letra X: [texto da alternativa se visível, senão deixe em branco]
+
+Se não encontrar nenhum marcador:
+RESULTADO: NAO_ENCONTRADO`;
+
+            const primaryProvider = activeChain.find(p => p.name === primary) || activeChain[0];
+            if (primaryProvider) {
+                console.log(`  🔬 [aiExtract] 🔁 Last-resort retry with simplified prompt (provider=${primaryProvider.name})...`);
+                // Temporarily override the prompt in a local scope via direct LLM call
+                const rescueContent = await (async () => {
+                    try {
+                        const rescueMessages = [
+                            { role: 'system', content: 'Você é um assistente que encontra marcadores de gabarito em textos.' },
+                            { role: 'user', content: simplifiedPrompt }
+                        ];
+                        if (primaryProvider.name === 'copilot') return await this._callCopilot(rescueMessages, { temperature: 0.0, max_tokens: 200 });
+                        if (primaryProvider.name === 'groq') {
+                            const s = await this._getSettings();
+                            if (this._groqQuotaExhaustedUntil > Date.now()) return null;
+                            const d = await this._withGroqRateLimit(() => this._fetch(s.groqApiUrl, {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${s.groqApiKey}`, 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ model: s.groqModelFast || 'llama-3.1-8b-instant', messages: rescueMessages, temperature: 0.0, max_tokens: 200 })
+                            }));
+                            return d?.choices?.[0]?.message?.content?.trim() || null;
+                        }
+                        if (primaryProvider.name === 'chatgpt') return await this._callChatGPT(rescueMessages, { temperature: 0.0, max_tokens: 200 });
+                        if (primaryProvider.name === 'gemini') return await this._callGemini(rescueMessages, { temperature: 0.0, max_tokens: 200 });
+                        return null;
+                    } catch (e) {
+                        console.warn(`  🔬 [aiExtract] Last-resort error:`, e?.message);
+                        return null;
+                    }
+                })();
+                if (rescueContent && rescueContent.length >= 40 && !/^RESULTADO:\s*NAO_ENCONTRADO/im.test(rescueContent)) {
+                    console.log(`  🔬 [aiExtract] 🔁 Last-resort SUCCESS (${rescueContent.length} chars)`);
+                    content = rescueContent;
+                    usedProvider = primaryProvider.name + '-rescue';
+                } else {
+                    console.log(`  🔬 [aiExtract] 🔁 Last-resort also failed`);
+                }
+            }
         }
 
         if (!content || content.length < 40) {
