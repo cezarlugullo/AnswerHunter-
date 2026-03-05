@@ -195,6 +195,7 @@ export const PopupController = {
     });
     document.getElementById('copilot-auth-close')?.addEventListener('click', () => {
       document.getElementById('copilot-auth-section')?.classList.add('hidden');
+      this._stopCopilotLoginPoll();
     });
     document.getElementById('copilot-login-btn')?.addEventListener('click', () => this.handleCopilotLogin());
     document.getElementById('copilot-logout-btn')?.addEventListener('click', () => this.handleCopilotLogout());
@@ -946,6 +947,48 @@ export const PopupController = {
     }
     if (statusEl) {
       statusEl.innerHTML = 'Abra o link, cole o código e autorize.';
+    }
+
+    // Start UI polling: refresh the panel automatically once login is detected
+    this._startCopilotLoginPoll();
+  },
+
+  /**
+   * Poll CopilotAuthService.isLoggedIn() every 3s while the code section is visible.
+   * When login is detected, refresh the UI instantly without requiring popup reopen.
+   */
+  _startCopilotLoginPoll() {
+    this._stopCopilotLoginPoll(); // clear any existing timer
+
+    const poll = async () => {
+      // Stop if code section is no longer visible (user closed / navigated away)
+      const codeSection = document.getElementById('copilot-code-section');
+      if (!codeSection || codeSection.classList.contains('hidden')) {
+        this._stopCopilotLoginPoll();
+        return;
+      }
+
+      try {
+        const isLoggedIn = await CopilotAuthService.isLoggedIn();
+        if (isLoggedIn) {
+          this._stopCopilotLoginPoll();
+          await new Promise(r => chrome.storage.local.remove(['copilot_pending_code'], r));
+          await this.refreshCopilotAuthUI();
+          this.view.showToast('GitHub Copilot conectado!', 'success');
+          return;
+        }
+      } catch (_) { /* ignore, keep polling */ }
+
+      this._copilotLoginPollTimer = setTimeout(poll, 3000);
+    };
+
+    this._copilotLoginPollTimer = setTimeout(poll, 3000);
+  },
+
+  _stopCopilotLoginPoll() {
+    if (this._copilotLoginPollTimer) {
+      clearTimeout(this._copilotLoginPollTimer);
+      this._copilotLoginPollTimer = null;
     }
   },
 
@@ -2216,6 +2259,19 @@ export const PopupController = {
           // Fallback: clean innerText
           const clone = document.body.cloneNode(true);
           clone.querySelectorAll('script,style,noscript,nav,footer,header,[class*="ad-"],[id*="ad-"],[class*="banner"],[class*="cookie"],[class*="popup"]').forEach(el => el.remove());
+          // Preserve math formulas: replace <math> elements with their LaTeX source.
+          // KaTeX and MathJax both store the original LaTeX in <annotation encoding="application/x-tex">.
+          // Without this, innerText collapses e.g. \frac{1}{2} → "12".
+          clone.querySelectorAll('math').forEach(mathEl => {
+            const annotation = mathEl.querySelector('annotation[encoding="application/x-tex"]');
+            const latex = annotation?.textContent?.trim()
+              || mathEl.getAttribute('alttext')
+              || mathEl.textContent?.trim();
+            if (latex) {
+              const placeholder = document.createTextNode(` $${latex}$ `);
+              mathEl.parentNode?.replaceChild(placeholder, mathEl);
+            }
+          });
           return clone.innerText || document.body.innerText || '';
         },
         args: [needsReloadTrick]

@@ -4550,8 +4550,9 @@ RULES:
 2. The page text may be messy: no A/B/C labels, run-together sentences, HTML artefacts, ads — ignore all that noise.
 3. If there are no explicit A-E labels but there are clearly distinct answer options (separated by newline, bullet, number, or dash), assign them letters A, B, C... in order.
 4. The correct answer may be marked with words like "gabarito", "resposta correta", "correct", "✓", bold/underline, or appear after the question block.
-5. Return ONLY valid JSON — no markdown, no explanation.
-6. If you genuinely cannot find a question, return {"error": "no_question_found"}.
+5. PRESERVE math formulas exactly as they appear — they may use LaTeX notation like $\\frac{n!}{k!}$, $\\sqrt{x}$, $x^2$. Do NOT try to simplify or convert them. Copy them verbatim into the output.
+6. Return ONLY valid JSON — no markdown, no explanation.
+7. If you genuinely cannot find a question, return {"error": "no_question_found"}.
 
 OUTPUT FORMAT:
 {
