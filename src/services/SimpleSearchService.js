@@ -140,6 +140,33 @@ function _setCachedUrlText(url, text) {
     }
 }
 
+// ── Pre-warm cache — fires BackgroundTab for paywall domains during Fase 0 ──
+// Promises stored here so _processSingleSource can await already-started extractions.
+const _preWarmCache = new Map();
+
+/**
+ * Kicks off BackgroundTab extraction for all 'render' domain URLs in parallel.
+ * Called right before Fase 0 so tabs load while snippet AI runs (~2-5s head start).
+ */
+function _preWarmRenderTabs(topResults) {
+    _preWarmCache.clear();
+    for (const r of topResults) {
+        if (!r.link) continue;
+        let host = '';
+        try { host = new URL(r.link).hostname.replace(/^www\./, ''); } catch { continue; }
+        const strategy = _getDomainStrategy(host);
+        if (strategy !== 'render') continue;
+        if (_preWarmCache.has(r.link)) continue;
+        // Check URL text cache first — no need to open a tab
+        if (_getCachedUrlText(r.link)) continue;
+        console.log(`[SimpleSearch] [PREWARM] Abrindo tab para ${host} durante Fase 0…`);
+        _preWarmCache.set(r.link, BackgroundTabExtractorService.extractFromUrl(r.link, { timeoutMs: 15000 }));
+    }
+    if (_preWarmCache.size > 0) {
+        console.log(`[SimpleSearch] [PREWARM] ${_preWarmCache.size} tab(s) pré-aquecendo em paralelo`);
+    }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // A) DOMAIN STRATEGY MAP — roteamento inteligente por domínio
 // ══════════════════════════════════════════════════════════════════════════════
@@ -156,6 +183,7 @@ const DOMAIN_STRATEGY = {
     'passeidireto.com':  'render',
     'studocu.com':       'render',   // CF + JS, mas extrator bypass funciona
     'gauthmath.com':     'render',   // uses standard hidden tab (not CF bypass)
+    'meuguru.com':       'render',   // paywall overlay, JSON-LD available
     'slideshare.net':    'render',
     // ── skip: login/paywall obrigatório, quase sempre vazio ──
     'scribd.com':        'skip',     // paywall forte, raramente extrai algo útil
@@ -369,6 +397,16 @@ async function _processSingleSource(result, idx, total, questionForInference, or
         console.log(`[SimpleSearch] [CACHE] URL text cache hit: ${pageText.length} chars`);
     }
 
+    // ── Pre-warm hit: tab já foi aberta durante Fase 0, só aguardar resultado ──
+    if (!pageText && _preWarmCache.has(link)) {
+        try {
+            const preWarmed = _preWarmCache.get(link);
+            _preWarmCache.delete(link);
+            pageText = await preWarmed;
+            if (pageText) { usedMethod = 'bgtab-prewarm'; console.log(`[SimpleSearch] [OK] BackgroundTab (pre-warm): ${pageText.length} chars`); }
+        } catch (e) { console.warn(`[SimpleSearch] BackgroundTab (pre-warm) erro:`, e?.message); }
+    }
+
     // ── C) Cache hit: usar o método que já funcionou antes ──────────────────
     if (cachedMethod) {
         console.log(`[SimpleSearch] [CACHE] ${hostHint}: usando método cacheado "${cachedMethod}"`);
@@ -466,7 +504,7 @@ async function _processSingleSource(result, idx, total, questionForInference, or
     }
 
     // ── C) Registrar método que funcionou ───────────────────────────────────
-    if (usedMethod) _cacheSuccessfulMethod(hostHint, usedMethod);
+    if (usedMethod) _cacheSuccessfulMethod(hostHint, usedMethod === 'bgtab-prewarm' ? 'bgtab' : usedMethod);
     // Save to URL text cache for future re-use
     if (pageText && usedMethod !== 'url-cache') _setCachedUrlText(link, pageText);
 
@@ -950,6 +988,11 @@ export const SimpleSearchService = {
         if (typeof onStatus === 'function') {
             onStatus(` ${topResults.length} fontes encontradas, iniciando análise…`);
         }
+
+        // ── Pre-warm: abrir tabs de sites com paywall DURANTE Fase 0 ────────────
+        // Tabs ficam carregando em background enquanto a IA analisa os snippets.
+        // Quando Fase 1 precisa dos textos, as tabs já estão prontas (~2-5s de ganho).
+        _preWarmRenderTabs(topResults);
 
         // ── Fase 0: Extração de snippets — UM call de IA para todos os snippets ──
         // Antes de abrir qualquer página, envia todos os snippets do Serper para a IA.

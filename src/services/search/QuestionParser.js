@@ -30,7 +30,9 @@ export const QuestionParser = {
 
     stripOptionTailNoise(text) {
         if (!text) return '';
-        let cleaned = String(text).replace(/\s+/g, ' ').trim();
+        let cleaned = String(text)
+            .replace(/\\[nrt]/g, ' ')   // literal \n \r \t from LLM output
+            .replace(/\s+/g, ' ').trim();
         const noiseMarker = /\b(?:gabarito(?:\s+comentado)?|resposta\s+correta|resposta\s+incorreta|alternativa\s+correta|alternativa\s+incorreta|parabéns|você\s+acertou|confira\s+o\s+gabarito|explicação|quest[ãa]o\s+\d+\s+de\s+\d+)\b/i;
         const idx = cleaned.search(noiseMarker);
         if (idx > 20) cleaned = cleaned.slice(0, idx).trim();

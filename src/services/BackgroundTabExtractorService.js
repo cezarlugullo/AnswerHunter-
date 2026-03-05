@@ -240,6 +240,7 @@ export class BackgroundTabExtractorService {
     if (u.includes('studocu.com')) return 'studocu';
     if (u.includes('passeidireto.com')) return 'passeidireto';
     if (u.includes('gauthmath.com')) return 'gauthmath';
+    if (u.includes('meuguru.com')) return 'meuguru';
     if (u.includes('scribd.com')) return 'scribd';
     if (u.includes('slideshare.net')) return 'slideshare';
     return null;
@@ -251,6 +252,7 @@ export class BackgroundTabExtractorService {
       studocu: 4000,
       passeidireto: 3000,
       gauthmath: 4000,
+      meuguru: 2500,
       scribd: 3000,
       slideshare: 2500
     };
@@ -264,6 +266,7 @@ export class BackgroundTabExtractorService {
       studocu:      BackgroundTabExtractorService._studocuExtractor,
       passeidireto: BackgroundTabExtractorService._passeiDiretoExtractor,
       gauthmath:    BackgroundTabExtractorService._gauthmathExtractor,
+      meuguru:      BackgroundTabExtractorService._meuguruExtractor,
       scribd:       BackgroundTabExtractorService._scribdExtractor,
       slideshare:   BackgroundTabExtractorService._genericExtractor
     };
@@ -507,6 +510,42 @@ export class BackgroundTabExtractorService {
         if (t.length > 120) return t.slice(0, 12000);
       }
       const body = (document.body?.innerText || '').replace(/\s+/g, '').trim();
+      return body.length > 120 ? body.slice(0, 12000) : '';
+    } catch(e) { return ''; }
+  }
+
+  static _meuguruExtractor() {
+    try {
+      // Remove overlays/modals/paywall
+      ['[class*="modal"]', '[class*="Modal"]', '[class*="overlay"]', '[class*="Overlay"]',
+       '[class*="paywall"]', '[class*="Paywall"]', '[class*="cookie"]', '[class*="login"]'
+      ].forEach(sel =>
+        document.querySelectorAll(sel).forEach(el => { try { el.remove(); } catch(_) {} })
+      );
+      // Remove blur CSS
+      document.querySelectorAll('[style*="blur"]').forEach(el => {
+        el.style.filter = 'none'; el.style.webkitFilter = 'none';
+      });
+
+      // Priority 1: JSON-LD structured data
+      const ld = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+        .map(s => s.textContent || '')
+        .find(t => /Question|Answer|acceptedAnswer|suggestedAnswer/i.test(t));
+      if (ld?.length > 30) return ld.slice(0, 12000);
+
+      // Priority 2: answer/gabarito containers
+      const sels = [
+        '[class*="answer"]', '[class*="Answer"]', '[class*="resposta"]', '[class*="gabarito"]',
+        '[class*="question"]', '[class*="Question"]', '[class*="solution"]',
+        '[class*="content"]', '[class*="Content"]', 'article', 'main'
+      ];
+      for (const sel of sels) {
+        const el = document.querySelector(sel);
+        if (!el) continue;
+        const t = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (t.length > 120) return t.slice(0, 12000);
+      }
+      const body = (document.body?.innerText || '').replace(/\s+/g, ' ').trim();
       return body.length > 120 ? body.slice(0, 12000) : '';
     } catch(e) { return ''; }
   }
