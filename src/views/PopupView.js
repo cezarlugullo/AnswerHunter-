@@ -9,6 +9,14 @@ import { QuestionParser } from '../services/search/QuestionParser.js';
 function formatReasoning(raw) {
   if (!raw) return '';
 
+  // Protect math blocks from being split by \n or formatted
+  const mathBlocks = [];
+  let processedRaw = raw.replace(/(\$\$(?:[\s\S]*?)\$\$|\$(?:[\s\S]*?)\$|\\\[(?:[\s\S]*?)\\\]|\\\((?:[\s\S]*?)\\\))/g, (match) => {
+    const id = mathBlocks.length;
+    mathBlocks.push(match);
+    return `__MATH_BLOCK_${id}__`;
+  });
+
   // inline markdown: **bold** then `code`
   const inline = (text) => {
     const escaped = escapeHtml(text);
@@ -17,7 +25,7 @@ function formatReasoning(raw) {
       .replace(/`([^`]+)`/g, '<code class="rz-code">$1</code>');
   };
 
-  const lines = raw.split(/\n/);
+  const lines = processedRaw.split(/\n/);
   const out = [];
   let inBulletList = false;
 
@@ -91,7 +99,14 @@ function formatReasoning(raw) {
   }
 
   closeBulletList();
-  return out.join('');
+  
+  let finalHtml = out.join('');
+  // Restore math blocks, safely escaping them for HTML
+  finalHtml = finalHtml.replace(/__MATH_BLOCK_(\d+)__/g, (m, id) => {
+    return escapeHtml(mathBlocks[id] || m);
+  });
+  
+  return finalHtml;
 }
 
 export const PopupView = {

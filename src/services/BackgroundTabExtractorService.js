@@ -135,30 +135,17 @@ export class BackgroundTabExtractorService {
     try {
       console.log(`[AH-TAB] Opening hidden tab [${site}] → ${url}`);
 
-      // Open as a minimized popup — invisible to user, doesn't pollute tab bar.
-      // IMPORTANT: width/height must be large enough for CSS layout to work (innerText requires
-      // a rendered layout — a 1x1 window collapses all elements, making innerText return '').
-      // We create at a normal position and minimize immediately — Chrome now rejects off-screen
-      // coordinates (bounds must be ≥50% visible).
-      const win = await new Promise((resolve, reject) => {
-        chrome.windows.create({ url, type: 'popup', focused: false, width: 1280, height: 800, state: 'minimized' }, (w) => {
-          if (chrome.runtime.lastError) {
-            // Fallback: some Chrome versions don't support state in create — try without it
-            chrome.windows.create({ url, type: 'popup', focused: false, width: 1280, height: 800 }, (w2) => {
-              if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-              resolve(w2);
-            });
-            return;
-          }
-          resolve(w);
+      // Open as a background tab in the current window.
+      // This prevents stealing OS focus or flashing windows on screen.
+      const tab = await new Promise((resolve, reject) => {
+        chrome.tabs.create({ url, active: false }, (t) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          resolve(t);
         });
       });
-      winId = win?.id ?? null;
-      tabId = win?.tabs?.[0]?.id ?? null;
-      // Minimize immediately so it never flashes on the user's screen
-      if (winId !== null) { try { await chrome.windows.update(winId, { state: 'minimized' }); } catch (_) {} }
+      tabId = tab.id;
 
-      if (!tabId) throw new Error('Failed to create hidden window/tab');
+      if (!tabId) throw new Error('Failed to create hidden tab');
 
       await BackgroundTabExtractorService._waitForTabLoad(tabId, options.timeoutMs || 15000);
 
@@ -172,18 +159,37 @@ export class BackgroundTabExtractorService {
         HumanMouseSimulator.interact(tabId, { doClick: false, doScroll: true }).catch(() => {});
       }
 
-      await new Promise(r => setTimeout(r, waitMs));
-
+      // Fast-Fail Polling: Instead of blind waiting, check extraction every 150ms.
+      // Drops 2000-4000ms waits to ~150-300ms if the DOM is ready early (e.g. Brainly's safe_html_ucr).
       let text = '';
-      // Run site-specific extractor if available; generic sites skip straight to textContent
       if (extractor) {
-        const results = await chrome.scripting.executeScript({
-          target: { tabId },
-          func: extractor,
-          world: 'MAIN'
-        });
-        const extracted = results?.[0]?.result || '';
-        text = typeof extracted === 'string' ? extracted.trim() : '';
+        const pollIntervalMs = 150;
+        const maxAttempts = Math.max(1, Math.floor(waitMs / pollIntervalMs));
+        
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          try {
+            const results = await chrome.scripting.executeScript({
+              target: { tabId },
+              func: extractor,
+              world: 'MAIN'
+            });
+            const extracted = results?.[0]?.result || '';
+            const attemptText = typeof extracted === 'string' ? extracted.trim() : '';
+            
+            if (attemptText.length > 50) {
+              text = attemptText;
+              console.log(`[AH-TAB] [FAST-FAIL] Extracted early on attempt ${attempt+1} (saved ~${waitMs - (attempt * pollIntervalMs)}ms)`);
+              break;
+            }
+          } catch (err) {
+             // ignore execution errors during polling
+          }
+          if (text) break;
+          await new Promise(r => setTimeout(r, pollIntervalMs));
+        }
+      } else {
+         // Generic sites with no specific extractor: just wait the flat render wait
+         await new Promise(r => setTimeout(r, waitMs));
       }
 
       // Universal safety-net: if site-specific extractor returned nothing, grab raw body
@@ -224,9 +230,8 @@ export class BackgroundTabExtractorService {
       console.warn(`[AH-TAB] [FAIL] Error extracting from ${site}:`, err?.message || err);
       return null;
     } finally {
-      // Close the window (removes the tab too)
-      if (winId !== null) { try { chrome.windows.remove(winId); } catch (_) {} }
-      else if (tabId !== null) { try { chrome.tabs.remove(tabId); } catch (_) {} }
+      // Close the tab
+      if (tabId !== null) { try { chrome.tabs.remove(tabId); } catch (_) {} }
     }
   }
 
@@ -661,3 +666,4 @@ export class BackgroundTabExtractorService {
     } catch(e) { return (document.body?.textContent || '').trim().slice(0, 15000); }
   }
 }
+

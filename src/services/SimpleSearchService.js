@@ -111,10 +111,10 @@ import { OptionsMatchService } from './search/OptionsMatchService.js';
 import { QuestionParser } from './search/QuestionParser.js';
 
 // Quantas URLs do Serper considerar no máximo (as primeiras são as mais relevantes)
-const MAX_CANDIDATES = 12;
+const MAX_CANDIDATES = 10;
 
 // Parar ao atingir este número de fontes que geraram resposta válida.
-const MAX_SOURCES = 6;
+const MAX_SOURCES = 5;
 
 // Tamanho mínimo de texto para enviar à IA.
 // Textos abaixo disso são páginas de erro, CAPTCHA ou redirecionamentos.
@@ -637,7 +637,7 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
         let launched = 0;
         let resolved = false;
         const cancel = { cancelled: false };
-        const CONCURRENCY = 4;  // Max concurrent source processors (prevents quota exhaustion)
+        const CONCURRENCY = 3;  // Max concurrent source processors (prevents quota exhaustion)
 
         // Pre-compute inherited votes from prior phases (Fase 0 snippets, Fase 1, Scholar)
         const priorVotes = {};
@@ -663,13 +663,14 @@ function _collectFirstNSources(topResults, questionForInference, originalOptions
             }
 
             // Early exit conditions:
-            // 1. We hit minSources AND consensus is strong (>= 0.6)
-            //    OR we have ≥1 new source + prior votes AND combined consensus ≥ 0.6
+            // 1. We hit minSources AND consensus is strong (>= 0.7)
+            //    OR we have ≥1 new source + prior votes AND combined consensus ≥ 0.7
             // 2. We hit maxSources (hard limit)
             // 3. We exhausted all available results
             const hasEnoughSources = sources.length >= minSources
-                || (sources.length >= 1 && priorSources.length > 0);
-            const strongConsensus = hasEnoughSources && consensusScore >= 0.6;
+                || (sources.length >= 1 && priorSources.length > 0)
+                || (sources.length >= 3 && consensusScore >= 0.7);
+            const strongConsensus = hasEnoughSources && consensusScore >= 0.7;
 
             if (strongConsensus || sources.length >= maxSources || settled >= total) {
                 if (!resolved) {

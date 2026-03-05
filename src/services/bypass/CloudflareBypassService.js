@@ -86,10 +86,8 @@ export class CloudflareBypassService {
       console.error(`[CF-BYPASS] [FAIL] Error:`, err?.message || err);
       return { text: '', method: 'error', cookieReused: false };
     } finally {
-      // Close the minimized popup window (not just the tab) if we have a winId.
-      if (_winId !== null) {
-        try { chrome.windows.remove(_winId); } catch (_) {}
-      } else if (tabId !== null) {
+      // Close only the tab explicitly instead of the whole window, because we no longer isolate in popups
+      if (tabId !== null) {
         try { chrome.tabs.remove(tabId); } catch (_) {}
       }
     }
@@ -108,10 +106,14 @@ export class CloudflareBypassService {
       console.log(`[CF-BYPASS] Found existing cf_clearance for ${site} — trying direct tab`);
 
       // Already have clearance — open minimized popup window and extract directly.
-      const win = await chrome.windows.create({ url, type: 'popup', focused: false, width: 1280, height: 800, state: 'minimized' });
-      const tid = win?.tabs?.[0]?.id;
+      const tab = await new Promise((resolve, reject) => {
+        chrome.tabs.create({ url, active: false }, (t) => {
+          if (chrome.runtime.lastError) return reject(chrome.runtime.lastError);
+          resolve(t);
+        });
+      });
+      const tid = tab?.id;
       if (!tid) return null;
-      try { await chrome.windows.update(win.id, { state: 'minimized' }); } catch (_) {}
 
       // Still inject stealth patches even with clearance (for good measure)
       await CloudflareBypassService._earlyPatchLoop(tid, cfg.earlyInjectWindowMs);
@@ -119,7 +121,7 @@ export class CloudflareBypassService {
       await new Promise(r => setTimeout(r, CloudflareBypassService._humanDelay(cfg)));
 
       const text = await CloudflareBypassService._runExtractor(tid, extractorFn);
-      try { chrome.windows.remove(win.id); } catch (_) {}
+      try { chrome.tabs.remove(tid); } catch (_) {}
       return text && text.length > 80 ? text : null;
     } catch (_) {
       return null;
@@ -178,12 +180,16 @@ export class CloudflareBypassService {
       chrome.tabs.onUpdated.addListener(earlyListener);
 
       try {
-        // Open as a minimized popup so it never appears in the user's tab bar.
-        const win = await chrome.windows.create({ url, type: 'popup', focused: false, width: 1280, height: 800, state: 'minimized' });
-        winId  = win?.id ?? null;
-        tabId  = win?.tabs?.[0]?.id ?? null;
-        // Force minimize immediately after creation
-        if (winId !== null) { try { await chrome.windows.update(winId, { state: 'minimized' }); } catch (_) {} }
+        // Open as an inactive background tab so it doesn't flash or steal OS focus.
+        const tab = await new Promise((res, rej) => {
+          chrome.tabs.create({ url, active: false }, (t) => {
+            if (chrome.runtime.lastError) return rej(chrome.runtime.lastError);
+            res(t);
+          });
+        });
+        tabId = tab?.id ?? null;
+        winId = tab?.windowId ?? null;
+
         if (!tabId) {
           resolve(null);
           return;

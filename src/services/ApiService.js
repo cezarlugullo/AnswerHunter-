@@ -1051,11 +1051,25 @@ export const ApiService = {
     /**
      * Wrapper for fetch with common headers and robust retry
      */
-    async _fetch(url, options) {
-        const maxRetries = 3;
+    async _fetch(url, options, maxTimeoutMs = 12000) {
+        const maxRetries = 2; // reduced from 3 to fail fast
         for (let attempt = 0; attempt < maxRetries; attempt++) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), maxTimeoutMs);
+            
+            // Allow caller to pass their own signal as well
+            if (options.signal) {
+                options.signal.addEventListener('abort', () => {
+                    controller.abort();
+                    clearTimeout(timeoutId);
+                });
+            }
+
             try {
-                const response = await fetch(url, options);
+                const fetchOptions = { ...options, signal: controller.signal };
+                const response = await fetch(url, fetchOptions);
+                clearTimeout(timeoutId);
+                
                 if (response.ok) {
                     return await response.json();
                 }
@@ -1063,42 +1077,45 @@ export const ApiService = {
                 if (response.status === 429) {
                     const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
 
-                    // If Groq says wait > 8s, the quota is approaching exhaustion.
-                    // Flag it and fail immediately — do NOT waste retries.
-                    // (Threshold lowered from 30s: retry-afters of 8.5s, 15.5s, 25s+
-                    // were causing 130+ seconds of cumulative waits per search query.)
-                    if (retryAfter > 8) {
+                    // If Groq says wait > 5s, the quota is approaching exhaustion.
+                    if (retryAfter > 5) {
                         this._groqQuotaExhaustedUntil = Date.now() + retryAfter * 1000;
                         const waitMin = Math.ceil(retryAfter / 60);
-                        console.warn(`AnswerHunter: Groq quota EXHAUSTED (retry-after=${retryAfter}s > 8s threshold) — skipping Groq for ~${waitMin}min.`);
+                        console.warn(`AnswerHunter: Groq quota EXHAUSTED (retry-after=${retryAfter}s > 5s threshold) — skipping Groq for ~${waitMin}min.`);
                         throw new Error(`GROQ_QUOTA_EXHAUSTED: retry-after=${retryAfter}s (~${waitMin}min)`);
                     }
 
-                    // Short retry-after (< 30s): per-minute rate limit, wait once and retry
-                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 30) {
-                        const backoffMs = Math.ceil(retryAfter * 1000) + 500;
+                    // Short retry-after (< 20s): wait once and retry
+                    if (attempt < maxRetries - 1 && retryAfter > 0 && retryAfter <= 20) {
+                        const backoffMs = Math.ceil(retryAfter * 1000) + 200;
                         console.log(`AnswerHunter: Rate limit 429, aguardando ${backoffMs}ms (retry-after=${retryAfter}s, tentativa ${attempt + 1}/${maxRetries})...`);
                         await new Promise(resolve => setTimeout(resolve, backoffMs));
                         continue;
                     }
 
-                    // No retry-after or zero: flag as quota problem anyway
-                    this._groqQuotaExhaustedUntil = Date.now() + 120000; // assume 2min
-                    console.warn('AnswerHunter: Groq 429 without retry-after — assuming quota exhausted for 2min');
+                    // No retry-after or zero
+                    this._groqQuotaExhaustedUntil = Date.now() + 60000;
+                    console.warn('AnswerHunter: Groq 429 without retry-after — assuming quota exhausted for 1min');
                     throw new Error('GROQ_QUOTA_EXHAUSTED: 429 without retry-after');
                 }
 
                 throw new Error(`HTTP Error ${response.status}`);
             } catch (error) {
-                // Never retry quota-exhaustion — the flag is already set, retrying just wastes 429s
+                clearTimeout(timeoutId);
                 const isQuotaError = error.message?.includes('GROQ_QUOTA_EXHAUSTED');
+                if (error.name === 'AbortError' || error.message?.includes('abort')) {
+                    console.warn(`[AH] Fetch Timeout/Aborted (${maxTimeoutMs}ms): ${url}`);
+                    throw new Error(`TIMEOUT: Request took longer than ${maxTimeoutMs}ms`);
+                }
                 if (attempt < maxRetries - 1 && !isQuotaError && !error.message?.includes('HTTP Error')) {
                     const jitter = 500 + Math.random() * 500;
                     await new Promise(resolve => setTimeout(resolve, jitter));
                     continue;
                 }
-                console.error(`ApiService Fetch Error (${url}):`, error);
-                throw error;
+                if (isQuotaError || attempt === maxRetries - 1) {
+                    console.error(`ApiService Fetch Error (${url}):`, error.message);
+                    throw error;
+                }
             }
         }
     },
@@ -1143,7 +1160,7 @@ export const ApiService = {
                 },
                 mode: 'cors',
                 credentials: 'omit'
-            }, 8000);
+            }, 6000);
             if (result.ok && result.text && result.text.length > 150) {
                 if (this._looksBlockedLikeContent(result.text, url)) return null;
                 const cleaned = result.text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 15000);
@@ -1176,11 +1193,11 @@ export const ApiService = {
                     url,
                     formats: ['markdown'],
                     onlyMainContent: true,
-                    timeout: 10000
+                    timeout: 7000
                 }),
                 mode: 'cors',
                 credentials: 'omit'
-            }, 12000);
+            }, 8000);
             if (result.ok && result.text) {
                 const parsed = JSON.parse(result.text);
                 const md = parsed?.data?.markdown || '';
@@ -2815,7 +2832,10 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 const link = normalizeSpace(entry?.link || entry?.url || '');
                 const snippet = normalizeSpace(entry?.snippet || entry?.snippet_highlighted_words?.join(' ') || '');
                 return { title, link, snippet };
-            }).filter((entry) => entry.title && entry.link);
+            }).filter((entry) => {
+                const badDomains = ['youtube.com', 'youtu.be', 'tiktok.com', 'instagram.com', 'facebook.com', 'twitter.com', 'x.com', 'reddit.com', 'kwai.com', 'vimeo.com'];
+                return entry.title && entry.link && !badDomains.some(d => entry.link.includes(d));
+            });
         };
         const normalizeSearchPayload = (raw) => {
             if (!raw || typeof raw !== 'object') {
@@ -2838,8 +2858,9 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 };
             }
 
+            const badDomains = ['youtube.com', 'youtu.be', 'tiktok.com', 'instagram.com', 'facebook.com', 'twitter.com', 'x.com', 'reddit.com', 'kwai.com', 'vimeo.com'];
             return {
-                organic: raw.organic || [],
+                organic: (raw.organic || []).filter(e => e.link && !badDomains.some(d => e.link.includes(d))),
                 answerBox: raw.answerBox || null,
                 aiOverview: raw.aiOverview || raw.ai_overview || null,
                 peopleAlsoAsk: raw.peopleAlsoAsk || null,

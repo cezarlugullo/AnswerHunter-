@@ -62,6 +62,35 @@ export function isLikelyQuestion(text) {
     return (hasQuestionMark || hasKeywords || hasOptions) && !looksLikeMenu;
 }
 
+/**
+ * Escapes HTML and converts newlines to <br> or paragraphs,
+ * while safely protecting LaTeX math blocks from being split by linebreaks.
+ */
+export function formatMultlineText(text, isDoubleNewlinePara = false) {
+    if (!text) return '';
+    let escaped = escapeHtml(text);
+    
+    const mathBlocks = [];
+    escaped = escaped.replace(/(\$\$(?:[\s\S]*?)\$\$|\$(?:[\s\S]*?)\$|\\\[(?:[\s\S]*?)\\\]|\\\((?:[\s\S]*?)\\\))/g, (m) => {
+        mathBlocks.push(m);
+        return `__MATH_BLOCK_${mathBlocks.length - 1}__`;
+    });
+
+    if (isDoubleNewlinePara) {
+        escaped = escaped
+            .replace(/\n{2,}/g, '</p><p class="enunciado-para">')
+            .replace(/\n/g, '<br>');
+    } else {
+        escaped = escaped.replace(/\n/g, '<br>');
+    }
+
+    mathBlocks.forEach((block, i) => {
+        escaped = escaped.replace(`__MATH_BLOCK_${i}__`, block);
+    });
+
+    return escaped;
+}
+
 // Function to format question separating statement from alternatives
 export function formatQuestionText(text, visionGuidedParsed) {
     if (!text) return '';
@@ -76,12 +105,7 @@ export function formatQuestionText(text, visionGuidedParsed) {
         };
         const _esc = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         // Convert stem newlines to HTML: double-newline = paragraph gap, single = <br>
-        const _stemHtml = (s) => {
-            const escaped = _esc(String(s || ''));
-            return escaped
-                .replace(/\n{2,}/g, '</p><p class="enunciado-para">')
-                .replace(/\n/g, '<br>');
-        };
+        const _stemHtml = (s) => formatMultlineText(s, true);
         const altsHtml = visionGuidedParsed.alternatives.map(a => {
             const cleanBody = String(a.body || '').replace(/\\[nrt]/g, ' ').replace(/\s+/g, ' ').trim();
             return `

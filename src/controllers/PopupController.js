@@ -2948,7 +2948,18 @@ export const PopupController = {
 
   _parseMarkdown(text) {
     if (!text) return '';
-    let html = this._escapeHtml(text);
+    
+    // Protect math blocks from being formatted or split
+    const mathBlocks = [];
+    const mathRegex = /(\$\$(?:[\s\S]*?)\$\$|\$(?:[\s\S]*?)\$|\\\[(?:[\s\S]*?)\\\]|\\\((?:[\s\S]*?)\\\))/g;
+    
+    let sanitizedText = text.replace(mathRegex, (match) => {
+      const id = mathBlocks.length;
+      mathBlocks.push(match);
+      return `__MATH_BLOCK_${id}__`;
+    });
+
+    let html = this._escapeHtml(sanitizedText);
 
     // Horizontal rules (---)
     html = html.replace(/^---$/gm, '<hr style="border:0; border-top:1px solid rgba(0,0,0,0.1); margin: 16px 0;">');
@@ -3022,6 +3033,11 @@ export const PopupController = {
 
     // Clean up excessive breaks
     html = blocks.join('\n').replace(/(<br>\n?){2,}/g, '<br><br>');
+
+    // Restore math blocks
+    html = html.replace(/__MATH_BLOCK_(\d+)__/g, (match, id) => {
+      return mathBlocks[id] || match;
+    });
 
     return html;
   },
@@ -3138,8 +3154,8 @@ export const PopupController = {
 
     return {
       // Prefer the original question payload when available (cleaner than rendered innerText).
-      question: normalizeSavedQuestion(fallbackQuestion || questionLive),
-      answer: answerLive || fallbackAnswer,
+      question: fallbackQuestion ? normalizeSavedQuestion(fallbackQuestion) : normalizeSavedQuestion(questionLive),
+      answer: fallbackAnswer || answerLive,
       sources: fallbackSources,
       source: fallbackSource
     };

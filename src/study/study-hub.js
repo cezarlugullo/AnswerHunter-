@@ -25,6 +25,7 @@ import { LearningPathService } from '../services/LearningPathService.js';
 import { RecommendationService } from '../services/RecommendationService.js';
 import { MigrationService } from '../services/MigrationService.js';
 import { ElevenLabsTTSService } from '../services/ElevenLabsTTSService.js';
+import { renderMathInContainer } from '../utils/helpers.js';
 
 /* ─── DOM Helpers ──────────────────────────────────────────────────── */
 
@@ -1799,8 +1800,11 @@ function renderCurrentCard() {
     on(opt, 'click', () => selectOption(parseInt(opt.dataset.idx, 10)));
   });
 
+  // Render math before returning
+  renderMathInContainer(container);
+
   // Rating buttons
-  $$('.rate-btn', container).forEach(btn => {
+  $('.rate-btn', container).forEach(btn => {
     on(btn, 'click', () => rateCurrentCard(parseInt(btn.dataset.rate, 10)));
   });
 }
