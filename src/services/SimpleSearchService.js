@@ -885,9 +885,11 @@ export const SimpleSearchService = {
             const deduped = [];
             const seen = new Set();
             for (const entry of working) {
-                const norm = QuestionParser.looksLikeCodeOption(entry.body)
+                let norm = QuestionParser.looksLikeCodeOption(entry.body)
                     ? QuestionParser.normalizeCodeAwareOption(entry.body)
                     : QuestionParser.normalizeOption(entry.body);
+                // Preserve leading minus so -1/2 doesn't collide with 1/2
+                if (entry.body.trim().startsWith('-') && norm && !norm.startsWith('-')) norm = '-' + norm;
                 if (!norm || seen.has(norm)) continue;
                 seen.add(norm);
                 deduped.push(entry);

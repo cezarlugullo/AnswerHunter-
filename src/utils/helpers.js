@@ -25,6 +25,32 @@ export function escapeHtml(text) {
         .replace(/'/g, "&#039;");
 }
 
+/**
+ * Render LaTeX math formulas inside a DOM container using KaTeX auto-render.
+ * Recognises $...$ (inline), $$...$$ (display), \(...\) and \[...\].
+ * Safe no-op if KaTeX is not loaded.
+ */
+export function renderMathInContainer(container) {
+    if (!container) return;
+    try {
+        const fn = typeof window !== 'undefined' && window.renderMathInElement;
+        if (typeof fn !== 'function') return;
+        fn(container, {
+            delimiters: [
+                { left: '$$', right: '$$', display: true },
+                { left: '$', right: '$', display: false },
+                { left: '\\(', right: '\\)', display: false },
+                { left: '\\[', right: '\\]', display: true },
+            ],
+            throwOnError: false,
+            ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'annotation', 'annotation-xml'],
+            ignoredClasses: ['katex', 'katex-display'],
+        });
+    } catch (err) {
+        console.warn('AnswerHunter: KaTeX render error:', err);
+    }
+}
+
 export function isLikelyQuestion(text) {
     if (!text) return false;
     const clean = text.replace(/\s+/g, '').trim();
@@ -56,11 +82,14 @@ export function formatQuestionText(text, visionGuidedParsed) {
                 .replace(/\n{2,}/g, '</p><p class="enunciado-para">')
                 .replace(/\n/g, '<br>');
         };
-        const altsHtml = visionGuidedParsed.alternatives.map(a => `
+        const altsHtml = visionGuidedParsed.alternatives.map(a => {
+            const cleanBody = String(a.body || '').replace(/\\[nrt]/g, ' ').replace(/\s+/g, ' ').trim();
+            return `
                     <div class="alternative">
                         <span class="alt-letter">${_esc(a.letter)}</span>
-                        <span class="alt-text">${_esc(a.body)}</span>
-                    </div>`).join('');
+                        <span class="alt-text">${_esc(cleanBody)}</span>
+                    </div>`;
+        }).join('');
         return `
                 <div class="question-section">
                     <div class="question-section-title">${_esc(_t('result.statement', 'Statement'))}</div>

@@ -1631,13 +1631,13 @@ Analise o texto passo a passo e responda no formato acima:`;
             }
 
             // If a provider returned a short non-null response (e.g. 25 chars),
-            // increment its streak and stop trying further fallbacks.
+            // increment its streak and continue to the next fallback provider.
             // The streak prevents this broken provider from being called in future sources.
             if (content && content.length > 0 && content.length < 40) {
                 this._providerShortStreak[provider.name] = (this._providerShortStreak[provider.name] || 0) + 1;
                 const streak = this._providerShortStreak[provider.name];
                 console.log(`  🔬 [aiExtract] ${provider.name} returned short response (${content.length} chars) — streak=${streak}${streak >= DISABLE_THRESHOLD ? ' [AUTO-DISABLED]' : ''}`);
-                break;
+                continue; // try next provider instead of aborting the chain
             }
 
             // Provider returned null (error/quota) or explicit NAO_ENCONTRADO — try next
