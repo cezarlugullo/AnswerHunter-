@@ -1047,12 +1047,14 @@ export const ApiService = {
                 if (response.status === 429) {
                     const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
 
-                    // If Groq says wait > 30s, the quota is approaching exhaustion.
+                    // If Groq says wait > 8s, the quota is approaching exhaustion.
                     // Flag it and fail immediately — do NOT waste retries.
-                    if (retryAfter > 30) {
+                    // (Threshold lowered from 30s: retry-afters of 8.5s, 15.5s, 25s+
+                    // were causing 130+ seconds of cumulative waits per search query.)
+                    if (retryAfter > 8) {
                         this._groqQuotaExhaustedUntil = Date.now() + retryAfter * 1000;
                         const waitMin = Math.ceil(retryAfter / 60);
-                        console.warn(`AnswerHunter: Groq quota EXHAUSTED — retry-after=${retryAfter}s (~${waitMin}min). Skipping all Groq calls.`);
+                        console.warn(`AnswerHunter: Groq quota EXHAUSTED (retry-after=${retryAfter}s > 8s threshold) — skipping Groq for ~${waitMin}min.`);
                         throw new Error(`GROQ_QUOTA_EXHAUSTED: retry-after=${retryAfter}s (~${waitMin}min)`);
                     }
 
