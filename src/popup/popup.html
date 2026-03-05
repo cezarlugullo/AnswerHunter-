@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AnswerHunter</title>
   <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="../vendor/katex/katex.min.css">
 </head>
 
 <body>
@@ -668,18 +669,80 @@
             <p id="chatgpt-user-email" class="u-auth-user-sub"></p>
           </div>
         </div>
-        <div class="u-auth-row">
-          <select id="select-chatgpt-model" class="ob-input u-model-select-chatgpt">
-            <optgroup label=" Recomendado">
-              <option value="gpt-5.2-codex">GPT-5.2 Codex — mais inteligente</option>
-              <option value="gpt-5.1-codex-max">GPT-5.1 Codex Max — tarefas longas</option>
-            </optgroup>
-            <optgroup label=" Padrão">
-              <option value="gpt-5.1-codex">GPT-5.1 Codex — padrão</option>
-              <option value="gpt-5.1-codex-mini">GPT-5.1 Codex Mini — rápido</option>
-            </optgroup>
+        <div class="u-copilot-controls">
+          <!-- Hidden select preserved for JS compatibility (PopupController reads/writes .value) -->
+          <select id="select-chatgpt-model" class="u-display-none-inline" aria-hidden="true">
+            <option value="gpt-5.2-codex" selected>GPT-5.2 Codex</option>
+            <option value="gpt-5.1-codex-max">GPT-5.1 Codex Max</option>
+            <option value="gpt-5.1-codex">GPT-5.1 Codex</option>
+            <option value="gpt-5.1-codex-mini">GPT-5.1 Codex Mini</option>
           </select>
-          <button id="chatgpt-logout-btn" class="ob-btn ob-btn-secondary u-nowrap-gap-4">
+
+          <!-- Custom model picker -->
+          <div class="ah-mpicker" id="chatgpt-model-picker">
+            <button class="ah-mpicker-trigger" type="button" id="chatgpt-model-trigger" aria-haspopup="listbox"
+              aria-expanded="false">
+              <span class="ah-mpicker-trigger-icon material-symbols-rounded">smart_toy</span>
+              <div class="ah-mpicker-trigger-info">
+                <span class="ah-mpicker-trigger-name">GPT-5.2 Codex</span>
+                <span class="ah-mpicker-trigger-meta">Recomendado · mais inteligente</span>
+              </div>
+              <span class="ah-mpicker-chevron material-symbols-rounded">expand_more</span>
+            </button>
+
+            <div class="ah-mpicker-panel" id="chatgpt-model-panel" role="listbox" aria-label="Selecionar modelo">
+              <div class="ah-mpicker-group">
+                <div class="ah-mpicker-group-header">
+                  <span class="material-symbols-rounded">auto_awesome</span>
+                  <span>Recomendado</span>
+                </div>
+                <div class="ah-mpicker-option ah-mpicker-option--selected" role="option" tabindex="0"
+                  data-value="gpt-5.2-codex" data-icon="smart_toy" data-group="Recomendado" data-meta="Recomendado · mais inteligente">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.2 Codex</span>
+                    <span class="ah-mpicker-opt-tag ah-mpicker-opt-tag--star">Padrão</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Mais inteligente</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                  data-value="gpt-5.1-codex-max" data-icon="smart_toy" data-group="Recomendado" data-meta="Recomendado · tarefas longas">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.1 Codex Max</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Tarefas longas</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+              </div>
+
+              <div class="ah-mpicker-divider"></div>
+
+              <div class="ah-mpicker-group">
+                <div class="ah-mpicker-group-header">
+                  <span class="material-symbols-rounded">tune</span>
+                  <span>Padrão</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                  data-value="gpt-5.1-codex" data-icon="smart_toy" data-group="Padrão" data-meta="Padrão">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.1 Codex</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Padrão</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+                <div class="ah-mpicker-option" role="option" tabindex="0"
+                  data-value="gpt-5.1-codex-mini" data-icon="bolt" data-group="Padrão" data-meta="Padrão · rápido">
+                  <div class="ah-mpicker-opt-body">
+                    <span class="ah-mpicker-opt-name">GPT-5.1 Codex Mini</span>
+                  </div>
+                  <span class="ah-mpicker-opt-desc">Rápido</span>
+                  <span class="ah-mpicker-opt-check material-symbols-rounded">check</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button id="chatgpt-logout-btn" class="ob-btn ob-btn-secondary u-copilot-logout-btn">
             <span class="material-symbols-rounded u-fs-16">logout</span>
             <span>Logout</span>
           </button>
@@ -1582,6 +1645,8 @@
 
   <!-- Dev-mode Chrome API mock — auto-skipped when running as a real extension -->
   <script src="chrome-mock.js"></script>
+  <script src="../vendor/katex/katex.min.js"></script>
+  <script src="../vendor/katex/auto-render.min.js"></script>
   <script type="module" src="popup.js"></script>
 </body>
 

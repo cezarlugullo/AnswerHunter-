@@ -15,7 +15,7 @@
 
 const NATIVE_HOST = 'com.answerhunter.bridge';
 const DEFAULT_TIMEOUT_MS = 20000;
-const PROBE_TIMEOUT_MS   = 5000;
+const PROBE_TIMEOUT_MS   = 15000; // Increased from 5s to allow slower network conditions
 
 const isHostNotFoundError = (message = '') => {
   const text = String(message || '').toLowerCase();
@@ -149,10 +149,17 @@ export const NativeFetchBridgeService = (() => {
         });
         _available = (resp && resp.status >= 200 && resp.status < 500);
       } catch (e) {
-        if (!isHostNotFoundError(e && e.message)) {
-          console.warn('[NativeFetchBridge] probe failed:', e.message);
+        const errMsg = e && e.message;
+        if (isHostNotFoundError(errMsg)) {
+          // Host not found: mark as definitely unavailable
+          _available = false;
+        } else {
+          // Network errors, timeouts, etc: don't cache failure, allow retry
+          // (only log debug, not warning, since probe can fail for transient reasons)
+          console.debug('[NativeFetchBridge] probe inconclusive:', errMsg);
+          _pendingProbe = null;
+          return false; // Available check fails, but don't permanently cache it
         }
-        _available = false;
       }
       _pendingProbe = null;
       return _available;
@@ -211,7 +218,7 @@ export const NativeFetchBridgeService = (() => {
       status,
       headers: raw.headers,
       text:   () => Promise.resolve(bodyText),
-      json:   () => Promise.resolve(JSON.parse(bodyText)),
+      json:   () => Promise.resolve(bodyText).then(t => JSON.parse(t)),
     };
   }
 

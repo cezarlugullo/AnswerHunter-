@@ -6,7 +6,7 @@ import { DisciplinasController } from './DisciplinasController.js';
 import { StorageModel } from '../models/StorageModel.js';
 import { SettingsModel } from '../models/SettingsModel.js';
 import { I18nService } from '../i18n/I18nService.js';
-import { isLikelyQuestion, normalizeSpaces } from '../utils/helpers.js';
+import { isLikelyQuestion, normalizeSpaces, renderMathInContainer } from '../utils/helpers.js';
 import { ChatGPTAuthService } from '../services/ChatGPTAuthService.js';
 import { GeminiCLIAuthService } from '../services/GeminiCLIAuthService.js';
 import { CopilotAuthService } from '../services/CopilotAuthService.js';
@@ -2480,6 +2480,7 @@ export const PopupController = {
       const displayQuestion = vgResult;
       const bestQuestion = vgResult;
       const _visionGuidedParsed = this._buildVisionGuidedParsed(vgResult);
+      this._lastVisionGuidedParsed = _visionGuidedParsed || null;
       _pcTimer.mark('LLM Vision Extracted');
 
       // (We skip any fallback/heuristics, user mandated 100% vision-guided linear flow)
@@ -2488,6 +2489,7 @@ export const PopupController = {
       // Final Step: Dispatch to background for search
       const requestId = `srch_${Date.now()}`;
       const extractionConfidence = { score: 1.0, level: 'high', signals: ['vision-guided'] };
+      this._lastExtractionConfidence = extractionConfidence;
 
       await chrome.storage.local.set({
         ah_pending_search: { requestId, displayQuestion, bestQuestion, extractionConfidence, visionGuidedParsed: _visionGuidedParsed || null }
@@ -2667,6 +2669,9 @@ export const PopupController = {
       // Restore vision-guided structured data so it survives popup close/reopen
       if (pending.visionGuidedParsed) {
         this._lastVisionGuidedParsed = pending.visionGuidedParsed;
+      }
+      if (pending.extractionConfidence) {
+        this._lastExtractionConfidence = pending.extractionConfidence;
       }
 
       // Regardless of whether the job is still running or already done,
@@ -3397,6 +3402,7 @@ export const PopupController = {
         const htmlExplanation = this._parseMarkdown(explanation);
 
         container.innerHTML = `<div class="study-tutor-explanation">${htmlExplanation}</div>`;
+        renderMathInContainer(container);
       } catch (err) {
         console.error('AnswerHunter Tutor Mode err:', err);
         container.innerHTML = `<div class="study-error">Erro ao gerar explicação. Tente novamente mais tarde.</div>`;
@@ -3441,6 +3447,7 @@ export const PopupController = {
               </details>
             </div>
           `;
+          renderMathInContainer(container);
         } else {
           throw new Error('Invalid question format received.');
         }
@@ -3529,6 +3536,9 @@ export const PopupController = {
                 <div class="msg-content">${htmlResponse}</div>
               </div>
 `);
+            // Render math in the newly added message
+            const lastMsg = history.querySelector('.ai-message:last-child .msg-content');
+            renderMathInContainer(lastMsg);
           } catch (err) {
             console.error('AnswerHunter Chat Error:', err);
             const pending = history.querySelector('.pending-msg');

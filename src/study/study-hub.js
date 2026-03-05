@@ -2327,15 +2327,46 @@ async function aiAction(type) {
     if (dock) {
       let html = '';
       if (type === 'mnemonic' && result && typeof result === 'object') {
-        const em = escHtml(result.emoji || '🧠');
-        const mn = formatMarkdown(result.mnemonic || '');
-        const tp = escHtml(result.type || '');
-        const hu = escHtml(result.howToUse || '');
-        html = `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7">
-          <div style="font-size:1.6rem;margin-bottom:var(--sp-2)">${em}</div>
-          <div style="margin-bottom:var(--sp-3)">${mn}</div>
-          ${hu ? `<div style="color:var(--text-3);font-style:italic;margin-bottom:var(--sp-2)">💡 ${hu}</div>` : ''}
-          ${tp ? `<span style="display:inline-block;padding:2px 8px;border-radius:var(--radius-full);background:var(--surface-alt);color:var(--text-3);font-size:var(--text-xs)">${tp}</span>` : ''}
+        const em  = escHtml(result.emoji || '🧠');
+        const mn  = formatMarkdown(result.mnemonic || '');
+        const tp  = escHtml(result.type || '');
+        const viz = result.visualization ? formatMarkdown(result.visualization) : '';
+        const conn = result.connection   ? formatMarkdown(result.connection)    : '';
+        const test = result.selfTest     ? escHtml(result.selfTest)             : '';
+        const keys = Array.isArray(result.keyElements) && result.keyElements.length
+          ? result.keyElements.map(k => `<li style="margin-bottom:2px">${escHtml(k)}</li>`).join('')
+          : '';
+
+        html = `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7;display:flex;flex-direction:column;gap:var(--sp-3)">
+
+          <div style="font-size:1.5rem;text-align:center">${em}</div>
+
+          <div style="background:var(--surface-alt);border-left:3px solid var(--accent);border-radius:var(--radius-md);padding:var(--sp-3) var(--sp-4)">
+            <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🔑 Frase-âncora</div>
+            <div style="font-weight:600">${mn}</div>
+          </div>
+
+          ${keys ? `<div>
+            <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🗝️ Elementos-chave</div>
+            <ul style="margin:0;padding-left:var(--sp-4);color:var(--text-2)">${keys}</ul>
+          </div>` : ''}
+
+          ${viz ? `<div>
+            <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🎬 Visualização mental</div>
+            <div style="color:var(--text-2);font-style:italic">${viz}</div>
+          </div>` : ''}
+
+          ${conn ? `<div>
+            <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🔗 Por que funciona</div>
+            <div style="color:var(--text-2)">${conn}</div>
+          </div>` : ''}
+
+          ${test ? `<div style="background:#fff8e1;border:1.5px solid #ffb74d;border-radius:var(--radius-md);padding:var(--sp-3) var(--sp-4)">
+            <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#e65100;margin-bottom:var(--sp-1)">🧪 Auto-teste</div>
+            <div style="color:#4e342e;font-weight:500">${test}</div>
+          </div>` : ''}
+
+          ${tp ? `<div><span style="display:inline-block;padding:2px 8px;border-radius:var(--radius-full);background:var(--surface-alt);color:var(--text-3);font-size:var(--text-xs)">${tp}</span></div>` : ''}
         </div>`;
       } else {
         const text = (typeof result === 'object' && result !== null) ? (result.text || result.mnemonic || JSON.stringify(result)) : (result || 'Sem resposta da IA.');

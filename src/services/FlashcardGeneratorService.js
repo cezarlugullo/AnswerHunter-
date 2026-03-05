@@ -17,7 +17,7 @@ export const FlashcardGeneratorService = {
    *
    * @param {Object} card - { question, answer }
    * @param {Object} opts
-   * @param {string[]} [opts.types] - 'cloze'|'reverse'|'concept'|'summary'
+   * @param {string[]} [opts.types] - 'cloze'|'reverse'|'concept'|'summary'|'application'
    * @param {Function} [opts.aiCall] - async (prompt) => text  (from AI providers)
    * @returns {Promise<Array<{type, front, back}>>}
    */
@@ -50,6 +50,10 @@ export const FlashcardGeneratorService = {
         case 'summary':
           results.push(this._generateSummary(card));
           break;
+        // v2.0: application type — transfer learning (Mayer 2002)
+        case 'application':
+          results.push(this._generateApplication(card.answer || card.question || ''));
+          break;
       }
     }
 
@@ -68,7 +72,7 @@ Tipos solicitados: ${types.join(',')}
 
 Para cada flashcard, retorne em formato JSON:
 [
-  {"type": "cloze|reverse|concept|summary", "front": "texto da frente", "back": "texto do verso"}
+  {"type": "cloze|reverse|concept|summary|application", "front": "texto da frente", "back": "texto do verso"}
 ]
 
 Regras:
@@ -76,6 +80,8 @@ Regras:
 - reverse: resposta como pergunta, questão original como resposta
 - concept: conceito chave extraído, definição no verso
 - summary: resumo em 1-2 frases na frente, detalhes no verso
+- application: cenário NOVO que exige APLICAR o conceito em contexto inédito | verso: resolução
+  (ex frente: 'Se X acontecesse em Y, qual seria o efeito em Z?')
 - Máximo 5 flashcards
 - Responda APENAS o JSON, sem markdown`;
 
@@ -100,7 +106,26 @@ Regras:
     const results = [];
 
     // Extract key terms from the answer (words > 4 chars, non-common)
-    const common = new Set(['para', 'como', 'mais', 'muito', 'entre', 'sobre', 'quando', 'onde', 'porque', 'porém', 'também', 'ainda', 'sendo', 'pois', 'qual', 'está', 'pode', 'deve', 'cada', 'todo', 'toda', 'este', 'esta', 'esse', 'essa', 'from', 'that', 'with', 'have', 'this', 'will', 'your', 'they', 'been', 'some', 'which', 'their', 'there']);
+    // Extended stopwords v2.0 (Kilgarriff 1997: function words ≠ cloze targets)
+    // PT + EN function words that carry no semantic content for cloze deletion
+    const common = new Set([
+      // Portuguese
+      'de','a','o','que','e','do','da','em','um','para','com','uma','os','no',
+      'se','na','por','mais','as','dos','como','mas','ao','ele','das','seu',
+      'sua','ou','ser','quando','muito','há','nos','já','está','também','só',
+      'após','desde','entre','até','sobre','isso','esse','essa','este','esta',
+      'eles','elas','nós','vocês','foi','são','era','eram','seja','sendo','ter',
+      'tem','teve','pelo','pela','pelos','pelas','num','numa','disso','desse',
+      'desta','nisso','neste','nesta','cuja','cujo','caso','vez','vezes','bem',
+      'então','assim','pois','porém','todavia','contudo','logo','portanto','onde',
+      'porque','qual','pode','deve','cada','todo','toda','ainda','sendo',
+      // English
+      'the','of','and','is','in','it','to','that','was','for','on','are','with',
+      'as','at','be','by','an','or','not','this','but','from','they','we','you',
+      'he','she','its','which','have','had','has','were','been','their','when',
+      'can','will','all','would','some','what','there','their','from','that',
+      'with','have','this','will','your','they','been','some','which','here'
+    ]);
 
     const sentences = answer.split(/[.!?]+/).filter(s => s.trim().length > 15);
 
@@ -147,7 +172,7 @@ Regras:
     let match;
     while ((match = conceptPattern.exec(text)) !== null) {
       const concept = match[1].trim();
-      if (concept.length > 3 && concept.split('').length <= 4) {
+      if (concept.length > 3 && concept.split(' ').length <= 4  /* v2.0: split by SPACE (words), not by char */) {
         concepts.add(concept);
       }
     }
@@ -214,5 +239,35 @@ Regras:
     if (start > 0) excerpt = '…' + excerpt;
     if (end < text.length) excerpt += '…';
     return excerpt;
-  }
+  },
+
+    /**
+     * Gera flashcard tipo 'application' — aplica conceito em cenário novo.
+     * Este tipo exige transferência (Mayer 2002: transfer learning),
+     * não apenas recuperação. Força o aluno a usar o conceito em contexto inédito.
+     *
+     * @param {string} text - Texto fonte com conceito a aplicar
+     * @returns {Object} { front, back, type: 'application' }
+     */
+    _generateApplication(text) {
+        // Extract main noun/concept using first significant noun phrase
+        const sentences = text.split(/[.!?]/).filter(s => s.trim().length > 20);
+        const sourceSentence = sentences[0] || text;
+
+        // Generate contextual application scenario
+        const trimmed = sourceSentence.trim();
+        const front = `Aplique o conceito: dado o seguinte contexto — "${trimmed.slice(0, 120)}" — `
+            + `o que aconteceria se as condições fossem invertidas ou o contexto mudasse?`;
+
+        const back = `Conceito-base:
+${text.slice(0, 300)}
+
+`
+            + `Para responder: 1) Identifique o conceito central. `
+            + `2) Analise como ele se comporta no novo contexto. `
+            + `3) Aplique as regras/princípios ao cenário proposto.`;
+
+        return { front, back, type: 'application' };
+    },
+
 };

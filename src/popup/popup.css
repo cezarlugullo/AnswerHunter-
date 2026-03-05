@@ -11813,3 +11813,42 @@ footer .material-symbols-rounded {
   position: relative !important;
   z-index: 9999 !important;
 }
+
+/* ─── KaTeX Math Formula Integration ─────────────────────────────────── */
+
+/* Inline math should inherit the surrounding text size */
+.katex {
+  font-size: 1em !important;
+}
+
+/* Display-mode math ($$...$$) gets a bit more breathing room */
+.katex-display {
+  margin: 8px 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+}
+
+/* Ensure formulas in question enunciado don't overflow */
+.question-enunciado .katex-display,
+.alt-text .katex-display,
+.answer-alternative .katex-display {
+  text-align: left;
+}
+
+/* Math inside alternatives should stay inline-sized */
+.alternative .katex,
+.answer-alternative .katex {
+  font-size: 0.95em !important;
+}
+
+/* Math in study features (tutor, chat) */
+.study-tutor-explanation .katex,
+.msg-content .katex {
+  font-size: 1em !important;
+}
+
+.study-tutor-explanation .katex-display,
+.msg-content .katex-display {
+  margin: 6px 0 !important;
+}

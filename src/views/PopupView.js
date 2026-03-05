@@ -1,4 +1,4 @@
-import { formatQuestionText, escapeHtml } from '../utils/helpers.js';
+import { formatQuestionText, escapeHtml, renderMathInContainer } from '../utils/helpers.js';
 import { QuestionParser } from '../services/search/QuestionParser.js';
 
 /**
@@ -283,6 +283,14 @@ export const PopupView = {
   setButtonDisabled(buttonId, disabled) {
     const button = document.getElementById(buttonId);
     if (button) button.disabled = !!disabled;
+  },
+
+  /**
+   * Render LaTeX math formulas inside a container using KaTeX auto-render.
+   * Delegates to the shared helper in helpers.js.
+   */
+  _renderMath(container) {
+    renderMathInContainer(container);
   },
 
   clearResults() {
@@ -954,6 +962,9 @@ export const PopupView = {
     this.elements.resultsDiv
       .querySelectorAll('script, iframe, object, embed, link[rel="preload"][as="script"], link[rel="modulepreload"]')
       .forEach((el) => el.remove());
+
+    // Render LaTeX math formulas with KaTeX (if loaded)
+    this._renderMath(this.elements.resultsDiv);
 
     if (discardedUrlDiagnostics.length > 0) {
       const compact = discardedUrlDiagnostics

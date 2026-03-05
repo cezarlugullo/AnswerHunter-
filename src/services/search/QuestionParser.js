@@ -260,7 +260,7 @@ export const QuestionParser = {
             }
             const normalizedBody = this.normalizeOption(cleanedBody);
             const isCodeLike = this.looksLikeCodeOption(cleanedBody);
-            const dedupKey = isCodeLike ? _codeDedupKey(cleanedBody) : normalizedBody;
+            const dedupKey = isCodeLike ? _codeDedupKey(cleanedBody) : String(cleanedBody).toLowerCase().replace(/\s+/g, '');
             const duplicateBody = seenBodies.has(dedupKey);
             if (!/^[A-E]$/.test(letter)) return false;
             if (!this.isUsableOptionBody(cleanedBody) || !normalizedBody || seen.has(letter) || (!isCodeLike && duplicateBody)) return false;

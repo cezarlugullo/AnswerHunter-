@@ -219,6 +219,9 @@ export const ChatGPTAuthService = {
         }
 
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
             const response = await fetch(this.TOKEN_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -226,14 +229,18 @@ export const ChatGPTAuthService = {
                     grant_type: 'refresh_token',
                     client_id: this.CLIENT_ID,
                     refresh_token: auth.refreshToken
-                })
+                }),
+                signal: controller.signal
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const errText = await response.text().catch(() => '');
                 console.error(`ChatGPTAuth: Token refresh HTTP ${response.status}: ${errText.slice(0, 300)}`);
-                // If refresh failed permanently, clear auth
+                // Only logout on permanent auth failures
                 if (response.status === 400 || response.status === 401 || response.status === 403) {
+                    console.warn('ChatGPTAuth: Permanent auth failure, logging out');
                     await this.logout();
                 }
                 return false;
@@ -266,6 +273,13 @@ export const ChatGPTAuthService = {
             console.log('ChatGPTAuth: Token refreshed successfully');
             return true;
         } catch (err) {
+            const errMsg = err?.message || String(err);
+            // Network errors (Failed to fetch, AbortError, etc) are transient — don't logout
+            if (errMsg.includes('Failed to fetch') || errMsg.includes('AbortError') || errMsg.includes('timeout')) {
+                console.warn('ChatGPTAuth: Network error during token refresh (transient):', errMsg);
+                return false;
+            }
+            // Unknown errors — be cautious
             console.error('ChatGPTAuth: Token refresh error:', err);
             return false;
         }
