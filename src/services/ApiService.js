@@ -28,6 +28,9 @@ export const ApiService = {
     // After DISABLE_THRESHOLD consecutive failures, the provider is removed from the fallback
     // chain for the current session to avoid wasting ~1-2s per source call.
     _providerShortStreak: {},
+    // Track consecutive Copilot network failures (timeout/Failed to fetch).
+    // After 2 consecutive failures, skip Copilot in aiExtract to avoid wasting 15s+ per call.
+    _copilotNetworkFailStreak: 0,
 
     // ── Global AI extraction semaphore ──────────────────────────────────────
     // Limits concurrent LLM calls to prevent quota exhaustion across providers.
@@ -591,11 +594,12 @@ export const ApiService = {
         try {
             const result = await CopilotApiAdapter.chatCompletion(
                 copilotToken, apiUrl, messages,
-                { model, temperature: opts.temperature, max_tokens: opts.max_tokens }
+                { model, temperature: opts.temperature, max_tokens: opts.max_tokens, timeoutMs: opts.timeoutMs }
             );
 
             if (result && typeof result === 'string') {
                 console.log(`%c[AH] ✅ Copilot success (model=${model}, ${result.length} chars)`, 'color:#79c0ff;font-weight:bold');
+                this._copilotNetworkFailStreak = 0; // reset on success
                 return result;
             }
 
@@ -611,12 +615,19 @@ export const ApiService = {
                     console.warn(`AnswerHunter: Copilot rate-limited (429), cooldown=${cooldownMs}ms`);
                     return null;
                 }
+                // Network error (status 0) or timeout (status 408)
+                if (result.status === 0 || result.status === 408) {
+                    this._copilotNetworkFailStreak++;
+                    console.warn(`AnswerHunter: Copilot failed (${result.status}) — networkFailStreak=${this._copilotNetworkFailStreak}`);
+                    return null;
+                }
                 console.warn(`AnswerHunter: Copilot failed (${result.status})`);
             }
 
             return null;
         } catch (err) {
-            console.warn('AnswerHunter: Copilot request error:', err?.message || String(err));
+            this._copilotNetworkFailStreak++;
+            console.warn(`AnswerHunter: Copilot request error (networkFailStreak=${this._copilotNetworkFailStreak}):`, err?.message || String(err));
             return null;
         }
     },
@@ -1523,6 +1534,10 @@ Analise o texto passo a passo e responda no formato acima:`;
 
         const tryCopilot = async () => {
             if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
+            if (this._copilotNetworkFailStreak >= 2) {
+                console.log(`  🔬 [aiExtract] Copilot auto-skipped (${this._copilotNetworkFailStreak} consecutive network failures)`);
+                return null;
+            }
             try {
                 console.log(`  🔬 [aiExtract] Trying Copilot (${settings.copilotModel || 'gpt-4o'})...`);
                 const result = await this._callCopilot([
@@ -1531,7 +1546,8 @@ Analise o texto passo a passo e responda no formato acima:`;
                 ], {
                     temperature: 0.05,
                     max_tokens: 300,
-                    model: settings.copilotModel || 'gpt-4o'
+                    model: settings.copilotModel || 'gpt-4o',
+                    timeoutMs: 15000
                 });
                 console.log(`  🔬 [aiExtract] Copilot response: ${result ? result.length + ' chars' : 'null'}`);
                 return result;
@@ -1627,7 +1643,9 @@ Analise o texto passo a passo e responda no formato acima:`;
         // Try the primary provider once more with a simpler "gabarito scanner" prompt —
         // less strict than the main prompt (no question-matching requirement), just looks
         // for any explicit answer marker (Resposta/Gabarito/letter pattern) in the text.
-        if ((!content || content.length < 40) && truncatedPage.length > 200) {
+        // Skip if the primary provider has network failures (don't waste another 15s on a dead connection).
+        const primaryHasNetworkIssues = primary === 'copilot' && this._copilotNetworkFailStreak >= 2;
+        if ((!content || content.length < 40) && truncatedPage.length > 200 && !primaryHasNetworkIssues) {
             const simplifiedPrompt = `Leia o TEXTO abaixo e procure por qualquer marcador de resposta: "Resposta: X", "Gabarito: X", "Letra X", "alternativa X", "a resposta é X", "resposta correta é X" ou padrão similar.
 
 QUESTÃO (apenas para referência de contexto):
@@ -1655,7 +1673,7 @@ RESULTADO: NAO_ENCONTRADO`;
                             { role: 'system', content: 'Você é um assistente que encontra marcadores de gabarito em textos.' },
                             { role: 'user', content: simplifiedPrompt }
                         ];
-                        if (primaryProvider.name === 'copilot') return await this._callCopilot(rescueMessages, { temperature: 0.0, max_tokens: 200 });
+                        if (primaryProvider.name === 'copilot') return await this._callCopilot(rescueMessages, { temperature: 0.0, max_tokens: 200, timeoutMs: 15000 });
                         if (primaryProvider.name === 'groq') {
                             const s = await this._getSettings();
                             if (this._groqQuotaExhaustedUntil > Date.now()) return null;
@@ -2598,6 +2616,10 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             '3. Retorne APENAS o texto da questão — nenhum comentário, prefixo ou explicação.',
             '4. Formato obrigatório de alternativas: A) texto, B) texto, etc. (cada uma em linha separada).',
             '5. NÃO inclua gabarito, comentários, ou texto fora da questão.',
+            '6. FÓRMULAS MATEMÁTICAS: Sempre transcreva expressões matemáticas em notação LaTeX entre $...$.',
+            '   Exemplos: $\\frac{x}{y}$, $\\lim_{x \\to 4}$, $\\sqrt{x}$, $x^2 + y^2 = r^2$.',
+            '   Se a imagem contiver frações, raízes, limites, integrais, somatórios, matrizes ou qualquer',
+            '   notação matemática, use SEMPRE a formatação LaTeX correspondente.',
             '',
             'FORMATO DE SAÍDA:',
             '<enunciado com quebras de linha preservadas>',
@@ -3498,8 +3520,9 @@ RESULTADO: NAO_ENCONTRADO`;
         /* ---------- helper: try Copilot ---------- */
         const tryCopilot = async () => {
             if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
+            if (this._copilotNetworkFailStreak >= 2) return null;
             try {
-                return await this._callCopilot(msgs, { ...callOpts, model: settings.copilotModel || 'gpt-4o' });
+                return await this._callCopilot(msgs, { ...callOpts, model: settings.copilotModel || 'gpt-4o', timeoutMs: 15000 });
             } catch (_) { return null; }
         };
 
