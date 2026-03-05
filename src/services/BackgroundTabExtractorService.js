@@ -18,7 +18,7 @@ import { StealthEvasions } from './bypass/StealthEvasions.js';
 import { HumanMouseSimulator } from './bypass/HumanMouseSimulator.js';
 
 // Sites protected by Cloudflare Bot Management / Akamai — use full bypass pipeline
-const CF_PROTECTED_SITES = new Set(['studocu', 'gauthmath']);
+const CF_PROTECTED_SITES = new Set(['studocu']);
 
 // Sites with heavy behavior analysis (mouse tracking, scroll detection) — use HumanMouseSimulator
 const HUMAN_SIM_SITES = new Set(['brainly', 'scribd']);
@@ -68,9 +68,12 @@ export class BackgroundTabExtractorService {
       const site = BackgroundTabExtractorService._detectSite(url);
       const extractor = site ? BackgroundTabExtractorService._getExtractor(site) : null;
 
-      // Route CF-protected sites through full bypass pipeline
+      // Route CF-protected sites through full bypass pipeline, fallback to standard on failure
       if (site && CF_PROTECTED_SITES.has(site) && extractor) {
-        return await BackgroundTabExtractorService._extractWithCFBypass(url, site, extractor, options);
+        const cfResult = await BackgroundTabExtractorService._extractWithCFBypass(url, site, extractor, options);
+        if (cfResult && cfResult.length > 100) return cfResult;
+        // CF bypass failed — fall through to standard extraction with user's cookies
+        console.log(`[AH-TAB] [FALLBACK] CF-bypass empty for ${site}, trying standard extraction...`);
       }
 
       // Standard extraction — works for known sites (with specific extractor) AND
@@ -190,7 +193,19 @@ export class BackgroundTabExtractorService {
           const fallback = await chrome.scripting.executeScript({
             target: { tabId },
             func: () => {
-              const tc = (document.body?.textContent || '').replace(/\s+/g, ' ').trim();
+              // Preserve math formulas: replace <math> with LaTeX source before extracting text
+              const clone = document.body.cloneNode(true);
+              clone.querySelectorAll('math').forEach(mathEl => {
+                const ann = mathEl.querySelector('annotation[encoding="application/x-tex"]');
+                const latex = ann?.textContent?.trim()
+                  || mathEl.getAttribute('alttext')
+                  || mathEl.textContent?.trim();
+                if (latex) {
+                  const ph = document.createTextNode(` $${latex}$ `);
+                  mathEl.parentNode?.replaceChild(ph, mathEl);
+                }
+              });
+              const tc = (clone.textContent || '').replace(/\s+/g, ' ').trim();
               return tc.length > 30 ? tc.slice(0, 15000) : '';
             },
             world: 'MAIN'
@@ -278,8 +293,22 @@ export class BackgroundTabExtractorService {
 
   static _brainlyExtractor() {
     try {
-      // Helper: get text preferring innerText, falling back to textContent
-      const getText = el => (el?.innerText || el?.textContent || '').trim();
+      // Helper: get text preserving math formulas from <math> elements
+      const getText = el => {
+        if (!el) return '';
+        const clone = el.cloneNode(true);
+        clone.querySelectorAll('math').forEach(mathEl => {
+          const ann = mathEl.querySelector('annotation[encoding="application/x-tex"]');
+          const latex = ann?.textContent?.trim()
+            || mathEl.getAttribute('alttext')
+            || mathEl.textContent?.trim();
+          if (latex) {
+            const ph = document.createTextNode(` $${latex}$ `);
+            mathEl.parentNode?.replaceChild(ph, mathEl);
+          }
+        });
+        return (clone.innerText || clone.textContent || '').trim();
+      };
 
       // Priority: safe_html_ucr contains question + answer text even when paywall
       // overlay is present — it's in the DOM but hidden by CSS blur/overlay.
@@ -512,8 +541,22 @@ export class BackgroundTabExtractorService {
 
   static _passeiDiretoExtractor() {
     try {
-      // Helper: get text preferring innerText, falling back to textContent
-      const getText = el => (el?.innerText || el?.textContent || '').trim();
+      // Helper: get text preserving math formulas
+      const getText = el => {
+        if (!el) return '';
+        const clone = el.cloneNode(true);
+        clone.querySelectorAll('math').forEach(mathEl => {
+          const ann = mathEl.querySelector('annotation[encoding="application/x-tex"]');
+          const latex = ann?.textContent?.trim()
+            || mathEl.getAttribute('alttext')
+            || mathEl.textContent?.trim();
+          if (latex) {
+            const ph = document.createTextNode(` $${latex}$ `);
+            mathEl.parentNode?.replaceChild(ph, mathEl);
+          }
+        });
+        return (clone.innerText || clone.textContent || '').trim();
+      };
 
       // Remove blur CSS (PD blurs paid content via CSS filter)
       document.querySelectorAll('[style*="blur"]').forEach(el => {

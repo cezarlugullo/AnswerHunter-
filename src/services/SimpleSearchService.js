@@ -155,7 +155,7 @@ const DOMAIN_STRATEGY = {
     'brainly.co':        'render',
     'passeidireto.com':  'render',
     'studocu.com':       'render',   // CF + JS, mas extrator bypass funciona
-    'gauthmath.com':     'render',
+    'gauthmath.com':     'render',   // uses standard hidden tab (not CF bypass)
     'slideshare.net':    'render',
     // ── skip: login/paywall obrigatório, quase sempre vazio ──
     'scribd.com':        'skip',     // paywall forte, raramente extrai algo útil
@@ -1013,8 +1013,10 @@ export const SimpleSearchService = {
         // ── Fase 1 e Scholar (Paralelo) ─────────────
         // Se Fase 0 já achou resposta com boa confiança, precisamos de menos fontes para confirmar
         const snippetFoundAnswer = snippetSources.length > 0 && snippetSources[0].confidence >= 0.75;
-        const fase1MaxSources = snippetFoundAnswer ? 2 : MAX_SOURCES;
-        const fase1MinSources = snippetFoundAnswer ? 1 : 3;
+        const snippetHighConf = snippetSources.length > 0 && snippetSources[0].confidence >= 0.90;
+        // High confidence (>=0.90): 1 source confirms. Mid confidence (>=0.75): 2 sources. No snippet: full.
+        const fase1MaxSources = snippetHighConf ? 1 : snippetFoundAnswer ? 2 : MAX_SOURCES;
+        const fase1MinSources = snippetHighConf ? 1 : snippetFoundAnswer ? 1 : 3;
         if (snippetFoundAnswer) {
             console.log(`[SimpleSearch] [FAST] Snippet achou resposta (conf=${snippetSources[0].confidence.toFixed(2)}), reduzindo fontes: max=${fase1MaxSources}, min=${fase1MinSources}`);
         }
