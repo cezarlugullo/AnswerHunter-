@@ -232,7 +232,7 @@ export class BackgroundTabExtractorService {
 
   static _getRenderWaitMs(site) {
     const waits = {
-      brainly: 5000,
+      brainly: 2000,  // safe_html_ucr is available early; paywall JS can't hide innerText
       studocu: 4000,
       passeidireto: 3000,
       gauthmath: 4000,
@@ -280,6 +280,15 @@ export class BackgroundTabExtractorService {
     try {
       // Helper: get text preferring innerText, falling back to textContent
       const getText = el => (el?.innerText || el?.textContent || '').trim();
+
+      // Priority: safe_html_ucr contains question + answer text even when paywall
+      // overlay is present — it's in the DOM but hidden by CSS blur/overlay.
+      const ucr = document.querySelectorAll('[data-testid="safe_html_ucr"]');
+      if (ucr.length > 0) {
+        const parts = [];
+        ucr.forEach(el => { const t = getText(el); if (t) parts.push(t); });
+        if (parts.length > 0) return parts.join('\n\n');
+      }
 
       const modalSelectors = [
         '[data-testid="modal-overlay"]', '[data-testid="login-modal"]',
