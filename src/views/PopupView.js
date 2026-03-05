@@ -1130,6 +1130,7 @@ export const PopupView = {
                 <span class="folder-name">${escapeHtml(item.title)}</span>
               </div>
               <div class="folder-actions">
+                <button class="action-btn move-to-parent-btn" data-id="${item.id}" title="${escapeHtml(this.t('binder.moveToParent'))}"><span class="material-symbols-rounded" style="font-size:18px;">drive_file_move_rtl</span></button>
                 <button class="action-btn rename-btn" data-id="${item.id}" title="${escapeHtml(this.t('binder.rename'))}"><span class="material-symbols-rounded" style="font-size:18px;">edit</span></button>
                 <button class="action-btn delete-btn" data-id="${item.id}" title="${escapeHtml(this.t('binder.delete'))}"><span class="material-symbols-rounded" style="font-size:18px;">delete</span></button>
               </div>

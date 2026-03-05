@@ -1950,12 +1950,6 @@ export const PopupController = {
         },
       },
       {
-        target: '.tab-btn[data-tab="disciplinas"]',
-        icon: 'school', iconClass: 'tt-popover__icon--purple',
-        desc: 'Crie ou gerencie suas <strong>Disciplinas</strong> para organizar o conteúdo.',
-        placement: 'bottom',
-      },
-      {
         target: '#openStudyPageBtn',
         icon: 'local_library', iconClass: 'tt-popover__icon--primary',
         desc: 'Clique neste botão para <strong>abrir a página e estudar</strong> com flashcards e simulados.',
@@ -2122,6 +2116,17 @@ export const PopupController = {
     this.view.setButtonDisabled('extractBtn', true);
     this.view.setButtonDisabled('copyBtn', true);
 
+    // Sites that load answer content in the initial HTML but hide it via JS paywall.
+    // For these, we reload the tab, wait a short time for content to arrive, then
+    // stop loading (before the paywall JS blurs/hides the answer).
+    const PAYWALL_RELOAD_HOSTS = [
+      'brainly.com', 'brainly.com.br', 'brainly.lat', 'brainly.es', 'brainly.in',
+      'passeidireto.com',
+      'studocu.com',
+      'chegg.com',
+      'coursehero.com',
+    ];
+
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
@@ -2130,13 +2135,97 @@ export const PopupController = {
         return;
       }
 
-      const results = await chrome.scripting.executeScript({
+      // Detect if this site needs the reload+stop trick
+      let hostname = '';
+      try { hostname = new URL(tab.url).hostname.replace(/^www\./, ''); } catch { /**/ }
+      const needsReloadTrick = PAYWALL_RELOAD_HOSTS.some(h => hostname === h || hostname.endsWith('.' + h));
+
+      if (needsReloadTrick) {
+        console.log(`[AH Extract] 🔄 Paywall site detected: ${hostname} — using reload+stop trick`);
+        this.view.showStatus('loading', '🔄 Recarregando para capturar conteúdo...');
+
+        const navigationCommitted = new Promise(resolve => {
+          let resolved = false;
+          const listener = (tabId, changeInfo) => {
+            if (tabId === tab.id && changeInfo.status === 'loading' && !resolved) {
+              resolved = true;
+              chrome.tabs.onUpdated.removeListener(listener);
+              console.log(`[AH Extract] 🚦 Navigation committed — starting timer`);
+              resolve();
+            }
+          };
+          chrome.tabs.onUpdated.addListener(listener);
+          setTimeout(() => { if (!resolved) { resolved = true; chrome.tabs.onUpdated.removeListener(listener); resolve(); } }, 3000);
+        });
+
+        // bypassCache forces a real network request (slower) giving us more time to stop
+        await chrome.tabs.reload(tab.id, { bypassCache: true });
+        await navigationCommitted;
+
+        const STOP_DELAY_MS = 250;
+        console.log(`[AH Extract] ⏳ Waiting ${STOP_DELAY_MS}ms from navigation start (bypass-cache)...`);
+        await new Promise(resolve => setTimeout(resolve, STOP_DELAY_MS));
+
+        console.log(`[AH Extract] 🛑 Calling window.stop() to freeze DOM`);
+        const stopResult = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => { window.stop(); return document.readyState; }
+        });
+        console.log(`[AH Extract] 📄 readyState after stop: ${stopResult?.[0]?.result}`);
+        await new Promise(resolve => setTimeout(resolve, 150));
+        console.log(`[AH Extract] ✅ Reload+stop complete`);
+      } else {
+        console.log(`[AH Extract] ℹ️ Normal site: ${hostname} — no reload needed`);
+      }
+
+      this.view.showStatus('loading', this.t('status.extractingContent'));
+
+      // Step 1: grab the visible text of the page (no complex DOM selectors)
+      console.log(`[AH Extract] 📋 Grabbing page text...`);
+      const textResults = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
-        function: ExtractionService.extractQAContentScript
+        func: (isPaywallSite) => {
+          // For paywall sites (Brainly etc): extract content directly from known DOM nodes,
+          // bypassing any overlay/blur the paywall JS may have added visually.
+          // The answer text lives in the DOM even after paywall JS runs — just hidden by CSS.
+          if (isPaywallSite) {
+            const parts = [];
+            // Brainly: question and answer both use data-testid="safe_html_ucr"
+            const ucr = document.querySelectorAll('[data-testid="safe_html_ucr"]');
+            if (ucr.length > 0) {
+              ucr.forEach(el => {
+                const t = el.innerText?.trim();
+                if (t) parts.push(t);
+              });
+              console.log(`[AH Extract DOM] safe_html_ucr spans: ${ucr.length}, parts: ${parts.length}`);
+              if (parts.length > 0) return parts.join('\n\n');
+            }
+            // Passei Direto / Studocu: try generic answer containers
+            const answerEls = document.querySelectorAll(
+              '[data-testid*="answer"], [class*="answer-content"], [class*="answer_content"], [class*="resolucao"]'
+            );
+            answerEls.forEach(el => {
+              const t = el.innerText?.trim();
+              if (t && t.length > 20) parts.push(t);
+            });
+            if (parts.length > 0) {
+              console.log(`[AH Extract DOM] generic answer containers: ${parts.length}`);
+              return parts.join('\n\n');
+            }
+          }
+          // Fallback: clean innerText
+          const clone = document.body.cloneNode(true);
+          clone.querySelectorAll('script,style,noscript,nav,footer,header,[class*="ad-"],[id*="ad-"],[class*="banner"],[class*="cookie"],[class*="popup"]').forEach(el => el.remove());
+          return clone.innerText || document.body.innerText || '';
+        },
+        args: [needsReloadTrick]
       });
 
-      const extractedItems = results?.[0]?.result || [];
-      if (extractedItems.length === 0) {
+      const pageText = textResults?.[0]?.result || '';
+      console.log(`[AH Extract] 📝 Page text length: ${pageText.length} chars`);
+      console.log(`[AH Extract] 📝 Preview: ${pageText.slice(0, 300)}`);
+      if (!pageText || pageText.trim().length < 30) {
+        console.warn(`[AH Extract] ⚠️ Page text too short, aborting`);
         this.view.showStatus('error', this.t('status.noQuestionFound'));
         return;
       }
@@ -2144,17 +2233,22 @@ export const PopupController = {
       this.view.showStatus('loading', this.t('status.refiningWithAi'));
       this.view.clearResults();
 
-      const refined = await SearchService.processExtractedItems(extractedItems);
-      if (refined.length === 0) {
+      // Step 2: send raw text to LLM — it extracts + formats everything
+      console.log(`[AH Extract] 🤖 Sending to LLM for extraction...`);
+      const extracted = await ApiService.extractQuestionFromPageText(pageText, tab.url);
+      console.log(`[AH Extract] 🎯 LLM result:`, extracted);
+      if (!extracted) {
+        console.warn(`[AH Extract] ⚠️ LLM returned null — no question found`);
         this.view.showStatus('error', this.t('status.noValidQuestion'));
         return;
       }
+      console.log(`[AH Extract] ✅ Extracted — question: "${extracted.question?.slice(0,80)}..." | answer: "${extracted.answer}"`);
 
-      const withSaved = this._decorateWithSavedMeta(refined);
+      const withSaved = this._decorateWithSavedMeta([extracted]);
 
       this.view.appendResults(withSaved);
       await this.saveLastResults(withSaved);
-      this.view.showStatus('success', this.t('status.questionsFound', { count: refined.length }));
+      this.view.showStatus('success', this.t('status.questionsFound', { count: 1 }));
       this.view.toggleViewSection('view-search');
       this.view.setButtonDisabled('copyBtn', false);
     } catch (error) {

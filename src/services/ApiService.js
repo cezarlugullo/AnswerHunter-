@@ -24,6 +24,10 @@ export const ApiService = {
     // Non-codex models (gpt-4.1, gpt-4o, etc.) consistently return 400 "not supported when using Codex".
     _chatgptUnsupportedCodexModels: {},
     _openRouterUnavailableModels: {},
+    // Track consecutive short responses per provider (< 40 chars = garbage like Codex 25-char).
+    // After DISABLE_THRESHOLD consecutive failures, the provider is removed from the fallback
+    // chain for the current session to avoid wasting ~1-2s per source call.
+    _providerShortStreak: {},
 
     // ── Global AI extraction semaphore ──────────────────────────────────────
     // Limits concurrent LLM calls to prevent quota exhaustion across providers.
@@ -429,9 +433,10 @@ export const ApiService = {
             store: false
         };
 
-        if (systemMsgs.length > 0) {
-            body.instructions = systemMsgs.map(m => m.content).join('\n');
-        }
+        // Codex Responses API always requires `instructions` to be present
+        body.instructions = systemMsgs.length > 0
+            ? systemMsgs.map(m => m.content).join('\n')
+            : 'You are a helpful assistant.';
         // Note: Codex Responses API does not support temperature or max_output_tokens
 
         try {
@@ -700,7 +705,11 @@ export const ApiService = {
             gemini:     ['gemini', 'openrouter', 'copilot', 'chatgpt', 'groq'],
             groq:       ['groq', 'openrouter', 'gemini', 'copilot', 'chatgpt'],
         };
-        const ordered = (ORDER_MAP[primary] || ORDER_MAP.groq).filter(p => allowed.includes(p));
+        // preserveOrder: caller specifies exact provider order (e.g. speed-first for vision).
+        // Without it, ORDER_MAP picks the order based on primaryProvider preference.
+        const ordered = cfg.preserveOrder && enabledProviders
+            ? enabledProviders.filter(p => p in registry)
+            : (ORDER_MAP[primary] || ORDER_MAP.groq).filter(p => allowed.includes(p));
 
         const defaultIsValid = (v) => {
             if (v == null) return false;
@@ -1323,7 +1332,7 @@ export const ApiService = {
         }
 
         const settings = await this._getSettings();
-        const truncatedPage = pageText.substring(0, 8000);
+        const truncatedPage = pageText.substring(0, 4000);
         const truncatedQuestion = questionText.substring(0, 1800);
 
         console.log(`  🔬 [aiExtract] START host=${hostHint} pageLen=${truncatedPage.length} questionLen=${truncatedQuestion.length}`);
@@ -1567,28 +1576,44 @@ Analise o texto passo a passo e responda no formato acima:`;
             if (idx > -1) fallbackChain.unshift(...fallbackChain.splice(idx, 1));
         }
 
-        const fallbackOrder = fallbackChain.map(p => p.name);
+        // Auto-disable non-primary providers that consistently return short/garbage responses.
+        // After 2 consecutive short responses, the provider is skipped for this session.
+        // This prevents ChatGPT Codex (always 25 chars) from being called ~12x per question.
+        const DISABLE_THRESHOLD = 2;
+        const activeChain = fallbackChain.filter(p => {
+            const streak = this._providerShortStreak[p.name] || 0;
+            if (streak >= DISABLE_THRESHOLD && p.name !== primary) {
+                console.log(`  🔬 [aiExtract] ${p.name} auto-skipped (${streak} consecutive short responses)`);
+                return false;
+            }
+            return true;
+        });
+
+        const fallbackOrder = activeChain.map(p => p.name);
         console.log(`  🔬 [aiExtract] primaryProvider(config)=${primary}`);
         console.log(`  🔬 [aiExtract] providerOrder(run)=${fallbackOrder.length ? fallbackOrder.join(' -> ') : '(empty)'}`);
 
         let usedProvider = null;
-        for (let i = 0; i < fallbackChain.length; i++) {
-            const provider = fallbackChain[i];
+        for (let i = 0; i < activeChain.length; i++) {
+            const provider = activeChain[i];
             content = await provider.fn();
 
             // Reject: null, too short (< 40 chars = garbage like 25-char empty responses),
             // or explicit NAO_ENCONTRADO
             if (content && content.length >= 40
                 && !/^RESULTADO:\s*NAO_ENCONTRADO/im.test(content)) {
+                this._providerShortStreak[provider.name] = 0; // reset streak on success
                 usedProvider = provider.name;
                 break;
             }
 
-            // If ANY provider returned a short non-null response (e.g. 25 chars),
-            // the page content is likely the problem, not the model.
-            // Skip fallbacks to avoid wasting rate limits on bad content.
+            // If a provider returned a short non-null response (e.g. 25 chars),
+            // increment its streak and stop trying further fallbacks.
+            // The streak prevents this broken provider from being called in future sources.
             if (content && content.length > 0 && content.length < 40) {
-                console.log(`  🔬 [aiExtract] ${provider.name} returned short response (${content.length} chars) — page content likely insufficient, skipping fallbacks`);
+                this._providerShortStreak[provider.name] = (this._providerShortStreak[provider.name] || 0) + 1;
+                const streak = this._providerShortStreak[provider.name];
+                console.log(`  🔬 [aiExtract] ${provider.name} returned short response (${content.length} chars) — streak=${streak}${streak >= DISABLE_THRESHOLD ? ' [AUTO-DISABLED]' : ''}`);
                 break;
             }
 
@@ -1630,9 +1655,14 @@ Analise o texto passo a passo e responda no formato acima:`;
             return null;
         }
 
-        // Try to extract letter from ENCONTRADO response
-        const letterMatch = content.match(/\bLetra\s+([A-E])\b/i)
-            || content.match(/\b([A-E])\s*[\):\.\-]\s*\S/);
+        // Try to extract letter from ENCONTRADO response.
+        // Claude Haiku (Copilot) uses markdown bold: **A)** or **Letra A** — strip it first.
+        const plainContent = content.replace(/\*{1,3}/g, '').replace(/_{1,3}/g, '');
+        const letterMatch = plainContent.match(/\bLetra\s+([A-E])\b/i)
+            || plainContent.match(/\b([A-E])\s*[\):\.\-]\s*\S/)
+            || plainContent.match(/\balternativa\s+([A-E])\b/i)
+            || plainContent.match(/\bopç[aã]o\s+([A-E])\b/i)
+            || plainContent.match(/\bresposta[^.]{0,30}[:\s]([A-E])\b/i);
         if (!letterMatch) {
             // No letter but might have useful knowledge
             console.log(`  🔬 [aiExtract] RESULT: response but no letter found. Treating as knowledge.`);
@@ -1646,8 +1676,8 @@ Analise o texto passo a passo e responda no formato acima:`;
         }
 
         const letter = letterMatch[1].toUpperCase();
-        const evidenceMatch = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
-        const evidence = evidenceMatch ? evidenceMatch[1].trim() : content;
+        const evidenceMatch = plainContent.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
+        const evidence = evidenceMatch ? evidenceMatch[1].trim() : plainContent;
         console.log(`  🔬 [aiExtract] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
 
         return {
@@ -2463,6 +2493,9 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                     groq: settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct',
                     gemini: settings.geminiModel || 'gemini-2.5-flash'
                 },
+                // Speed-first: Groq llama-4-scout ~0.5s vs Copilot claude-haiku ~7-8s
+                providers: ['groq', 'gemini', 'openrouter', 'copilot', 'chatgpt'],
+                preserveOrder: true,
                 isValid: (v) => typeof v === 'string' && v.length >= 20,
                 label: 'visionOCR',
                 fallbackValue: ''
@@ -2535,6 +2568,9 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                     groq: settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct',
                     gemini: settings.geminiModel || 'gemini-2.5-flash'
                 },
+                // Speed-first: Groq llama-4-scout ~0.5s vs Copilot claude-haiku ~7-8s
+                providers: ['groq', 'gemini', 'openrouter', 'copilot', 'chatgpt'],
+                preserveOrder: true,
                 isValid: (v) => typeof v === 'string' && v.length >= 20,
                 label: 'visionExtract',
                 fallbackValue: ''
@@ -4488,6 +4524,99 @@ Ou: NAO_ENCONTRADO`;
         const res = await tryGroq();
         if (res) return res;
         return await tryGemini();
+    },
+
+    /**
+     * NEW: Extract question, alternatives and answer directly from raw page text via LLM.
+     * This is the "Extrair" flow — no DOM selectors, no platform heuristics.
+     * The LLM reads whatever text is on the page and normalises it.
+     *
+     * @param {string} pageText  — innerText of the active tab (truncated to ~12 000 chars)
+     * @param {string} pageUrl   — used only for the source entry
+     * @returns {Promise<{question,answer,answerLetter,answerText,sources,reason,resultState}|null>}
+     */
+    async extractQuestionFromPageText(pageText, pageUrl = '') {
+        if (!pageText || pageText.trim().length < 20) return null;
+
+        const truncated = pageText.slice(0, 12000);
+
+        const systemPrompt = `You are an expert at extracting exam questions from web pages.
+The user will give you the raw visible text of a web page. Your job is to find ONE multiple-choice question (or the most prominent question) in that text and return it in a clean, structured format.
+
+RULES:
+1. Extract: (a) the question stem/enunciado, (b) all answer choices, (c) the correct answer letter if visible.
+2. The page text may be messy: no A/B/C labels, run-together sentences, HTML artefacts, ads — ignore all that noise.
+3. If there are no explicit A-E labels but there are clearly distinct answer options (separated by newline, bullet, number, or dash), assign them letters A, B, C... in order.
+4. The correct answer may be marked with words like "gabarito", "resposta correta", "correct", "✓", bold/underline, or appear after the question block.
+5. Return ONLY valid JSON — no markdown, no explanation.
+6. If you genuinely cannot find a question, return {"error": "no_question_found"}.
+
+OUTPUT FORMAT:
+{
+  "question": "<question stem only, no options>",
+  "alternatives": {
+    "A": "<text of option A>",
+    "B": "<text of option B>",
+    "C": "<text of option C>",
+    "D": "<text of option D>",
+    "E": "<text of option E>"
+  },
+  "answerLetter": "<A|B|C|D|E or null if not visible>",
+  "answerText": "<full text of the correct alternative, or empty string>"
+}`;
+
+        const userPrompt = `PAGE TEXT:\n${truncated}`;
+
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user',   content: userPrompt }
+        ];
+
+        const { result: raw } = await this._callWithProviderChain({
+            messages,
+            opts: { temperature: 0.1, max_tokens: 1200 },
+            label: 'extractQuestionFromPageText',
+            postProcess: (text) => {
+                const cleaned = text.replace(/```(?:json)?|```/gi, '').trim();
+                try { return JSON.parse(cleaned); } catch { return null; }
+            },
+            isValid: (v) => v && typeof v === 'object' && !v.error && v.question
+        });
+
+        if (!raw || raw.error || !raw.question) return null;
+
+        // Build the formatted question string with labelled alternatives
+        const alts = raw.alternatives || {};
+        const altLines = Object.entries(alts)
+            .map(([letter, text]) => `${letter}) ${text}`)
+            .join('\n');
+        const fullQuestion = altLines ? `${raw.question}\n${altLines}` : raw.question;
+
+        const answerLetter = raw.answerLetter || null;
+        const answerText   = raw.answerText   || (answerLetter && alts[answerLetter]) || '';
+        const answerFull   = answerLetter
+            ? `Letra ${answerLetter}: ${answerText}`
+            : answerText || '';
+
+        const hostname = (() => { try { return new URL(pageUrl).hostname.replace(/^www\./, ''); } catch { return pageUrl; } })();
+
+        return {
+            question:     fullQuestion,
+            answer:       answerFull,
+            answerLetter: answerLetter,
+            answerText:   answerText,
+            reason:       answerLetter ? 'confirmed_by_sources' : 'ai_knowledge',
+            resultState:  answerLetter ? 'confirmed' : 'suggested',
+            confidence:   answerLetter ? 0.85 : 0.6,
+            sources: pageUrl ? [{
+                letter:      answerLetter,
+                link:        pageUrl,
+                title:       hostname,
+                hostHint:    hostname,
+                evidenceType: 'page-extract',
+                weight:      0.9
+            }] : []
+        };
     },
 
     /**
