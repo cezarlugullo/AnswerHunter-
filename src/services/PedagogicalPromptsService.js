@@ -338,7 +338,8 @@ FORMATO JSON OBRIGATÓRIO:
 
 4. HUMOR + EMOÇÃO (Humor Effect): FAÇA O ALUNO RIR. Humor libera dopamina → codificação mais profunda. Use trocadilhos, situações ridículas, personificação cômica. Se não provocar pelo menos um sorriso, está fraco demais.
 
-5. KEYWORD METHOD (Atkinson 1975): Para termos técnicos, encontre uma PALAVRA-ÂNCORA em português que SOE PARECIDO com o termo. Ex: "fork()" → "garfo" → "um garfo gigante que espeta o processo e divide em dois". O som conecta o termo à imagem.
+5. KEYWORD METHOD (Atkinson 1975): Para termos técnicos e siglas, encontre uma PALAVRA-ÂNCORA em português que SOE PARECIDO com o termo. Ex: "fork()" → "garfo" → "um garfo gigante que espeta o processo e divide em dois". O som conecta o termo à imagem concreta.
+   SIGLAS: "ANSI" soa como "ânsia" (urgência) → use isso. "ISO" soa como "isso" (alguém apontando o dedo) → use isso. Nunca diga "robô ISO" ou "microfone ANSI" — isso não tem forma visual.
 
 6. STORY METHOD / NARRATIVA (Stanford CTL): Transforme os elementos-chave em PERSONAGENS de uma micro-história de 2-3 frases. Histórias ativam o hipocampo + rede neural padrão = consolidação superior. A história deve ter INÍCIO (situação), AÇÃO (conflito absurdo) e RESULTADO (conceito aprendido).
 
@@ -350,6 +351,55 @@ FORMATO JSON OBRIGATÓRIO:
 
 10. TESTING EFFECT (Roediger 2006): O selfTest deve ser uma pergunta que SÓ é respondível se o mnemônico foi internalizado. Não aceite perguntas que possam ser respondidas por eliminação ou senso comum.
 
+━━━ LEI DE OURO DA VISUALIZAÇÃO (CRÍTICA) ━━━
+
+CADA ELEMENTO DA CENA MENTAL DEVE SER VISUALMENTE CONCRETO E INDEPENDENTE.
+Teste obrigatório antes de finalizar: "Se eu mostrar esta cena para alguém que nunca ouviu falar do conceito, ele consegue visualizá-la claramente?" Se a resposta for NÃO, a cena está errada.
+
+PROIBIDO — padrões que destroem o mnemônico:
+✗ "fantasiado de K&R" — K&R não tem forma visual. Use os AUTORES REAIS: dois velhinhos barbudos.
+✗ "microfone ANSI gigante" — ANSI não tem forma. Use o SOM: "ânsia" → cara com expressão de urgência.
+✗ "robô ISO dançando" — ISO não tem forma. Use o SOM: "isso aí!" → alguém apontando o dedo com entusiasmo.
+✗ "relógio C99" — C99 não é um objeto. Use o CONTEXTO: padrão de 1999 → calendário aberto no ano 1999.
+✗ Qualquer objeto que só faz sentido se você JÁ SOUBER o conceito.
+
+PERMITIDO — padrões que funcionam:
+✓ Para siglas de ORGANIZAÇÕES: use funcionários/burocratas típicos daquela instituição (americano de terno = ANSI, inspetor da ONU = ISO).
+✓ Para AUTORES/CRIADORES: use as pessoas reais com características marcantes (Kernighan e Ritchie = dois professores velhinhos barbudos dos anos 70).
+✓ Para DATAS: use marcos visuais daquele ano (1999 = calendário virando o milênio, festa Y2K).
+✓ Para SEQUÊNCIAS: use a frase-acróstico (como os planetas) — cada palavra da frase mapeia para um elemento da lista.
+✓ Qualquer objeto do cotidiano que QUALQUER PESSOA consegue imaginar sem saber o conceito.
+
+━━━ ESTRATÉGIA PARA SIGLAS E PADRÕES TÉCNICOS ━━━
+
+Quando o conceito envolve SIGLAS EM SEQUÊNCIA (ex: K&R → ANSI → ISO → C99):
+OPÇÃO A (preferida): Crie uma frase-acróstico onde cada PALAVRA da frase mapeia para um elemento, como nos planetas. Ex: "Kernighan Adorou Inventar Código" → K&R, ANSI, ISO, C99.
+OPÇÃO B: Use o Keyword Method — cada sigla vira uma palavra em português que SOA parecido, com imagem concreta dessa palavra.
+NUNCA tente "personificar" a sigla diretamente como um personagem sem forma definida.
+
+━━━ ESTRATÉGIA CRÍTICA: QUESTÕES COM AFIRMATIVAS I / II / III / IV ━━━
+
+PROBLEMA FATAL (nunca cometa este erro):
+✗ ERRADO: "Coelho aceita I, II e IV" — Você está usando os NUMERAIS ROMANOS como âncoras. Mas esses numerais SÃO exatamente o que o aluno está tentando lembrar! É circular e inútil. O aluno lê o mnemônico e ainda não sabe quais são corretas.
+
+REGRA ABSOLUTA: Para questões com afirmativas I/II/III/IV, o mnemônico NUNCA menciona os numerais diretamente. Em vez disso, encode o CONTEÚDO de cada afirmativa.
+
+COMO FAZER CORRETAMENTE:
+1. Leia o conteúdo de cada afirmativa (não o número)
+2. Extraia a PALAVRA-CHAVE do conteúdo de cada uma (ex: "callback", "thread", "GLUT", "assíncrono")
+3. Crie uma cena/história/frase usando essas palavras-chave concretas
+4. A cena deve deixar CLARO quais são corretas (estão fazendo algo certo/funcionando) e quais são incorretas (estão explodindo, sendo jogadas fora, falhando de forma engraçada)
+5. A regra da concretude se aplica: as palavras-chave das afirmativas devem ser traduzidas em objetos/personagens visualizáveis
+
+EXEMPLO CORRETO (questão do caixa de supermercado com scanner):
+Afirmativas: I=callback correto, II=thread correto, III=GLUT errado (gráficos!), IV=assíncrono correto
+✓ CERTO: "Um caixa segura um FONE (callback = retorno de chamada = fone) e enrola um NOVELO DE FIO no escâner (thread = fio/linha). Ele joga com asco um JOYSTICK de videogame no lixo (GLUT = biblioteca gráfica, inútil para hardware). Daí usa 4 mãos ao mesmo tempo sem parar (assíncrono = 4 mãos = sem bloquear)."
+→ Frase-âncora: "Fone e Fio escaneiam. Joystick vai pro lixo. Quatro mãos não param."
+→ O aluno reconstrói: fone=callback(I)✓, fio=thread(II)✓, joystick=GLUT(III)✗, 4 mãos=assíncrono(IV)✓ → resposta: I, II e IV
+
+✗ ERRADO (nunca faça isso): "Coelho aceita I, II e IV, rejeita III com cara de nojo"
+→ Por quê é inútil: o aluno lê isso e ainda não sabe POR QUE I, II e IV estão certas. Se esquecer, não consegue reconstruir.
+
 ━━━ PROCESSO OBRIGATÓRIO (5 PASSOS) ━━━
 
 PASSO 1 → CHUNKING: Identifique 2-4 ELEMENTOS-CHAVE (termos, ordem, relações críticas).
@@ -357,19 +407,20 @@ PASSO 2 → FRASE-ÂNCORA: Crie o mnemônico principal (máx 2 linhas). DEVE ser
    • Curto e rítmico (fácil de repetir em voz alta)
    • Com humor ou absurdidade (Von Restorff + Humor Effect)
    • Com palavra-âncora sonora se houver termo técnico (Keyword Method)
-PASSO 3 → CENA MENTAL CINEMATOGRÁFICA: Descreva uma imagem/cena que o aluno deve "ver" na mente:
-   • EXAGERADA (tamanho, quantidade, cor impossível)
-   • EMOCIONAL (engraçada, assustadora ou nojenta)
-   • INTERATIVA (os elementos-chave estão FAZENDO algo, não parados)
-   • ESPACIAL (acontece em um lugar específico que o aluno conhece)
-PASSO 4 → CONEXÃO "POR QUÊ?": Explique como cada parte do mnemônico mapeia para o conceito real. Use a pergunta: "Por que cada parte faz sentido?"
-PASSO 5 → AUTO-TESTE DESAFIADOR: Crie uma pergunta que EXIJA reconstruir o mnemônico para responder. Nível: se o aluno não memorizou, NÃO consegue responder.
+PASSO 3 → CENA MENTAL CINEMATOGRÁFICA: Descreva uma imagem/cena que o aluno deve "ver" na mente.
+   CHECKLIST obrigatório de cada elemento da cena:
+   • É um objeto/pessoa/lugar que EXISTE independente do conceito? (✓ mesa, velhinho, calendário | ✗ "fantasia de ANSI")
+   • Tem cor, tamanho ou ação exagerada? (absurdo concreto, não abstrato)
+   • Os elementos estão FAZENDO algo, não parados?
+   • A cena acontece num lugar específico que o aluno conhece?
+PASSO 4 → CONEXÃO "POR QUÊ?": Explique como cada parte do mnemônico mapeia para o conceito real.
+PASSO 5 → AUTO-TESTE DESAFIADOR: Crie uma pergunta que EXIJA reconstruir o mnemônico para responder.
 
 ━━━ FORMATO JSON ━━━
 - "emoji" = emoji que represente o tema
 - "mnemonic" = frase-âncora (máx 2 linhas, curta, rítmica)
 - "keyElements" = array de 2-4 strings "elemento → significado"
-- "visualization" = cena mental bizarra/engraçada (1-3 frases cinematográficas)
+- "visualization" = cena mental bizarra/engraçada com elementos CONCRETOS (1-3 frases cinematográficas)
 - "connection" = "Por que funciona:" + mapeamento mnemônico→conceito (1-3 frases)
 - "selfTest" = pergunta desafiadora (1 frase)
 - "type" = "acronym"|"story"|"rhyme"|"visual"|"keyword"
@@ -377,8 +428,8 @@ PASSO 5 → AUTO-TESTE DESAFIADOR: Crie uma pergunta que EXIJA reconstruir o mne
 REGRAS ABSOLUTAS:
 - Idioma: português brasileiro coloquial (como um professor jovem e carismático fala)
 - O aluno deve conseguir RECONSTRUIR a resposta COMPLETA a partir do mnemônico
-- Se o conceito é abstrato, a cena mental deve ser CONCRETA (personifique!)
-- PROIBIDO: cenas genéricas, imagens "normais", auto-testes triviais
+- Cada elemento da cena DEVE ter forma visual independente do conceito
+- PROIBIDO: personificar siglas sem usar som/significado real, cenas genéricas, auto-testes triviais
 - OBRIGATÓRIO: pelo menos 1 elemento de humor/absurdo + 1 analogia do cotidiano
 
 EXEMPLOS:
@@ -388,6 +439,16 @@ CONCEITO: "Ordem dos planetas do sistema solar"
 
 CONCEITO: "SQL ALTER TABLE ADD COLUMN"
 {"emoji":"🏗️","mnemonic":"ALTER a mesa, ADD uma tábua, escreva NOME e TIPO","keyElements":["ALTER TABLE→qual tabela modificar","ADD COLUMN→adicionar nova coluna","nome→nome da coluna","tipo→tipo de dado (INT, VARCHAR...)"],"visualization":"Imagine uma MESA de jantar velha no meio de um terremoto. Você pega um MARTELO DOURADO gigante (ALTER) e prega uma TÁBUA nova na lateral (ADD COLUMN). Na tábua, você escreve com KETCHUP o NOME da coluna e com MOSTARDA o TIPO de dado — a mesa sai andando com pernas de galinha.","connection":"Por que funciona: ALTER = alterar/reformar, como reformar um móvel caindo aos pedaços. ADD COLUMN = adicionar uma 'coluna' como se fosse uma tábua extra. A ordem na sintaxe SQL é sempre: O QUÊ mudar (tabela) → COMO mudar (add) → DETALHES (nome, tipo).","selfTest":"Escreva de cabeça o comando SQL para adicionar 'idade INT' na tabela 'alunos'. Em que ORDEM vêm os 4 termos-chave?","type":"visual"}
+
+CONCEITO: "Evolução dos padrões da linguagem C: K&R → ANSI → ISO → C99"
+{"emoji":"💻","mnemonic":"Kernighan Achou Insano Criar C novão","keyElements":["Kernighan→K&R (primeiro padrão, criadores)","Achou→ANSI (padronização americana)","Insano→ISO (adoção internacional)","Criar C novão→C99 (padrão de 1999)"],"visualization":"Imagine um velhinho barbudo e suado (Kernighan dos anos 70, de calça boca-de-sino) digitando furiosamente num terminal verde. Um burocrata americano de terno (ANSI) aparece do nada e CARIMBA o código com um carimbo gigante vermelho — PLOC! Um inspetor da ONU de capacete azul (ISO) entra correndo e carimba também — PLOC! Aí em 1999, o velhinho volta com um bolo de aniversário escrito '99' e joga confete em cima dos dois burocratas.","connection":"Por que funciona: A frase usa as INICIAIS em ordem: K(ernighan)→A(chou)→I(nsano)→C(riar) = K&R, ANSI, ISO, C99. O velhinho barbudo É visualizável; o burocrata americano É visualizável; o inspetor da ONU É visualizável; o bolo de 1999 É visualizável.","selfTest":"Recite a frase-âncora e mapeie cada palavra para o padrão correspondente. Qual padrão é americano? Qual é internacional? Em que ano saiu o último?","type":"acronym"}
+
+CONCEITO: "Captura de eventos em C para scanner de caixa de supermercado — quais afirmativas estão corretas: I(callback), II(thread), III(GLUT gráfica), IV(assíncrono)"
+{"emoji":"🛒","mnemonic":"Fone e Fio escaneiam. Joystick vai pro lixo. Quatro mãos não param.","keyElements":["Fone→callback (retorno de chamada, como um telefonema de volta)","Fio/novelo→thread (thread = fio/linha de execução)","Joystick no lixo→GLUT é biblioteca gráfica (inútil para hardware de scanner)","Quatro mãos→processamento assíncrono (faz tudo ao mesmo tempo sem bloquear)"],"visualization":"Um caixa de supermercado com um FONE DE OUVIDO gigante na orelha (callback = ele recebe a chamada do scanner) e um NOVELO DE FIO cor-de-rosa enrolado no braço (thread = fio). Com asco total, ele pega um JOYSTICK de videogame e joga no lixo gritando 'FORA, isso é pra jogo!' (GLUT = só serve pra gráficos). Daí o caixa vira um polvo com 4 MÃOS e registra 4 produtos ao mesmo tempo sem parar (assíncrono = sem bloquear).","connection":"Por que funciona: Fone=callback(I) funciona para hardware. Fio=thread(II) impede o programa de congelar. Joystick no lixo=GLUT(III) é biblioteca gráfica (OpenGL), não serve para scanner. 4 mãos=assíncrono(IV) é obrigatório em sistemas de tempo real. Resultado: I, II e IV corretas.","selfTest":"Quais dos 4 objetos da cena (fone, fio, joystick, mãos) são mantidos e qual é jogado fora? Traduza cada objeto para a afirmativa correspondente.","type":"story"}
+
+EXEMPLO DO QUE NÃO FAZER (mnemônico ruim — não use este padrão):
+ERRADO: "visualization":"Imagine K&R fantasiados chegando num karaokê com microfone ANSI gigante, um robô ISO dançando e um relógio C99 voando."
+POR QUÊ É RUIM: Nenhum desses elementos tem forma visual concreta. "Fantasia de K&R" não existe. "Microfone ANSI" não é uma coisa real. "Robô ISO" não tem forma definida. O aluno tenta visualizar e não consegue formar nenhuma imagem — o mnemônico falha completamente.
 
 Responda APENAS em JSON válido, sem texto extra, sem markdown.`;
 

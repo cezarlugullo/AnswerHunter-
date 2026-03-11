@@ -513,6 +513,10 @@ export const PopupController = {
     if (this.view.elements.selectGeminiModel) {
       this.view.elements.selectGeminiModel.value = geminiModel;
     }
+    const geminiOAuthModelSelect = document.getElementById('select-gemini-oauth-model');
+    if (geminiOAuthModelSelect) {
+      geminiOAuthModelSelect.value = geminiModel;
+    }
     const chatgptModelSelect = document.getElementById('select-chatgpt-model');
     if (chatgptModelSelect) {
       chatgptModelSelect.value = chatgptModel;
@@ -708,7 +712,8 @@ export const PopupController = {
       this.updateProviderHint('groq');
     }
     const groqModel = this.view.elements.selectGroqModel?.value || 'llama-3.3-70b-versatile';
-    const geminiModel = this.view.elements.selectGeminiModel?.value || 'gemini-2.5-flash';
+    const geminiOAuthModel = document.getElementById('select-gemini-oauth-model')?.value;
+    const geminiModel = geminiOAuthModel || this.view.elements.selectGeminiModel?.value || 'gemini-2.5-flash';
     const openrouterModelSmart = this.view.elements.selectOpenrouterModel?.value || 'deepseek/deepseek-r1:free';
     const chatgptModel = document.getElementById('select-chatgpt-model')?.value || 'gpt-5.2-codex';
     const copilotModel = document.getElementById('select-copilot-model')?.value || 'gpt-4o';

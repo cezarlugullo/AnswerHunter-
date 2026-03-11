@@ -159,14 +159,11 @@ export const StorageModel = {
                 updatedAt: Date.now()
             });
             await this.save();
-            // Sync question to ah_hierarchy if inside a top-level discipline folder
+            // Full reconcile keeps nested binder folders mapped to the correct
+            // Study topics instead of forcing new cards into "Geral".
             const topFolder = this._findTopLevelAncestor(this.currentFolderId);
             if (topFolder) {
-                await this._syncAddCardToHierarchy(topFolder, {
-                    id: 'q' + uid, question: normQ, answer, source,
-                    sm2: mergedSm2, tags: mergedExtra.tags || [], notes: mergedExtra.notes || '',
-                    createdAt: Date.now(), updatedAt: Date.now()
-                });
+                await this._reconcileHierarchy();
             }
             return true;
         } else {
@@ -326,6 +323,7 @@ export const StorageModel = {
         if (removeFromTree(this.data, id)) {
             await this.save();
             if (isTopLevel) await this._syncDeleteFromHierarchy(id);
+            await this._reconcileHierarchy();
             return true;
         }
         return false;
@@ -364,6 +362,7 @@ export const StorageModel = {
         if (itemNode) {
             targetFolder.children.push(itemNode);
             await this.save();
+            await this._reconcileHierarchy();
         }
     },
 
@@ -379,9 +378,12 @@ export const StorageModel = {
         if (!folder || folder.type !== 'folder') return false;
         folder.title = newName;
         await this.save();
-        // If top-level folder, sync rename to ah_hierarchy for Study tab
+        // If top-level folder, sync rename directly. Nested folder renames must
+        // reconcile to keep Study topics updated.
         if (this._isTopLevelFolder(folderId)) {
             await this._syncRenameInHierarchy(folderId, newName);
+        } else {
+            await this._reconcileHierarchy();
         }
         return true;
     },
@@ -428,6 +430,7 @@ export const StorageModel = {
 
         await this.save();
         if (isTopLevel) await this._syncDeleteFromHierarchy(folderId);
+        await this._reconcileHierarchy();
         return true;
     },
 
@@ -740,8 +743,10 @@ export const StorageModel = {
                         changed = true;
                     }
 
-                    // Sync binder questions into hierarchy cards
-                    if (this._mergeBinderCards(disc, this._collectBinderQuestions(child))) {
+                    // Fully sync binder questions into hierarchy cards (preserving
+                    // subfolder structure and removing stale binder-derived cards).
+                    const grouped = this._collectBinderQuestionsGrouped(child);
+                    if (this._mergeBinderCardsGrouped(disc, grouped)) {
                         changed = true;
                     }
                 }
@@ -759,6 +764,38 @@ export const StorageModel = {
                 changed = true;
             }
 
+            // ── Cleanup: remove stale disciplines that are actually binder subfolders ──
+            // If a discipline name matches a subfolder inside another root-level folder
+            // but is NOT itself a root-level folder, it was created by mistake — remove it.
+            if (root && root.children) {
+                const rootFolderNames = new Set();
+                const subfolderNames = new Set();
+                for (const child of root.children) {
+                    if (child.type !== 'folder') continue;
+                    if (ROOT_NAMES.has((child.title || '').toLowerCase())) continue;
+                    rootFolderNames.add((child.title || '').toLowerCase());
+                    // Collect subfolder names
+                    for (const sub of (child.children || [])) {
+                        if (sub.type === 'folder') {
+                            subfolderNames.add((sub.title || '').toLowerCase());
+                        }
+                    }
+                }
+                // Remove disciplines whose name matches a subfolder but NOT a root folder
+                const before = h.length;
+                for (let i = h.length - 1; i >= 0; i--) {
+                    const dName = (h[i].name || '').toLowerCase();
+                    if (subfolderNames.has(dName) && !rootFolderNames.has(dName)) {
+                        console.log('[StorageModel] Removing stale subfolder-discipline:', h[i].name);
+                        h.splice(i, 1);
+                        changed = true;
+                    }
+                }
+                if (h.length < before) {
+                    console.log('[StorageModel] Cleaned up', before - h.length, 'stale subfolder disciplines');
+                }
+            }
+
             if (changed) {
                 await this._saveHierarchy(h);
                 console.log('[StorageModel] Reconciled hierarchy, total disciplines:', h.length);
@@ -766,6 +803,32 @@ export const StorageModel = {
         } catch (e) {
             console.warn('[StorageModel] Hierarchy reconciliation failed:', e);
         }
+    },
+
+    /**
+     * Collect binder questions grouped by subfolder name.
+     * Returns Map<topicName, question[]> where root-level questions go to "Geral"
+     * and subfolder questions go to the subfolder's title.
+     */
+    _collectBinderQuestionsGrouped(folder) {
+        const groups = new Map();
+        const addToGroup = (topicName, question) => {
+            if (!groups.has(topicName)) groups.set(topicName, []);
+            groups.get(topicName).push(question);
+        };
+        for (const child of (folder.children || [])) {
+            if (child.type === 'question' && child.content) {
+                addToGroup('Geral', child);
+            } else if (child.type === 'folder') {
+                // Subfolder becomes its own topic — collect its questions (flat)
+                const subName = (child.title || '').trim() || 'Geral';
+                const subQuestions = this._collectBinderQuestions(child);
+                for (const q of subQuestions) {
+                    addToGroup(subName, q);
+                }
+            }
+        }
+        return groups;
     },
 
     _collectBinderQuestions(folder) {
@@ -779,37 +842,107 @@ export const StorageModel = {
 
     _mergeBinderCards(disc, binderQuestions) {
         if (!binderQuestions.length) return false;
+        // Use grouped merge — delegate to _mergeBinderCardsGrouped with single "Geral" group
+        const groups = new Map();
+        groups.set('Geral', binderQuestions);
+        return this._mergeBinderCardsGrouped(disc, groups);
+    },
+
+    _isBinderHierarchyCard(card) {
+        return !!card && typeof card.id === 'string' && /^q/i.test(card.id);
+    },
+
+    /**
+     * Fully sync binder cards into discipline, creating separate topics per subfolder.
+     * @param {Object} disc - Discipline hierarchy entry
+     * @param {Map<string, Array>} groupedQuestions - Map of topicName → questions
+     * @returns {boolean} true if hierarchy changed
+     */
+    _mergeBinderCardsGrouped(disc, groupedQuestions) {
         if (!disc.modules) disc.modules = [];
+
         let mod = disc.modules.find(m => m.name === 'Geral');
-        if (!mod) {
+        const needsModule = groupedQuestions && groupedQuestions.size > 0;
+        if (!mod && needsModule) {
             mod = { id: 'm_gen_' + disc.id, name: 'Geral', order: 0, topics: [], createdAt: Date.now(), updatedAt: Date.now() };
             disc.modules.push(mod);
         }
+        if (!mod) return false;
         if (!mod.topics) mod.topics = [];
-        let topic = mod.topics.find(t => t.name === 'Geral');
-        if (!topic) {
-            topic = { id: 't_gen_' + disc.id, name: 'Geral', order: 0, cards: [], createdAt: Date.now(), updatedAt: Date.now() };
-            mod.topics.push(topic);
+
+        let changed = false;
+        const existingBinderCardsById = new Map();
+        for (const topic of (mod.topics || [])) {
+            for (const card of (topic.cards || [])) {
+                if (this._isBinderHierarchyCard(card)) {
+                    existingBinderCardsById.set(card.id, card);
+                }
+            }
         }
-        if (!topic.cards) topic.cards = [];
-        const cardIds = new Set(topic.cards.map(c => c.id));
-        let added = false;
-        for (const q of binderQuestions) {
-            if (cardIds.has(q.id)) continue;
-            const qText = (q.content.question || '').trim().toLowerCase();
-            if (qText && topic.cards.some(c => (c.question || '').trim().toLowerCase() === qText)) continue;
-            topic.cards.push({
-                id: q.id || ('c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
-                question: q.content.question || '', answer: q.content.answer || '', source: q.content.source || '',
-                sm2: q.content.sm2 || { interval: 0, repetition: 0, ef: 2.5, nextReview: '', lastRated: '', attempts: 0, correct: 0, errors: 0, mastered: false, tags: [], hintUsedLast: false },
-                tags: q.content.tags || [], notes: q.content.notes || '',
-                createdAt: q.createdAt || Date.now(), updatedAt: q.updatedAt || Date.now()
-            });
-            cardIds.add(q.id);
-            added = true;
+
+        const expectedTopicNames = new Set(groupedQuestions ? [...groupedQuestions.keys()] : []);
+
+        for (let i = mod.topics.length - 1; i >= 0; i--) {
+            const topic = mod.topics[i];
+            const beforeLen = (topic.cards || []).length;
+            topic.cards = (topic.cards || []).filter(card => !this._isBinderHierarchyCard(card));
+            if (topic.cards.length !== beforeLen) changed = true;
+
+            const hasManualCards = topic.cards.length > 0;
+            if (!hasManualCards && !expectedTopicNames.has(topic.name)) {
+                mod.topics.splice(i, 1);
+                changed = true;
+            }
         }
-        if (added) disc.updatedAt = Date.now();
-        return added;
+
+        for (const [topicName, questions] of groupedQuestions) {
+            if (!questions.length) continue;
+
+            let topic = mod.topics.find(t => t.name === topicName);
+            if (!topic) {
+                topic = {
+                    id: 't_' + topicName.replace(/\s+/g, '_').toLowerCase().slice(0, 20) + '_' + disc.id,
+                    name: topicName, order: mod.topics.length, cards: [],
+                    createdAt: Date.now(), updatedAt: Date.now()
+                };
+                mod.topics.push(topic);
+                changed = true;
+            }
+            if (!topic.cards) topic.cards = [];
+            const cardIds = new Set(topic.cards.map(c => c.id));
+
+            for (const q of questions) {
+                if (cardIds.has(q.id)) continue;
+                const qText = (q.content.question || '').trim().toLowerCase();
+                if (qText && topic.cards.some(c => (c.question || '').trim().toLowerCase() === qText)) continue;
+                const existing = existingBinderCardsById.get(q.id);
+                topic.cards.push({
+                    ...(existing || {}),
+                    id: q.id || existing?.id || ('c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
+                    question: q.content.question || '', answer: q.content.answer || '', source: q.content.source || '',
+                    sm2: existing?.sm2 || q.content.sm2 || { interval: 0, repetition: 0, ef: 2.5, nextReview: '', lastRated: '', attempts: 0, correct: 0, errors: 0, mastered: false, tags: [], hintUsedLast: false },
+                    tags: existing?.tags || q.content.tags || [],
+                    notes: existing?.notes || q.content.notes || '',
+                    createdAt: existing?.createdAt || q.createdAt || Date.now(),
+                    updatedAt: q.updatedAt || existing?.updatedAt || Date.now()
+                });
+                cardIds.add(q.id);
+                changed = true;
+            }
+        }
+
+        mod.topics.forEach((topic, index) => {
+            if (topic.order !== index) {
+                topic.order = index;
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            mod.updatedAt = Date.now();
+            disc.updatedAt = Date.now();
+        }
+        return changed;
     },
 
     /** Check if a node is the root folder */

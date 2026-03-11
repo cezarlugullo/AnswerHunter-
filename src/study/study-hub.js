@@ -1528,18 +1528,42 @@ function populateDisciplineSelects() {
     sel.value = current;
   });
 
-  // Build unique topic/folder names from hierarchy
-  const topicNames = new Set();
+  // Build topic entries with discipline context (to avoid cross-discipline name collisions)
+  // Deduplicate by discId+topicName — same combo filters to same cards regardless of module
+  const topicEntries = [];
+  const seenTopics = new Set();
   discs.forEach((disc) => {
     (disc.modules || []).forEach((mod) => {
       (mod.topics || []).forEach((topic) => {
         const name = String(topic?.name || '').trim();
-        if (name) topicNames.add(name);
+        if (!name) return;
+        const discId = disc.id || disc.name;
+        const dedupeKey = `${discId}::${name}`;
+        if (seenTopics.has(dedupeKey)) return;   // skip duplicate disc+topic combos
+        seenTopics.add(dedupeKey);
+        topicEntries.push({
+          discId,
+          discName: disc.name,
+          topicName: name
+        });
       });
     });
   });
+  // Sort by discipline first, then topic name — groups same-discipline topics together
+  topicEntries.sort((a, b) => {
+    const discCmp = a.discName.localeCompare(b.discName, 'pt-BR');
+    return discCmp !== 0 ? discCmp : a.topicName.localeCompare(b.topicName, 'pt-BR');
+  });
 
-  // Practice selects: disciplina + pasta/tópico
+  // Group topic entries by discipline for optgroup display
+  const topicsByDisc = new Map();
+  topicEntries.forEach(entry => {
+    const key = entry.discId;
+    if (!topicsByDisc.has(key)) topicsByDisc.set(key, { discName: entry.discName, topics: [] });
+    topicsByDisc.get(key).topics.push(entry);
+  });
+
+  // Practice selects: disciplina + pasta/tópico (grouped by discipline)
   const practiceSelects = ['#quizDisc', '#simulateDisc', '#aiSimuladoDisc']
     .map(s => $(s))
     .filter(Boolean);
@@ -1548,24 +1572,33 @@ function populateDisciplineSelects() {
     const current = sel.value;
     sel.innerHTML = '<option value="all">Todas pastas/disciplinas</option>';
 
-    // Discipline options
+    // Each discipline gets an optgroup — consistent layout for all
     discs.forEach((d) => {
-      const opt = document.createElement('option');
-      const raw = d.id || d.name;
-      opt.value = `disc:${raw}`;
-      opt.textContent = `Disciplina: ${d.name}`;
-      sel.appendChild(opt);
-    });
+      const discId = d.id || d.name;
+      const discTopics = topicsByDisc.get(discId);
+      const hasTopics = discTopics && discTopics.topics.length > 0;
 
-    // Folder/topic options
-    [...topicNames]
-      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
-      .forEach((topicName) => {
-        const opt = document.createElement('option');
-        opt.value = `topic:${topicName}`;
-        opt.textContent = `Pasta: ${topicName}`;
-        sel.appendChild(opt);
-      });
+      const group = document.createElement('optgroup');
+      group.label = d.name;
+
+      // "Whole discipline" option (always present)
+      const allOpt = document.createElement('option');
+      allOpt.value = `disc:${discId}`;
+      allOpt.textContent = hasTopics ? `📚 Toda a disciplina` : `📚 ${d.name}`;
+      group.appendChild(allOpt);
+
+      // Individual topic options (if any)
+      if (hasTopics) {
+        discTopics.topics.forEach(({ discId: dId, topicName }) => {
+          const opt = document.createElement('option');
+          opt.value = `topic:${dId}::${topicName}`;
+          opt.textContent = `  📁 ${topicName}`;
+          group.appendChild(opt);
+        });
+      }
+
+      sel.appendChild(group);
+    });
 
     // Keep prior selection if still available
     const exists = [...sel.options].some(o => o.value === current);
@@ -1593,8 +1626,21 @@ function startStudySession() {
       const value = practiceFilter.slice(5);
       cards = cards.filter(c => c._discId === value || c._disc === value);
     } else if (practiceFilter.startsWith('topic:')) {
-      const value = practiceFilter.slice(6).toLowerCase();
-      cards = cards.filter(c => String(c._topic || '').toLowerCase() === value);
+      const rest = practiceFilter.slice(6);
+      const sepIdx = rest.indexOf('::');
+      if (sepIdx !== -1) {
+        // New format: topic:DISC_ID::TOPIC_NAME — filters by discipline + topic name
+        const discId = rest.slice(0, sepIdx);
+        const topicName = rest.slice(sepIdx + 2).toLowerCase();
+        cards = cards.filter(c =>
+          (c._discId === discId || c._disc === discId) &&
+          String(c._topic || '').toLowerCase() === topicName
+        );
+      } else {
+        // Legacy format: topic:TOPIC_NAME (backward compat)
+        const topicName = rest.toLowerCase();
+        cards = cards.filter(c => String(c._topic || '').toLowerCase() === topicName);
+      }
     }
   } else if (discId) {
     // Legacy filter by discipline from session setup
@@ -1804,7 +1850,7 @@ function renderCurrentCard() {
   renderMathInContainer(container);
 
   // Rating buttons
-  $('.rate-btn', container).forEach(btn => {
+  $$('.rate-btn', container).forEach(btn => {
     on(btn, 'click', () => rateCurrentCard(parseInt(btn.dataset.rate, 10)));
   });
 }
@@ -3945,8 +3991,19 @@ async function startAISimulado(filter, count, difficulty) {
       const value = filter.slice(5);
       seedPool = seedPool.filter(c => c._discId === value || c._disc === value);
     } else if (filter.startsWith('topic:')) {
-      const value = filter.slice(6).toLowerCase();
-      seedPool = seedPool.filter(c => String(c._topic || '').toLowerCase() === value);
+      const rest = filter.slice(6);
+      const sepIdx = rest.indexOf('::');
+      if (sepIdx !== -1) {
+        const discId = rest.slice(0, sepIdx);
+        const topicName = rest.slice(sepIdx + 2).toLowerCase();
+        seedPool = seedPool.filter(c =>
+          (c._discId === discId || c._disc === discId) &&
+          String(c._topic || '').toLowerCase() === topicName
+        );
+      } else {
+        const value = rest.toLowerCase();
+        seedPool = seedPool.filter(c => String(c._topic || '').toLowerCase() === value);
+      }
     }
   }
 
