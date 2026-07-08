@@ -1,10 +1,11 @@
-import { SettingsModel } from '../models/SettingsModel.js';
+﻿import { SettingsModel } from '../models/SettingsModel.js';
 import { ChatGPTAuthService } from './ChatGPTAuthService.js';
 import { GeminiAuthService } from './GeminiAuthService.js';
 import { GeminiCLIAuthService } from './GeminiCLIAuthService.js';
 import { GeminiCLIApiAdapter } from './GeminiCLIApiAdapter.js';
 import { CopilotAuthService } from './CopilotAuthService.js';
 import { CopilotApiAdapter } from './CopilotApiAdapter.js';
+import { parseAiExtractionResponse } from './search/AiExtractionParser.js';
 
 /**
  * ApiService.js
@@ -18,12 +19,14 @@ export const ApiService = {
     _groqQuotaExhaustedUntil: 0,
     _openRouterQuotaExhaustedUntil: 0,
     _chatgptQuotaExhaustedUntil: 0,
-    _geminiQuotaExhaustedUntil: 0,
+    _geminiCliQuotaExhaustedUntil: 0,
+    _geminiApiQuotaExhaustedUntil: 0,
     _copilotQuotaExhaustedUntil: 0,
     // Models confirmed to NOT work with the ChatGPT Codex backend (backend-api/codex/responses).
     // Non-codex models (gpt-4.1, gpt-4o, etc.) consistently return 400 "not supported when using Codex".
     _chatgptUnsupportedCodexModels: {},
     _openRouterUnavailableModels: {},
+    _copilotUnsupportedModels: {},
     // Track consecutive short responses per provider (< 40 chars = garbage like Codex 25-char).
     // After DISABLE_THRESHOLD consecutive failures, the provider is removed from the fallback
     // chain for the current session to avoid wasting ~1-2s per source call.
@@ -56,6 +59,29 @@ export const ApiService = {
         }
     },
 
+    _parseCooldownMs(rawText, fallbackMs = 120000) {
+        const text = String(rawText || '');
+        if (!text) return fallbackMs;
+
+        const direct = text.match(/reset\s+after\s+(\d+)\s*(ms|milliseconds?|s|sec|secs|seconds?|m|min|mins|minutes?)/i);
+        if (direct) {
+            const value = Number(direct[1]);
+            const unit = direct[2].toLowerCase();
+            if (Number.isFinite(value) && value > 0) {
+                if (unit.startsWith('ms')) return value;
+                if (unit.startsWith('m')) return value * 60000;
+                return value * 1000;
+            }
+        }
+
+        const minuteMatch = text.match(/(\d+)\s*(m|min|mins|minutes?)/i);
+        const secondMatch = text.match(/(\d+)\s*(s|sec|secs|seconds?)/i);
+        const minutes = minuteMatch ? Number(minuteMatch[1]) : 0;
+        const seconds = secondMatch ? Number(secondMatch[1]) : 0;
+        const combined = (minutes * 60000) + (seconds * 1000);
+        return combined > 0 ? combined : fallbackMs;
+    },
+
     /**
      * Call Gemini via its OpenAI-compatible endpoint.
      * Used as fallback when Groq quota is exhausted, or as primary when user selects Gemini.
@@ -64,38 +90,38 @@ export const ApiService = {
      * @returns {Promise<string|null>} The assistant message content, or null on failure
      */
     async _callGemini(messages, opts = {}) {
-        if (this._geminiQuotaExhaustedUntil > Date.now()) {
-            const waitMin = Math.ceil((this._geminiQuotaExhaustedUntil - Date.now()) / 60000);
-            console.warn(`AnswerHunter: Gemini temporarily unavailable (~${waitMin}min left)`);
-            return null;
-        }
-
         const settings = await this._getSettings();
         const { geminiApiKey, geminiApiUrl, geminiModel } = settings;
-        const model = opts.model || geminiModel || 'gemini-2.5-flash';
+        const model = opts.model || geminiModel || 'gemini-3.5-flash';
+        const now = Date.now();
 
         // ─── Priority 1: Gemini CLI OAuth → cloudcode-pa.googleapis.com ───
         // Uses the user's Gemini subscription (free / AI Pro / AI Ultra)
         if (!opts._skipCLI) {
             try {
-                const cliToken = await GeminiCLIAuthService.getValidToken();
-                if (cliToken) {
-                    const projectId = await GeminiCLIAuthService.getProjectId();
-                    if (projectId) {
-                        const cliResult = await GeminiCLIApiAdapter.generateContent(
-                            cliToken, projectId, messages,
-                            { model, temperature: opts.temperature, max_tokens: opts.max_tokens }
-                        );
-                        if (cliResult && typeof cliResult === 'string') {
-                            console.log(`%c[AH] ✅ Gemini CLI success (model=${model}, ${cliResult.length} chars, project=${projectId})`, 'color:#0f0;font-weight:bold');
-                            return cliResult;
-                        }
-                        if (cliResult?.error && cliResult.status === 429) {
-                            const cooldownMs = 120000;
-                            this._geminiQuotaExhaustedUntil = Date.now() + cooldownMs;
-                            console.warn('AnswerHunter: Gemini CLI rate-limited, falling back to API key');
-                        } else if (cliResult?.error) {
-                            console.warn(`AnswerHunter: Gemini CLI failed (${cliResult.status}), falling back`);
+                if (this._geminiCliQuotaExhaustedUntil > now) {
+                    const waitSec = Math.max(1, Math.ceil((this._geminiCliQuotaExhaustedUntil - now) / 1000));
+                    console.warn(`AnswerHunter: Gemini CLI cooling down (${waitSec}s left), skipping to next Gemini auth mode`);
+                } else {
+                    const cliToken = await GeminiCLIAuthService.getValidToken();
+                    if (cliToken) {
+                        const projectId = await GeminiCLIAuthService.getProjectId();
+                        if (projectId) {
+                            const cliResult = await GeminiCLIApiAdapter.generateContent(
+                                cliToken, projectId, messages,
+                                { model, temperature: opts.temperature, max_tokens: opts.max_tokens }
+                            );
+                            if (cliResult && typeof cliResult === 'string') {
+                                console.log(`%c[AH] ✅ Gemini CLI success (model=${model}, ${cliResult.length} chars, project=${projectId})`, 'color:#0f0;font-weight:bold');
+                                return cliResult;
+                            }
+                            if (cliResult?.error && cliResult.status === 429) {
+                                const cooldownMs = this._parseCooldownMs(cliResult.text, 120000);
+                                this._geminiCliQuotaExhaustedUntil = Date.now() + cooldownMs;
+                                console.warn(`AnswerHunter: Gemini CLI rate-limited, cooling down for ${Math.ceil(cooldownMs / 1000)}s and falling back to API key`);
+                            } else if (cliResult?.error) {
+                                console.warn(`AnswerHunter: Gemini CLI failed (${cliResult.status}), falling back`);
+                            }
                         }
                     }
                 }
@@ -105,11 +131,20 @@ export const ApiService = {
         }
 
         // ─── Priority 2: GeminiAuthService OAuth (user's own client_id) ───
-        // ─── Priority 3: API key ───
+        // ─── Priority 3: API key (from Google AI Studio — aistudio.google.com/apikey) ───
+        // NOTE: CLI OAuth tokens do NOT work against generativelanguage.googleapis.com
+        // because the CLI's OAuth client_id doesn't have the Generative Language API enabled.
+        // Users who want standard API access should generate an API key at AI Studio instead.
         let geminiToken = null;
         try {
             geminiToken = await GeminiAuthService.getValidToken();
         } catch (_) { /* GeminiAuthService may not be available in all contexts */ }
+
+        if (this._geminiApiQuotaExhaustedUntil > Date.now()) {
+            const waitSec = Math.max(1, Math.ceil((this._geminiApiQuotaExhaustedUntil - Date.now()) / 1000));
+            console.warn(`AnswerHunter: Gemini API cooling down (${waitSec}s left)`);
+            return null;
+        }
 
         if (!geminiToken && !geminiApiKey) return null;
         const authHeader = geminiToken ? `Bearer ${geminiToken}` : `Bearer ${geminiApiKey}`;
@@ -119,13 +154,14 @@ export const ApiService = {
 
         const doCall = async (callModel) => {
             try {
-                // Thinking models (gemini-2.5-pro, gemini-2.5-ultra) use "thinking tokens"
-                // that count against max_tokens. With 600-700 the model exhausts the
-                // budget on reasoning and returns empty content (finish=length).
-                const isThinkingModel = /pro|ultra/i.test(callModel) && /2\.5/i.test(callModel);
+                // Thinking models (gemini-2.5-pro, 3.x-pro, etc.) use "thinking tokens"
+                // that count against max_tokens. We need a reasonable minimum (1024)
+                // so the model can fit thoughts + answer, but NOT force 4096 blindly.
+                const isThinkingModel = /pro|ultra/i.test(callModel) && /2\.5|3/i.test(callModel);
+                const requestedTokens = opts.max_tokens ?? 700;
                 const effectiveMaxTokens = isThinkingModel
-                    ? Math.max(opts.max_tokens ?? 700, 4096)
-                    : (opts.max_tokens ?? 700);
+                    ? Math.max(requestedTokens, 1024)
+                    : requestedTokens;
 
                 const response = await fetch(url, {
                     method: 'POST',
@@ -145,8 +181,8 @@ export const ApiService = {
                     const errText = await response.text().catch(() => '');
                     if (response.status === 429 || /quota|exceeded|rate\s*limit/i.test(errText)) {
                         const retryAfter = parseFloat(response.headers.get('retry-after') || '0');
-                        const cooldownMs = retryAfter > 0 ? Math.ceil(retryAfter * 1000) : 120000;
-                        this._geminiQuotaExhaustedUntil = Date.now() + cooldownMs;
+                        const cooldownMs = retryAfter > 0 ? Math.ceil(retryAfter * 1000) : this._parseCooldownMs(errText, 120000);
+                        this._geminiApiQuotaExhaustedUntil = Date.now() + cooldownMs;
                         console.warn(`AnswerHunter: Gemini rate-limited/quota, cooldown=${cooldownMs}ms`);
                     }
                     console.warn(`AnswerHunter: Gemini HTTP ${response.status} (model=${callModel}, auth=${authSource}): ${errText.slice(0, 200)}`);
@@ -181,7 +217,7 @@ export const ApiService = {
         if (result) return result;
 
         // Auto-downgrade: if smart/pro model returned empty, retry with flash
-        const flashModel = geminiModel || 'gemini-2.5-flash';
+        const flashModel = geminiModel || 'gemini-3.5-flash';
         if (model !== flashModel && /pro|ultra/i.test(model) && !opts._noDowngrade) {
             console.log(`AnswerHunter: Gemini auto-downgrade ${model} → ${flashModel}`);
             result = await doCall(flashModel);
@@ -192,9 +228,12 @@ export const ApiService = {
     },
 
     _isOpenRouterModelUnavailableError(status, errorText = '') {
-        if (status !== 404) return false;
+        if (status !== 404 && status !== 400) return false;
         const text = String(errorText || '');
-        return /no endpoints found for/i.test(text) || /model[^\n]*not found/i.test(text);
+        return /no endpoints found for/i.test(text)
+            || /model[^\n]*not found/i.test(text)
+            || /model[^\n]*not supported/i.test(text)
+            || /unsupported model/i.test(text);
     },
 
     _getOpenRouterFallbackModel(settings = {}, currentModel = '') {
@@ -203,10 +242,14 @@ export const ApiService = {
 
         const candidates = [
             configured,
-            'google/gemini-2.5-flash-free',
-            'qwen/qwen-2.5-coder-32b-instruct:free',
-            'google/gemini-exp-1121:free',
-            'zhipuai/glm-4-plus'
+            'openai/gpt-oss-120b:free',
+            'openai/gpt-oss-20b:free',
+            'qwen/qwen3-coder:free',
+            'meta-llama/llama-3.3-70b-instruct:free',
+            'deepseek/deepseek-v3.2',
+            'google/gemini-3.5-flash',
+            'google/gemini-3.1-pro-preview',
+            'anthropic/claude-sonnet-4.6'
         ].map(m => String(m || '').trim()).filter(Boolean);
 
         for (const candidate of candidates) {
@@ -236,7 +279,7 @@ export const ApiService = {
             return null;
         }
 
-        const requestedModel = String(opts.model || openrouterModelSmart || 'deepseek/deepseek-r1:free').trim();
+        const requestedModel = String(opts.model || openrouterModelSmart || 'openai/gpt-oss-120b:free').trim();
         const model = this._openRouterUnavailableModels[requestedModel]
             ? (this._getOpenRouterFallbackModel(settings, requestedModel) || requestedModel)
             : requestedModel;
@@ -323,7 +366,9 @@ export const ApiService = {
         const text = String(errorText || '');
         return /not\s+supported\s+when\s+using\s+Codex/i.test(text)
             || /model[^\n]*not\s+supported[^\n]*Codex/i.test(text)
-            || /Codex[^\n]*model[^\n]*not\s+supported/i.test(text);
+            || /Codex[^\n]*model[^\n]*not\s+supported/i.test(text)
+            || /model_not_supported/i.test(text)
+            || /requested model is not supported/i.test(text);
     },
 
     _getChatGPTCodexFallbackModel(settings = {}, currentModel = '') {
@@ -331,11 +376,11 @@ export const ApiService = {
 
         // Ordered fallback chain — only confirmed Codex backend models
         const chain = [
+            'gpt-5.5',
             'gpt-5.4',
-            'gpt-5.2-codex',
-            'gpt-5.1-codex-max',
-            'gpt-5.1-codex',
-            'gpt-5.1-codex-mini',
+            'gpt-5.4-mini',
+            'gpt-5.3-codex',
+            'gpt-5.3-codex',
             'codex-mini-latest'
         ];
 
@@ -345,7 +390,49 @@ export const ApiService = {
             return candidate;
         }
 
-        return 'gpt-5.2-codex';
+        return 'gpt-5.3-codex';
+    },
+
+    _toChatGPTResponsesContent(content) {
+        const normalizePart = (part) => {
+            if (typeof part === 'string') {
+                return { type: 'input_text', text: part };
+            }
+            if (!part || typeof part !== 'object') return null;
+
+            const type = String(part.type || '').trim();
+            if (type === 'text') {
+                return { type: 'input_text', text: String(part.text || '') };
+            }
+            if (type === 'input_text') {
+                return { type: 'input_text', text: String(part.text || '') };
+            }
+            if (type === 'image_url') {
+                const imageUrl = typeof part.image_url === 'string'
+                    ? part.image_url
+                    : part.image_url?.url;
+                return imageUrl ? { type: 'input_image', image_url: imageUrl } : null;
+            }
+            if (type === 'input_image') {
+                const imageUrl = typeof part.image_url === 'string'
+                    ? part.image_url
+                    : part.image_url?.url;
+                return imageUrl ? { type: 'input_image', image_url: imageUrl } : part;
+            }
+            if (['output_text', 'refusal', 'input_file', 'computer_screenshot', 'summary_text'].includes(type)) {
+                return part;
+            }
+            if (typeof part.text === 'string') {
+                return { type: 'input_text', text: part.text };
+            }
+            return null;
+        };
+
+        if (Array.isArray(content)) {
+            const parts = content.map(normalizePart).filter(Boolean);
+            return parts.length ? parts : [{ type: 'input_text', text: '' }];
+        }
+        return [{ type: 'input_text', text: String(content ?? '') }];
     },
 
     async _callGroq(messages, opts = {}) {
@@ -376,7 +463,8 @@ export const ApiService = {
                         temperature: opts.temperature ?? 0.1,
                         max_tokens: opts.max_tokens ?? 700
                     })
-                }
+                },
+                opts.timeoutMs
             ));
 
             const content = data?.choices?.[0]?.message?.content;
@@ -414,7 +502,7 @@ export const ApiService = {
         }
 
         const settings = await this._getSettings();
-        const requestedModel = String(opts.model || settings.chatgptModel || 'gpt-5.2-codex').trim();
+        const requestedModel = String(opts.model || settings.chatgptModel || 'gpt-5.5').trim();
         const model = this._chatgptUnsupportedCodexModels[requestedModel]
             ? (this._getChatGPTCodexFallbackModel(settings, requestedModel) || requestedModel)
             : requestedModel;
@@ -433,7 +521,7 @@ export const ApiService = {
 
         const body = {
             model,
-            input: inputMsgs.map(m => ({ role: m.role, content: m.content })),
+            input: inputMsgs.map(m => ({ role: m.role, content: this._toChatGPTResponsesContent(m.content) })),
             stream: true,
             store: false
         };
@@ -564,6 +652,40 @@ export const ApiService = {
         }
     },
 
+    _isCopilotModelUnsupportedError(result) {
+        if (!result || result.status !== 400) return false;
+        const text = String(result.text || '');
+        return /model_not_supported/i.test(text)
+            || /requested model is not supported/i.test(text)
+            || /model[^\n]*not supported/i.test(text);
+    },
+
+    _getCopilotFallbackModel(settings = {}, currentModel = '') {
+        const normalizedCurrent = String(currentModel || '').trim();
+        const configured = String(settings.copilotModel || '').trim();
+        const chain = [
+            configured,
+            'claude-sonnet-4.6',
+            'gpt-5.5',
+            'gpt-5.4',
+            'gpt-5.4-mini',
+            'gpt-5.3-codex',
+            'gemini-3.5-flash',
+            'gpt-4.1',
+            'gpt-4o',
+            'gpt-4o-mini',
+            'claude-3.7-sonnet',
+            'claude-3.5-sonnet'
+        ].map(m => String(m || '').trim()).filter(Boolean);
+
+        for (const candidate of chain) {
+            if (candidate === normalizedCurrent) continue;
+            if (this._copilotUnsupportedModels[candidate]) continue;
+            return candidate;
+        }
+        return null;
+    },
+
     /**
      * Call GitHub Copilot via the Copilot API (uses Copilot subscription credits).
      * Requires Device Flow authentication via CopilotAuthService.
@@ -587,7 +709,10 @@ export const ApiService = {
         if (!loggedIn) return null; // Not logged in — silently skip
 
         const settings = await this._getSettings();
-        const model = opts.model || settings.copilotModel || 'gpt-4o';
+        const requestedModel = String(opts.model || settings.copilotModel || 'claude-sonnet-4.6').trim();
+        const model = this._copilotUnsupportedModels[requestedModel]
+            ? (this._getCopilotFallbackModel(settings, requestedModel) || requestedModel)
+            : requestedModel;
 
         // Get a valid Copilot token (auto-refreshes the 30-min token)
         const copilotToken = await CopilotAuthService.getValidToken();
@@ -616,6 +741,14 @@ export const ApiService = {
                     console.warn('AnswerHunter: Copilot 401 — token will refresh on next call');
                     return null;
                 }
+                if (!opts._modelRetried && this._isCopilotModelUnsupportedError(result)) {
+                    this._copilotUnsupportedModels[model] = true;
+                    const fallbackModel = this._getCopilotFallbackModel(settings, model);
+                    if (fallbackModel && fallbackModel !== model) {
+                        console.warn(`AnswerHunter: Copilot model '${model}' unsupported; retrying with '${fallbackModel}'`);
+                        return this._callCopilot(messages, { ...opts, model: fallbackModel, _modelRetried: true });
+                    }
+                }
                 if (result.status === 429) {
                     const cooldownMs = 120000;
                     this._copilotQuotaExhaustedUntil = Date.now() + cooldownMs;
@@ -626,6 +759,15 @@ export const ApiService = {
                 if (result.status === 0 || result.status === 408) {
                     this._copilotNetworkFailStreak++;
                     console.warn(`AnswerHunter: Copilot failed (${result.status}) — networkFailStreak=${this._copilotNetworkFailStreak}`);
+                    return null;
+                }
+                if (result.status === 400) {
+                    // Bad request (usually model_not_supported that survived the fallback
+                    // rotation). Retrying identical calls cannot succeed — stop burning a
+                    // call + ~1-2s on every source for the rest of the session window.
+                    const cooldownMs = 30 * 60 * 1000;
+                    this._copilotQuotaExhaustedUntil = Date.now() + cooldownMs;
+                    console.warn('AnswerHunter: Copilot 400 (modelo não suportado/request inválido) — Copilot desativado por 30min nesta sessão');
                     return null;
                 }
                 console.warn(`AnswerHunter: Copilot failed (${result.status})`);
@@ -771,7 +913,7 @@ export const ApiService = {
         const tryGemini = async () => {
             if (!settings.geminiApiKey) return null;
             try {
-                const model = opts.model_gemini || settings.geminiModelSmart || 'gemini-2.5-flash';
+                const model = opts.model_gemini || settings.geminiModelSmart || 'gemini-3.5-flash';
                 console.log(`  ${logPrefix} Trying Gemini (${model})...`);
                 return await this._callGemini(messages, { ...opts, model });
             } catch (e) { console.warn(`  ${logPrefix} Gemini error:`, e?.message || e); return null; }
@@ -800,7 +942,7 @@ export const ApiService = {
         const tryChatGPT = async () => {
             if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
             try {
-                const model = opts.model_chatgpt || settings.chatgptModel || 'gpt-4o';
+                const model = opts.model_chatgpt || settings.chatgptModel || 'gpt-5.5';
                 console.log(`  ${logPrefix} Trying ChatGPT (${model})...`);
                 return await this._callChatGPT(messages, { ...opts, model });
             } catch (e) { console.warn(`  ${logPrefix} ChatGPT error:`, e?.message || e); return null; }
@@ -808,7 +950,7 @@ export const ApiService = {
         const tryOpenRouter = async () => {
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
-                const model = opts.model_openrouter || settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                const model = opts.model_openrouter || settings.openrouterModelSmart || 'openai/gpt-oss-120b:free';
                 console.log(`  ${logPrefix} Trying OpenRouter (${model})...`);
                 return await this._callOpenRouter(messages, { ...opts, model });
             } catch (e) { console.warn(`  ${logPrefix} OpenRouter error:`, e?.message || e); return null; }
@@ -856,9 +998,9 @@ export const ApiService = {
     async _geminiConsensus(systemMsg, userPrompt, letterPattern, opts = {}) {
         const settings = await this._getSettings();
         const smartModel = opts.smart !== false
-            ? (settings.geminiModelSmart || 'gemini-2.5-flash')
-            : (settings.geminiModel || 'gemini-2.5-flash');
-        const flashModel = settings.geminiModel || 'gemini-2.5-flash';
+            ? (settings.geminiModelSmart || 'gemini-3.5-flash')
+            : (settings.geminiModel || 'gemini-3.5-flash');
+        const flashModel = settings.geminiModel || 'gemini-3.5-flash';
         const temps = [0.1, 0.5]; // 2 attempts instead of 3 to preserve API quota
 
         const runConsensusLoop = async (model, tempList) => {
@@ -1396,9 +1538,9 @@ O texto pode conter VÁRIAS questões sobre o mesmo tema. Você DEVE:
 
 ## Se encontrou a resposta:
 RESULTADO: ENCONTRADO
-EVIDÊNCIA: [trecho exato copiado do texto]
+EVIDÊNCIA: [trecho exato copiado do texto — copie LITERALMENTE, sem parafrasear]
 RACIOCÍNIO: [como o trecho leva à resposta, passo a passo]
-Letra X: [texto da alternativa]
+Letra X: [texto EXATO da alternativa correta, copiado da QUESTÃO do aluno — não resuma nem parafraseie]
 
 ## Se há conhecimento útil mas sem resposta definitiva:
 RESULTADO: CONHECIMENTO_PARCIAL
@@ -1461,14 +1603,14 @@ Analise o texto passo a passo e responda no formato acima:`;
                 return null;
             }
             try {
-                console.log(`  🔬 [aiExtract] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
+                console.log(`  🔬 [aiExtract] Trying Gemini (${settings.geminiModelSmart || 'gemini-3.5-flash'})...`);
                 const result = await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
                 ], {
                     temperature: 0.05,
                     max_tokens: 300,
-                    model: 'gemini-2.5-flash' // Force fast model for heavy extraction loop
+                    model: 'gemini-3.5-flash' // Force fast model for heavy extraction loop
                 });
                 console.log(`  🔬 [aiExtract] Gemini response: ${result ? result.length + ' chars' : 'null'}`);
                 if (result) console.log(`  🔬 [aiExtract] Gemini preview: "${result.substring(0, 200)}"`);
@@ -1486,9 +1628,9 @@ Analise o texto passo a passo e responda no formato acima:`;
                 const opts = Object.assign({}, {
                     temperature: 0.05,
                     max_tokens: 300,
-                    model: 'gemini-2.5-flash' // Force fast model for heavy extraction loop
+                    model: 'gemini-3.5-flash' // Force fast model for heavy extraction loop
                 });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                opts.model = settings.openrouterModelSmart || 'openai/gpt-oss-120b:free';
                 return await this._callOpenRouter([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -1539,14 +1681,14 @@ Analise o texto passo a passo e responda no formato acima:`;
         const tryChatGPT = async () => {
             if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
             try {
-                console.log(`  🔬 [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.2-codex'})...`);
+                console.log(`  🔬 [aiExtract] Trying ChatGPT (${settings.chatgptModel || 'gpt-5.5'})...`);
                 const result = await this._callChatGPT([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
                 ], {
                     temperature: 0.05,
                     max_tokens: 300,
-                    model: settings.chatgptModel || 'gpt-5.2-codex'
+                    model: settings.chatgptModel || 'gpt-5.5'
                 });
                 console.log(`  🔬 [aiExtract] ChatGPT response: ${result ? result.length + ' chars' : 'null'}`);
                 return result;
@@ -1563,14 +1705,14 @@ Analise o texto passo a passo e responda no formato acima:`;
                 return null;
             }
             try {
-                console.log(`  🔬 [aiExtract] Trying Copilot (${settings.copilotModel || 'gpt-4o'})...`);
+                console.log(`  🔬 [aiExtract] Trying Copilot (${settings.copilotModel || 'claude-sonnet-4.6'})...`);
                 const result = await this._callCopilot([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
                 ], {
                     temperature: 0.05,
                     max_tokens: 300,
-                    model: settings.copilotModel || 'gpt-4o',
+                    model: settings.copilotModel || 'claude-sonnet-4.6',
                     timeoutMs: 15000
                 });
                 console.log(`  🔬 [aiExtract] Copilot response: ${result ? result.length + ' chars' : 'null'}`);
@@ -1738,59 +1880,69 @@ RESULTADO: NAO_ENCONTRADO`;
             console.log(`  🔬 [aiExtract] providerFallback=false`);
         }
 
-        /* ---------- Parse response ---------- */
-        // Check for CONHECIMENTO_PARCIAL — useful info but no definitive answer
-        if (/RESULTADO:\s*CONHECIMENTO_PARCIAL/i.test(content)) {
-            const knowledgeMatch = content.match(/CONHECIMENTOS?:\s*([\s\S]+)/i);
-            const knowledge = knowledgeMatch ? knowledgeMatch[1].trim().substring(0, 1200) : content.substring(0, 1200);
-            console.log(`  🔬 [aiExtract] RESULT: PARTIAL KNOWLEDGE (${knowledge.length} chars)`);
-            console.log(`  🔬 [aiExtract] Knowledge preview: "${knowledge.substring(0, 200)}"`);
+        /* ---------- Parse response (AiExtractionParser: anchored letter patterns +
+           evidence-quote verification against the real page text) ---------- */
+        const isRescue = typeof usedProvider === 'string' && usedProvider.endsWith('-rescue');
+        const parsed = parseAiExtractionResponse(content, { sourceText: truncatedPage, questionText: truncatedQuestion });
+
+        if (parsed.status === 'partial') {
+            console.log(`  🔬 [aiExtract] RESULT: PARTIAL KNOWLEDGE (${(parsed.knowledge || '').length} chars)`);
+            console.log(`  🔬 [aiExtract] Knowledge preview: "${(parsed.knowledge || '').substring(0, 200)}"`);
             return {
                 letter: null,
                 evidence: null,
                 confidence: 0,
                 method: 'ai-knowledge-partial',
-                knowledge
+                knowledge: parsed.knowledge
             };
         }
 
-        // Check for NAO_ENCONTRADO
-        if (/RESULTADO:\s*NAO_ENCONTRADO/i.test(content)) {
+        if (parsed.status === 'not_found' || parsed.status === 'empty') {
             console.log(`  🔬 [aiExtract] RESULT: NAO_ENCONTRADO`);
             return null;
         }
 
-        // Try to extract letter from ENCONTRADO response.
-        // Claude Haiku (Copilot) uses markdown bold: **A)** or **Letra A** — strip it first.
-        const plainContent = content.replace(/\*{1,3}/g, '').replace(/_{1,3}/g, '');
-        const letterMatch = plainContent.match(/\bLetra\s+([A-E])\b/i)
-            || plainContent.match(/\b([A-E])\s*[\):\.\-]\s*\S/)
-            || plainContent.match(/\balternativa\s+([A-E])\b/i)
-            || plainContent.match(/\bopç[aã]o\s+([A-E])\b/i)
-            || plainContent.match(/\bresposta[^.]{0,30}[:\s]([A-E])\b/i);
-        if (!letterMatch) {
-            // No letter but might have useful knowledge
+        if (parsed.status === 'no_letter') {
             console.log(`  🔬 [aiExtract] RESULT: response but no letter found. Treating as knowledge.`);
             return {
                 letter: null,
                 evidence: null,
                 confidence: 0,
                 method: 'ai-knowledge-noletter',
-                knowledge: content.substring(0, 1200)
+                knowledge: parsed.knowledge
             };
         }
 
-        const letter = letterMatch[1].toUpperCase();
-        const evidenceMatch = plainContent.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
-        const evidence = evidenceMatch ? evidenceMatch[1].trim() : plainContent;
-        console.log(`  🔬 [aiExtract] RESULT: FOUND letter=${letter} evidence="${evidence.substring(0, 150)}"`);
+        // status === 'found'
+        // The rescue prompt skips question-matching entirely, so its letter is only
+        // trustworthy when the quoted evidence really exists in the page text.
+        if (isRescue && parsed.evidenceVerified !== true) {
+            console.log(`  🔬 [aiExtract] RESULT: rescue letter ${parsed.letter} DISCARDED (evidence not verified in page) — keeping knowledge only`);
+            return {
+                letter: null,
+                evidence: null,
+                confidence: 0,
+                method: 'ai-knowledge-noletter',
+                knowledge: parsed.knowledge
+            };
+        }
+
+        const confidence = isRescue ? Math.min(0.5, parsed.confidence) : parsed.confidence;
+        const knowledgeGuess = parsed.evidenceEchoesQuestion === true;
+        if (knowledgeGuess) {
+            console.log(`  🔬 [aiExtract] [ECHO] Evidência é citação do PRÓPRIO ENUNCIADO — modelo respondeu por conhecimento, não por extração (letter=${parsed.letter}, conf=${confidence})`);
+        }
+        console.log(`  🔬 [aiExtract] RESULT: FOUND letter=${parsed.letter} parse=${parsed.parseMethod} verified=${parsed.evidenceVerified}${knowledgeGuess ? ' echo=question' : ''} conf=${confidence} answerText="${(parsed.answerText || '').substring(0, 80)}" evidence="${(parsed.evidence || '').substring(0, 150)}"`);
 
         return {
-            letter,
-            evidence: evidence.slice(0, 900),
-            confidence: 0.82,
-            method: 'ai-page-extraction',
-            knowledge: content.substring(0, 1200)
+            letter: parsed.letter,
+            answerText: parsed.answerText || null,
+            evidence: parsed.evidence,
+            evidenceVerified: parsed.evidenceVerified,
+            knowledgeGuess,
+            confidence,
+            method: isRescue ? 'ai-rescue' : (knowledgeGuess ? 'ai-knowledge-guess' : 'ai-page-extraction'),
+            knowledge: parsed.knowledge
         };
     },
 
@@ -1807,8 +1959,22 @@ RESULTADO: NAO_ENCONTRADO`;
         const result = await this.aiExtractFromPage(pageText, questionText, hostHint);
         if (!result) return null;
 
+        // Preferred: answerText already parsed by AiExtractionParser
+        if (result.letter && result.answerText) {
+            return {
+                answerText: result.answerText,
+                sourceLetter: result.letter,
+                confidence: result.confidence || 0.75,
+                evidence: result.evidence || '',
+                evidenceVerified: result.evidenceVerified ?? null,
+                knowledgeGuess: result.knowledgeGuess === true,
+                rawSourceAnswer: result.answerText
+            };
+        }
+
         if (result.letter && result.knowledge) {
-            // Extract the answer text from "Letra X: [answer text]" in the AI response
+            // Legacy fallback (e.g. cached results from before AiExtractionParser):
+            // extract the answer text from "Letra X: [answer text]" in the AI response
             const re = new RegExp(`Letra\\s+${result.letter}\\s*[:\\-]\\s*(.+)`, 'im');
             const textMatch = result.knowledge.match(re);
             let answerText = textMatch ? textMatch[1].trim().replace(/\s+/g, ' ') : null;
@@ -1827,6 +1993,8 @@ RESULTADO: NAO_ENCONTRADO`;
                 sourceLetter: result.letter,
                 confidence: result.confidence || 0.82,
                 evidence: result.evidence || '',
+                evidenceVerified: result.evidenceVerified ?? null,
+                knowledgeGuess: result.knowledgeGuess === true,
                 rawSourceAnswer: answerText || null
             };
         }
@@ -1838,10 +2006,130 @@ RESULTADO: NAO_ENCONTRADO`;
                 sourceLetter: null,
                 confidence: 0,
                 evidence: result.evidence || '',
+                evidenceVerified: null,
+                knowledgeGuess: false,
                 rawSourceAnswer: result.knowledge.length > 50 ? result.knowledge : null
             };
         }
 
+        return null;
+    },
+
+    /**
+     * Reasoning arbiter — answers the question with the STRONGEST available model
+     * when no source produced verified evidence (fresh auto-generated questions
+     * don't exist on studocu/brainly/etc., so retrieval can't help; the answer has
+     * to come from reasoning). Never uses the fast 8B extraction model.
+     *
+     * Output reuses the aiExtractFromPage format ("RACIOCÍNIO: ... / Letra X: texto")
+     * so the caller can parse it with parseAiExtractionResponse and map the answer
+     * TEXT to the student's options.
+     *
+     * @param {string} questionText - Question with options (questionForInference)
+     * @param {Array<{host:string, text:string}>} knowledgePool - Partial knowledge collected from sources
+     * @returns {Promise<{content:string, provider:string}|null>}
+     */
+    async aiAnswerFromKnowledge(questionText, knowledgePool = []) {
+        if (!questionText || questionText.length < 40) return null;
+        const settings = await this._getSettings();
+
+        const knowledgeSection = knowledgePool.length
+            ? `# Anotações coletadas de páginas da web (use com senso crítico — podem ser de questões parecidas, não idênticas)\n${knowledgePool
+                .slice(0, 5)
+                .map((k, i) => `[${i + 1}] (${k.host || 'fonte'}) ${String(k.text || '').replace(/\s+/g, ' ').slice(0, 700)}`)
+                .join('\n\n')}\n\n`
+            : '';
+
+        const systemMsg = 'Você é um professor universitário experiente resolvendo uma questão de múltipla escolha. Raciocine com rigor, avalie cada alternativa individualmente e só então conclua. Responda exatamente no formato pedido.';
+        const prompt = `# Questão
+${questionText.substring(0, 2400)}
+
+${knowledgeSection}# Método (obrigatório, siga na ordem)
+1. Identifique exatamente o que a questão pede. Atenção redobrada a: pedidos de alternativa INCORRETA, associação de colunas (a ordem dos parênteses importa!) e afirmativas I/II/III.
+2. Avalie CADA alternativa individualmente: correta ou incorreta, e por quê (1 linha cada).
+3. Conclua com a única alternativa correta.
+
+# Formato final (obrigatório — últimas 2 linhas da resposta)
+RACIOCÍNIO: [resumo da justificativa em 1-2 frases]
+Letra X: [texto EXATO da alternativa escolhida, copiado da questão]`;
+
+        const messages = [
+            { role: 'system', content: systemMsg },
+            { role: 'user', content: prompt }
+        ];
+        const llmOpts = { temperature: 0.1, max_tokens: 700 };
+
+        const providers = [];
+        if (this._chatgptQuotaExhaustedUntil <= Date.now()) {
+            providers.push({
+                name: 'chatgpt',
+                fn: () => this._callChatGPT(messages, { ...llmOpts, model: settings.chatgptModel || 'gpt-5.5' })
+            });
+        }
+        if (settings.geminiApiKey && this._geminiApiQuotaExhaustedUntil <= Date.now()) {
+            providers.push({
+                name: 'gemini',
+                fn: () => this._callGemini(messages, { ...llmOpts, model: settings.geminiModelSmart || 'gemini-2.5-flash' })
+            });
+        }
+        if (settings.groqApiKey && this._groqQuotaExhaustedUntil <= Date.now()) {
+            providers.push({
+                name: 'groq-smart',
+                fn: async () => {
+                    const data = await this._withGroqRateLimit(() => this._fetch(settings.groqApiUrl, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${settings.groqApiKey}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            model: settings.groqModelSmart || 'llama-3.3-70b-versatile',
+                            messages,
+                            ...llmOpts
+                        })
+                    }));
+                    return data?.choices?.[0]?.message?.content?.trim() || null;
+                }
+            });
+        }
+        if (settings.openrouterApiKey && this._openRouterQuotaExhaustedUntil <= Date.now()) {
+            providers.push({
+                name: 'openrouter',
+                fn: () => this._callOpenRouter(messages, { ...llmOpts, model: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free' })
+            });
+        }
+        if (this._copilotQuotaExhaustedUntil <= Date.now()) {
+            providers.push({
+                name: 'copilot',
+                fn: () => this._callCopilot(messages, { ...llmOpts, timeoutMs: 20000 })
+            });
+        }
+
+        // Primary provider first, when it's part of the strong chain
+        const primary = settings.primaryProvider || 'groq';
+        const primaryAlias = primary === 'groq' ? 'groq-smart' : primary;
+        const primaryIdx = providers.findIndex(p => p.name === primaryAlias);
+        if (primaryIdx > 0) providers.unshift(...providers.splice(primaryIdx, 1));
+
+        console.log(`  🧠 [aiReasoning] chain=${providers.map(p => p.name).join(' -> ') || '(vazia)'} knowledge=${knowledgePool.length} notas`);
+
+        for (const provider of providers) {
+            // 2 tentativas por provider: respostas-lixo curtas (ex.: 25 chars do ChatGPT) são intermitentes
+            for (let attempt = 1; attempt <= 2; attempt++) {
+                let content = null;
+                try {
+                    content = await provider.fn();
+                } catch (e) {
+                    console.warn(`  🧠 [aiReasoning] ${provider.name} erro:`, e?.message || e);
+                    break;
+                }
+                if (!content) break; // falha dura (quota/rede) — não insistir
+                const hasFormat = /Letra\s+[A-E]/i.test(content) || /RACIOC[IÍ]NIO/i.test(content);
+                if (content.length >= 60 && hasFormat) {
+                    console.log(`  🧠 [aiReasoning] OK via ${provider.name} (${content.length} chars, tentativa ${attempt})`);
+                    return { content, provider: provider.name };
+                }
+                console.log(`  🧠 [aiReasoning] ${provider.name} resposta inválida (${content.length} chars) — ${attempt < 2 ? 'retry' : 'próximo provider'}`);
+            }
+        }
+        console.log('  🧠 [aiReasoning] nenhum provider forte respondeu');
         return null;
     },
 
@@ -1920,7 +2208,7 @@ Analise o HTML e responda:`;
                 return await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.05, max_tokens: 400, model: 'gemini-2.5-flash' });
+                ], { temperature: 0.05, max_tokens: 400, model: 'gemini-3.5-flash' });
             } catch (e) {
                 console.warn(`  🔬 [aiHtml] Gemini error:`, e?.message || e);
                 return null;
@@ -1931,8 +2219,8 @@ Analise o HTML e responda:`;
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
                 // intercept options to overwrite model
-                const opts = Object.assign({}, { temperature: 0.05, max_tokens: 400, model: 'gemini-2.5-flash' });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                const opts = Object.assign({}, { temperature: 0.05, max_tokens: 400, model: 'gemini-3.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'openai/gpt-oss-120b:free';
                 return await this._callOpenRouter([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -1991,14 +2279,17 @@ Analise o HTML e responda:`;
             return null;
         }
 
-        // Parse LETRA_DESTACADA format
+        // Parse LETRA_DESTACADA format (specific to this prompt); otherwise fall
+        // back to the shared parser — anchored patterns only, never a bare "A)"
+        // (raw HTML responses are full of quoted option markers).
         const highlightMatch = content.match(/LETRA_DESTACADA:\s*([A-E])\b/i);
-        // Parse standard Letra X format
-        const letterMatch = highlightMatch
-            || content.match(/\bLetra\s+([A-E])\b/i)
-            || content.match(/\b([A-E])\s*[\):\.\-]\s*\S/);
+        let letter = highlightMatch ? highlightMatch[1].toUpperCase() : null;
+        if (!letter) {
+            const parsedHtml = parseAiExtractionResponse(content, { sourceText: truncatedHtml });
+            if (parsedHtml.status === 'found') letter = parsedHtml.letter;
+        }
 
-        if (!letterMatch) {
+        if (!letter) {
             console.log(`  🔬 [aiHtml] RESULT: response but no letter found`);
             return {
                 letter: null, evidence: null, confidence: 0,
@@ -2006,8 +2297,6 @@ Analise o HTML e responda:`;
                 knowledge: content.substring(0, 1200)
             };
         }
-
-        const letter = letterMatch[1].toUpperCase();
         const evidenceCss = content.match(/EVIDENCIA_CSS:\s*([\s\S]*?)(?=TEXTO_ALTERNATIVA:|Letra\s+[A-E]|$)/i);
         const evidenceText = content.match(/EVID[EÊ]NCIA:\s*([\s\S]*?)(?=RACIOC[IÍ]NIO:|Letra\s+[A-E]|$)/i);
         const evidence = (evidenceCss ? evidenceCss[1].trim() : evidenceText ? evidenceText[1].trim() : content).slice(0, 900);
@@ -2085,11 +2374,11 @@ Letra B: TCP
         const tryGemini = async () => {
             if (!settings.geminiApiKey) return null;
             try {
-                console.log(`  🧠 [aiReflect] Trying Gemini (${settings.geminiModelSmart || 'gemini-2.5-flash'})...`);
+                console.log(`  🧠 [aiReflect] Trying Gemini (${settings.geminiModelSmart || 'gemini-3.5-flash'})...`);
                 return await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                ], { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-3.5-flash' });
             } catch (e) {
                 console.warn(`  🧠 [aiReflect] Gemini error:`, e?.message || e);
                 return null;
@@ -2100,8 +2389,8 @@ Letra B: TCP
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
                 // intercept options to overwrite model
-                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 800, model: settings.geminiModelSmart || 'gemini-3.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'openai/gpt-oss-120b:free';
                 return await this._callOpenRouter([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -2484,7 +2773,7 @@ INCONCLUSIVO: [motivo em 1 linha]`;
                 const content = await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.1, max_tokens: 10, model: settings.geminiModel || 'gemini-2.5-flash' });
+                ], { temperature: 0.1, max_tokens: 10, model: settings.geminiModel || 'gemini-3.5-flash' });
                 return content;
             } catch (e) {
                 console.warn('AnswerHunter: Gemini validateQuestion error:', e?.message || e);
@@ -2496,8 +2785,8 @@ INCONCLUSIVO: [motivo em 1 linha]`;
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
                 // intercept options to overwrite model
-                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 10, model: settings.geminiModel || 'gemini-2.5-flash' });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 10, model: settings.geminiModel || 'gemini-3.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'openai/gpt-oss-120b:free';
                 return await this._callOpenRouter([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -2593,10 +2882,13 @@ INCONCLUSIVO: [motivo em 1 linha]`;
         try {
             const { result } = await this._callWithProviderChain({
                 messages: visionMessages,
-                opts: { temperature: 0.1, max_tokens: 700 },
+                opts: { temperature: 0.1, max_tokens: 700, timeoutMs: 20000 },
                 models: {
                     groq: settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct',
-                    gemini: settings.geminiModel || 'gemini-2.5-flash'
+                    gemini: settings.geminiModel || 'gemini-3.5-flash',
+                    openrouter: 'google/gemini-3.5-flash',
+                    chatgpt: settings.chatgptModel || 'gpt-5.5',
+                    copilot: settings.copilotModel || 'claude-sonnet-4.6'
                 },
                 // Speed-first: Groq llama-4-scout ~0.5s vs Copilot claude-haiku ~7-8s
                 providers: ['groq', 'gemini', 'openrouter', 'copilot', 'chatgpt'],
@@ -2672,10 +2964,13 @@ INCONCLUSIVO: [motivo em 1 linha]`;
         try {
             const { result } = await this._callWithProviderChain({
                 messages: visionMessages,
-                opts: { temperature: 0.05, max_tokens: 1200 },
+                opts: { temperature: 0.05, max_tokens: 1200, timeoutMs: 20000 },
                 models: {
                     groq: settings.groqModelVision || 'meta-llama/llama-4-scout-17b-16e-instruct',
-                    gemini: settings.geminiModel || 'gemini-2.5-flash'
+                    gemini: settings.geminiModel || 'gemini-3.5-flash',
+                    openrouter: 'google/gemini-3.5-flash',
+                    chatgpt: settings.chatgptModel || 'gpt-5.5',
+                    copilot: settings.copilotModel || 'claude-sonnet-4.6'
                 },
                 // Speed-first: Groq llama-4-scout ~0.5s vs Copilot claude-haiku ~7-8s
                 providers: ['groq', 'gemini', 'openrouter', 'copilot', 'chatgpt'],
@@ -3525,7 +3820,7 @@ RESULTADO: NAO_ENCONTRADO`;
         const tryGemini = async () => {
             if (!settings.geminiApiKey) return null;
             try {
-                return await this._callGemini(msgs, { ...callOpts, model: settings.geminiModel || 'gemini-2.5-flash' });
+                return await this._callGemini(msgs, { ...callOpts, model: settings.geminiModel || 'gemini-3.5-flash' });
             } catch (_) { return null; }
         };
 
@@ -3533,7 +3828,7 @@ RESULTADO: NAO_ENCONTRADO`;
         const tryOpenRouter = async () => {
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
-                return await this._callOpenRouter(msgs, { ...callOpts, model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free' });
+                return await this._callOpenRouter(msgs, { ...callOpts, model: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free' });
             } catch (_) { return null; }
         };
 
@@ -3541,7 +3836,7 @@ RESULTADO: NAO_ENCONTRADO`;
         const tryChatGPT = async () => {
             if (this._chatgptQuotaExhaustedUntil > Date.now()) return null;
             try {
-                return await this._callChatGPT(msgs, { ...callOpts, model: settings.chatgptModel || 'gpt-4o-mini' });
+                return await this._callChatGPT(msgs, { ...callOpts, model: settings.chatgptModel || 'gpt-5.5' });
             } catch (_) { return null; }
         };
 
@@ -3550,7 +3845,7 @@ RESULTADO: NAO_ENCONTRADO`;
             if (this._copilotQuotaExhaustedUntil > Date.now()) return null;
             if (this._copilotNetworkFailStreak >= 2) return null;
             try {
-                return await this._callCopilot(msgs, { ...callOpts, model: settings.copilotModel || 'gpt-4o', timeoutMs: 15000 });
+                return await this._callCopilot(msgs, { ...callOpts, model: settings.copilotModel || 'claude-sonnet-4.6', timeoutMs: 15000 });
             } catch (_) { return null; }
         };
 
@@ -3791,7 +4086,7 @@ RESULTADO: NAO_ENCONTRADO`;
                             { text: "Transcrição fiel do conteúdo:" }
                         ]
                     }
-                ], { temperature: 0.1, max_tokens: 1500, model: settings.geminiModel || 'gemini-2.5-flash' });
+                ], { temperature: 0.1, max_tokens: 1500, model: settings.geminiModel || 'gemini-3.5-flash' });
                 if (!content || content.length < 20) {
                     console.warn('AnswerHunter: Gemini Vision OCR returned too little text:', (content || '').length);
                     return null;
@@ -3807,7 +4102,7 @@ RESULTADO: NAO_ENCONTRADO`;
         const tryOpenRouter = async () => {
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
-                const model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                const model = settings.openrouterModelSmart || 'openai/gpt-oss-120b:free';
                 const content = await this._callOpenRouter(visionMessages, {
                     temperature: 0.1,
                     max_tokens: 1500,
@@ -3911,7 +4206,7 @@ E) [texto da alternativa E se houver]`;
                 return await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.1, max_tokens: 500, model: settings.geminiModel || 'gemini-2.5-flash' });
+                ], { temperature: 0.1, max_tokens: 500, model: settings.geminiModel || 'gemini-3.5-flash' });
             } catch (e) {
                 console.warn('AnswerHunter: Gemini extractOptionsFromSource error:', e?.message || e);
                 return null;
@@ -3921,8 +4216,8 @@ E) [texto da alternativa E se houver]`;
         const tryOpenRouter = async () => {
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
-                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 500, model: 'gemini-2.5-flash' });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 500, model: 'gemini-3.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'openai/gpt-oss-120b:free';
                 return await this._callOpenRouter([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -4081,7 +4376,7 @@ Se incerto: NAO_ENCONTRADO`
 
         const runGeminiConsensus = async () => {
             if (!settings.geminiApiKey) return [];
-            const geminiModel = settings.geminiModelSmart || 'gemini-2.5-flash';
+            const geminiModel = settings.geminiModelSmart || 'gemini-3.5-flash';
             const responses = [];
             for (let i = 0; i < Math.min(maxAttempts, prompts.length); i++) {
                 try {
@@ -4187,7 +4482,7 @@ INSTRUÇÕES:
                 const content = await this._callGemini([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
-                ], { temperature: 0.1, max_tokens: 200, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
+                ], { temperature: 0.1, max_tokens: 200, model: settings.geminiModelSmart || 'gemini-3.5-flash' });
                 console.log('AnswerHunter: Resposta Gemini bruta:', content);
                 return parseResponse((content || '').trim());
             } catch (e) {
@@ -4200,8 +4495,8 @@ INSTRUÇÕES:
             if (!settings.openrouterApiKey || this._openRouterQuotaExhaustedUntil > Date.now()) return null;
             try {
                 // intercept options to overwrite model
-                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 200, model: settings.geminiModelSmart || 'gemini-2.5-flash' });
-                opts.model = settings.openrouterModelSmart || 'deepseek/deepseek-r1:free';
+                const opts = Object.assign({}, { temperature: 0.1, max_tokens: 200, model: settings.geminiModelSmart || 'gemini-3.5-flash' });
+                opts.model = settings.openrouterModelSmart || 'openai/gpt-oss-120b:free';
                 return await this._callOpenRouter([
                     { role: 'system', content: systemMsg },
                     { role: 'user', content: prompt }
@@ -4347,11 +4642,11 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
 
         if (copilotPrimaryInfer) {
             // ── Copilot PRIMARY for inference ──
-            console.log(`AnswerHunter: Inference via Copilot (primary, model=${settings.copilotModel || 'gpt-4o'})...`);
+            console.log(`AnswerHunter: Inference via Copilot (primary, model=${settings.copilotModel || 'claude-sonnet-4.6'})...`);
             const copilotResult = await this._callCopilot([
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: basePrompt }
-            ], { model: settings.copilotModel || 'gpt-4o' });
+            ], { model: settings.copilotModel || 'claude-sonnet-4.6' });
             if (copilotResult) {
                 console.log(`%c[AH] \ud83c\udfaf inferAnswerFromEvidence \u2192 Copilot (${copilotResult.length} chars)`, 'color:#79c0ff;font-weight:bold');
                 return copilotResult;
@@ -4361,11 +4656,11 @@ Nesse caso, use seu CONHECIMENTO ACADÊMICO para avaliar cada alternativa:
 
         if (chatgptPrimaryInfer) {
             // ── ChatGPT PRIMARY for inference ──
-            console.log(`AnswerHunter: Inference via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
+            console.log(`AnswerHunter: Inference via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.5'})...`);
             const chatgptResult = await this._callChatGPT([
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: basePrompt }
-            ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
+            ], { model: settings.chatgptModel || 'gpt-5.5' });
             if (chatgptResult) {
                 console.log(`%c[AH] \ud83c\udfaf inferAnswerFromEvidence \u2192 ChatGPT (${chatgptResult.length} chars)`, 'color:#0ff;font-weight:bold');
                 return chatgptResult;
@@ -4621,7 +4916,7 @@ Ou: NAO_ENCONTRADO`;
                 ], {
                     temperature: 0.10,
                     max_tokens: 600,
-                    model: settings.geminiModelSmart || 'gemini-2.5-flash'
+                    model: settings.geminiModelSmart || 'gemini-3.5-flash'
                 });
                 const c = r?.trim() || '';
                 if (isValid(c)) { console.log(`%c[AH] \ud83c\udfaf generateKnowledgeAnswer \u2192 Gemini`, 'color:#0ff;font-weight:bold'); return c; }
@@ -4913,13 +5208,13 @@ REGRAS:
 
             if (copilotPrimary) {
                 // ── Copilot PRIMARY for MC ──
-                console.log(`AnswerHunter: MC via Copilot (primary, model=${settings.copilotModel || 'gpt-4o'})...`);
+                console.log(`AnswerHunter: MC via Copilot (primary, model=${settings.copilotModel || 'claude-sonnet-4.6'})...`);
                 const copilotAttempts = [];
                 for (let i = 0; i < 2; i++) {
                     const content = await this._callCopilot([
                         { role: 'system', content: mcSystemMsg },
                         { role: 'user', content: prompt }
-                    ], { model: settings.copilotModel || 'gpt-4o' });
+                    ], { model: settings.copilotModel || 'claude-sonnet-4.6' });
                     if (content) copilotAttempts.push(content);
                 }
                 if (copilotAttempts.length > 0) {
@@ -4931,13 +5226,13 @@ REGRAS:
 
             if (chatgptPrimary) {
                 // ── ChatGPT PRIMARY for MC ──
-                console.log(`AnswerHunter: MC via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
+                console.log(`AnswerHunter: MC via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.5'})...`);
                 const chatgptAttempts = [];
                 for (let i = 0; i < 2; i++) {
                     const content = await this._callChatGPT([
                         { role: 'system', content: mcSystemMsg },
                         { role: 'user', content: prompt }
-                    ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
+                    ], { model: settings.chatgptModel || 'gpt-5.5' });
                     if (content) chatgptAttempts.push(content);
                 }
                 if (chatgptAttempts.length > 0) {
@@ -4985,7 +5280,7 @@ REGRAS:
                         { role: 'system', content: mcSystemMsg },
                         { role: 'user', content: prompt }
                     ], {
-                        model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                        model: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free',
                         temperature: temp,
                         max_tokens: 700
                     });
@@ -5038,21 +5333,21 @@ REGRAS:
         const openSysMsg = 'Você é um assistente que responde questões com objetividade.';
 
         if (copilotPrimaryOpen) {
-            console.log(`AnswerHunter: Open-ended via Copilot (primary, model=${settings.copilotModel || 'gpt-4o'})...`);
+            console.log(`AnswerHunter: Open-ended via Copilot (primary, model=${settings.copilotModel || 'claude-sonnet-4.6'})...`);
             const copilotOpen = await this._callCopilot([
                 { role: 'system', content: openSysMsg },
                 { role: 'user', content: prompt }
-            ], { model: settings.copilotModel || 'gpt-4o' });
+            ], { model: settings.copilotModel || 'claude-sonnet-4.6' });
             if (copilotOpen) return copilotOpen;
             console.log('AnswerHunter: Copilot open-ended failed — trying fallbacks...');
         }
 
         if (chatgptPrimaryOpen) {
-            console.log(`AnswerHunter: Open-ended via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.2-codex'})...`);
+            console.log(`AnswerHunter: Open-ended via ChatGPT (primary, model=${settings.chatgptModel || 'gpt-5.5'})...`);
             const chatgptOpen = await this._callChatGPT([
                 { role: 'system', content: openSysMsg },
                 { role: 'user', content: prompt }
-            ], { model: settings.chatgptModel || 'gpt-5.2-codex' });
+            ], { model: settings.chatgptModel || 'gpt-5.5' });
             if (chatgptOpen) return chatgptOpen;
             console.log('AnswerHunter: ChatGPT open-ended failed — trying Groq fallback...');
         }
@@ -5062,7 +5357,7 @@ REGRAS:
                 { role: 'system', content: openSysMsg },
                 { role: 'user', content: prompt }
             ], {
-                model: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                model: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free',
                 temperature: 0.15,
                 max_tokens: 300
             });
@@ -5132,9 +5427,9 @@ REGRAS:
             ],
             opts: { temperature: 0.2, max_tokens: 150 },
             models: {
-                gemini: settings.geminiModel || 'gemini-2.5-flash',
+                gemini: settings.geminiModel || 'gemini-3.5-flash',
                 groq: settings.groqModelFast,
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free',
             },
             label: 'defineTerm',
             fallbackValue: `Termo não encontrado: ${term}`,
@@ -5195,9 +5490,9 @@ REGRAS:
             ],
             opts: { temperature: 0.4, max_tokens: 1200 },
             models: {
-                gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
+                gemini: settings.geminiModelSmart || 'gemini-3.5-flash',
                 groq: settings.groqModelSmart,
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free',
             },
             label: 'generateTutorExplanation',
             fallbackValue: 'Não foi possível gerar a explicação. Tente novamente.',
@@ -5260,9 +5555,9 @@ REGRAS:
             ],
             opts: { temperature: 0.4, max_tokens: 800 },
             models: {
-                gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
+                gemini: settings.geminiModelSmart || 'gemini-3.5-flash',
                 groq: settings.groqModelSmart,
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free',
             },
             label: 'generateReviewCard',
             fallbackValue: 'Não foi possível gerar a ficha de revisão. Tente novamente.',
@@ -5320,9 +5615,9 @@ REGRAS:
             ],
             opts: { temperature: 0.5, max_tokens: 500 },
             models: {
-                gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
+                gemini: settings.geminiModelSmart || 'gemini-3.5-flash',
                 groq: settings.groqModelSmart,
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free',
             },
             postProcess: parseResponse,
             label: 'generateSimilarQuestion',
@@ -5357,9 +5652,9 @@ Responda de forma clara, didática e concisa (máximo 200 palavras). Não repita
             messages,
             opts: { temperature: 0.3, max_tokens: 400 },
             models: {
-                gemini: settings.geminiModel || 'gemini-2.5-flash',
+                gemini: settings.geminiModel || 'gemini-3.5-flash',
                 groq: settings.groqModelSmart,
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free',
             },
             label: 'answerFollowUp',
             fallbackValue: 'Não foi possível processar sua pergunta. Tente novamente.',
@@ -5407,11 +5702,11 @@ REGRAS:
             ],
             opts: { temperature: 0.3, max_tokens: 100 },
             models: {
-                gemini: settings.geminiModel || 'gemini-2.5-flash',
+                gemini: settings.geminiModel || 'gemini-3.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
-                chatgpt: settings.chatgptModel || 'gpt-5.2-codex',
-                copilot: settings.copilotModel || 'gpt-4o',
+                openrouter: settings.openrouterModelSmart || 'openai/gpt-oss-120b:free',
+                chatgpt: settings.chatgptModel || 'gpt-5.5',
+                copilot: settings.copilotModel || 'claude-sonnet-4.6',
             },
             postProcess: parseResponse,
             isValid: (v) => Array.isArray(v) && v.length > 0,

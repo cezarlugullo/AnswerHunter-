@@ -13,6 +13,33 @@ export const GeminiCLIApiAdapter = {
 
     BASE_URL: 'https://cloudcode-pa.googleapis.com/v1internal',
 
+    // Models confirmed to work on the Code Assist endpoint.
+    // If the user selects a model not in this map, we fall back to a safe default.
+    CODE_ASSIST_MODELS: {
+        'gemini-2.5-flash':    'gemini-2.5-flash',
+        'gemini-2.5-pro':      'gemini-2.5-pro',
+        'gemini-2.0-flash':    'gemini-2.0-flash',
+        'gemini-1.5-pro':      'gemini-1.5-pro',
+        'gemini-1.5-flash':    'gemini-1.5-flash',
+    },
+
+    /**
+     * Map any model string to a model that Code Assist actually supports.
+     * Preview / experimental IDs (e.g. gemini-3.1-flash-lite-preview) don't
+     * exist on cloudcode-pa and return 404, so we map them to the closest
+     * stable equivalent.
+     */
+    _resolveModel(requested) {
+        if (this.CODE_ASSIST_MODELS[requested]) return requested;
+        // Map known prefixes to safe alternatives
+        if (/flash-lite|3\.1.*lite/i.test(requested))  return 'gemini-2.0-flash';
+        if (/3.*flash/i.test(requested))                return 'gemini-2.5-flash';
+        if (/3.*pro|ultra/i.test(requested))            return 'gemini-2.5-pro';
+        if (/pro/i.test(requested))                     return 'gemini-2.5-pro';
+        if (/flash/i.test(requested))                   return 'gemini-2.5-flash';
+        return 'gemini-2.5-flash'; // ultimate fallback
+    },
+
     /**
      * Call Gemini via the Code Assist generateContent endpoint.
      * Converts OpenAI-style messages to Code Assist format.
@@ -24,7 +51,7 @@ export const GeminiCLIApiAdapter = {
      * @returns {Promise<string|null>} The response text, or null on failure
      */
     async generateContent(accessToken, projectId, messages, opts = {}) {
-        const model = opts.model || 'gemini-2.5-flash';
+        const model = this._resolveModel(opts.model || 'gemini-2.5-flash');
         const url = `${this.BASE_URL}:generateContent`;
 
         const { systemInstruction, contents } = this._convertMessages(messages);
@@ -47,10 +74,12 @@ export const GeminiCLIApiAdapter = {
 
         // Thinking models need a thinking budget
         if (/pro|ultra/i.test(model) && /2\.5|3/i.test(model)) {
+            let maxTokens = opts.max_tokens ?? 2048;
+            if (maxTokens < 1024) maxTokens = 1024;
             body.request.generationConfig.thinkingConfig = {
-                thinkingBudget: Math.max(opts.max_tokens ?? 2048, 4096)
+                thinkingBudget: Math.max(Math.floor(maxTokens * 0.25), 256)
             };
-            body.request.generationConfig.maxOutputTokens = Math.max(opts.max_tokens ?? 2048, 4096);
+            body.request.generationConfig.maxOutputTokens = maxTokens;
         }
 
         try {
@@ -85,7 +114,7 @@ export const GeminiCLIApiAdapter = {
      * @returns {Promise<string|null>} Full concatenated response text
      */
     async streamGenerateContent(accessToken, projectId, messages, opts = {}) {
-        const model = opts.model || 'gemini-2.5-flash';
+        const model = this._resolveModel(opts.model || 'gemini-2.5-flash');
         const url = `${this.BASE_URL}:streamGenerateContent?alt=sse`;
 
         const { systemInstruction, contents } = this._convertMessages(messages);
@@ -107,10 +136,12 @@ export const GeminiCLIApiAdapter = {
         }
 
         if (/pro|ultra/i.test(model) && /2\.5|3/i.test(model)) {
+            let maxTokens = opts.max_tokens ?? 2048;
+            if (maxTokens < 1024) maxTokens = 1024;
             body.request.generationConfig.thinkingConfig = {
-                thinkingBudget: Math.max(opts.max_tokens ?? 2048, 4096)
+                thinkingBudget: Math.max(Math.floor(maxTokens * 0.25), 256)
             };
-            body.request.generationConfig.maxOutputTokens = Math.max(opts.max_tokens ?? 2048, 4096);
+            body.request.generationConfig.maxOutputTokens = maxTokens;
         }
 
         try {

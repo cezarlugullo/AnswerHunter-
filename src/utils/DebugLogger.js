@@ -51,8 +51,8 @@ export const DebugLogger = {
     const smart   = s.groqModelSmart       || 'llama-3.3-70b-versatile';
     const vision  = s.groqModelVision      || 'llama-4-scout-17b-16e-instruct';
     const gemini  = s.geminiModel          || 'gemini-2.5-flash';
-    const orModel = s.openrouterModelSmart || 'deepseek/deepseek-r1:free';
-    const chatgpt = s.chatgptModel         || 'gpt-5.2-codex';
+    const orModel = s.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free';
+    const chatgpt = s.chatgptModel         || 'gpt-5.3-codex';
     const copilot = s.copilotModel         || 'claude-sonnet-4.6';
 
     const H   = 'background:#0f172a;color:#f59e0b;font-weight:700;padding:3px 12px;border-radius:4px;font-size:12px;letter-spacing:.5px';

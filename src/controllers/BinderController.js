@@ -766,6 +766,8 @@ export const BinderController = {
                     if (!confirm(this.t('binder.confirm.importReplace'))) return;
 
                     await StorageModel.importData(data);
+                    // Clear stale hierarchy so it is rebuilt from the new binderStructure on next load
+                    await new Promise(r => chrome.storage.local.remove(['ah_hierarchy', 'ah_migration_meta'], r));
                     this.renderBinder();
 
                     if (this.view.showToast) {

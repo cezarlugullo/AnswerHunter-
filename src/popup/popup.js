@@ -1,4 +1,4 @@
-import { PopupController } from '../controllers/PopupController.js';
+﻿import { PopupController } from '../controllers/PopupController.js';
 import { PopupView } from '../views/PopupView.js';
 import { SearchService } from '../services/SearchService.js';
 import { ApiService } from '../services/ApiService.js';
@@ -266,7 +266,7 @@ function initChatGPTModelPicker() {
     set(v) { hiddenProto.set.call(this, v); selectByValue(v, false); }
   });
 
-  selectByValue(hidden.value || 'gpt-5.2-codex', false);
+  selectByValue(hidden.value || 'gpt-5.3-codex', false);
 }
 
 // Run after DOM is ready

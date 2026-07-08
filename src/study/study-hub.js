@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AnswerHunter — Study Hub Controller
  * 
  * ES Module entry point for the redesigned Study Hub.
@@ -26,6 +26,7 @@ import { RecommendationService } from '../services/RecommendationService.js';
 import { MigrationService } from '../services/MigrationService.js';
 import { ElevenLabsTTSService } from '../services/ElevenLabsTTSService.js';
 import { renderMathInContainer } from '../utils/helpers.js';
+import { buildMathFormattingBlock } from '../services/pedagogy/core/PedagogicalPromptKernel.js';
 
 /* ─── DOM Helpers ──────────────────────────────────────────────────── */
 
@@ -88,6 +89,12 @@ const state = {
 
   // Practice filter (Quiz/Simulado): supports discipline or folder/topic
   practiceFilter: 'all',
+
+  // Mnemonic tool UI state
+  mnemonicView: null,
+
+  // Socratic hint UI state
+  hintView: null,
 };
 
 /* ─── Disc Colors ──────────────────────────────────────────────────── */
@@ -110,6 +117,7 @@ function toast(message, type = 'info', duration = 3500) {
   const icons = { info: 'info', success: 'check_circle', warning: 'warning', error: 'error' };
   const t = document.createElement('div');
   t.className = `toast ${type}`;
+  t.setAttribute('role', type === 'error' ? 'alert' : 'status');
   t.innerHTML = `<span class="toast__icon icon" style="font-size:18px">${icons[type] || 'info'}</span><span>${message}</span>`;
   container.appendChild(t);
   requestAnimationFrame(() => t.classList.add('show'));
@@ -131,6 +139,8 @@ function openModal(title, bodyHtml, footerHtml = '') {
   bodyEl.innerHTML = bodyHtml;
   footerEl.innerHTML = footerHtml;
   footerEl.style.display = footerHtml ? '' : 'none';
+  _renderMathContent(bodyEl);
+  _renderMathContent(footerEl);
   overlay.classList.add('active');
 }
 
@@ -145,13 +155,27 @@ function openToolDock(title, contentHtml) {
   const dock = $('#toolDock');
   if (!dock) return;
   $('#toolDockTitle').textContent = title;
-  $('#toolDockBody').innerHTML = contentHtml;
+  const body = $('#toolDockBody');
+  if (body) {
+    body.innerHTML = contentHtml;
+    body.scrollTop = 0;
+    _renderMathContent(body);
+  }
   dock.classList.add('open');
 }
 
 function closeToolDock() {
   const dock = $('#toolDock');
   if (dock) dock.classList.remove('open');
+}
+
+function _renderMathContent(container) {
+  if (!container) return;
+  try {
+    renderMathInContainer(container);
+  } catch (_) {
+    // Falha de renderização matemática não deve quebrar a UI.
+  }
 }
 
 /* ─── Theme ────────────────────────────────────────────────────────── */
@@ -1847,7 +1871,7 @@ function renderCurrentCard() {
   });
 
   // Render math before returning
-  renderMathInContainer(container);
+  _renderMathContent(container);
 
   // Rating buttons
   $$('.rate-btn', container).forEach(btn => {
@@ -1989,6 +2013,7 @@ async function showWhyWrongPanel(question, wrongLetter, wrongText, correctLetter
     const body = $('#whyWrongBody');
     if (body) {
       body.innerHTML = `<div class="why-wrong-panel__content">${formatMarkdown(explanation)}</div>`;
+      _renderMathContent(body);
     }
   } catch (err) {
     const body = $('#whyWrongBody');
@@ -1997,6 +2022,7 @@ async function showWhyWrongPanel(question, wrongLetter, wrongText, correctLetter
         <p>🎯 Você escolheu <strong>${escHtml(wrongLetter)}</strong>, mas a resposta correta é <strong>${escHtml(correctLetter)}</strong>.</p>
         <p>Revise o conceito e tente novamente!</p>
       </div>`;
+      _renderMathContent(body);
     }
   }
 }
@@ -2347,6 +2373,399 @@ function endStudySession() {
 
 /* ─── AI Actions ───────────────────────────────────────────────────── */
 
+const MNEMONIC_CACHE_KEY = 'ah_mnemonicCache';
+const MNEMONIC_FEEDBACK_KEY = 'ah_mnemonicFeedback';
+const MNEMONIC_PREFS_KEY = 'ah_mnemonicPrefs';
+
+function _hashString(str = '') {
+  let hash = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+  }
+  return Math.abs(hash >>> 0).toString(36);
+}
+
+function _getMnemonicCardKey(card) {
+  if (!card) return 'unknown-card';
+  if (card.id) return `card:${card.id}`;
+  const question = card.question || card.pergunta || '';
+  const answer = card.answer || card.resposta || '';
+  return `derived:${_hashString(`${question}::${answer}`)}`;
+}
+
+function _getStudyCardKey(card) {
+  return _getMnemonicCardKey(card);
+}
+
+function _normalizeCardOptionText(option) {
+  if (typeof option === 'string') return option.trim();
+  if (!option || typeof option !== 'object') return '';
+  return String(option.text || option.label || option.value || '').trim();
+}
+
+function _getHintContextForCard(card) {
+  const question = String(card?.question || card?.pergunta || '').trim();
+  const parsed = parseQuestionText(question);
+  const explicitOptions = Array.isArray(card?.options) ? card.options : Array.isArray(card?.alternatives) ? card.alternatives : [];
+  const letters = 'ABCDEFGHIJ';
+
+  const optionEntries = explicitOptions.length > 0
+    ? explicitOptions
+        .map((opt, index) => ({ letter: letters[index], text: _normalizeCardOptionText(opt) }))
+        .filter((opt) => opt.text)
+    : (parsed.alternatives || []).filter((opt) => opt && opt.text);
+
+  const optionsMap = optionEntries.reduce((acc, opt) => {
+    acc[opt.letter] = opt.text;
+    return acc;
+  }, {});
+
+  return {
+    cardKey: _getStudyCardKey(card),
+    question,
+    parsed,
+    optionEntries,
+    optionsMap,
+    hasOptions: optionEntries.length >= 2,
+  };
+}
+
+function _buildHintLoadingHtml(level = 1) {
+  return `<div style="padding:var(--sp-4);color:var(--text-3)">Gerando dica socrática nível ${Math.min(3, Math.max(1, Number(level) || 1))}...</div>`;
+}
+
+function _renderHintDockHtml(viewState) {
+  const level = Math.min(3, Math.max(1, Number(viewState?.activeLevel) || 1));
+  const hint = String(viewState?.hints?.[level] || '').trim();
+
+  const levelButtons = [1, 2, 3].map((itemLevel) => {
+    const active = itemLevel === level;
+    return `<button class="btn btn-secondary" data-hint-level="${itemLevel}" style="padding:4px 10px;${active ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : ''}">Nível ${itemLevel}</button>`;
+  }).join('');
+
+  return `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7;display:flex;flex-direction:column;gap:var(--sp-3)">
+    <div style="display:flex;justify-content:space-between;gap:var(--sp-2);align-items:flex-start;flex-wrap:wrap">
+      <button class="btn btn-secondary" data-hint-refresh="1" style="padding:4px 10px">Regenerar</button>
+    </div>
+
+    <div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:6px">Intensidade da dica</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${levelButtons}</div>
+    </div>
+
+    <div style="background:var(--surface-alt);border-left:3px solid var(--accent);border-radius:var(--radius-md);padding:var(--sp-3) var(--sp-4)">
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">💡 Dica socrática</div>
+      <div>${formatMarkdown(hint || 'Sem dica gerada.')}</div>
+    </div>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:4px;border-top:1px solid var(--border)">
+      ${level < 3 ? `<button class="btn btn-primary" data-hint-next="1">Quero uma dica mais forte</button>` : ''}
+      ${level > 1 ? `<button class="btn btn-secondary" data-hint-prev="1">Voltar para dica mais leve</button>` : ''}
+    </div>
+  </div>`;
+}
+
+async function _showHintForCard(card, opts = {}) {
+  const dock = $('#toolDockBody');
+  if (!card || !dock) return;
+
+  const context = _getHintContextForCard(card);
+  const level = Math.min(3, Math.max(1, Number(opts.level) || Number(state.hintView?.activeLevel) || 1));
+  const currentState = state.hintView && state.hintView.cardKey === context.cardKey ? state.hintView : null;
+
+  dock.innerHTML = _buildHintLoadingHtml(level);
+  _renderMathContent(dock);
+
+  const conceptProfile = opts.conceptProfile || currentState?.conceptProfile || await PedagogicalPromptsService.extractConceptProfile(context.question);
+  const previousHint = level > 1
+    ? (currentState?.hints?.[level - 1] || currentState?.hints?.[1] || '')
+    : '';
+
+  let hint = currentState?.hints?.[level] || '';
+  if (!hint || opts.forceRefresh) {
+    hint = await PedagogicalPromptsService.generateSocraticHint(
+      context.question,
+      context.optionsMap,
+      level,
+      previousHint
+    );
+  }
+
+  state.hintView = {
+    ...(currentState || {}),
+    card,
+    cardKey: context.cardKey,
+    question: context.question,
+    parsed: context.parsed,
+    optionsMap: context.optionsMap,
+    hasOptions: context.hasOptions,
+    optionEntries: context.optionEntries,
+    concept: conceptProfile?.concept || currentState?.concept || '',
+    scenario: conceptProfile?.scenario || currentState?.scenario || '',
+    conceptProfile,
+    activeLevel: level,
+    hints: {
+      ...(currentState?.hints || {}),
+      [level]: hint,
+    },
+  };
+
+  dock.innerHTML = _renderHintDockHtml(state.hintView);
+  _renderMathContent(dock);
+  _bindHintDockControls();
+}
+
+function _bindHintDockControls() {
+  const current = state.hintView;
+  if (!current) return;
+
+  $$('[data-hint-level]', $('#toolDockBody')).forEach((btn) => {
+    on(btn, 'click', async () => {
+      const level = Number(btn.dataset.hintLevel || 1);
+      await _showHintForCard(current.card, { level });
+    });
+  });
+
+  $$('[data-hint-next]', $('#toolDockBody')).forEach((btn) => {
+    on(btn, 'click', async () => {
+      await _showHintForCard(current.card, { level: Math.min(3, (current.activeLevel || 1) + 1) });
+    });
+  });
+
+  $$('[data-hint-prev]', $('#toolDockBody')).forEach((btn) => {
+    on(btn, 'click', async () => {
+      await _showHintForCard(current.card, { level: Math.max(1, (current.activeLevel || 1) - 1) });
+    });
+  });
+
+  $$('[data-hint-refresh]', $('#toolDockBody')).forEach((btn) => {
+    on(btn, 'click', async () => {
+      await _showHintForCard(current.card, { level: current.activeLevel || 1, forceRefresh: true });
+    });
+  });
+}
+
+async function _getStoredObject(key) {
+  try {
+    const data = await chrome.storage.local.get(key);
+    return (data && typeof data[key] === 'object' && data[key] !== null) ? data[key] : {};
+  } catch {
+    return {};
+  }
+}
+
+async function _setStoredObject(key, value) {
+  try {
+    await chrome.storage.local.set({ [key]: value });
+  } catch { /* ignore */ }
+}
+
+function _getMnemonicPrefs() {
+  const defaults = { mode: 'compact', type: 'auto' };
+  try {
+    const raw = localStorage.getItem(MNEMONIC_PREFS_KEY);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    return { ...defaults, ...(parsed || {}) };
+  } catch {
+    return defaults;
+  }
+}
+
+function _saveMnemonicPrefs(nextPrefs = {}) {
+  const merged = { ..._getMnemonicPrefs(), ...(nextPrefs || {}) };
+  try { localStorage.setItem(MNEMONIC_PREFS_KEY, JSON.stringify(merged)); } catch { /* ignore */ }
+  return merged;
+}
+
+function _getMnemonicFeedbackKey(cardKey, requestedType) {
+  return `${cardKey}::${requestedType || 'auto'}`;
+}
+
+function _buildMnemonicLoadingHtml() {
+  return `<div style="padding:var(--sp-4);color:var(--text-3)">Gerando mnemônico...</div>`;
+}
+
+function _truncateDockText(text = '', maxChars = 160) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  return normalized.length > maxChars ? `${normalized.slice(0, Math.max(0, maxChars - 1)).trim()}…` : normalized;
+}
+
+function _renderMnemonicDockHtml(result, viewState) {
+  const prefs = viewState?.prefs || _getMnemonicPrefs();
+  const feedback = viewState?.feedback || '';
+  const prepared = viewState?.prepared || {};
+  const compact = prefs.mode === 'compact';
+  const em = escHtml(result?.emoji || '🧠');
+  const mn = formatMarkdown(result?.mnemonic || 'Sem frase-âncora.');
+  const viz = result?.visualization ? formatMarkdown(result.visualization) : '';
+  const conn = result?.connection ? formatMarkdown(result.connection) : '';
+  const test = result?.selfTest ? escHtml(result.selfTest) : '';
+  const keys = Array.isArray(result?.keyElements) && result.keyElements.length
+    ? result.keyElements.map(k => `<li style="margin-bottom:4px">${escHtml(k)}</li>`).join('')
+    : '';
+  const compactKeys = Array.isArray(result?.keyElements) && result.keyElements.length
+    ? result.keyElements.slice(0, 2).map(k => `<li style="margin-bottom:4px">${escHtml(_truncateDockText(k, 72))}</li>`).join('')
+    : '';
+  const compactSupport = _truncateDockText(result?.connection || result?.visualization || '', 150);
+
+  const feedbackButtons = [
+    ['liked', 'Grudou'], ['neutral', 'Mais ou menos'], ['disliked', 'Não ajudou']
+  ].map(([value, label]) => {
+    const active = feedback === value;
+    return `<button class="btn btn-secondary" data-mn-feedback="${value}" style="padding:4px 10px;${active ? 'background:var(--success, #2e7d32);color:#fff;border-color:transparent;' : ''}">${label}</button>`;
+  }).join('');
+
+  return `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7;display:flex;flex-direction:column;gap:var(--sp-3)">
+    <div style="background:var(--surface-alt);border-left:3px solid var(--accent);border-radius:var(--radius-md);padding:var(--sp-3) var(--sp-4)">
+      <div style="display:flex;justify-content:space-between;gap:var(--sp-2);align-items:flex-start;flex-wrap:wrap;margin-bottom:var(--sp-2)">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="font-size:1.35rem">${em}</div>
+          <div style="font-size:var(--text-xs);letter-spacing:.04em;color:var(--text-3)">${compact ? 'versão curta' : 'versão completa'}</div>
+        </div>
+        <button class="btn btn-secondary" data-mn-refresh="1" style="padding:4px 10px">Gerar outra</button>
+      </div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🔑 Frase-âncora</div>
+      <div style="font-weight:600">${mn}</div>
+    </div>
+
+    ${compact ? `${compactKeys ? `<div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🗝️ Ganchos rápidos</div>
+      <ul style="margin:0;padding-left:var(--sp-4);color:var(--text-2)">${compactKeys}</ul>
+    </div>` : ''}
+
+    ${compactSupport ? `<div style="color:var(--text-2);font-size:var(--text-xs);padding:var(--sp-2) var(--sp-3);background:rgba(0,0,0,.02);border-radius:var(--radius-md)">${escHtml(compactSupport)}</div>` : ''}` : `${keys ? `<div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🗝️ Elementos-chave</div>
+      <ul style="margin:0;padding-left:var(--sp-4);color:var(--text-2)">${keys}</ul>
+    </div>` : ''}`}
+
+    ${!compact && viz ? `<div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🎬 Visualização mental</div>
+      <div style="color:var(--text-2);font-style:italic">${viz}</div>
+    </div>` : ''}
+
+    ${!compact && conn ? `<div>
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:var(--sp-1)">🔗 Por que funciona</div>
+      <div style="color:var(--text-2)">${conn}</div>
+    </div>` : ''}
+
+    ${test ? `<div style="background:#fff8e1;border:1.5px solid #ffb74d;border-radius:var(--radius-md);padding:var(--sp-3) var(--sp-4)">
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#e65100;margin-bottom:var(--sp-1)">🧪 Auto-teste</div>
+      <div style="color:#4e342e;font-weight:500">${test}</div>
+    </div>` : ''}
+
+    <div style="display:flex;justify-content:space-between;gap:var(--sp-2);align-items:center;flex-wrap:wrap;padding-top:4px;border-top:1px solid var(--border)">
+      <button class="btn btn-secondary" data-mn-mode="${compact ? 'deep' : 'compact'}" style="padding:4px 10px">${compact ? 'Ver explicação completa' : 'Ver versão resumida'}</button>
+      ${viewState?.fromCache ? '<span style="font-size:var(--text-xs);color:var(--text-3)">resultado em cache</span>' : ''}
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px;padding-top:4px;border-top:1px solid var(--border)">
+      <div style="font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)">Esse mnemônico ajudou?</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${feedbackButtons}</div>
+    </div>
+  </div>`;
+}
+
+async function _showMnemonicForCard(card, opts = {}) {
+  const dock = $('#toolDockBody');
+  if (!card || !dock) return;
+
+  dock.innerHTML = _buildMnemonicLoadingHtml();
+  dock.scrollTop = 0;
+  _renderMathContent(dock);
+
+  const prefs = opts.mode ? _saveMnemonicPrefs({ mode: opts.mode }) : _getMnemonicPrefs();
+  const requestedType = opts.preferredType || prefs.type || 'auto';
+  const question = card.question || card.pergunta || '';
+  const answer = card.answer || card.resposta || '';
+  const cardKey = _getMnemonicCardKey(card);
+
+  const prepared = await PedagogicalPromptsService.prepareMnemonicInput(question, answer, requestedType);
+  const cache = await _getStoredObject(MNEMONIC_CACHE_KEY);
+  const cacheKey = `${cardKey}::${requestedType}`;
+  let entry = cache[cacheKey];
+  let fromCache = false;
+  let result = null;
+
+  if (!opts.forceRefresh && entry && entry.signature === prepared.signature && entry.result) {
+    result = entry.result;
+    fromCache = true;
+  } else {
+    result = await PedagogicalPromptsService.generateMnemonic(question, answer, requestedType, { preparedInput: prepared });
+    cache[cacheKey] = {
+      signature: prepared.signature,
+      generatedAt: Date.now(),
+      requestedType,
+      result,
+    };
+    await _setStoredObject(MNEMONIC_CACHE_KEY, cache);
+    entry = cache[cacheKey];
+  }
+
+  const feedbackStore = await _getStoredObject(MNEMONIC_FEEDBACK_KEY);
+  const feedbackKey = _getMnemonicFeedbackKey(cardKey, requestedType);
+  const feedback = feedbackStore[feedbackKey] || '';
+
+  state.mnemonicView = { card, cardKey, requestedType, prepared, result, fromCache, prefs, feedback, cacheEntry: entry };
+  dock.innerHTML = _renderMnemonicDockHtml(result, state.mnemonicView);
+  dock.scrollTop = 0;
+  _renderMathContent(dock);
+  _bindMnemonicDockControls();
+}
+
+function _bindMnemonicDockControls() {
+  const current = state.mnemonicView;
+  if (!current) return;
+
+  $$('[data-mn-mode]', $('#toolDockBody')).forEach((btn) => {
+    on(btn, 'click', async () => {
+      const mode = btn.dataset.mnMode || 'deep';
+      const prefs = _saveMnemonicPrefs({ mode });
+      state.mnemonicView = { ...state.mnemonicView, prefs };
+      const dock = $('#toolDockBody');
+      if (dock) {
+        dock.innerHTML = _renderMnemonicDockHtml(current.result, { ...current, prefs });
+        dock.scrollTop = 0;
+        _renderMathContent(dock);
+      }
+      _bindMnemonicDockControls();
+    });
+  });
+
+  $$('[data-mn-type]', $('#toolDockBody')).forEach((btn) => {
+    on(btn, 'click', async () => {
+      const preferredType = btn.dataset.mnType || 'auto';
+      _saveMnemonicPrefs({ type: preferredType });
+      await _showMnemonicForCard(current.card, { forceRefresh: preferredType !== current.requestedType, preferredType });
+    });
+  });
+
+  $$('[data-mn-refresh]', $('#toolDockBody')).forEach((btn) => {
+    on(btn, 'click', async () => {
+      await _showMnemonicForCard(current.card, { forceRefresh: true });
+    });
+  });
+
+  $$('[data-mn-feedback]', $('#toolDockBody')).forEach((btn) => {
+    on(btn, 'click', async () => {
+      const value = btn.dataset.mnFeedback || '';
+      const feedbackStore = await _getStoredObject(MNEMONIC_FEEDBACK_KEY);
+      feedbackStore[_getMnemonicFeedbackKey(current.cardKey, current.requestedType)] = value;
+      await _setStoredObject(MNEMONIC_FEEDBACK_KEY, feedbackStore);
+      state.mnemonicView = { ...state.mnemonicView, feedback: value };
+      const dock = $('#toolDockBody');
+      if (dock) {
+        dock.innerHTML = _renderMnemonicDockHtml(current.result, state.mnemonicView);
+        _renderMathContent(dock);
+      }
+      _bindMnemonicDockControls();
+      toast(value === 'liked' ? 'Mnemônico marcado como útil.' : value === 'disliked' ? 'Feedback salvo. Vou considerar que este formato ajudou menos.' : 'Feedback salvo.', 'success', 2200);
+    });
+  });
+}
+
 async function aiAction(type) {
   const card = state.session.cards[state.session.index];
   if (!card) return;
@@ -2364,10 +2783,11 @@ async function aiAction(type) {
         result = await PedagogicalPromptsService.generateConceptExplanation(question, answer);
         break;
       case 'hint':
-        result = await PedagogicalPromptsService.generateSocraticHint(question);
-        break;
+        await _showHintForCard(card);
+        return;
       case 'mnemonic':
-        result = await PedagogicalPromptsService.generateMnemonic(question, answer);
+        await _showMnemonicForCard(card);
+        return;
         break;
       case 'chat':
         _openChatDock(question, answer);
@@ -2423,11 +2843,13 @@ async function aiAction(type) {
         html = `<div style="padding:var(--sp-4);font-size:var(--text-sm);line-height:1.7">${formatMarkdown(text)}</div>`;
       }
       dock.innerHTML = html;
+      _renderMathContent(dock);
     }
   } catch (err) {
     const dock = $('#toolDockBody');
     if (dock) {
       dock.innerHTML = `<div style="padding:var(--sp-4);color:var(--danger)">Erro: ${escHtml(err.message || 'Falha na requisição.')}</div>`;
+      _renderMathContent(dock);
     }
   }
 }
@@ -2478,7 +2900,9 @@ Regras:
 - Seja conciso (máximo 150 palavras por resposta)
 - Use Markdown leve (negrito, listas) quando útil
 - Se o aluno pedir a resposta diretamente, forneça explicação pedagógica
-- Relacione tudo ao contexto do card acima`
+- Relacione tudo ao contexto do card acima
+
+${buildMathFormattingBlock()}`
     }
   ];
 
@@ -2509,7 +2933,7 @@ Regras:
         models: {
           gemini: settings.geminiModel || 'gemini-2.5-flash',
           groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-          openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+          openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
           chatgpt: settings.chatgptModel || 'gpt-4o',
           copilot: settings.copilotModel || 'gpt-4o',
         },
@@ -2567,6 +2991,7 @@ function _appendChatMsg(type, text, isLoading = false) {
     <span class="chat-dock__avatar material-symbols-rounded">${avatarIcon}</span>
     <div class="chat-dock__bubble${bubbleExtra}">${content}</div>`;
   history.appendChild(div);
+  _renderMathContent(div);
   history.scrollTop = history.scrollHeight;
   return id;
 }
@@ -2580,6 +3005,7 @@ function _replaceChatMsg(msgId, type, text) {
   el.innerHTML = `
     <span class="chat-dock__avatar material-symbols-rounded">${avatarIcon}</span>
     <div class="chat-dock__bubble">${type === 'error' ? escHtml(text) : formatMarkdown(text)}</div>`;
+  _renderMathContent(el);
   const history = $('#chatHistory');
   if (history) history.scrollTop = history.scrollHeight;
 }
@@ -3007,6 +3433,7 @@ function renderFlashcard() {
     const stemText = parsed.stem || rawQ;
     const typeLabel = card.type ? `<span class="fc-type-badge">${escHtml(card.type)}</span>` : '';
     front.innerHTML = `${metaHtml}<p class="fc-stem">${escHtml(stemText).replace(/\n/g, '<br>')}</p>${typeLabel}`;
+    _renderMathContent(front);
   }
 
   // ── BACK: full resolved answer ──
@@ -3016,6 +3443,7 @@ function renderFlashcard() {
       ? `<div class="fc-explanation"><strong>Explicação:</strong> ${escHtml(card.explanation).replace(/\n/g, '<br>')}</div>`
       : '';
     back.innerHTML = `<p class="fc-answer-text">${escHtml(answerText).replace(/\n/g, '<br>')}</p>${explanationHtml}`;
+    _renderMathContent(back);
   }
 
   // Counter
@@ -4914,12 +5342,16 @@ function initWordLookup() {
 
       const explanation = await PedagogicalPromptsService.generateWordDefinition(word, questionCtx, subject);
       if (popup && !popup.hidden) {
-        p.querySelector('.word-lookup-body').innerHTML = `<div class="word-lookup-content">${formatMarkdown(explanation)}</div>`;
+        const body = p.querySelector('.word-lookup-body');
+        body.innerHTML = `<div class="word-lookup-content">${formatMarkdown(explanation)}</div>`;
+        _renderMathContent(body);
       }
     } catch (err) {
       console.warn('[WordLookup] Error:', err);
       if (popup && !popup.hidden) {
-        p.querySelector('.word-lookup-body').innerHTML = '<div class="word-lookup-error">Não foi possível buscar a definição.</div>';
+        const body = p.querySelector('.word-lookup-body');
+        body.innerHTML = '<div class="word-lookup-error">Não foi possível buscar a definição.</div>';
+        _renderMathContent(body);
       }
     }
   }

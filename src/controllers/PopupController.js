@@ -502,8 +502,8 @@ export const PopupController = {
 
     // Set model selects (settings panel only)
     const groqModel = settings.groqModelSmart || 'llama-3.3-70b-versatile';
-    const geminiModel = settings.geminiModelSmart || 'gemini-2.5-flash';
-    const chatgptModel = settings.chatgptModel || 'gpt-5.2-codex';
+    const geminiModel = settings.geminiModelSmart || 'gemini-3.5-flash';
+    const chatgptModel = settings.chatgptModel || 'gpt-5.5';
     const copilotModel = settings.copilotModel || 'claude-sonnet-4.6';
     const copilotModelSelect = document.getElementById('select-copilot-model');
     if (copilotModelSelect) copilotModelSelect.value = copilotModel;
@@ -713,10 +713,10 @@ export const PopupController = {
     }
     const groqModel = this.view.elements.selectGroqModel?.value || 'llama-3.3-70b-versatile';
     const geminiOAuthModel = document.getElementById('select-gemini-oauth-model')?.value;
-    const geminiModel = geminiOAuthModel || this.view.elements.selectGeminiModel?.value || 'gemini-2.5-flash';
-    const openrouterModelSmart = this.view.elements.selectOpenrouterModel?.value || 'deepseek/deepseek-r1:free';
-    const chatgptModel = document.getElementById('select-chatgpt-model')?.value || 'gpt-5.2-codex';
-    const copilotModel = document.getElementById('select-copilot-model')?.value || 'gpt-4o';
+    const geminiModel = geminiOAuthModel || this.view.elements.selectGeminiModel?.value || 'gemini-3.5-flash';
+    const openrouterModelSmart = this.view.elements.selectOpenrouterModel?.value || 'openai/gpt-oss-120b:free';
+    const chatgptModel = document.getElementById('select-chatgpt-model')?.value || 'gpt-5.5';
+    const copilotModel = document.getElementById('select-copilot-model')?.value || 'claude-sonnet-4.6';
 
     await SettingsModel.saveSettings({ primaryProvider, groqModelSmart: groqModel, geminiModelSmart: geminiModel, geminiModel, openrouterModelSmart, chatgptModel, copilotModel });
 
@@ -1165,7 +1165,7 @@ export const PopupController = {
           'Copilot-Integration-Id': 'vscode-chat'
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: document.getElementById('select-copilot-model')?.value || 'claude-sonnet-4.6',
           max_tokens: 10,
           messages: [{ role: 'user', content: 'Reply with OK' }]
         })
@@ -1224,7 +1224,7 @@ export const PopupController = {
 
     const body = {
       model,
-      input: [{ role: 'user', content: 'Responda apenas OK.' }],
+      input: [{ role: 'user', content: [{ type: 'input_text', text: 'Responda apenas OK.' }] }],
       stream: false,
       store: false
     };
@@ -1251,7 +1251,9 @@ export const PopupController = {
 
       const errText = await response.text().catch(() => '');
       const unsupported = response.status === 400
-        && /not\s+supported\s+when\s+using\s+Codex/i.test(errText || '');
+        && (/not\s+supported\s+when\s+using\s+Codex/i.test(errText || '')
+          || /model_not_supported/i.test(errText || '')
+          || /requested model is not supported/i.test(errText || ''));
       const rateLimited = response.status === 429;
 
       return {
@@ -1319,7 +1321,7 @@ export const PopupController = {
         .filter(Boolean);
 
       if (!availableValues.length) {
-        modelSelect.innerHTML = '<option value="gpt-5.2-codex">GPT-5.2-Codex</option>';
+        modelSelect.innerHTML = '<option value="gpt-5.5">GPT-5.5</option>';
       }
 
       const settings = await SettingsModel.getSettings();
@@ -1329,7 +1331,7 @@ export const PopupController = {
         .filter(Boolean);
       const finalModel = finalValues.includes(currentValue)
         ? currentValue
-        : (finalValues[0] || 'gpt-5.2-codex');
+        : (finalValues[0] || 'gpt-5.5');
 
       modelSelect.value = finalModel;
       if (finalModel !== currentValue) {

@@ -1,4 +1,11 @@
 {
+  "scripts": {
+    "test": "node --test tests/pedagogy/*.test.js tests/search/*.test.js",
+    "test:pedagogy": "node --test tests/pedagogy/*.test.js",
+    "test:pedagogy:verbose": "node --test --test-reporter=spec tests/pedagogy/*.test.js",
+    "test:search": "node --test tests/search/*.test.js",
+    "test:search:verbose": "node --test --test-reporter=spec tests/search/*.test.js"
+  },
   "devDependencies": {
     "katex": "^0.16.33"
   }

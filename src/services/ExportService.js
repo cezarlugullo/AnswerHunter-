@@ -52,9 +52,18 @@ export const ExportService = {
    */
   async importFullJSON(jsonString) {
     try {
-      const backup = JSON.parse(jsonString);
+      const parsed = JSON.parse(jsonString);
 
-      if (!backup.data) {
+      // Support two formats:
+      // 1. Full backup: { version, data: { binderStructure, ah_hierarchy, ... } }
+      // 2. Legacy / raw format: array that IS the binderStructure directly
+      let backup;
+      if (Array.isArray(parsed)) {
+        // Legacy format — wrap it so the rest of the logic is uniform
+        backup = { version: '1.0', data: { binderStructure: parsed } };
+      } else if (parsed && typeof parsed === 'object' && parsed.data) {
+        backup = parsed;
+      } else {
         return { success: false, message: 'Invalid backup format: missing data field' };
       }
 
@@ -85,6 +94,12 @@ export const ExportService = {
       // Also import ah_settings_local if present in backup
       if (rawLocalData.ah_settings_local && typeof rawLocalData.ah_settings_local === 'object') {
         localData.ah_settings_local = rawLocalData.ah_settings_local;
+      }
+
+      // If the backup does not include ah_hierarchy, remove the stale one and reset
+      // migration meta so the app rebuilds the hierarchy from binderStructure on next load.
+      if (!localData.ah_hierarchy) {
+        await new Promise(r => chrome.storage.local.remove(['ah_hierarchy', 'ah_migration_meta'], r));
       }
 
       // Save filtered data to local storage

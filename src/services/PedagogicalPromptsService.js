@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PedagogicalPromptsService.js
  *
  * Serviço de prompts pedagógicos avançados para o AnswerHunter.
@@ -20,8 +20,82 @@
  */
 
 import { ApiService } from './ApiService.js';
+import {
+    normalizePromptText,
+    extractQuestionStructure,
+    optionsMapFromQuestion,
+    inferLearningScenario,
+    buildPedagogicalRoleBlock,
+    buildPromptBestPracticesBlock,
+} from './pedagogy/core/PedagogicalPromptKernel.js';
+import {
+    inferPedagogicalDomain,
+    extractExactSciencesSignals,
+    buildExactSciencesFewShot,
+    buildExactSciencesMnemonicElements,
+} from './pedagogy/domains/ExactSciencesPedagogy.js';
+import {
+    normalizeMnemonicText,
+    extractAlternatives,
+    extractTopKeywords,
+    inferMnemonicScenario,
+    inferMnemonicType,
+    buildMnemonicKeyElements,
+    buildMnemonicSignature,
+    trimMnemonicText,
+    scoreMnemonicPayload,
+    finalizeMnemonicPayload,
+} from './pedagogy/mnemonics/MnemonicPromptSupport.js';
+import { buildWhyWrongRequest } from './pedagogy/actions/WhyWrongPromptBuilder.js';
+import { buildSocraticHintRequest } from './pedagogy/actions/SocraticHintPromptBuilder.js';
+import {
+    buildMnemonicRequest,
+    createMnemonicResponseParser,
+    isValidMnemonicPayload,
+} from './pedagogy/actions/MnemonicPromptBuilder.js';
+import { buildConceptExplanationRequest } from './pedagogy/actions/ConceptExplanationPromptBuilder.js';
 
 export const PedagogicalPromptsService = {
+
+    _normalizePromptText(text = '') {
+        return normalizePromptText(text);
+    },
+
+    _extractQuestionStructure(questionText = '') {
+        return extractQuestionStructure(questionText);
+    },
+
+    _optionsMapFromQuestion(questionText = '') {
+        return optionsMapFromQuestion(questionText);
+    },
+
+    _inferLearningScenario(questionText = '') {
+        return inferLearningScenario(questionText);
+    },
+
+    _inferPedagogicalDomain(text = '', extra = '') {
+        return inferPedagogicalDomain(text, extra);
+    },
+
+    _extractMathSignals(text = '') {
+        return extractExactSciencesSignals(text);
+    },
+
+    _buildMathMnemonicElements(questionText = '', answerText = '', concept = '') {
+        return buildExactSciencesMnemonicElements(questionText, answerText, concept);
+    },
+
+    _buildPedagogicalRoleBlock(domain = 'general', purpose = '') {
+        return buildPedagogicalRoleBlock(domain, purpose);
+    },
+
+    _buildPromptBestPracticesBlock() {
+        return buildPromptBestPracticesBlock();
+    },
+
+    _buildExactSciencesFewShot(taskType = 'hint') {
+        return buildExactSciencesFewShot(taskType);
+    },
 
     // ─────────────────────────────────────────────────────────────────────────
     // 1. GENERATE WHY WRONG — "Por que eu errei?"
@@ -42,52 +116,27 @@ export const PedagogicalPromptsService = {
      */
     async generateWhyWrong(questionText, wrongLetter, wrongText, correctLetter, correctText, subject = '', allAlternatives = []) {
         const settings = await ApiService._getSettings();
-
-        // Build alternatives list for the prompt
-        let altsList = '';
-        if (allAlternatives.length > 0) {
-            altsList = allAlternatives.map(a => `${a.letter}) ${a.text}`).join('\n');
-        }
-
-        const systemMsg = `Você é um tutor especialista em diagnosticar erros conceituais de estudantes.
-Sua missão é transformar cada erro em uma oportunidade de aprendizado genuíno.
-
-Princípios científicos que você aplica:
-- FEEDBACK DE CRESCIMENTO: nunca punitivo, sempre construtivo (Yeager et al. 2014)
-- DIAGNÓSTICO PRECISO: identifique o equívoco cognitivo ESPECÍFICO, não o erro genérico
-- ELABORATIVE INTERROGATION: faça o aluno reconstruir o raciocínio correto
-- ADHD-FRIENDLY: frases curtas, uma ideia por vez, emojis como âncoras visuais
-
-⚠️ PROIBIDO: começar com "Você errou porque...", "Infelizmente", "Está errado pois".
-✅ OBRIGATÓRIO: começar com compreensão do raciocínio do aluno, sem julgamento.`;
-
-        const prompt = `QUESTÃO:
-${questionText.slice(0, 1200)}
-
-ALTERNATIVAS:
-${altsList || `${wrongLetter}) ${wrongText}\n${correctLetter}) ${correctText}`}
-
-O aluno escolheu: ${wrongLetter}) ${wrongText}
-Resposta correta: ${correctLetter}) ${correctText}
-${subject ? `Disciplina: ${subject}` : ''}
-
-Gere uma análise diagnóstica PERSONALIZADA seguindo este formato EXATO:
-
-🎯 **O que você estava pensando:**
-[Em 2-3 frases, reconstituir o raciocínio PLAUSÍVEL que levou o aluno a escolher ${wrongLetter}.
-Nunca condene — compreenda. Use "É natural pensar que..." ou "Faz sentido considerar..."]
-
-📋 **Análise das Alternativas:**
-${allAlternatives.map(a => `- **${a.letter})** ${a.letter === correctLetter ? '✅' : '❌'} [Em 1-2 frases explique o motivo. Se errada, diga qual conceito invalida. Se correta, qual a sustenta.]`).join('\n\n')}
-
-🔑 **Regra para nunca mais errar:**
-[Uma heurística prática, memorável e aplicável. Ex: "Sempre que ver X, pergunte-se Y."
-Máximo 2 frases.]
-
-🧠 **Checkpoint de compreensão:**
-[Uma mini-pergunta reflexiva para o aluno testar se realmente entendeu.]
-
-MÁX: 300 palavras total. Tom: coach encorajador, nunca professor decepcionado.`;
+        const combinedAlternatives = allAlternatives.map((a) => `${a.letter}) ${a.text}`).join('\n');
+        const domain = this._inferPedagogicalDomain(
+            `${questionText}\n${wrongText}\n${correctText}`,
+            `${subject}\n${combinedAlternatives}`,
+        );
+        const mathSignals = domain === 'exact_sciences'
+            ? this._extractMathSignals(`${questionText}\n${combinedAlternatives}\n${correctText}`)
+            : null;
+        const { systemMsg, prompt, fallbackValue } = buildWhyWrongRequest({
+            questionText,
+            wrongLetter,
+            wrongText,
+            correctLetter,
+            correctText,
+            subject,
+            allAlternatives,
+            domain,
+            mathSignals,
+            roleBlock: this._buildPedagogicalRoleBlock(domain, 'diagnostic_feedback'),
+            bestPracticesBlock: this._buildPromptBestPracticesBlock(),
+        });
 
         const { result } = await ApiService._callWithProviderChain({
             messages: [
@@ -98,12 +147,12 @@ MÁX: 300 palavras total. Tom: coach encorajador, nunca professor decepcionado.`
             models: {
                 gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
                 chatgpt: settings.chatgptModel || 'gpt-4o',
                 copilot: settings.copilotModel || 'gpt-4o',
             },
             label: 'generateWhyWrong',
-            fallbackValue: `Você escolheu ${wrongLetter}, mas a resposta correta é ${correctLetter}. Revise o conceito relacionado e tente novamente!`,
+            fallbackValue,
         });
         return result;
     },
@@ -125,67 +174,49 @@ MÁX: 300 palavras total. Tom: coach encorajador, nunca professor decepcionado.`
      */
     async generateSocraticHint(questionText, optionsMap = {}, hintLevel = 1, previousHint = '') {
         const settings = await ApiService._getSettings();
-        const optionsList = Object.entries(optionsMap)
-            .map(([k, v]) => `${k}) ${v}`)
-            .join('\n');
-
-        const systemMsg = `Você é um tutor socrático mestre. Sua lei suprema: NUNCA revelar a resposta diretamente.
-
-Filosofia socrática aplicada:
-- Perguntas que ativam o conhecimento que o aluno JÁ TEM
-- Eliminar confusões, não fornecer respostas
-- Conduzir o aluno a "descobrir" a resposta por conta própria
-- Cada nível progressivamente mais revelador, mas NUNCA completo
-
-Violação absoluta: mencionar qual é a alternativa correta, mesmo indiretamente.`;
-
-        const levelInstructions = {
-            1: `NÍVEL 1 — DICA MÍNIMA (ativa o conceito):
-- Faça UMA pergunta aberta que direcione ao conceito central da questão
-- Não mencione nenhuma alternativa específica
-- Estilo: "O que você sabe sobre o papel de X no contexto Y?"
-- Máximo 2 frases. Termine sempre com "?"`,
-
-            2: `NÍVEL 2 — DICA MÉDIA (elimina distratores):
-- Ajude a eliminar 1-2 alternativas claramente incorretas SEM revelar a correta
-- Faça uma pergunta sobre as alternativas restantes
-- Máximo 4 frases`,
-
-            3: `NÍVEL 3 — DICA MÁXIMA (revela conceito, não a letra):
-- Explique o CONCEITO central detalhadamente (como uma mini-aula)
-- Diga qual TIPO de raciocínio leva à resposta correta
-- NUNCA nomeie a alternativa correta por letra ou texto exato
-- Máximo 5 frases`
-        };
-
-        const prompt = `QUESTÃO:
-${questionText.slice(0, 1000)}
-
-${optionsList ? `ALTERNATIVAS:\n${optionsList}\n` : ''}
-${previousHint ? `DICA ANTERIOR (não repita):\n${previousHint}\n` : ''}
-${levelInstructions[hintLevel] || levelInstructions[1]}
-
-Gere APENAS o texto da dica. Sem título, sem prefixo "Dica:", sem introdução.`;
+        const parsedOptionsMap = (optionsMap && Object.keys(optionsMap).length > 0)
+            ? optionsMap
+            : this._optionsMapFromQuestion(questionText);
+        const parsedQuestion = this._extractQuestionStructure(questionText);
+        const conceptProfile = await this.extractConceptProfile(questionText);
+        const hasStructuredOptions = Object.keys(parsedOptionsMap).length >= 2;
+        const conceptName = conceptProfile?.concept || 'conceito central';
+        const scenarioName = conceptProfile?.scenario || this._inferLearningScenario(questionText);
+        const keywords = Array.isArray(conceptProfile?.keywords) ? conceptProfile.keywords.join(', ') : '';
+        const domain = this._inferPedagogicalDomain(questionText, `${conceptName} ${keywords}`);
+        const mathSignals = domain === 'exact_sciences' ? this._extractMathSignals(questionText) : null;
+        const { systemMsg, prompt, fallbackValue } = buildSocraticHintRequest({
+            questionText,
+            parsedQuestion,
+            parsedOptionsMap,
+            hasStructuredOptions,
+            conceptName,
+            scenarioName,
+            keywords,
+            domain,
+            mathSignals,
+            hintLevel,
+            previousHint,
+            roleBlock: this._buildPedagogicalRoleBlock(domain === 'exact_sciences' ? 'exact_sciences' : 'general', domain === 'exact_sciences' ? 'guiar o aluno por um próximo passo correto, sem entregar a resposta' : 'guiar o aluno a descobrir o raciocínio correto sem entregar a resposta'),
+            bestPracticesBlock: this._buildPromptBestPracticesBlock(),
+            exactSciencesFewShot: domain === 'exact_sciences' ? this._buildExactSciencesFewShot('hint') : '',
+        });
 
         const { result } = await ApiService._callWithProviderChain({
             messages: [
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: prompt }
             ],
-            opts: { temperature: 0.4, max_tokens: 200 },
+            opts: { temperature: 0.35, max_tokens: 240 },
             models: {
                 gemini: settings.geminiModel || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
                 chatgpt: settings.chatgptModel || 'gpt-4o',
                 copilot: settings.copilotModel || 'gpt-4o',
             },
             label: `generateSocraticHint_L${hintLevel}`,
-            fallbackValue: hintLevel === 1
-                ? 'Tente identificar a palavra-chave do enunciado. Qual conceito principal ela ativa?'
-                : hintLevel === 2
-                    ? 'Elimine as alternativas que claramente contradizem o enunciado. O que resta?'
-                    : 'Releia o enunciado focando no que a questão realmente pede: contexto, exceção ou regra geral?',
+            fallbackValue,
         });
         return result;
     },
@@ -276,7 +307,7 @@ FORMATO JSON OBRIGATÓRIO:
             models: {
                 gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
                 chatgpt: settings.chatgptModel || 'gpt-4o',
                 copilot: settings.copilotModel || 'gpt-4o',
             },
@@ -287,6 +318,144 @@ FORMATO JSON OBRIGATÓRIO:
 
         if (!result) throw new Error('Não foi possível gerar questão similar. Tente novamente.');
         return result;
+    },
+    _normalizeMnemonicText(text = '') {
+        return normalizeMnemonicText(text);
+    },
+
+    _extractAlternatives(questionText = '') {
+        return extractAlternatives(questionText);
+    },
+
+    _extractTopKeywords(text = '', limit = 4) {
+        return extractTopKeywords(text, limit);
+    },
+
+    _inferMnemonicScenario(questionText = '', answerText = '') {
+        return inferMnemonicScenario(questionText, answerText);
+    },
+
+    _inferMnemonicType(questionText = '', answerText = '', preferredType = 'any') {
+        return inferMnemonicType(questionText, answerText, preferredType);
+    },
+
+    _buildMnemonicKeyElements(questionText = '', answerText = '', concept = '') {
+        return buildMnemonicKeyElements(questionText, answerText, concept);
+    },
+
+    _buildMnemonicSignature(prepared) {
+        return buildMnemonicSignature(prepared);
+    },
+
+    _getMnemonicPromptSections() {
+        return {
+            preamble: `Você é um MESTRE em técnicas de memorização baseadas em neurociência cognitiva. Você aplica mecanismos científicos comprovados para criar mnemônicos que fazem o aluno ENTENDER E DECORAR DE PRIMEIRA.
+
+━━━ ARSENAL CIENTÍFICO ━━━
+1. CHUNKING: quebre em 2-4 elementos gerenciáveis.
+2. DUAL CODING: una frase verbal + cena mental vívida.
+3. VON RESTORFF: a cena precisa ser absurda, exagerada ou impossível.
+4. HUMOR + EMOÇÃO: faça o aluno sorrir ou estranhar.
+5. TESTING EFFECT: o auto-teste deve exigir reconstrução, nunca reconhecimento passivo.`,
+
+            brevity: `━━━ LEI DE OURO DA CONCISÃO ━━━
+O resultado precisa funcionar mesmo para um aluno cansado, vendo tudo em poucos segundos.
+- "mnemonic": 4-10 palavras, natural em português, ritmo claro
+- "keyElements": 2-3 itens curtos e limpos
+- "visualization": no máximo 75 palavras
+- "connection": no máximo 55 palavras
+- "selfTest": uma pergunta curta, direta e reconstruível`,
+
+            visualization: `━━━ LEI DE OURO DA VISUALIZAÇÃO ━━━
+CADA ELEMENTO DA CENA MENTAL DEVE SER CONCRETO E VISUALIZÁVEL.
+PROIBIDO: personificar siglas abstratas sem som/imagem concreta, usar cenas genéricas, ou criar elementos que só fazem sentido se o aluno já souber a resposta.
+PERMITIDO: objetos do cotidiano, personagens reconhecíveis, ações exageradas, locais familiares e humor físico.`,
+
+            naturalness: `━━━ REGRAS DE NATURALIDADE ━━━
+PROIBIDO criar trocadilhos artificiais com pedaços do termo técnico, como "FRAcote", "pizza FRAção", "robô LIMITE".
+PROIBIDO usar MAIÚSCULAS no meio da palavra para "explicar" o mnemônico.
+Se a palavra-âncora soar forçada ou infantil demais, abandone a técnica e use uma cena visual ou micro-história mais natural.
+Prefira imagens concretas e familiares a "piadas linguísticas" ruins.`,
+
+            technical: `━━━ REGRAS PARA TERMOS TÉCNICOS E SIGLAS ━━━
+Use Keyword Method quando houver siglas, APIs, padrões, protocolos, sintaxe ou termos técnicos.
+Se houver sequência, prefira frase-acróstico. Se houver sigla isolada, use palavra-âncora sonora em português + imagem concreta.
+Nunca diga algo como "robô ANSI" ou "relógio C99" se isso não for visualmente concreto.
+Se não houver âncora sonora boa, use visualização funcional do conceito em vez de forçar keyword method.`,
+
+            affirmatives: `━━━ REGRAS PARA QUESTÕES ESTRUTURAIS ━━━
+PROIBIDO ABSOLUTO: memorizar o FORMATO da questão.
+NUNCA use "Asserção", "Razão", "V ou F", letras de alternativas, ou numerais romanos (I, II, III) como âncoras.
+Não crie cenas tipo "A Asserção faz isso e a Razão faz aquilo".
+Você deve extrair o CONTEÚDO TÉCNICO das afirmativas corretas e criar o mnemônico EXCLUSIVAMENTE para a teoria subjacente.
+Tudo que é falso deve ser ignorado ou usado apenas como contraste conceitual, não como parte do mecanismo.`,
+
+            output: `━━━ FORMATO JSON OBRIGATÓRIO ━━━
+- "emoji" = emoji do tema
+- "mnemonic" = frase-âncora curta, rítmica, memorável
+- "keyElements" = array de 2-4 strings "elemento → significado"
+- "visualization" = cena mental cinematográfica, absurda e concreta
+- "connection" = explique como a cena reconstrói o conceito
+- "selfTest" = pergunta que obriga o aluno a reconstruir a lógica
+- "type" = "acronym"|"story"|"rhyme"|"visual"|"keyword"
+Responda APENAS em JSON válido.`,
+
+            examples: `EXEMPLOS BONS:
+- Planetas em ordem → frase-acróstico.
+- SQL ALTER TABLE ADD COLUMN → visualização de reforma em uma mesa.
+- Questão com callback/thread/GLUT/assíncrono → história concreta com fone, fio, joystick e quatro mãos.
+
+EXEMPLO RUIM:
+- "ANSI fantasiado", "robô ISO", "relógio C99".
+Motivo: não são imagens concretas o bastante.`
+        };
+    },
+
+    _scoreMnemonicPayload(payload, prepared) {
+        return scoreMnemonicPayload(payload, prepared);
+    },
+
+    _trimMnemonicText(text = '', maxChars = 220, maxWords = 40) {
+        return trimMnemonicText(text, maxChars, maxWords);
+    },
+
+    _finalizeMnemonicPayload(payload, prepared) {
+        return finalizeMnemonicPayload(payload, prepared);
+    },
+
+    async prepareMnemonicInput(conceptOrQuestion, questionContext = '', preferredType = 'auto') {
+        const rawQuestion = this._normalizeMnemonicText(conceptOrQuestion);
+        const answerText = this._normalizeMnemonicText(questionContext);
+        const looksLikeQuestion = /\?|\b[A-E]\s*[\)\.\-:]\s|\bassinale\b|\bquest[aã]o\b/i.test(rawQuestion) || rawQuestion.length > 120;
+        const profile = looksLikeQuestion ? await this.extractConceptProfile(rawQuestion) : null;
+
+        let concept = rawQuestion.slice(0, 80);
+        if (looksLikeQuestion) {
+            const extracted = profile?.concept || await this.extractConceptTag(rawQuestion);
+            if (extracted && !/conceito n[aã]o identificado/i.test(extracted)) {
+                concept = extracted;
+            }
+        }
+        if (!concept || /conceito n[aã]o identificado/i.test(concept)) {
+            concept = answerText ? answerText.slice(0, 80) : rawQuestion.slice(0, 80);
+        }
+
+        const scenario = profile?.scenario || this._inferMnemonicScenario(rawQuestion, answerText);
+        const resolvedType = this._inferMnemonicType(rawQuestion, answerText, preferredType);
+        const keyElements = this._buildMnemonicKeyElements(rawQuestion, answerText, concept);
+
+        const prepared = {
+            concept,
+            rawQuestion,
+            answerText,
+            scenario,
+            resolvedType,
+            requestedType: preferredType,
+            keyElements,
+            conceptProfile: profile,
+        };
+        prepared.signature = this._buildMnemonicSignature(prepared);
+        return prepared;
     },
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -314,215 +483,40 @@ FORMATO JSON OBRIGATÓRIO:
      * @param {'acronym'|'story'|'rhyme'|'visual'|'any'} preferredType - Tipo preferido
      * @returns {Promise<Object>} { emoji, mnemonic, keyElements[], visualization, connection, selfTest, type }
      */
-    async generateMnemonic(concept, questionContext = '', preferredType = 'any') {
+    async generateMnemonic(concept, questionContext = '', preferredType = 'any', extra = {}) {
         const settings = await ApiService._getSettings();
-
-        const typeGuides = {
-            acronym: 'Use acrônimo ou acróstico: primeira letra de cada elemento-chave forma uma palavra ou frase memorável e rítmica. A frase deve ser absurda o suficiente para grudar.',
-            story: 'Crie uma micro-narrativa CINEMATOGRÁFICA de 2-3 frases: personagens absurdos + ação exagerada + desfecho que revela o conceito. Ative o hipocampo via narrativa emocional.',
-            rhyme: 'Crie uma rima curta de 2-4 versos com RITMO forte (pode ser cantada). Rimas são 2x mais retidas que prosa. Use humor nos versos.',
-            visual: 'Foque em uma CENA MENTAL impossível e espacial: exagere tamanhos, cores e ações. O aluno deve "ver um filme" na cabeça. Use Method of Loci se houver sequência.',
-            keyword: 'Use Keyword Method: encontre uma palavra em português que SOE PARECIDO com o termo técnico, e crie uma imagem que conecte o som ao significado real.',
-            any: 'Escolha a técnica que criar o mnemônico mais IMPACTANTE e engraçado: acrônimo, micro-história, rima, keyword sonoro, ou cena visual impossível. Priorize humor + absurdidade.'
-        };
-
-        const systemMsg = `Você é um MESTRE em técnicas de memorização baseadas em neurociência cognitiva. Você aplica 10 mecanismos científicos comprovados para criar mnemônicos que fazem o aluno ENTENDER E DECORAR DE PRIMEIRA.
-
-━━━ ARSENAL CIENTÍFICO (aplique TODOS os relevantes) ━━━
-
-1. CHUNKING (Miller 1956): Quebre em 2-4 pedaços. Memória de trabalho = 4±1 itens. Agrupe termos relacionados.
-
-2. DUAL CODING (Paivio 1971): Crie uma FRASE (canal verbal) + uma CENA MENTAL (canal visual). Dois caminhos de recordação = o dobro da chance de lembrar.
-
-3. VON RESTORFF / EFEITO BIZARRENESS (1933): A cena mental DEVE ser ABSURDA, EXAGERADA ou IMPOSSÍVEL. Um elefante rosa digitando SQL é 3x mais memorável que "uma tela de computador". REGRA: se a imagem parece normal, REFAÇA até ficar bizarra.
-
-4. HUMOR + EMOÇÃO (Humor Effect): FAÇA O ALUNO RIR. Humor libera dopamina → codificação mais profunda. Use trocadilhos, situações ridículas, personificação cômica. Se não provocar pelo menos um sorriso, está fraco demais.
-
-5. KEYWORD METHOD (Atkinson 1975): Para termos técnicos e siglas, encontre uma PALAVRA-ÂNCORA em português que SOE PARECIDO com o termo. Ex: "fork()" → "garfo" → "um garfo gigante que espeta o processo e divide em dois". O som conecta o termo à imagem concreta.
-   SIGLAS: "ANSI" soa como "ânsia" (urgência) → use isso. "ISO" soa como "isso" (alguém apontando o dedo) → use isso. Nunca diga "robô ISO" ou "microfone ANSI" — isso não tem forma visual.
-
-6. STORY METHOD / NARRATIVA (Stanford CTL): Transforme os elementos-chave em PERSONAGENS de uma micro-história de 2-3 frases. Histórias ativam o hipocampo + rede neural padrão = consolidação superior. A história deve ter INÍCIO (situação), AÇÃO (conflito absurdo) e RESULTADO (conceito aprendido).
-
-7. ELABORATIVE ENCODING (Bradshaw & Anderson 1982): Conecte a algo do COTIDIANO do aluno. "Isso funciona como quando você..." — analogias concretas vencem definições abstratas sempre.
-
-8. ELABORATIVE INTERROGATION (Dunlosky 2013): Inclua um "POR QUÊ?" que force o aluno a pensar. Não dê a resposta direta — faça ele reconstruir a lógica a partir do mnemônico. Ganho de aprendizado: +28% vs explicação passiva.
-
-9. METHOD OF LOCI (Palácio da Memória): Quando houver SEQUÊNCIA ou ORDEM, ancore cada elemento em um LOCAL espacial familiar (porta da casa → sala → cozinha). Efeito d=0.88 em recall serial.
-
-10. TESTING EFFECT (Roediger 2006): O selfTest deve ser uma pergunta que SÓ é respondível se o mnemônico foi internalizado. Não aceite perguntas que possam ser respondidas por eliminação ou senso comum.
-
-━━━ LEI DE OURO DA VISUALIZAÇÃO (CRÍTICA) ━━━
-
-CADA ELEMENTO DA CENA MENTAL DEVE SER VISUALMENTE CONCRETO E INDEPENDENTE.
-Teste obrigatório antes de finalizar: "Se eu mostrar esta cena para alguém que nunca ouviu falar do conceito, ele consegue visualizá-la claramente?" Se a resposta for NÃO, a cena está errada.
-
-PROIBIDO — padrões que destroem o mnemônico:
-✗ "fantasiado de K&R" — K&R não tem forma visual. Use os AUTORES REAIS: dois velhinhos barbudos.
-✗ "microfone ANSI gigante" — ANSI não tem forma. Use o SOM: "ânsia" → cara com expressão de urgência.
-✗ "robô ISO dançando" — ISO não tem forma. Use o SOM: "isso aí!" → alguém apontando o dedo com entusiasmo.
-✗ "relógio C99" — C99 não é um objeto. Use o CONTEXTO: padrão de 1999 → calendário aberto no ano 1999.
-✗ Qualquer objeto que só faz sentido se você JÁ SOUBER o conceito.
-
-PERMITIDO — padrões que funcionam:
-✓ Para siglas de ORGANIZAÇÕES: use funcionários/burocratas típicos daquela instituição (americano de terno = ANSI, inspetor da ONU = ISO).
-✓ Para AUTORES/CRIADORES: use as pessoas reais com características marcantes (Kernighan e Ritchie = dois professores velhinhos barbudos dos anos 70).
-✓ Para DATAS: use marcos visuais daquele ano (1999 = calendário virando o milênio, festa Y2K).
-✓ Para SEQUÊNCIAS: use a frase-acróstico (como os planetas) — cada palavra da frase mapeia para um elemento da lista.
-✓ Qualquer objeto do cotidiano que QUALQUER PESSOA consegue imaginar sem saber o conceito.
-
-━━━ ESTRATÉGIA PARA SIGLAS E PADRÕES TÉCNICOS ━━━
-
-Quando o conceito envolve SIGLAS EM SEQUÊNCIA (ex: K&R → ANSI → ISO → C99):
-OPÇÃO A (preferida): Crie uma frase-acróstico onde cada PALAVRA da frase mapeia para um elemento, como nos planetas. Ex: "Kernighan Adorou Inventar Código" → K&R, ANSI, ISO, C99.
-OPÇÃO B: Use o Keyword Method — cada sigla vira uma palavra em português que SOA parecido, com imagem concreta dessa palavra.
-NUNCA tente "personificar" a sigla diretamente como um personagem sem forma definida.
-
-━━━ ESTRATÉGIA CRÍTICA: QUESTÕES COM AFIRMATIVAS I / II / III / IV ━━━
-
-PROBLEMA FATAL (nunca cometa este erro):
-✗ ERRADO: "Coelho aceita I, II e IV" — Você está usando os NUMERAIS ROMANOS como âncoras. Mas esses numerais SÃO exatamente o que o aluno está tentando lembrar! É circular e inútil. O aluno lê o mnemônico e ainda não sabe quais são corretas.
-
-REGRA ABSOLUTA: Para questões com afirmativas I/II/III/IV, o mnemônico NUNCA menciona os numerais diretamente. Em vez disso, encode o CONTEÚDO de cada afirmativa.
-
-COMO FAZER CORRETAMENTE:
-1. Leia o conteúdo de cada afirmativa (não o número)
-2. Extraia a PALAVRA-CHAVE do conteúdo de cada uma (ex: "callback", "thread", "GLUT", "assíncrono")
-3. Crie uma cena/história/frase usando essas palavras-chave concretas
-4. A cena deve deixar CLARO quais são corretas (estão fazendo algo certo/funcionando) e quais são incorretas (estão explodindo, sendo jogadas fora, falhando de forma engraçada)
-5. A regra da concretude se aplica: as palavras-chave das afirmativas devem ser traduzidas em objetos/personagens visualizáveis
-
-EXEMPLO CORRETO (questão do caixa de supermercado com scanner):
-Afirmativas: I=callback correto, II=thread correto, III=GLUT errado (gráficos!), IV=assíncrono correto
-✓ CERTO: "Um caixa segura um FONE (callback = retorno de chamada = fone) e enrola um NOVELO DE FIO no escâner (thread = fio/linha). Ele joga com asco um JOYSTICK de videogame no lixo (GLUT = biblioteca gráfica, inútil para hardware). Daí usa 4 mãos ao mesmo tempo sem parar (assíncrono = 4 mãos = sem bloquear)."
-→ Frase-âncora: "Fone e Fio escaneiam. Joystick vai pro lixo. Quatro mãos não param."
-→ O aluno reconstrói: fone=callback(I)✓, fio=thread(II)✓, joystick=GLUT(III)✗, 4 mãos=assíncrono(IV)✓ → resposta: I, II e IV
-
-✗ ERRADO (nunca faça isso): "Coelho aceita I, II e IV, rejeita III com cara de nojo"
-→ Por quê é inútil: o aluno lê isso e ainda não sabe POR QUE I, II e IV estão certas. Se esquecer, não consegue reconstruir.
-
-━━━ PROCESSO OBRIGATÓRIO (5 PASSOS) ━━━
-
-PASSO 1 → CHUNKING: Identifique 2-4 ELEMENTOS-CHAVE (termos, ordem, relações críticas).
-PASSO 2 → FRASE-ÂNCORA: Crie o mnemônico principal (máx 2 linhas). DEVE ser:
-   • Curto e rítmico (fácil de repetir em voz alta)
-   • Com humor ou absurdidade (Von Restorff + Humor Effect)
-   • Com palavra-âncora sonora se houver termo técnico (Keyword Method)
-PASSO 3 → CENA MENTAL CINEMATOGRÁFICA: Descreva uma imagem/cena que o aluno deve "ver" na mente.
-   CHECKLIST obrigatório de cada elemento da cena:
-   • É um objeto/pessoa/lugar que EXISTE independente do conceito? (✓ mesa, velhinho, calendário | ✗ "fantasia de ANSI")
-   • Tem cor, tamanho ou ação exagerada? (absurdo concreto, não abstrato)
-   • Os elementos estão FAZENDO algo, não parados?
-   • A cena acontece num lugar específico que o aluno conhece?
-PASSO 4 → CONEXÃO "POR QUÊ?": Explique como cada parte do mnemônico mapeia para o conceito real.
-PASSO 5 → AUTO-TESTE DESAFIADOR: Crie uma pergunta que EXIJA reconstruir o mnemônico para responder.
-
-━━━ FORMATO JSON ━━━
-- "emoji" = emoji que represente o tema
-- "mnemonic" = frase-âncora (máx 2 linhas, curta, rítmica)
-- "keyElements" = array de 2-4 strings "elemento → significado"
-- "visualization" = cena mental bizarra/engraçada com elementos CONCRETOS (1-3 frases cinematográficas)
-- "connection" = "Por que funciona:" + mapeamento mnemônico→conceito (1-3 frases)
-- "selfTest" = pergunta desafiadora (1 frase)
-- "type" = "acronym"|"story"|"rhyme"|"visual"|"keyword"
-
-REGRAS ABSOLUTAS:
-- Idioma: português brasileiro coloquial (como um professor jovem e carismático fala)
-- O aluno deve conseguir RECONSTRUIR a resposta COMPLETA a partir do mnemônico
-- Cada elemento da cena DEVE ter forma visual independente do conceito
-- PROIBIDO: personificar siglas sem usar som/significado real, cenas genéricas, auto-testes triviais
-- OBRIGATÓRIO: pelo menos 1 elemento de humor/absurdo + 1 analogia do cotidiano
-
-EXEMPLOS:
-
-CONCEITO: "Ordem dos planetas do sistema solar"
-{"emoji":"🪐","mnemonic":"Minha Vó Tem Muitas Joias, Só Usa No Pescoço","keyElements":["Minha→Mercúrio","Vó→Vênus","Tem→Terra","Muitas→Marte","Joias→Júpiter","Só→Saturno","Usa→Urano","No Pescoço→Netuno"],"visualization":"Imagine sua avó GIGANTE (do tamanho do Sol) flutuando no espaço com TODAS as joias do universo penduradas no pescoço — tão pesadas que ela roda e os planetas orbitam em volta dela por causa da gravidade das joias. Cada planeta que ela passa, ela dá um tchauzinho.","connection":"Por que funciona: Cada INICIAL da frase corresponde à INICIAL do planeta, na ordem do mais próximo ao mais distante do Sol. M-V-T-M-J-S-U-N. Basta recitar a frase da vó e extrair as letras.","selfTest":"Complete sem olhar: 'Minha Vó ___ Muitas ___, Só ___ No ___' — traduza cada palavra para o planeta correspondente.","type":"acronym"}
-
-CONCEITO: "SQL ALTER TABLE ADD COLUMN"
-{"emoji":"🏗️","mnemonic":"ALTER a mesa, ADD uma tábua, escreva NOME e TIPO","keyElements":["ALTER TABLE→qual tabela modificar","ADD COLUMN→adicionar nova coluna","nome→nome da coluna","tipo→tipo de dado (INT, VARCHAR...)"],"visualization":"Imagine uma MESA de jantar velha no meio de um terremoto. Você pega um MARTELO DOURADO gigante (ALTER) e prega uma TÁBUA nova na lateral (ADD COLUMN). Na tábua, você escreve com KETCHUP o NOME da coluna e com MOSTARDA o TIPO de dado — a mesa sai andando com pernas de galinha.","connection":"Por que funciona: ALTER = alterar/reformar, como reformar um móvel caindo aos pedaços. ADD COLUMN = adicionar uma 'coluna' como se fosse uma tábua extra. A ordem na sintaxe SQL é sempre: O QUÊ mudar (tabela) → COMO mudar (add) → DETALHES (nome, tipo).","selfTest":"Escreva de cabeça o comando SQL para adicionar 'idade INT' na tabela 'alunos'. Em que ORDEM vêm os 4 termos-chave?","type":"visual"}
-
-CONCEITO: "Evolução dos padrões da linguagem C: K&R → ANSI → ISO → C99"
-{"emoji":"💻","mnemonic":"Kernighan Achou Insano Criar C novão","keyElements":["Kernighan→K&R (primeiro padrão, criadores)","Achou→ANSI (padronização americana)","Insano→ISO (adoção internacional)","Criar C novão→C99 (padrão de 1999)"],"visualization":"Imagine um velhinho barbudo e suado (Kernighan dos anos 70, de calça boca-de-sino) digitando furiosamente num terminal verde. Um burocrata americano de terno (ANSI) aparece do nada e CARIMBA o código com um carimbo gigante vermelho — PLOC! Um inspetor da ONU de capacete azul (ISO) entra correndo e carimba também — PLOC! Aí em 1999, o velhinho volta com um bolo de aniversário escrito '99' e joga confete em cima dos dois burocratas.","connection":"Por que funciona: A frase usa as INICIAIS em ordem: K(ernighan)→A(chou)→I(nsano)→C(riar) = K&R, ANSI, ISO, C99. O velhinho barbudo É visualizável; o burocrata americano É visualizável; o inspetor da ONU É visualizável; o bolo de 1999 É visualizável.","selfTest":"Recite a frase-âncora e mapeie cada palavra para o padrão correspondente. Qual padrão é americano? Qual é internacional? Em que ano saiu o último?","type":"acronym"}
-
-CONCEITO: "Captura de eventos em C para scanner de caixa de supermercado — quais afirmativas estão corretas: I(callback), II(thread), III(GLUT gráfica), IV(assíncrono)"
-{"emoji":"🛒","mnemonic":"Fone e Fio escaneiam. Joystick vai pro lixo. Quatro mãos não param.","keyElements":["Fone→callback (retorno de chamada, como um telefonema de volta)","Fio/novelo→thread (thread = fio/linha de execução)","Joystick no lixo→GLUT é biblioteca gráfica (inútil para hardware de scanner)","Quatro mãos→processamento assíncrono (faz tudo ao mesmo tempo sem bloquear)"],"visualization":"Um caixa de supermercado com um FONE DE OUVIDO gigante na orelha (callback = ele recebe a chamada do scanner) e um NOVELO DE FIO cor-de-rosa enrolado no braço (thread = fio). Com asco total, ele pega um JOYSTICK de videogame e joga no lixo gritando 'FORA, isso é pra jogo!' (GLUT = só serve pra gráficos). Daí o caixa vira um polvo com 4 MÃOS e registra 4 produtos ao mesmo tempo sem parar (assíncrono = sem bloquear).","connection":"Por que funciona: Fone=callback(I) funciona para hardware. Fio=thread(II) impede o programa de congelar. Joystick no lixo=GLUT(III) é biblioteca gráfica (OpenGL), não serve para scanner. 4 mãos=assíncrono(IV) é obrigatório em sistemas de tempo real. Resultado: I, II e IV corretas.","selfTest":"Quais dos 4 objetos da cena (fone, fio, joystick, mãos) são mantidos e qual é jogado fora? Traduza cada objeto para a afirmativa correspondente.","type":"story"}
-
-EXEMPLO DO QUE NÃO FAZER (mnemônico ruim — não use este padrão):
-ERRADO: "visualization":"Imagine K&R fantasiados chegando num karaokê com microfone ANSI gigante, um robô ISO dançando e um relógio C99 voando."
-POR QUÊ É RUIM: Nenhum desses elementos tem forma visual concreta. "Fantasia de K&R" não existe. "Microfone ANSI" não é uma coisa real. "Robô ISO" não tem forma definida. O aluno tenta visualizar e não consegue formar nenhuma imagem — o mnemônico falha completamente.
-
-Responda APENAS em JSON válido, sem texto extra, sem markdown.`;
-
-        const prompt = `CONCEITO A MEMORIZAR:
-${concept.slice(0, 500)}
-
-${questionContext ? `RESPOSTA CORRETA / CONTEXTO:\n${questionContext.slice(0, 400)}\n` : ''}
-TÉCNICA PREFERIDA: ${typeGuides[preferredType] || typeGuides.any}
-
-Agora siga os 5 passos e gere o JSON:`;
-
-        const parseResponse = (content) => {
-            if (!content) return null;
-            try {
-                // Extract JSON from possible markdown/text wrapping
-                let cleaned = content
-                    .replace(/^```(?:json)?\s*/i, '')
-                    .replace(/\s*```$/, '')
-                    .trim();
-                // Some models wrap in <think> tags or add preamble; extract JSON
-                const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-                if (jsonMatch) cleaned = jsonMatch[0];
-                const parsed = JSON.parse(cleaned);
-                // Normalize: ensure all fields exist with fallbacks
-                return {
-                    emoji: parsed.emoji || '',
-                    mnemonic: parsed.mnemonic || parsed.hook || '',
-                    keyElements: Array.isArray(parsed.keyElements) ? parsed.keyElements : [],
-                    visualization: parsed.visualization || parsed.visual || '',
-                    connection: parsed.connection || parsed.howToUse || '',
-                    selfTest: parsed.selfTest || parsed.self_test || '',
-                    type: parsed.type || 'phrase',
-                };
-            } catch (_) {
-                if (content.trim().length > 5) {
-                    return {
-                        emoji: '',
-                        mnemonic: content.trim(),
-                        keyElements: [],
-                        visualization: '',
-                        connection: '',
-                        selfTest: '',
-                        type: 'text',
-                    };
-                }
-                return null;
-            }
-        };
+        const prepared = extra?.preparedInput || await this.prepareMnemonicInput(concept, questionContext, preferredType);
+        const promptSections = this._getMnemonicPromptSections();
+        const domain = this._inferPedagogicalDomain(prepared.rawQuestion, `${prepared.concept}\n${prepared.answerText}`);
+        const mathSignals = domain === 'exact_sciences' ? this._extractMathSignals(`${prepared.rawQuestion}\n${prepared.answerText}\n${prepared.concept}`) : null;
+        const { systemMsg, prompt, fallbackValue } = buildMnemonicRequest({
+            prepared,
+            promptSections,
+            domain,
+            mathSignals,
+            roleBlock: this._buildPedagogicalRoleBlock(domain === 'exact_sciences' ? 'exact_sciences' : 'general', 'criar um mnemônico realmente útil para recuperar o procedimento ou conceito certo'),
+            bestPracticesBlock: this._buildPromptBestPracticesBlock(),
+            exactSciencesFewShot: domain === 'exact_sciences' ? this._buildExactSciencesFewShot('mnemonic') : '',
+        });
+        const parseResponse = createMnemonicResponseParser(prepared);
 
         const { result } = await ApiService._callWithProviderChain({
             messages: [
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: prompt }
             ],
-            opts: { temperature: 0.7, max_tokens: 800 },
+            opts: { temperature: 0.45, max_tokens: 650 },
             models: {
                 gemini: settings.geminiModel || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
                 chatgpt: settings.chatgptModel || 'gpt-4o',
                 copilot: settings.copilotModel || 'gpt-4o',
             },
             postProcess: parseResponse,
-            isValid: (v) => v && typeof v.mnemonic === 'string' && v.mnemonic.length > 3 && v.mnemonic.length < 800,
+            isValid: (v) => isValidMnemonicPayload(v, prepared),
             label: 'generateMnemonic',
-            fallbackValue: {
-                emoji: '🧠',
-                mnemonic: `Para lembrar: "${concept.slice(0, 50)}"`,
-                keyElements: [],
-                visualization: 'Crie uma imagem mental associando este conceito a algo familiar.',
-                connection: 'Conecte este conceito a algo que você já conhece.',
-                selfTest: '',
-                type: 'association',
-            },
+            fallbackValue,
         });
         return result;
     },
@@ -619,7 +613,7 @@ Máx: 120 palavras. Tom: coach esportivo, não professor avaliando prova.`;
             models: {
                 gemini: settings.geminiModel || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
                 chatgpt: settings.chatgptModel || 'gpt-4o',
                 copilot: settings.copilotModel || 'gpt-4o',
             },
@@ -730,40 +724,45 @@ Máx: 120 palavras. Tom: coach esportivo, não professor avaliando prova.`;
      */
     async generateConceptExplanation(concept, questionContext = '', subject = '') {
         const settings = await ApiService._getSettings();
+        const rawConcept = this._normalizePromptText(concept);
+        const looksLikeQuestion = /\?|\b[A-E]\s*[\)\.\-:]\s|\bassinale\b|\bquest[aã]o\b/i.test(rawConcept) || rawConcept.length > 120;
+        const conceptProfile = looksLikeQuestion ? await this.extractConceptProfile(rawConcept) : null;
+        const domain = this._inferPedagogicalDomain(rawConcept, `${questionContext}\n${subject}\n${conceptProfile?.concept || ''}`);
+        const mathSignals = domain === 'exact_sciences' ? this._extractMathSignals(`${rawConcept}\n${questionContext}\n${conceptProfile?.concept || ''}`) : null;
+        const resolvedConcept = conceptProfile?.concept && !/conceito n[aã]o identificado/i.test(conceptProfile.concept)
+            ? conceptProfile.concept
+            : rawConcept;
+        const resolvedContext = looksLikeQuestion
+            ? `${rawConcept.slice(0, 500)}${questionContext ? `\n\nResposta/contexto: ${questionContext.slice(0, 240)}` : ''}`
+            : questionContext;
 
-        const systemMsg = `Você é um professor que transforma conceitos complexos em entendimento real.
-
-Método de explicação obrigatório (SEMPRE nesta ordem):
-1. DEFINIÇÃO SIMPLES: o que é, em 1 frase sem jargão
-2. ANALOGIA: compare com algo do cotidiano brasileiro
-3. COMO FUNCIONA: mecanismo em 2-3 passos numerados
-4. EXEMPLO CONCRETO: caso real ou aplicação prática
-5. CONEXÕES: 2-3 conceitos relacionados para revisar junto
-
-Formato: Markdown com emojis. ADHD-friendly: parágrafos curtos, bullets quando possível.`;
-
-        const prompt = `Explique o conceito: **${concept.slice(0, 200)}**
-
-${questionContext ? `Apareceu neste contexto:\n${questionContext.slice(0, 500)}` : ''}
-${subject ? `Disciplina: ${subject}` : ''}
-
-Siga o método de 5 etapas. Máximo 300 palavras. Linguagem acessível mas rigorosa.`;
+        const { systemMsg, prompt, maxTokens, fallbackValue } = buildConceptExplanationRequest({
+            resolvedConcept,
+            resolvedContext,
+            subject,
+            conceptProfile,
+            domain,
+            mathSignals,
+            roleBlock: this._buildPedagogicalRoleBlock(domain === 'exact_sciences' ? 'exact_sciences' : 'general', domain === 'exact_sciences' ? 'explicar com didática universitária, em passos verificáveis, sem infantilizar o conteúdo' : 'explicar com clareza, rigor e boa didática universitária'),
+            bestPracticesBlock: this._buildPromptBestPracticesBlock(),
+            exactSciencesFewShot: domain === 'exact_sciences' ? this._buildExactSciencesFewShot('explain') : '',
+        });
 
         const { result } = await ApiService._callWithProviderChain({
             messages: [
                 { role: 'system', content: systemMsg },
                 { role: 'user', content: prompt }
             ],
-            opts: { temperature: 0.3, max_tokens: 600 },
+            opts: { temperature: 0.25, max_tokens: maxTokens },
             models: {
                 gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
                 chatgpt: settings.chatgptModel || 'gpt-4o',
                 copilot: settings.copilotModel || 'gpt-4o',
             },
             label: 'generateConceptExplanation',
-            fallbackValue: `Não foi possível gerar a explicação de "${concept}". Tente pesquisar o conceito diretamente.`,
+            fallbackValue,
         });
         return result;
     },
@@ -809,7 +808,7 @@ REGRAS:
             models: {
                 gemini: settings.geminiModel || 'gemini-2.5-flash',
                 groq: settings.groqModelFast || 'llama-3.1-8b-instant',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
                 chatgpt: settings.chatgptModel || 'gpt-4o',
                 copilot: settings.copilotModel || 'gpt-4o',
             },
@@ -938,7 +937,7 @@ IMPORTANTE: retorne APENAS o JSON array, sem nenhum texto antes ou depois.`;
             models: {
                 gemini: settings.geminiModelSmart || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.3-70b-versatile',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
                 chatgpt: settings.chatgptModel || 'gpt-4o',
                 copilot: settings.copilotModel || 'gpt-4o',
             },
@@ -958,30 +957,86 @@ IMPORTANTE: retorne APENAS o JSON array, sem nenhum texto antes ou depois.`;
      * @param {string} questionText
      * @returns {Promise<string>} Nome do conceito (ex: "Mitose vs Meiose")
      */
-    async extractConceptTag(questionText) {
+    async extractConceptProfile(questionText) {
         const settings = await ApiService._getSettings();
+        const normalizedQuestion = this._normalizePromptText(questionText);
+        const fallbackKeywords = this._extractTopKeywords(normalizedQuestion, 4);
+        const fallback = {
+            concept: 'Conceito não identificado',
+            subconcept: fallbackKeywords[0] || '',
+            scenario: this._inferLearningScenario(normalizedQuestion),
+            keywords: fallbackKeywords,
+        };
+
+        const parseResponse = (content) => {
+            if (!content) return null;
+            try {
+                let cleaned = String(content || '')
+                    .replace(/^```(?:json)?\s*/i, '')
+                    .replace(/\s*```$/, '')
+                    .trim();
+                const match = cleaned.match(/\{[\s\S]*\}/);
+                if (match) cleaned = match[0];
+                const parsed = JSON.parse(cleaned);
+                const concept = String(parsed?.concept || parsed?.topic || '').trim();
+                if (!concept) return null;
+                return {
+                    concept: concept.slice(0, 80),
+                    subconcept: String(parsed?.subconcept || parsed?.focus || '').trim().slice(0, 80),
+                    scenario: String(parsed?.scenario || '').trim().slice(0, 40) || fallback.scenario,
+                    keywords: Array.isArray(parsed?.keywords)
+                        ? parsed.keywords.map((k) => String(k || '').trim()).filter(Boolean).slice(0, 4)
+                        : fallback.keywords,
+                };
+            } catch {
+                const line = String(content || '').split(/\n+/).map((part) => part.trim()).find(Boolean);
+                if (!line) return null;
+                return { ...fallback, concept: line.slice(0, 80) };
+            }
+        };
 
         const { result } = await ApiService._callWithProviderChain({
             messages: [
                 {
                     role: 'system',
-                    content: 'Você identifica o conceito acadêmico central de questões de prova. Responda APENAS com o nome do conceito em 2-5 palavras. Sem explicações, sem pontuação extra.'
+                    content: `Você identifica o conceito acadêmico central de questões de prova brasileiras.
+
+Responda APENAS em JSON válido neste formato:
+{
+  "concept": "conceito central em 2-6 palavras, específico e útil para estudo",
+  "subconcept": "recorte mais fino ou contraste principal",
+  "scenario": "afirmativas|sequência|comparação|fórmula|termo técnico|conceito central",
+  "keywords": ["palavra1", "palavra2", "palavra3"]
+}
+
+REGRAS:
+- Evite rótulos genéricos como "interpretação de texto" ou "conhecimentos gerais"
+- NUNCA retorne o formato da questão como conceito (ex: "Asserção e Razão", "Verdadeiro ou Falso", "Soma de alternativas", "Análise de afirmativas")
+- Priorize o conteúdo realmente testado, não o tema superficial ou a estrutura
+- Se a questão tiver alternativas, use o enunciado para decidir o conceito central`
                 },
                 {
                     role: 'user',
-                    content: `Qual o conceito central testado nesta questão?\n\n${questionText.slice(0, 600)}`
+                    content: `Qual o conceito central testado nesta questão?\n\n${normalizedQuestion.slice(0, 900)}`
                 }
             ],
-            opts: { temperature: 0.2, max_tokens: 30 },
+            opts: { temperature: 0.15, max_tokens: 140 },
             models: {
                 gemini: settings.geminiModel || 'gemini-2.5-flash',
                 groq: settings.groqModelSmart || 'llama-3.1-8b-instant',
-                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-r1:free',
+                openrouter: settings.openrouterModelSmart || 'deepseek/deepseek-chat-v3-0324:free',
             },
+            postProcess: parseResponse,
+            isValid: (v) => !!v && typeof v.concept === 'string' && v.concept.length >= 4,
             label: 'extractConceptTag',
-            fallbackValue: 'Conceito não identificado',
+            fallbackValue: fallback,
         });
-        return (result || '').trim().slice(0, 50);
+        return result || fallback;
+    },
+
+    async extractConceptTag(questionText) {
+        const profile = await this.extractConceptProfile(questionText);
+        return String(profile?.concept || 'Conceito não identificado').trim().slice(0, 80);
     },
 
 };

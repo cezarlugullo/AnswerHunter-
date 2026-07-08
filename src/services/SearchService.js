@@ -2520,19 +2520,36 @@ export const SearchService = {
           }
           if (aiExtracted?.letter) {
             console.log(` [BOT] [AI-EXTRACT] Letter found: ${aiExtracted.letter} (pre-remap)`);
-            // Skip remap when the AI's evidence already references the user-option body for the
-            // reported letter. This means the AI was reasoning in user-option space and remapping
-            // would corrupt a correct answer (e.g. D=JSONB_BUILD_OBJECT evidence → AI says D,
-            // remap sees src-D=jsonb_cte → maps D→C: WRONG).
-            const _userOptBody = (originalOptionsMap || {})[aiExtracted.letter];
-            const _optProbeRaw = QuestionParser.normalizeOption(_userOptBody || '').replace(/\s+/g, '');
-            const _optProbe = _optProbeRaw.slice(0, 8);
-            const _normEvid = QuestionParser.normalizeOption(aiExtracted.evidence || '').replace(/\s+/g, '');
-            const _evidenceConfirmsLetter = _optProbe.length >= 3 && _normEvid.includes(_optProbe);
-            if (_evidenceConfirmsLetter) {
-              console.log(` [BOT] [AI-EXTRACT] Evidence probe "${_optProbe}" confirms ${aiExtracted.letter} in user-space — skipping remap`);
+            // TEXT-FIRST MAPPING: when the AI returned the answer TEXT, map that text
+            // directly to the student's options. Text is immune to option shuffling —
+            // the source's "letter C" is often the student's "letter A". Only when no
+            // confident text match exists do we fall back to letter-space heuristics.
+            const _textMatch = aiExtracted.answerText && originalOptionsMap
+              ? OptionsMatchService.matchAnswerTextToOptions(aiExtracted.answerText, originalOptionsMap)
+              : null;
+            if (_textMatch?.letter) {
+              if (_textMatch.letter !== aiExtracted.letter) {
+                console.log(` [BOT] [AI-EXTRACT] TEXT-FIRST remap: "${(aiExtracted.answerText || '').slice(0, 60)}" → letter ${_textMatch.letter} (source said ${aiExtracted.letter}, method=${_textMatch.method}, conf=${_textMatch.confidence})`);
+              } else {
+                console.log(` [BOT] [AI-EXTRACT] TEXT-FIRST confirms letter ${_textMatch.letter} (method=${_textMatch.method})`);
+              }
+              aiExtracted.letter = _textMatch.letter;
             } else {
-              aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, this._bestRemapText(aiExtracted.evidence, scopedCombinedText), originalOptionsMap);
+              // Legacy letter-space heuristics.
+              // Skip remap when the AI's evidence already references the user-option body for the
+              // reported letter. This means the AI was reasoning in user-option space and remapping
+              // would corrupt a correct answer (e.g. D=JSONB_BUILD_OBJECT evidence → AI says D,
+              // remap sees src-D=jsonb_cte → maps D→C: WRONG).
+              const _userOptBody = (originalOptionsMap || {})[aiExtracted.letter];
+              const _optProbeRaw = QuestionParser.normalizeOption(_userOptBody || '').replace(/\s+/g, '');
+              const _optProbe = _optProbeRaw.slice(0, 8);
+              const _normEvid = QuestionParser.normalizeOption(aiExtracted.evidence || '').replace(/\s+/g, '');
+              const _evidenceConfirmsLetter = _optProbe.length >= 3 && _normEvid.includes(_optProbe);
+              if (_evidenceConfirmsLetter) {
+                console.log(` [BOT] [AI-EXTRACT] Evidence probe "${_optProbe}" confirms ${aiExtracted.letter} in user-space — skipping remap`);
+              } else {
+                aiExtracted.letter = this._remapLetterIfShuffled(aiExtracted.letter, this._bestRemapText(aiExtracted.evidence, scopedCombinedText), originalOptionsMap);
+              }
             }
             console.log(` [BOT] [AI-EXTRACT] Post-remap letter: ${aiExtracted.letter}`);
             // Validate the letter exists in the user's options map.
@@ -2547,7 +2564,10 @@ export const SearchService = {
             // Penalize risky hosts (passeidireto, brainly, scribd) when options didn't match exactly.
             // These pages often have many questions; the AI can accidentally read a neighbor question's gabarito.
             const riskyMismatchPenalty = riskyCombinedHosts.has(hostHint) && !optionsMatchBase ? 0.4 : 0;
-            const weight = baseWeight + 0.85 + quality * 0.35 - riskyMismatchPenalty;
+            // Penalize letters whose EVIDÊNCIA quote was NOT found in the page text —
+            // likely hallucinated by the LLM (AiExtractionParser.verifyEvidenceQuote).
+            const unverifiedEvidencePenalty = aiExtracted.evidenceVerified === false ? 0.35 : 0;
+            const weight = baseWeight + 0.85 + quality * 0.35 - riskyMismatchPenalty - unverifiedEvidencePenalty;
             const sourceId = `${hostHint || 'source'}:${sources.length + 1}`;
             const evidenceBlock = EvidenceService.buildEvidenceBlock({
               questionFingerprint,
@@ -2672,6 +2692,7 @@ export const SearchService = {
             }
             // Try to map AI evidence/knowledge to an answer letter
             const aiTextCandidates = [];
+            if (aiExtracted?.answerText) aiTextCandidates.push({ text: aiExtracted.answerText, tag: 'ai-answer-text' });
             if (aiExtracted?.evidence) aiTextCandidates.push({ text: aiExtracted.evidence, tag: 'ai-evidence' });
             if (aiExtracted?.knowledge) {
               const parsedFromKnowledge = this._parseAnswerText(aiExtracted.knowledge);

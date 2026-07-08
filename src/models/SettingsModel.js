@@ -19,11 +19,11 @@ export const SettingsModel = {
         serperApiUrl: 'https://google.serper.dev/search',
         geminiApiKey: '',
         geminiApiUrl: 'https://generativelanguage.googleapis.com/v1beta',
-        geminiModel: 'gemini-2.5-flash',
-        geminiModelSmart: 'gemini-2.5-flash',
+        geminiModel: 'gemini-3.5-flash',
+        geminiModelSmart: 'gemini-3.5-flash',
         openrouterApiKey: '',
-        openrouterModelSmart: 'deepseek/deepseek-r1:free',
-        chatgptModel: 'gpt-5.2',
+        openrouterModelSmart: 'openai/gpt-oss-120b:free',
+        chatgptModel: 'gpt-5.5',
         copilotModel: 'claude-sonnet-4.6',
         firecrawlApiKey: '',
         primaryProvider: 'groq',
@@ -63,6 +63,58 @@ export const SettingsModel = {
             serper: requiredProviders.serper !== false,
             gemini: requiredProviders.gemini === true
         };
+    },
+
+    normalizeModelSettings(settings = {}) {
+        const normalized = { ...settings };
+
+        const geminiAliases = {
+            'gemini-1.5-pro': 'gemini-3.5-flash',
+            'gemini-2.0-flash': 'gemini-3.5-flash',
+            'gemini-2.5-flash': 'gemini-3.5-flash',
+            'gemini-2.5-pro': 'gemini-3.5-flash',
+            'gemini-3-pro': 'gemini-3.5-flash',
+            'gemini-3-flash-preview': 'gemini-3.5-flash',
+            'gemini-3.1-pro-preview': 'gemini-3.5-flash',
+            'gemini-3.1-flash-lite-preview': 'gemini-3.5-flash'
+        };
+        normalized.geminiModel = geminiAliases[normalized.geminiModel] || normalized.geminiModel || this.defaults.geminiModel;
+        normalized.geminiModelSmart = geminiAliases[normalized.geminiModelSmart] || normalized.geminiModelSmart || this.defaults.geminiModelSmart;
+
+        const openrouterAliases = {
+            'deepseek/deepseek-r1:free': 'openai/gpt-oss-120b:free',
+            'deepseek/deepseek-chat-v3-0324:free': 'openai/gpt-oss-120b:free',
+            'deepseek/deepseek-chat-v3.1:free': 'openai/gpt-oss-120b:free',
+            'google/gemini-2.5-flash:free': 'openai/gpt-oss-120b:free',
+            'google/gemini-2.5-flash-free': 'openai/gpt-oss-120b:free',
+            'qwen/qwen-2.5-coder-32b-instruct:free': 'qwen/qwen3-coder:free'
+        };
+        normalized.openrouterModelSmart = openrouterAliases[normalized.openrouterModelSmart]
+            || normalized.openrouterModelSmart
+            || this.defaults.openrouterModelSmart;
+
+        const chatgptAliases = {
+            'gpt-5.2': 'gpt-5.5',
+            'gpt-5-mini': 'gpt-5.5'
+        };
+        normalized.chatgptModel = chatgptAliases[normalized.chatgptModel]
+            || normalized.chatgptModel
+            || this.defaults.chatgptModel;
+
+        const copilotAliases = {
+            'gpt-5-mini': 'gpt-5.4-mini',
+            'gpt-4o': 'claude-sonnet-4.6',
+            'gpt-4o-mini': 'gpt-5.4-mini',
+            'claude-sonnet-5': 'claude-sonnet-4.6',
+            'claude-opus-4.8': 'claude-opus-4.5',
+            'claude-opus-4.7': 'claude-opus-4.5',
+            'claude-opus-4.6': 'claude-opus-4.5'
+        };
+        normalized.copilotModel = copilotAliases[normalized.copilotModel]
+            || normalized.copilotModel
+            || this.defaults.copilotModel;
+
+        return normalized;
     },
 
     getProviderReadiness(settings = {}) {
@@ -183,12 +235,7 @@ export const SettingsModel = {
 
         const syncSettings = syncResult?.settings || {};
         const localSettings = localResult?.ah_settings_local || {};
-        const merged = { ...this.defaults, ...syncSettings, ...localSettings };
-
-        // Force hot-migrate any old 'gemini-2.5-pro' to 'gemini-2.5-flash'
-        if (merged.geminiModelSmart === 'gemini-2.5-pro') {
-            merged.geminiModelSmart = 'gemini-2.5-flash';
-        }
+        const merged = this.normalizeModelSettings({ ...this.defaults, ...syncSettings, ...localSettings });
 
         // Hot-migrate old groqModelFast default
         if (merged.groqModelFast === 'openai/gpt-oss-20b') {
@@ -206,7 +253,7 @@ export const SettingsModel = {
      */
     async saveSettings(newSettings) {
         const current = await this.getSettings();
-        const updated = { ...current, ...newSettings };
+        const updated = this.normalizeModelSettings({ ...current, ...newSettings });
         updated.language = this.normalizeLanguage(updated.language || this.getBrowserDefaultLanguage());
         updated.requiredProviders = this.normalizeRequiredProviders(updated.requiredProviders);
         updated.setupCompleted = this.computeSetupCompleted(updated);

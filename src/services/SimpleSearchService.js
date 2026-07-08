@@ -109,6 +109,8 @@ import { BackgroundTabExtractorService } from './BackgroundTabExtractorService.j
 import { NativeFetchBridgeService } from './NativeFetchBridgeService.js';
 import { OptionsMatchService } from './search/OptionsMatchService.js';
 import { QuestionParser } from './search/QuestionParser.js';
+import { parseAiExtractionResponse, verifyEvidenceQuote } from './search/AiExtractionParser.js';
+import { tallySourceVotes } from './search/VoteTally.js';
 
 // Quantas URLs do Serper considerar no máximo (as primeiras são as mais relevantes)
 const MAX_CANDIDATES = 10;
@@ -542,6 +544,8 @@ async function _processSingleSource(result, idx, total, questionForInference, or
                     answerText: originalOptionsMap[letter],
                     confidence,
                     evidence: aiResult.evidence || snippet || '',
+                    evidenceVerified: aiResult.evidenceVerified ?? null,
+                    evidenceType: aiResult.knowledgeGuess ? 'ai-knowledge' : 'jina-ai-text',
                     positionShifted: shifted || true,
                     sourceOriginalLetter: aiResult.sourceLetter || null
                 };
@@ -600,7 +604,8 @@ async function _processSingleSource(result, idx, total, questionForInference, or
         matchResult.confidence || 0.85
     );
 
-    console.log(`[SimpleSearch] [TEST] Candidato da fonte (${hostHint}): ${letter}) ${originalOptionsMap[letter]} (conf=${confidence.toFixed(2)}, match="${matchResult.method}")`);
+    const isKnowledgeGuess = aiResult.knowledgeGuess === true;
+    console.log(`[SimpleSearch] [TEST] Candidato da fonte (${hostHint}): ${letter}) ${originalOptionsMap[letter]} (conf=${confidence.toFixed(2)}, match="${matchResult.method}"${isKnowledgeGuess ? ', PALPITE DE CONHECIMENTO — evidência é o próprio enunciado' : aiResult.evidenceVerified === true ? ', evidência VERIFICADA na página' : ''})`);
     console.groupEnd();
 
     return {
@@ -612,7 +617,8 @@ async function _processSingleSource(result, idx, total, questionForInference, or
         evidence: aiResult.evidence || snippet || '',
         confidence,
         hostHint,
-        evidenceType: 'jina-ai-text',
+        evidenceVerified: aiResult.evidenceVerified ?? null,
+        evidenceType: isKnowledgeGuess ? 'ai-knowledge' : 'jina-ai-text',
         positionShifted: positionShifted || false,
         sourceOriginalLetter: sourceLetter
     };
@@ -1018,30 +1024,41 @@ export const SimpleSearchService = {
             try {
                 if (typeof onStatus === 'function') onStatus(' Leitura rápida dos resultados de busca…');
                 const snipResult = await ApiService.aiExtractFromSnippets(snippetInputs, questionForInference);
+                // A "evidência" citada pela IA precisa existir de fato nos snippets —
+                // senão é palpite de conhecimento do modelo, não leitura da busca.
+                const snippetCorpus = snippetInputs.map(s => `${s.title}. ${s.snippet}`).join('\n');
                 if (snipResult?.answerText) {
                     const matchResult = OptionsMatchService.matchAnswerTextToOptions(snipResult.answerText, originalOptionsMap);
                     if (matchResult?.letter) {
                         const letter = matchResult.letter;
                         const sourceLetter = snipResult.sourceLetter || null;
                         const positionShifted = !!(sourceLetter && sourceLetter !== letter);
-                        const conf = Math.min(snipResult.confidence || 0.78, matchResult.confidence || 0.78);
-                        console.log(`[SimpleSearch] [OK] Fase 0 (snippets): ${letter}) conf=${conf.toFixed(2)}${positionShifted ? ` [POSIÇÃO_DIFERENTE: fonte=${sourceLetter}]` : ''}`);
+                        const snipVerified = verifyEvidenceQuote(snipResult.evidence || '', snippetCorpus);
+                        let conf = Math.min(snipResult.confidence || 0.78, matchResult.confidence || 0.78);
+                        if (snipVerified === false) conf = Math.min(conf, 0.50);
+                        console.log(`[SimpleSearch] [OK] Fase 0 (snippets): ${letter}) conf=${conf.toFixed(2)} verificada=${snipVerified}${positionShifted ? ` [POSIÇÃO_DIFERENTE: fonte=${sourceLetter}]` : ''}`);
                         snippetSources.push({
                             success: true, hostHint: 'search-snippets', link: '', title: `${snippetInputs.length} snippets de busca`,
                             letter, answerText: originalOptionsMap[letter], confidence: conf, evidence: snipResult.evidence || '',
-                            evidenceType: 'snippet', positionShifted, sourceOriginalLetter: sourceLetter
+                            evidenceVerified: snipVerified,
+                            evidenceType: snipVerified === false ? 'ai-knowledge' : 'snippet',
+                            positionShifted, sourceOriginalLetter: sourceLetter
                         });
                     }
                 } else if (snipResult?.rawSourceAnswer) {
                     const rawMatch = OptionsMatchService.matchAnswerTextToOptions(snipResult.rawSourceAnswer, originalOptionsMap);
                     if (rawMatch?.letter) {
                         const letter = rawMatch.letter;
-                        const conf = Math.min(snipResult.confidence || 0.72, rawMatch.confidence || 0.72);
-                        console.log(`[SimpleSearch] [SHUFFLE] Fase 0 (snippets POSIÇÃO_DIFERENTE): rawAnswer → ${letter}) conf=${conf.toFixed(2)}`);
+                        const snipVerified = verifyEvidenceQuote(snipResult.evidence || '', snippetCorpus);
+                        let conf = Math.min(snipResult.confidence || 0.72, rawMatch.confidence || 0.72);
+                        if (snipVerified === false) conf = Math.min(conf, 0.50);
+                        console.log(`[SimpleSearch] [SHUFFLE] Fase 0 (snippets POSIÇÃO_DIFERENTE): rawAnswer → ${letter}) conf=${conf.toFixed(2)} verificada=${snipVerified}`);
                         snippetSources.push({
                             success: true, hostHint: 'search-snippets', link: '', title: `${snippetInputs.length} snippets de busca`,
                             letter, answerText: originalOptionsMap[letter], confidence: conf, evidence: snipResult.evidence || '',
-                            evidenceType: 'snippet', positionShifted: true, sourceOriginalLetter: snipResult.sourceLetter || null
+                            evidenceVerified: snipVerified,
+                            evidenceType: snipVerified === false ? 'ai-knowledge' : 'snippet',
+                            positionShifted: true, sourceOriginalLetter: snipResult.sourceLetter || null
                         });
                     } else {
                         console.log(`[SimpleSearch] [PIN] Fase 0 (snippets ENCONTRADO_FORA): "${snipResult.rawSourceAnswer.slice(0, 80)}"`);
@@ -1105,13 +1122,16 @@ export const SimpleSearchService = {
             if (scholarInputs.length >= 1) {
                 try {
                     const scholarExtracted = await ApiService.aiExtractFromSnippets(scholarInputs, questionForInference);
+                    const scholarCorpus = scholarInputs.map(s => `${s.title}. ${s.snippet}`).join('\n');
                     if (scholarExtracted?.answerText) {
                         const matchResult = OptionsMatchService.matchAnswerTextToOptions(scholarExtracted.answerText, originalOptionsMap);
                         if (matchResult?.letter) {
                             const letter = matchResult.letter;
-                            const conf = Math.min(scholarExtracted.confidence || 0.75, matchResult.confidence || 0.75);
+                            const scholarVerified = verifyEvidenceQuote(scholarExtracted.evidence || '', scholarCorpus);
+                            let conf = Math.min(scholarExtracted.confidence || 0.75, matchResult.confidence || 0.75);
+                            if (scholarVerified === false) conf = Math.min(conf, 0.50);
                             const positionShifted = !!(scholarExtracted.sourceLetter && scholarExtracted.sourceLetter !== letter);
-                            console.log(`[SimpleSearch] [STUDY] Fase 0.5 (Scholar): ${letter}) conf=${conf.toFixed(2)}`);
+                            console.log(`[SimpleSearch] [STUDY] Fase 0.5 (Scholar): ${letter}) conf=${conf.toFixed(2)} verificada=${scholarVerified}`);
                             sources.unshift({
                                 success: true,
                                 hostHint: 'scholar.google.com',
@@ -1121,7 +1141,8 @@ export const SimpleSearchService = {
                                 answerText: originalOptionsMap[letter],
                                 confidence: conf,
                                 evidence: scholarExtracted.evidence || '',
-                                evidenceType: 'scholar',
+                                evidenceVerified: scholarVerified,
+                                evidenceType: scholarVerified === false ? 'ai-knowledge' : 'scholar',
                                 positionShifted,
                                 sourceOriginalLetter: scholarExtracted.sourceLetter || null
                             });
@@ -1130,8 +1151,10 @@ export const SimpleSearchService = {
                         const rawMatch = OptionsMatchService.matchAnswerTextToOptions(scholarExtracted.rawSourceAnswer, originalOptionsMap);
                         if (rawMatch?.letter) {
                             const letter = rawMatch.letter;
-                            const conf = Math.min(scholarExtracted.confidence || 0.70, rawMatch.confidence || 0.70);
-                            console.log(`[SimpleSearch] [STUDY] Fase 0.5 (Scholar POSIÇÃO_DIFERENTE): ${letter}) conf=${conf.toFixed(2)}`);
+                            const scholarVerified = verifyEvidenceQuote(scholarExtracted.evidence || '', scholarCorpus);
+                            let conf = Math.min(scholarExtracted.confidence || 0.70, rawMatch.confidence || 0.70);
+                            if (scholarVerified === false) conf = Math.min(conf, 0.50);
+                            console.log(`[SimpleSearch] [STUDY] Fase 0.5 (Scholar POSIÇÃO_DIFERENTE): ${letter}) conf=${conf.toFixed(2)} verificada=${scholarVerified}`);
                             sources.unshift({
                                 success: true,
                                 hostHint: 'scholar.google.com',
@@ -1141,7 +1164,8 @@ export const SimpleSearchService = {
                                 answerText: originalOptionsMap[letter],
                                 confidence: conf,
                                 evidence: scholarExtracted.evidence || '',
-                                evidenceType: 'scholar',
+                                evidenceVerified: scholarVerified,
+                                evidenceType: scholarVerified === false ? 'ai-knowledge' : 'scholar',
                                 positionShifted: true,
                                 sourceOriginalLetter: scholarExtracted.sourceLetter || null
                             });
@@ -1412,37 +1436,83 @@ export const SimpleSearchService = {
         }
 
 
-        // ── Passo 5: Votação ponderada por confiança ──────────────────────────────
-        // Cada fonte vota na sua letra com peso = sua confidence (0.0 – 1.0).
-        // Fontes com positionShifted (remapeamento texto→letra bem-sucedido entre versões
-        // diferentes da questão) recebem bônus de +0.10 — é evidência forte de que o texto
-        // foi encontrado em outra prova e remapeado corretamente para a posição atual.
-        // Ex: A=1.70 (2 fontes), B=0.85 (1 fonte) → A vence com dominância 67%
-        const votes = {};
-        const voteCounts = {};
-        for (const src of sources) {
-            votes[src.letter] = (votes[src.letter] || 0) + (src.confidence || 0);
-            voteCounts[src.letter] = (voteCounts[src.letter] || 0) + 1;
+        // ── Passo 5: Votação ponderada por confiança (VoteTally) ──────────────────
+        // Votos de conhecimento da IA ('ai-knowledge' — evidência era o próprio
+        // enunciado) são CORRELACIONADOS: o mesmo modelo repetindo o mesmo palpite
+        // em páginas diferentes. O VoteTally colapsa esses votos (conta o máximo,
+        // não a soma) para não fabricar consenso a partir de uma única opinião.
+        let tally = tallySourceVotes(sources);
+
+        // ── Passo 5.5: Árbitro de raciocínio ──────────────────────────────────────
+        // Nenhuma fonte tem citação VERIFICADA no texto real da página → tudo que
+        // temos é palpite de LLM de extração (fraco). Questões geradas na hora pela
+        // Estácio não existem na web; a resposta precisa vir de RACIOCÍNIO. Aciona
+        // o modelo FORTE, alternativa por alternativa, com o conhecimento coletado.
+        if (!tally.hasGroundedEvidence) {
+            try {
+                if (typeof onStatus === 'function') onStatus(' Nenhuma fonte confirma — raciocinando com modelo forte…');
+                console.log(`[SimpleSearch] [ARBITER] Nenhuma evidência verificada (${sources.length} voto(s) de conhecimento) — acionando raciocínio com modelo forte`);
+                const knowledgePool = allAttempts
+                    .filter(a => a.hasRawAnswer && a.rawAnswer)
+                    .map(a => ({ host: a.hostHint || a.link || 'fonte', text: a.rawAnswer }))
+                    .slice(0, 5);
+                const arb = await ApiService.aiAnswerFromKnowledge(questionForInference, knowledgePool);
+                if (arb?.content) {
+                    const parsedArb = parseAiExtractionResponse(arb.content, {});
+                    let arbLetter = null;
+                    if (parsedArb.answerText) {
+                        arbLetter = OptionsMatchService.findLetterByAnswerText(parsedArb.answerText, originalOptionsMap);
+                    }
+                    if (!arbLetter && parsedArb.letter && originalOptionsMap[parsedArb.letter]) {
+                        arbLetter = parsedArb.letter;
+                    }
+                    if (arbLetter) {
+                        console.log(`[SimpleSearch] [ARBITER] ${arb.provider} concluiu: ${arbLetter}) ${(originalOptionsMap[arbLetter] || '').slice(0, 70)}`);
+                        sources.push({
+                            success: true,
+                            hostHint: `ia-raciocinio-${arb.provider}`,
+                            link: '',
+                            title: `IA raciocínio (${arb.provider})`,
+                            letter: arbLetter,
+                            answerText: originalOptionsMap[arbLetter],
+                            confidence: 0.78,
+                            evidence: (parsedArb.knowledge || '').slice(0, 500),
+                            evidenceVerified: null,
+                            evidenceType: 'ai-reasoning'
+                        });
+                        tally = tallySourceVotes(sources);
+                    } else {
+                        console.log('[SimpleSearch] [ARBITER] resposta sem letra mapeável — mantendo votação original');
+                    }
+                } else {
+                    console.log('[SimpleSearch] [ARBITER] nenhum modelo forte respondeu — mantendo votação original');
+                }
+            } catch (arbErr) {
+                console.warn('[SimpleSearch] [ARBITER] erro:', arbErr?.message || arbErr);
+            }
         }
 
-        // Desempate estável: score → nº de fontes → ordem alfabética
-        const sorted = Object.entries(votes).sort((a, b) =>
-            b[1] - a[1] || (voteCounts[b[0]] || 0) - (voteCounts[a[0]] || 0) || a[0].localeCompare(b[0])
-        );
-        const [bestLetter, bestScore] = sorted[0];
-        const totalScore = Object.values(votes).reduce((a, b) => a + b, 0);
-        // dominância: fração do score total que a letra vencedora recebeu (0.0 – 1.0)
-        const dominance = totalScore > 0 ? bestScore / totalScore : 0;
+        const votes = tally.votes;
+        const bestLetter = tally.bestLetter;
+        const dominance = tally.dominance;
 
         // finalConfidence: combinação de unanimidade (dominance) e quantidade de fontes.
         // - sources.length/2 penaliza quando só uma fonte votou (0.5 máx com 1 fonte)
         // - Cap em 0.99 (nunca 100% — sempre há incerteza)
-        const finalConfidence = Math.min(0.99, dominance * Math.min(1.0, sources.length / 2));
+        let finalConfidence = Math.min(0.99, dominance * Math.min(1.0, sources.length / 2));
 
         // resultState: lido por PopupController para decidir cor/ícone do resultado
         // 'confirmed' = ≥2 fontes concordam E dominância ≥60% → resultado confiável
         // 'suggested' = apenas 1 fonte, ou fontes divergem → resultado menos confiável
-        const resultState = sources.length >= 2 && dominance >= 0.6 ? 'confirmed' : 'suggested';
+        let resultState = sources.length >= 2 && dominance >= 0.6 ? 'confirmed' : 'suggested';
+
+        // Sem NENHUMA evidência verificada em página real, o resultado é opinião de
+        // IA — nunca apresentar como "confirmado" nem com 99% de confiança (foi assim
+        // que 3 palpites idênticos do modelo 8B viraram "confirmed 99%").
+        if (!tally.hasGroundedEvidence) {
+            resultState = 'suggested';
+            finalConfidence = Math.min(finalConfidence, 0.78);
+        }
 
         const answerText = originalOptionsMap[bestLetter] || '';
 
