@@ -299,8 +299,13 @@ function renderCode() {
 
 function renderDone() {
   const ex = dojo.exercise;
+  const CONFETTI_COLORS = ['#FF6B6B', '#339AF0', '#40C057', '#BE4BDB', '#FF922B'];
+  const confetti = Array.from({ length: 18 }, (_, i) =>
+    `<i style="left:${(i * 57 + 7) % 100}%;background:${CONFETTI_COLORS[i % CONFETTI_COLORS.length]};animation-delay:${(i % 9) * 0.13}s;animation-duration:${2.1 + (i % 5) * 0.3}s"></i>`
+  ).join('');
   root.innerHTML = `
     <div class="dojo-done">
+      <div class="dojo-confetti" aria-hidden="true">${confetti}</div>
       <div class="dojo-done-icon">🦊🎉</div>
       <h2 class="view-title">Você escreveu ${esc(ex.title)} sozinho!</h2>
       <p class="view-subtitle">Sem tutorial, sem copiar — plano seu, código seu. É assim que se aprende de verdade.</p>

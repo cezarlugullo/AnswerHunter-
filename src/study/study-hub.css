@@ -9697,3 +9697,128 @@ select:focus-visible,
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SKIN v5.2 — CAMADA DE MOVIMENTO
+   O que faz uma interface parecer viva: transição entre views, elevação
+   do topo ao rolar, física de pressão nos controles e celebração no Dojo.
+   Tudo desligado sob prefers-reduced-motion.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Transição entre views (View Transition API) ──
+   A sidebar responde na hora; só o conteúdo faz o crossfade com subida. */
+
+main.content {
+  view-transition-name: hub-main;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+::view-transition-old(hub-main) {
+  animation: vt-leave 0.16s ease both;
+}
+
+::view-transition-new(hub-main) {
+  animation: vt-enter 0.30s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+@keyframes vt-leave {
+  to { opacity: 0; }
+}
+
+@keyframes vt-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  main.content {
+    view-transition-name: none;
+  }
+}
+
+/* ── Topbar: plano quando o conteúdo está no topo, elevado quando rola ── */
+
+.topbar {
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.topbar.is-scrolled {
+  box-shadow: 0 10px 28px -14px rgba(var(--color-accent-rgb), 0.22),
+              var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.08));
+  border-bottom-color: color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
+}
+
+/* ── Física de pressão: os controles afundam sob o dedo ── */
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn:active:not(:disabled) {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  .icon-btn:active,
+  .panel-action:active {
+    transform: scale(0.9);
+  }
+
+  .nav-item:active {
+    transform: scale(0.985);
+  }
+
+  .chip:active,
+  .sort-btn:active {
+    transform: scale(0.95);
+  }
+
+  .practice-mode-card:active,
+  .dojo-ex-card:active {
+    transform: translateY(1px) scale(0.99);
+  }
+}
+
+/* ── Dojo: chuva de confete na conclusão do exercício ── */
+
+.dojo-done {
+  position: relative;
+  overflow: hidden;
+}
+
+.dojo-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.dojo-confetti i {
+  position: absolute;
+  top: -16px;
+  width: 8px;
+  height: 13px;
+  border-radius: 2px;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dojo-confetti i {
+    animation: dojo-confetti-fall 2.6s ease-in both;
+  }
+}
+
+@keyframes dojo-confetti-fall {
+  0% {
+    opacity: 0;
+    transform: translateY(0) rotate(0deg);
+  }
+  8% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(75vh) rotate(560deg);
+  }
+}

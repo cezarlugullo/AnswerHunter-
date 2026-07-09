@@ -230,23 +230,31 @@ function navigateTo(viewId) {
     }
   });
 
-  // Show/hide panels 
-  $$('.view-panel').forEach(panel => {
-    const isTarget = panel.id === `view${capitalize(viewId)}`;
-    panel.classList.toggle('active', isTarget);
-  });
+  // Show/hide panels + breadcrumb (com transição suave quando o browser suporta)
+  const applyView = () => {
+    $$('.view-panel').forEach(panel => {
+      const isTarget = panel.id === `view${capitalize(viewId)}`;
+      panel.classList.toggle('active', isTarget);
+    });
 
-  // Update breadcrumb
-  const bc = $('#breadcrumb');
-  if (bc) {
-    const label = VIEW_LABELS[viewId] || capitalize(viewId);
-    if (viewId === 'home') {
-      bc.innerHTML = `<span class="breadcrumb-item active">${label}</span>`;
-    } else {
-      bc.innerHTML = `<a class="breadcrumb-item" data-view="home" href="#home">Início</a>
-        <span class="material-symbols-rounded breadcrumb-sep" style="font-size:16px;color:var(--color-text-tertiary)">chevron_right</span>
-        <span class="breadcrumb-item active">${label}</span>`;
+    const bc = $('#breadcrumb');
+    if (bc) {
+      const label = VIEW_LABELS[viewId] || capitalize(viewId);
+      if (viewId === 'home') {
+        bc.innerHTML = `<span class="breadcrumb-item active">${label}</span>`;
+      } else {
+        bc.innerHTML = `<a class="breadcrumb-item" data-view="home" href="#home">Início</a>
+          <span class="material-symbols-rounded breadcrumb-sep" style="font-size:16px;color:var(--color-text-tertiary)">chevron_right</span>
+          <span class="breadcrumb-item active">${label}</span>`;
+      }
     }
+  };
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!isSameView && !reduceMotion && document.startViewTransition) {
+    document.startViewTransition(applyView);
+  } else {
+    applyView();
   }
 
   // Lazy-load view data (skip if same view already loaded)
@@ -445,6 +453,7 @@ function initKeyboard() {
       'r': 'review',
       'p': 'practice',
       'f': 'practice',
+      'd': 'dojo',
       'i': 'insights',
       'y': 'history',
     };

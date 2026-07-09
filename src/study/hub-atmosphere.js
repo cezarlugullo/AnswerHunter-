@@ -33,6 +33,19 @@
     bubble.textContent = pool[Math.floor(Math.random() * pool.length)];
   }
 
+  // Topbar ganha elevação quando o conteúdo rola por baixo dele
+  const topbar = document.querySelector('.topbar');
+  if (topbar) {
+    const scroller = document.getElementById('content');
+    const onScroll = () => {
+      const y = window.scrollY + (scroller ? scroller.scrollTop : 0);
+      topbar.classList.toggle('is-scrolled', y > 8);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    if (scroller) scroller.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  }
+
   const glow = document.getElementById('ah-glow-bg');
   if (!glow) return;
 
