@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="AnswerHunter Study Hub - Sistema de aprendizado inteligente com revisão espaçada">
-  <meta name="theme-color" content="#3D4E6B">
+  <meta name="theme-color" content="#FF6B6B">
 
   <title>AnswerHunter Study Hub</title>
 
@@ -17,6 +17,10 @@
 </head>
 
 <body>
+
+  <!-- Coral atmosphere: static aurora + interactive glow (follows mouse) -->
+  <div class="hub-aurora" aria-hidden="true"></div>
+  <div id="ah-glow-bg" class="ah-glow-bg" aria-hidden="true"></div>
 
   <!-- Skip navigation for keyboard users -->
   <a href="#content" class="skip-link">Ir para conteúdo principal</a>
@@ -645,8 +649,10 @@
         <section class="view view-panel" id="viewPractice" aria-label="Prática">
           <div class="view-inner">
             <div class="view-header">
-              <h1 class="view-title">Prática</h1>
-              <p class="view-subtitle">Teste seu conhecimento com diferentes modalidades</p>
+              <div>
+                <h1 class="view-title">Prática</h1>
+                <p class="view-subtitle">Teste seu conhecimento com diferentes modalidades</p>
+              </div>
             </div>
 
             <div class="practice-modes">
@@ -1114,6 +1120,9 @@
 
   </div>
 
+  <!-- Dev-mode Chrome API mock — auto-skipped when running as a real extension -->
+  <script src="../popup/chrome-mock.js"></script>
+  <script src="hub-atmosphere.js"></script>
   <script type="module" src="study-hub.js"></script>
 </body>
 

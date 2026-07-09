@@ -179,14 +179,19 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   STUDY HUB — DESIGN SYSTEM (v3.0 · Warm Gold)
+   STUDY HUB — DESIGN SYSTEM (v4.0 · Coral Atelier)
    ═══════════════════════════════════════════════════════════════════════════
 
-   Identity:  Warm, confident study platform — energy, achievement, focus.
-   Primary:   Warm Gold #FFB14C — warmth, confidence, progress.
-   Secondary: Deep Indigo #484BB4 — intelligence, trust, depth.
-   Tertiary:  Emerald #35B279 — success, growth, mastery.
-   Theme:     Light + Dark via [data-theme] attribute on <html>.
+   Identity:  One product with the popup — light, playful, glass-touched.
+   Primary:   Coral #FF6B6B — the AnswerHunter brand color.
+   Secondary: Sky Blue #339AF0 — info, XP, secondary actions.
+   Tertiary:  Mint #40C057 — success, growth, mastery.
+   AI:        Lavender #BE4BDB.  Streak: Orange #FF922B.
+   Theme:     Light (warm white #FFF8F5) + Dark (plum charcoal #16121B)
+              via [data-theme] attribute on <html>.
+   Signature: coral aurora atmosphere + mouse-follow glow (#ah-glow-bg),
+              glass sidebar/topbar. Surface overrides live in the
+              "SKIN v4" layer at the end of this file.
 
    ┌─────────────────────────────────────────────────────────────────────┐
    │  COLOR PALETTE                                                     │
@@ -296,82 +301,82 @@
   --sp-16: 4rem;
   --sp-20: 5rem;
 
-  /* ── Light Theme — Warm Gold / Indigo / Emerald Palette ── */
-  --color-bg: #FAF9F6;
+  /* ── Light Theme — Coral Atelier (one identity with the popup) ── */
+  --color-bg: #FFF8F5;
   --color-surface: #FFFFFF;
   --color-surface-raised: #FFFFFF;
-  --color-surface-hover: #F5F3EF;
-  --color-border: #E6E2DA;
-  --color-border-strong: #D1CCC2;
+  --color-surface-hover: #FFF1EC;
+  --color-border: #F3E4DE;
+  --color-border-strong: #E7D0C7;
 
   /* Text hierarchy */
-  --color-text-primary: #1C1917;
-  --color-text-secondary: #6B6560;
-  --color-text-tertiary: #9C958E;
+  --color-text-primary: #212529;
+  --color-text-secondary: #66707A;
+  --color-text-tertiary: #9AA3AC;
   --color-text-inverse: #FFFFFF;
 
-  /* Primary: Warm Gold — main CTA, active nav, progress, links */
-  --color-accent: #FFB14C;
-  --color-accent-light: #FFF5E6;
-  --color-accent-hover: #E99425;
-  --color-accent-muted: #FFCE8F;
-  --color-accent-rgb: 255, 177, 76;
-  --color-accent-text: #1C1917;  /* dark text on gold buttons for contrast */
-  --color-accent-on-surface: #9A6400;  /* WCAG AA safe gold for text on light backgrounds (4.6:1) */
+  /* Primary: Coral — main CTA, active nav, progress, links */
+  --color-accent: #FF6B6B;
+  --color-accent-light: #FFF0EE;
+  --color-accent-hover: #E85D5D;
+  --color-accent-muted: #FFB3B3;
+  --color-accent-rgb: 255, 107, 107;
+  --color-accent-text: #FFFFFF;
+  --color-accent-on-surface: #D6455B;  /* WCAG AA safe coral for text on light backgrounds */
 
-  /* Secondary: Deep Indigo — info badges, secondary actions */
-  --color-ochre: #484BB4;
-  --color-ochre-light: #EDEDFA;
-  --color-ochre-muted: #2E31A3;
+  /* Secondary: Sky Blue — info badges, secondary actions, XP */
+  --color-ochre: #339AF0;
+  --color-ochre-light: #E7F5FF;
+  --color-ochre-muted: #1C7ED6;
 
   /* Semantic states */
-  --color-success: #35B279;
-  --color-success-light: #E4F9EE;
-  --color-success-hover: #19A163;
-  --color-warning: #E99425;
-  --color-warning-light: #FFF5E6;
-  --color-warning-hover: #C47A1A;
-  --color-error: #EF4444;
-  --color-error-light: #FEE2E2;
-  --color-error-hover: #DC2626;
-  --color-danger: #EF4444;
-  --color-danger-bg: #FEF2F2;
-  --color-danger-border: #FECACA;
-  --color-success-bg: #ECFDF5;
-  --color-warning-bg: #FFFBEB;
-  --color-info: #484BB4;
-  --color-info-light: #EDEDFA;
-  --color-info-hover: #2E31A3;
+  --color-success: #40C057;
+  --color-success-light: #EBFBEE;
+  --color-success-hover: #2F9E44;
+  --color-warning: #F59F00;
+  --color-warning-light: #FFF4E6;
+  --color-warning-hover: #E67700;
+  --color-error: #E03131;
+  --color-error-light: #FFE9E9;
+  --color-error-hover: #C92A2A;
+  --color-danger: #E03131;
+  --color-danger-bg: #FFF5F5;
+  --color-danger-border: #FFC9C9;
+  --color-success-bg: #EBFBEE;
+  --color-warning-bg: #FFF9EF;
+  --color-info: #339AF0;
+  --color-info-light: #E7F5FF;
+  --color-info-hover: #1C7ED6;
 
   /* Mastery tiers */
-  --color-new: #8B8DDF;
-  --color-attempted: #FFBE6B;
-  --color-familiar: #54CA94;
-  --color-proficient: #7DDFB2;
-  --color-mastered: #FFB14C;
+  --color-new: #74C0FC;
+  --color-attempted: #FFA94D;
+  --color-familiar: #69DB7C;
+  --color-proficient: #38D9A9;
+  --color-mastered: #FF6B6B;
 
   /* AI feature accent */
-  --color-ai: #6669CB;
-  --color-ai-light: #EDEDFA;
-  --color-ai-dark: #484BB4;
+  --color-ai: #BE4BDB;
+  --color-ai-light: #F8F0FC;
+  --color-ai-dark: #9C36B5;
 
   /* Streak accent */
-  --color-streak: #E99425;
-  --color-streak-light: #FFF5E6;
+  --color-streak: #FF922B;
+  --color-streak-light: #FFF4E6;
 
-  /* Shadows — warm tint for cohesion */
-  --shadow-sm: 0 1px 2px rgba(28, 25, 23, 0.04), 0 1px 3px rgba(28, 25, 23, 0.06);
-  --shadow-md: 0 4px 12px rgba(28, 25, 23, 0.06), 0 2px 4px rgba(28, 25, 23, 0.04);
-  --shadow-lg: 0 10px 24px rgba(28, 25, 23, 0.08), 0 4px 8px rgba(28, 25, 23, 0.04);
-  --shadow-xl: 0 20px 40px rgba(28, 25, 23, 0.12), 0 8px 16px rgba(28, 25, 23, 0.06);
-  --shadow-accent: 0 4px 14px rgba(255, 177, 76, 0.3), 0 2px 6px rgba(255, 177, 76, 0.18);
+  /* Shadows — soft warm neutrals */
+  --shadow-sm: 0 1px 2px rgba(92, 51, 43, 0.05), 0 1px 3px rgba(92, 51, 43, 0.06);
+  --shadow-md: 0 4px 12px rgba(92, 51, 43, 0.07), 0 2px 4px rgba(92, 51, 43, 0.05);
+  --shadow-lg: 0 12px 28px rgba(92, 51, 43, 0.09), 0 4px 8px rgba(92, 51, 43, 0.05);
+  --shadow-xl: 0 20px 44px rgba(92, 51, 43, 0.12), 0 8px 16px rgba(92, 51, 43, 0.06);
+  --shadow-accent: 0 4px 14px rgba(255, 107, 107, 0.28), 0 2px 6px rgba(255, 107, 107, 0.16);
 
-  /* Radii - Softer, rounded edges */
+  /* Radii — tighter, contemporary */
   --radius-sm: 8px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
-  --radius-xl: 32px;
-  --radius-2xl: 40px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 26px;
   --radius-full: 9999px;
 
   /* Transitions */
@@ -477,82 +482,62 @@
 }
 
 [data-theme="dark"] {
-  --color-bg: #09090b;
-  --color-surface: #121214;
-  --color-surface-raised: #18181b;
-  --color-surface-hover: #27272a;
-  --color-border: rgba(255, 255, 255, 0.08); /* Minimalist super thin border */
-  --color-border-strong: rgba(255, 255, 255, 0.15);
-  --color-text-primary: #ededef;
-  --color-text-secondary: #a1a1aa;
-  --color-text-tertiary: #71717a;
-  --color-accent: #facc15; /* Neon-like Gold */
-  --color-accent-light: rgba(250, 204, 21, 0.12);
-  --color-accent-hover: #eab308;
-  --color-accent-muted: rgba(250, 204, 21, 0.3);
-  --color-accent-rgb: 250, 204, 21;
-  --color-accent-text: #09090b;
-  --color-accent-on-surface: #facc15;
-  --color-ochre: #818cf8; /* Tech Indigo */
-  --color-ochre-light: rgba(129, 140, 248, 0.15);
-  --color-ochre-muted: rgba(129, 140, 248, 0.5);
-  --color-success: #34d399; /* Emerald */
-  --color-success-light: rgba(52, 211, 153, 0.12);
-  --color-success-hover: #10b981;
-  --color-warning: #fbbf24;
-  --color-warning-light: rgba(251, 191, 36, 0.12);
-  --color-warning-hover: #f59e0b;
-  --color-error: #f87171;
-  --color-error-light: rgba(248, 113, 113, 0.12);
-  --color-error-hover: #ef4444;
-  --color-danger: #f87171;
-  --color-danger-bg: rgba(248, 113, 113, 0.12);
-  --color-danger-border: rgba(248, 113, 113, 0.3);
-  --color-success-bg: rgba(52, 211, 153, 0.12);
-  --color-warning-bg: rgba(251, 191, 36, 0.12);
-  --color-info: #60a5fa;
-  --color-info-light: rgba(96, 165, 250, 0.12);
-  --color-info-hover: #3b82f6;
-  /* Gold on dark bg is naturally high-contrast */
-  --color-ochre: #B9BBF1;
-  --color-ochre-light: #1C1C36;
-  --color-ochre-muted: #8B8DDF;
-  --color-success: #54CA94;
-  --color-success-light: #0F2E1F;
-  --color-success-hover: #35B279;
-  --color-warning: #FFBE6B;
-  --color-warning-light: #3D2E10;
-  --color-warning-hover: #E99425;
-  --color-error: #F87171;
-  --color-error-light: #3D1515;
-  --color-error-hover: #EF4444;
-  --color-danger: #F87171;
-  --color-danger-bg: #3D1515;
-  --color-danger-border: #7F1D1D;
-  --color-success-bg: #0F2E1F;
-  --color-warning-bg: #3D2E10;
-  --color-info: #8B8DDF;
-  --color-info-light: #1C1C36;
-  --color-info-hover: #6669CB;
+  /* Warm plum-charcoal — echoes the coral identity instead of generic zinc */
+  --color-bg: #16121B;
+  --color-surface: #1E1925;
+  --color-surface-raised: #26202F;
+  --color-surface-hover: #2E2739;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+  --color-text-primary: #F2EEF3;
+  --color-text-secondary: #A89FB2;
+  --color-text-tertiary: #776D82;
+  --color-accent: #FF7B7B;
+  --color-accent-light: rgba(255, 123, 123, 0.14);
+  --color-accent-hover: #E85D5D;
+  --color-accent-muted: rgba(255, 123, 123, 0.35);
+  --color-accent-rgb: 255, 123, 123;
+  --color-accent-text: #1C1017;
+  --color-accent-on-surface: #FF8F8F;
+  --color-ochre: #74C0FC;
+  --color-ochre-light: rgba(116, 192, 252, 0.14);
+  --color-ochre-muted: #4DABF7;
+  --color-success: #69DB7C;
+  --color-success-light: rgba(105, 219, 124, 0.13);
+  --color-success-hover: #40C057;
+  --color-warning: #FFC078;
+  --color-warning-light: rgba(255, 192, 120, 0.13);
+  --color-warning-hover: #FFA94D;
+  --color-error: #FF8787;
+  --color-error-light: rgba(255, 135, 135, 0.14);
+  --color-error-hover: #FA5252;
+  --color-danger: #FF8787;
+  --color-danger-bg: rgba(255, 135, 135, 0.12);
+  --color-danger-border: rgba(255, 135, 135, 0.32);
+  --color-success-bg: rgba(105, 219, 124, 0.12);
+  --color-warning-bg: rgba(255, 192, 120, 0.12);
+  --color-info: #74C0FC;
+  --color-info-light: rgba(116, 192, 252, 0.14);
+  --color-info-hover: #4DABF7;
   /* Mastery tiers (dark) */
-  --color-new: #B9BBF1;
-  --color-attempted: #FFD4A3;
-  --color-familiar: #7DDFB2;
-  --color-proficient: #AFF1D3;
-  --color-mastered: #FFCE8F;
+  --color-new: #74C0FC;
+  --color-attempted: #FFC078;
+  --color-familiar: #8CE99A;
+  --color-proficient: #63E6BE;
+  --color-mastered: #FF8F8F;
   /* AI (dark) */
-  --color-ai: #B9BBF1;
-  --color-ai-light: #1C1C36;
-  --color-ai-dark: #8B8DDF;
+  --color-ai: #E599F7;
+  --color-ai-light: rgba(229, 153, 247, 0.13);
+  --color-ai-dark: #DA77F2;
   /* Streak (dark) */
-  --color-streak: #FFBE6B;
-  --color-streak-light: #3D2E10;
+  --color-streak: #FFA94D;
+  --color-streak-light: rgba(255, 169, 77, 0.13);
   /* Shadows (dark) */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
   --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.5), 0 8px 16px rgba(0, 0, 0, 0.3);
-  --shadow-accent: 0 4px 14px rgba(255, 206, 143, 0.2), 0 2px 6px rgba(255, 206, 143, 0.12);
+  --shadow-accent: 0 4px 14px rgba(255, 123, 123, 0.22), 0 2px 6px rgba(255, 123, 123, 0.14);
   /* Elevation (dark) */
   --elevation-0: none;
   --elevation-1: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -8644,3 +8629,223 @@ select:focus-visible,
 /* Custom chevron */
 
 /* Content wrapper */
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SKIN v4 — CORAL ATELIER · SURFACE LAYER
+   Placed last on purpose: equal-specificity rules here win the cascade.
+   Tokens above already recolor every component; this layer reshapes the
+   large surfaces (atmosphere, glass rail, panels) to match the popup.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Atmosphere: coral aurora (static) + mouse-follow glow (signature) ── */
+
+.hub-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hub-aurora::before {
+  content: '';
+  position: absolute;
+  top: -220px;
+  left: -160px;
+  width: 640px;
+  height: 640px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+      rgba(var(--color-accent-rgb), 0.10) 0%,
+      rgba(255, 154, 60, 0.05) 45%,
+      transparent 70%);
+  filter: blur(40px);
+}
+
+.hub-aurora::after {
+  content: '';
+  position: absolute;
+  bottom: -260px;
+  right: -180px;
+  width: 720px;
+  height: 720px;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+      rgba(77, 171, 247, 0.07) 0%,
+      rgba(218, 119, 242, 0.045) 45%,
+      transparent 70%);
+  filter: blur(48px);
+}
+
+.ah-glow-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(520px circle at var(--glow-x, 75%) var(--glow-y, 15%),
+      rgba(var(--color-accent-rgb), 0.08),
+      rgba(255, 154, 60, 0.04) 45%,
+      transparent 70%);
+  transition: opacity var(--dur-slow) var(--ease-smooth);
+}
+
+[data-theme="dark"] .hub-aurora::before {
+  background: radial-gradient(circle,
+      rgba(var(--color-accent-rgb), 0.09) 0%,
+      rgba(218, 119, 242, 0.04) 45%,
+      transparent 70%);
+}
+
+[data-theme="dark"] .ah-glow-bg {
+  background: radial-gradient(560px circle at var(--glow-x, 75%) var(--glow-y, 15%),
+      rgba(var(--color-accent-rgb), 0.10),
+      rgba(218, 119, 242, 0.05) 45%,
+      transparent 70%);
+}
+
+/* Content sits above the atmosphere */
+.app-shell {
+  position: relative;
+  z-index: 1;
+  background-color: transparent;
+}
+
+/* Soften the grain (popup uses a whisper, not a statement) */
+:root {
+  --grain-opacity: 0.012;
+}
+
+[data-theme="dark"] {
+  --grain-opacity: 0.02;
+}
+
+/* ── Sidebar: floating glass rail ── */
+
+.sidebar {
+  background-color: color-mix(in srgb, var(--color-surface) 66%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .sidebar {
+  background-color: color-mix(in srgb, var(--color-surface) 55%, transparent);
+}
+
+.brand-name {
+  background: linear-gradient(120deg, var(--color-accent), #FF9A3C);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="dark"] .brand-name {
+  background: linear-gradient(120deg, var(--color-accent), #FFB86B);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+/* Active nav item: quiet coral pill */
+.nav-item.active {
+  background: var(--color-accent-light);
+  color: var(--color-accent-on-surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+/* ── Topbar: glass strip over the aurora ── */
+
+.topbar {
+  background-color: color-mix(in srgb, var(--color-surface) 62%, transparent);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+}
+
+[data-theme="dark"] .topbar {
+  background-color: color-mix(in srgb, var(--color-surface) 55%, transparent);
+}
+
+/* ── Panels: clean cards, no gold spine ── */
+
+.panel::before {
+  display: none;
+}
+
+.panel {
+  box-shadow: var(--shadow-sm);
+  border-color: color-mix(in srgb, var(--color-border) 85%, transparent);
+}
+
+.panel:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Study card: soft elevation (was carrying a dark-mode shadow in light) ── */
+
+.study-card {
+  box-shadow: var(--shadow-lg);
+  border-color: color-mix(in srgb, var(--color-border) 85%, transparent);
+}
+
+[data-theme="dark"] .study-card {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* ── Stat cards: lift gently, coral top thread comes from tokens ── */
+
+.stat-card {
+  box-shadow: var(--shadow-sm);
+}
+
+.stat-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+/* ── Scrollbars: slim + coral on hover ── */
+
+.content::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.content::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text-tertiary) 35%, transparent);
+  border-radius: var(--radius-full);
+}
+
+.content::-webkit-scrollbar-thumb:hover,
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-muted);
+}
+
+.content::-webkit-scrollbar-track,
+.sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── Focus ring: coral, consistent everywhere ── */
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ── Reduced motion / reduced transparency: atmosphere is decorative ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .hub-aurora,
+  .ah-glow-bg {
+    display: none;
+  }
+
+  .sidebar,
+  .topbar {
+    background-color: var(--color-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
