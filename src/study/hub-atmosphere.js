@@ -16,6 +16,23 @@
     dateEl.textContent = pretty.replace(', ', ' · ');
   }
 
+  // Balão do mascote — uma frase por visita, sensível à hora do dia
+  const bubble = document.getElementById('mascotBubble');
+  if (bubble) {
+    const h = new Date().getHours();
+    const pool = [
+      'Pronto pra caçar respostas?',
+      'Um passo de cada vez — igual no Dojo.',
+      'Revisar hoje é lembrar na prova.',
+      'Nenhuma tela em branco por aqui.',
+      'Sessões curtas, streaks longas.'
+    ];
+    if (h >= 5 && h < 12) pool.push('Um café e três cards pra começar?');
+    else if (h >= 12 && h < 19) pool.push('Uma revisão rápida agora à tarde?');
+    else pool.push('Sessão curtinha e sono em dia.');
+    bubble.textContent = pool[Math.floor(Math.random() * pool.length)];
+  }
+
   const glow = document.getElementById('ah-glow-bg');
   if (!glow) return;
 
