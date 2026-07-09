@@ -6,6 +6,16 @@
 (() => {
   'use strict';
 
+  // Hero date line — "Quarta-feira · 9 de julho"
+  const dateEl = document.getElementById('heroDate');
+  if (dateEl) {
+    const raw = new Intl.DateTimeFormat('pt-BR', {
+      weekday: 'long', day: 'numeric', month: 'long'
+    }).format(new Date());
+    const pretty = raw.charAt(0).toUpperCase() + raw.slice(1);
+    dateEl.textContent = pretty.replace(', ', ' · ');
+  }
+
   const glow = document.getElementById('ah-glow-bg');
   if (!glow) return;
 

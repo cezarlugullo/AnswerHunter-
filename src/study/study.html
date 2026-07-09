@@ -77,6 +77,10 @@
             <span class="material-symbols-rounded nav-icon">exercise</span>
             <span class="nav-label">Prática</span>
           </a>
+          <a class="nav-item" data-view="dojo" data-tooltip="Dojo de Código" href="#dojo">
+            <span class="material-symbols-rounded nav-icon">terminal</span>
+            <span class="nav-label">Dojo de Código</span>
+          </a>
           <a class="nav-item" data-view="history" data-tooltip="Histórico" href="#history">
             <span class="material-symbols-rounded nav-icon">history</span>
             <span class="nav-label">Histórico</span>
@@ -176,23 +180,22 @@
         <section class="view view-panel active" id="viewHome" aria-label="Início">
           <div class="view-inner">
 
-            <div class="home-header">
-              <div class="home-header-content">
-                <div class="home-mascot">
-                  <img src="../../icons/mascot.gif?v=3" alt="Mascote AnswerHunter Animado">
-                </div>
-                <div class="home-greeting">
-                  <h1 class="greeting-text" id="greeting">Bom dia</h1>
-                  <p class="greeting-sub" id="homeSummary">Vamos continuar de onde paramos?</p>
+            <header class="home-hero">
+              <div class="hero-copy">
+                <p class="hero-eyebrow"><span id="heroDate">Hoje</span></p>
+                <h1 class="greeting-text" id="greeting">Bom dia</h1>
+                <p class="greeting-sub" id="homeSummary">Vamos continuar de onde paramos?</p>
+                <div class="hero-actions">
+                  <button class="btn btn-primary btn-lg" id="heroCta">
+                    <span class="material-symbols-rounded">play_arrow</span>
+                    <span id="heroCtaLabel">Iniciar revisão</span>
+                  </button>
                 </div>
               </div>
-              <div class="home-header-actions">
-                <button class="btn btn-primary" id="heroCta">
-                  <span class="material-symbols-rounded">play_arrow</span>
-                  <span id="heroCtaLabel">Iniciar revisão</span>
-                </button>
+              <div class="hero-mascot" aria-hidden="true">
+                <img src="../../icons/mascot.gif?v=3" alt="">
               </div>
-            </div>
+            </header>
 
             <div class="stats-row" role="region" aria-label="Estatísticas de hoje">
               <div class="stat-card">
@@ -308,6 +311,7 @@
           <div class="view-inner">
             <div class="view-header">
               <div>
+                <p class="view-eyebrow">Acervo</p>
                 <h1 class="view-title">Biblioteca</h1>
                 <p class="view-subtitle" id="libSubtitle">Gerencie suas disciplinas e conteúdos</p>
               </div>
@@ -373,6 +377,7 @@
 
             <div id="studySetup" class="study-setup">
               <div class="study-setup-header">
+                <p class="view-eyebrow">Foco</p>
                 <h1 class="view-title">Sessão de Estudo</h1>
                 <p class="view-subtitle">Configure sua sessão e comece a estudar</p>
               </div>
@@ -560,6 +565,7 @@
           <div class="view-inner">
             <div class="view-header">
               <div>
+                <p class="view-eyebrow">Memória de longo prazo</p>
                 <h1 class="view-title">Fila de Revisão</h1>
                 <p class="view-subtitle" id="reviewSubtitle">Revisão espaçada com algoritmo FSRS</p>
               </div>
@@ -650,6 +656,7 @@
           <div class="view-inner">
             <div class="view-header">
               <div>
+                <p class="view-eyebrow">Treino</p>
                 <h1 class="view-title">Prática</h1>
                 <p class="view-subtitle">Teste seu conhecimento com diferentes modalidades</p>
               </div>
@@ -803,11 +810,17 @@
           </div>
         </section>
 
+        <!-- VIEW: DOJO DE CÓDIGO -->
+        <section class="view view-panel" id="viewDojo" aria-label="Dojo de Código">
+          <div class="view-inner"><!-- renderizado por dojo.js --></div>
+        </section>
+
         <!-- VIEW: PLANNING -->
         <section class="view view-panel" id="viewPlanning" aria-label="Planejamento">
           <div class="view-inner">
             <div class="view-header">
               <div>
+                <p class="view-eyebrow">Rota de estudo</p>
                 <h1 class="view-title">Planejamento</h1>
                 <p class="view-subtitle">Organize sua jornada de aprendizado</p>
               </div>
@@ -894,6 +907,7 @@
           <div class="view-inner">
             <div class="view-header">
               <div>
+                <p class="view-eyebrow">Progresso</p>
                 <h1 class="view-title">Insights</h1>
                 <p class="view-subtitle">Seu progresso, consistência e evolução</p>
               </div>
@@ -988,6 +1002,7 @@
           <div class="view-inner">
             <div class="view-header">
               <div>
+                <p class="view-eyebrow">Linha do tempo</p>
                 <h1 class="view-title">Histórico</h1>
                 <p class="view-subtitle">Sua jornada de estudo, sessão a sessão</p>
               </div>

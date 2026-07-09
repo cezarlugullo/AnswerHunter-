@@ -27,6 +27,7 @@ import { MigrationService } from '../services/MigrationService.js';
 import { ElevenLabsTTSService } from '../services/ElevenLabsTTSService.js';
 import { renderMathInContainer } from '../utils/helpers.js';
 import { buildMathFormattingBlock } from '../services/pedagogy/core/PedagogicalPromptKernel.js';
+import { initDojo, renderDojo } from './dojo.js';
 
 /* ─── DOM Helpers ──────────────────────────────────────────────────── */
 
@@ -208,6 +209,7 @@ const VIEW_LABELS = {
   study: 'Estudar',
   review: 'Revisão',
   practice: 'Prática',
+  dojo: 'Dojo de Código',
   history: 'Histórico',
   planning: 'Planejamento',
   insights: 'Insights',
@@ -262,6 +264,7 @@ async function loadViewData(viewId) {
     case 'study': return; // study view renders on session start
     case 'review': return renderReview();
     case 'practice': return; // practice view renders on mode select
+    case 'dojo': { initDojo({ toast }); return renderDojo(); }
     case 'history': return renderHistory();
     case 'insights': return renderInsights();
     case 'planning': return renderPlanning();
