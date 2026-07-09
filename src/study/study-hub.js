@@ -3931,8 +3931,8 @@ async function renderInsights() {
   const level = Math.floor(xp / 100) + 1;
   const xpInLevel = xp % 100;
   safeText('#insightLevel', level);
-  safeText('#insightXpCurrent', `${xpInLevel} XP`);
-  safeText('#insightXpNext', `${100} XP`);
+  safeText('#insightXpCurrent', `${xpInLevel}`);
+  safeText('#insightXpNext', `${100}`);
   const xpBar = $('#insightXpBar');
   if (xpBar) xpBar.style.width = `${xpInLevel}%`;
 

@@ -9583,3 +9583,117 @@ select:focus-visible,
     max-width: 180px;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SKIN v5.1 — REFINO DE ENCAIXE
+   Correções de coisas quebradas e mal encaixadas encontradas na varredura
+   de QA visual: alinhamentos, caixas vazias, cores fora da paleta.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Sessão de Estudo: o header é centralizado — o eyebrow acompanha */
+.study-setup-header .view-eyebrow {
+  justify-content: center;
+}
+
+/* O CTA "Começar Sessão" morava numa caixa vazia — agora flutua alinhado */
+.setup-card.setup-start {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.quick-start-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--color-text-secondary);
+}
+
+/* Prática: cards com alturas iguais, controles ancorados na base */
+.practice-mode-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.practice-mode-card .mode-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.practice-mode-card .mode-desc {
+  flex: 1;
+}
+
+/* Revisão: fora as barras coloridas grossas — o dado colore, a caixa não */
+.review-overview .review-stat {
+  border-top: 1px solid var(--color-border);
+}
+
+.review-overview .review-stat::before,
+.review-overview .review-stat::after {
+  display: none;
+}
+
+/* Insights: banner de XP na paleta coral, nível e progresso na mesma linha */
+.xp-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  background: linear-gradient(120deg,
+    color-mix(in srgb, var(--color-accent) 9%, var(--color-surface)),
+    color-mix(in srgb, var(--color-accent) 3%, var(--color-surface)) 70%);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, transparent);
+  border-radius: var(--radius-xl, 20px);
+  box-shadow: var(--shadow-sm);
+}
+
+.xp-level-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  min-width: 64px;
+}
+
+.xp-level-num {
+  font-size: 2.4rem;
+  line-height: 1;
+  color: var(--color-accent-on-surface);
+}
+
+.xp-level-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--color-text-tertiary);
+}
+
+.xp-progress-section {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Histórico: sem sessões, o painel da timeline some junto (fica só o convite) */
+#viewHistory .view-inner:has(#historyEmpty:not([hidden])) > .panel {
+  display: none;
+}
+
+/* Sidebar: streak sem a caixa mostarda — vidro quieto na paleta */
+.sidebar-footer .streak-widget {
+  background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+  border: 1px solid var(--color-border);
+}
+
+/* Empty states falam com a mesma voz serifada do resto do app */
+.empty-state__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
